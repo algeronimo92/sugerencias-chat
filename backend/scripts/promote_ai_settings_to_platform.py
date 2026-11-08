@@ -1,7 +1,7 @@
 """Sube a la plataforma la URL y el token de n8n que quedaron en un negocio.
 
-Antes cada negocio guardaba en su ``app_settings`` la URL del workflow de
-sugerencias, la del analista y el token saliente. Ahora esos workflows son uno
+Antes cada negocio guardaba en su ``app_settings`` la URL del workflow del
+analista y el token saliente (la de sugerencias ya no se usa: las genera el CRM). Ahora esos workflows son uno
 solo para todos y esas claves viven en ``public.platform_settings``: este
 script copia los valores del negocio indicado (el que ya tenía n8n andando) y
 los borra de su schema. Nunca pisa un valor que la plataforma ya tenga.
@@ -28,7 +28,7 @@ from app.core.secret_cipher import decrypt_secret
 from app.tenancy.context import tenant_context
 from app.tenancy.resolver import resolve_tenant_by_hostname
 
-KEYS = ("n8n_webhook_url", "n8n_analyst_webhook_url", "n8n_webhook_token")
+KEYS = ("n8n_analyst_webhook_url", "n8n_webhook_token")
 SECRET_KEYS = frozenset({"n8n_webhook_token"})
 
 

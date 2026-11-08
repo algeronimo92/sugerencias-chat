@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
 from app.db.models.catalogs import LeadTag
-from app.db.models.leads import Lead as LeadRow, LeadActivity, LeadStage, LeadTagAssignment, WhatsAppIdentity
+from app.db.models.leads import Lead as LeadRow, LeadActivity, LeadSale, LeadStage, LeadTagAssignment, WhatsAppIdentity
 from app.db.uow import current_session, session_scope
 from app.integrations.whatsapp.connection import ANY_CONNECTION
 from app.integrations.whatsapp.identity import WA_ID
@@ -229,6 +229,26 @@ class SqlLeadRepository:
     async def merge(self, source_id: str, target_id: str) -> None:
         await merge_rows(current_session(), source_id, target_id)
 
+    async def add_sale(self, lead_id: str, values: dict[str, Any]) -> dict[str, Any]:
+        row = (
+            await current_session().execute(
+                insert(LeadSale).values(lead_id=lead_id, **values).returning(LeadSale)
+            )
+        ).scalar_one()
+        return _sale_row(row)
+
+    async def get_sale(self, lead_id: str, sale_id: int) -> dict[str, Any] | None:
+        row = await current_session().scalar(
+            select(LeadSale).where(LeadSale.id == sale_id, LeadSale.lead_id == lead_id)
+        )
+        return _sale_row(row) if row is not None else None
+
+    async def delete_sale(self, lead_id: str, sale_id: int) -> bool:
+        result = await current_session().execute(
+            delete(LeadSale).where(LeadSale.id == sale_id, LeadSale.lead_id == lead_id)
+        )
+        return bool(result.rowcount)
+
     async def rename_service(self, old_name: str, new_name: str) -> list[str]:
         session = current_session()
         matches = func.lower(func.btrim(LeadRow.servicio_interes)) == old_name.lower()
@@ -254,3 +274,22 @@ async def ensure_lead_stub(chat_id: str, ultimo_mensaje_at: datetime | None, ori
             )
             .on_conflict_do_nothing(index_elements=[LeadRow.id])
         )
+
+
+def _sale_row(row: LeadSale) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "lead_id": row.lead_id,
+        "service_id": row.service_id,
+        "package_id": row.package_id,
+        "service_name": row.service_name,
+        "package_name": row.package_name,
+        "sessions": row.sessions,
+        "list_price": row.list_price,
+        "amount": row.amount,
+        "notes": row.notes,
+        "sold_by_user_id": row.sold_by_user_id,
+        "sold_at": row.sold_at,
+        "created_by_user_id": row.created_by_user_id,
+        "created_at": row.created_at,
+    }

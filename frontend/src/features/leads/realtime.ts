@@ -18,6 +18,7 @@ export function createLeadsRealtime(): RealtimeModule {
         if (changedChatId) {
           // Leer un chat o un acuse de entrega no dejan rastro en la actividad.
           if (reason !== 'message_status' && reason !== 'read') invalidate(queryClient, leadKeys.activity(changedChatId))
+          if (reason === 'sale_changed') invalidate(queryClient, leadKeys.sales(changedChatId))
         } else {
           invalidate(queryClient, leadKeys.activityAll)
         }

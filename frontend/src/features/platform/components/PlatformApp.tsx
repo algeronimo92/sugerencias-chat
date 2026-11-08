@@ -42,6 +42,7 @@ import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from 
 import { Input } from "../../../shared/ui/Input";
 import { platformKeys } from '../keys'
 import { StarterPackAction } from './StarterPackAction'
+import { KnowledgeTemplatesPanel } from './KnowledgeTemplatesPanel'
 
 
 function mensajeDeError(error: unknown): string {
@@ -1147,6 +1148,8 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
         </section>
 
         <CredencialesPlataforma />
+
+        <KnowledgeTemplatesPanel />
 
         <section className="mt-8">
           <div className="flex flex-col gap-4 border-b border-wa-border pb-4 sm:flex-row sm:items-end sm:justify-between dark:border-wa-border-dark">

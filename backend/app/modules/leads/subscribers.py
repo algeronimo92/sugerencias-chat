@@ -18,6 +18,7 @@ from app.modules.leads.domain.events import (
     LeadCreated,
     LeadDeleted,
     LeadNoShowRegistered,
+    LeadSaleChanged,
     LeadStageChanged,
     LeadStagesChanged,
     LeadTagged,
@@ -54,6 +55,11 @@ async def lead_updated(event: LeadUpdated) -> None:
 @subscribe(LeadNoShowRegistered, phase=Phase.AFTER_COMMIT)
 async def no_show_registered(event: LeadNoShowRegistered) -> None:
     await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"})
+
+
+@subscribe(LeadSaleChanged, phase=Phase.AFTER_COMMIT)
+async def sale_changed(event: LeadSaleChanged) -> None:
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "sale_changed"})
 
 
 @subscribe(LeadTagged, phase=Phase.AFTER_COMMIT)

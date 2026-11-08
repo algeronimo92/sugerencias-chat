@@ -142,6 +142,46 @@ class WhatsAppIdentity(Base):
     )
 
 
+class LeadSale(Base):
+    """Compra de un lead: con qué paquete cerró el vendedor y cuánto se cobró.
+
+    El cliente llega con un problema (``Lead.servicio_interes``) y el cierre
+    es un paquete concreto (``service_packages``). Se copian nombre, sesiones
+    y precio de lista al momento de la venta porque el catálogo cambia (el ERP
+    lo sincroniza) y la venta tiene que conservar lo que se vendió. ``amount``
+    es lo cobrado de verdad: puede diferir del precio de lista por un
+    descuento. Un lead puede comprar más de una vez.
+    """
+
+    __tablename__ = "lead_sales"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"))
+    service_id: Mapped[int | None] = mapped_column(ForeignKey("lead_services.id", ondelete="SET NULL"))
+    package_id: Mapped[int | None] = mapped_column(ForeignKey("service_packages.id", ondelete="SET NULL"))
+    service_name: Mapped[str] = mapped_column(Text)
+    package_name: Mapped[str] = mapped_column(Text)
+    sessions: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    list_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    notes: Mapped[str | None] = mapped_column(Text)
+    sold_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    sold_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("sessions >= 1", name="lead_sales_sessions_check"),
+        CheckConstraint("list_price >= 0", name="lead_sales_list_price_check"),
+        CheckConstraint("amount >= 0", name="lead_sales_amount_check"),
+        Index("idx_lead_sales_lead_sold_at", lead_id, sold_at.desc()),
+        Index("idx_lead_sales_sold_at", sold_at),
+        Index("idx_lead_sales_sold_by", sold_by_user_id),
+        Index("idx_lead_sales_service", service_id),
+        Index("idx_lead_sales_package", package_id),
+    )
+
+
 class WhatsappAdConversion(Base):
     """Clic a un anuncio de WhatsApp (Click-to-WhatsApp) y, si el contacto
     termina comprando, el resultado de esa venta. Llega vía webhook/n8n desde

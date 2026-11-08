@@ -36,4 +36,5 @@ export const platformKeys = {
   branding: (organizationId: string) => ['platform', 'organizations', organizationId, 'branding'] as const,
   ai: (organizationId: string) => ['platform', 'organizations', organizationId, 'ai'] as const,
   integrations: (organizationId: string) => ['platform', 'organizations', organizationId, 'integrations'] as const,
+  knowledgeTemplates: ['platform', 'knowledge-templates'] as const,
 }

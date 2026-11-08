@@ -7,6 +7,8 @@ trabajo: los comandos corren tal cual, con sus eventos, pero sin base.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -144,6 +146,23 @@ class InMemoryLeadRepository:
     async def merge(self, source_id, target_id):
         self.merged.append((source_id, target_id))
         self.leads.pop(source_id, None)
+
+    async def add_sale(self, lead_id, values):
+        self.sales = getattr(self, "sales", [])
+        row = {"id": len(self.sales) + 1, "lead_id": lead_id, "created_at": datetime.now(timezone.utc), **values}
+        self.sales.append(row)
+        return dict(row)
+
+    async def get_sale(self, lead_id, sale_id):
+        for row in getattr(self, "sales", []):
+            if row["id"] == sale_id and row["lead_id"] == lead_id:
+                return dict(row)
+        return None
+
+    async def delete_sale(self, lead_id, sale_id):
+        before = len(getattr(self, "sales", []))
+        self.sales = [row for row in getattr(self, "sales", []) if not (row["id"] == sale_id and row["lead_id"] == lead_id)]
+        return len(self.sales) != before
 
     async def rename_service(self, old_name, new_name):
         touched = [

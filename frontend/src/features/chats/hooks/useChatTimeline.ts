@@ -9,6 +9,10 @@ import { messageMediaFilename } from '../utils/messageMedia'
 import { useInternalNotes } from './useInternalNotes'
 import { useMessages } from './useMessages'
 
+/** Lo que del historial del lead se muestra como evento del hilo: cambios de
+ *  etapa y compras (registradas o eliminadas). */
+const TIMELINE_ACTIVITY_TYPES: ReadonlySet<string> = new Set(['stage_changed', 'sale_recorded', 'sale_deleted'])
+
 /** Todo lo que puede aparecer en el hilo. */
 export type TimelineItem =
   | { kind: 'message'; key: string; sentAt: string | null; message: Message }
@@ -63,7 +67,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
     // cronológica en que ocurrieron: los mensajes de arriba son el contexto
     // de por qué se movió.
     ...leadActivity
-      .filter(item => item.event_type === 'stage_changed')
+      .filter(item => TIMELINE_ACTIVITY_TYPES.has(item.event_type))
       .map(item => ({
         kind: 'activity' as const,
         key: `activity-${item.id}`,

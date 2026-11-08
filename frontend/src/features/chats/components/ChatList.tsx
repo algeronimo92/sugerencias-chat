@@ -771,7 +771,7 @@ export function ChatList({
                   <Smartphone className="h-4 w-4" /> Conectá tu WhatsApp
                 </div>
                 <p className="mb-3 text-xs text-wa-primary-strong/80 dark:text-wa-primary/80">
-                  Vinculá tu instancia escaneando el QR para empezar a recibir
+                  Vinculá el número del negocio con Meta para empezar a recibir
                   mensajes.
                 </p>
                 <button

@@ -1,6 +1,7 @@
 """Contratos HTTP de leads."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 from app.modules.leads.domain.types import INITIAL_LEAD_STAGE, LEAD_STAGE_KEY_PATTERN
@@ -101,11 +102,43 @@ class KanbanSnapshot(BaseModel):
     stages: dict[str, KanbanPage]
 
 
+class LeadSaleCreate(BaseModel):
+    """Qué compró el lead: un paquete del catálogo y lo cobrado."""
+
+    service_id: int
+    package_id: int
+    # En blanco, el precio de lista del paquete.
+    amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=500)
+    sold_at: datetime | None = None
+
+
+class LeadSaleItem(BaseModel):
+    id: int
+    lead_id: str
+    service_id: int | None = None
+    package_id: int | None = None
+    service_name: str
+    package_name: str
+    sessions: int
+    list_price: Decimal
+    amount: Decimal
+    notes: str | None = None
+    sold_by_user_id: int | None = None
+    sold_by_name: str | None = None
+    sold_at: str
+    created_by_user_id: int | None = None
+    created_at: str
+
+
 class LeadStageUpdate(BaseModel):
     stage: LeadStageKey
     # Solo se persiste al pasar a una etapa de tipo `lost` (como `perdido`);
     # se ignora en cualquier otra.
     razon_perdido: str | None = Field(default=None, max_length=500)
+    # Al pasar a una etapa ganada: con qué paquete cerró. Opcional, como la
+    # razón de pérdida; se puede registrar después desde el panel del lead.
+    sale: LeadSaleCreate | None = None
 
 
 class LeadStageItem(BaseModel):
@@ -253,6 +286,16 @@ class DashboardSummary(BaseModel):
     tagged_leads: int
 
 
+class DashboardSales(BaseModel):
+    count: int
+    # Flotantes y no Decimal, como el resto del dashboard: el JSON lleva
+    # números, no texto.
+    total: float
+    avg_ticket: float | None = None
+    by_seller: list[DashboardMetricItem]
+    by_package: list[DashboardMetricItem]
+
+
 class DashboardPipeline(BaseModel):
     stale: list[DashboardMetricItem]
     conversations_open: int
@@ -338,6 +381,7 @@ class DashboardMetrics(BaseModel):
     new_leads_trend: list[DashboardPoint]
     funnel: list[DashboardFunnelStep]
     pipeline: DashboardPipeline
+    sales: DashboardSales
     automations: DashboardAutomations
     tags: DashboardTags
     appointments: DashboardAppointments

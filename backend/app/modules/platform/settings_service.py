@@ -3,8 +3,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import monotonic
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
+from app.integrations.llm.catalog import parse_model_spec
 from app.modules.platform import settings_repository
 from app.core.config import settings as env_settings
 from app.db.models.settings import AppSetting
@@ -105,6 +107,30 @@ SETTING_DEFS: list[SettingDef] = [
         "ElevenLabs (texto a voz)",
         secret=False,
     ),
+    # El negocio que ya tiene su lista de precios en un ERP la sincroniza en
+    # vez de cargarla dos veces (ver app/modules/catalogs/erp_catalog.py).
+    # El estado de la última pasada se guarda acá para que lo vea el admin y
+    # el worker sepa cuándo le toca volver a pedirla.
+    SettingDef(
+        "erp_catalog_url",
+        "URL del catálogo público (servicios y paquetes con precio)",
+        "erp",
+        "ERP del negocio (lista de precios)",
+        secret=False,
+    ),
+    SettingDef("erp_catalog_synced_at", "Última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    # Claves de IA del propio negocio, una por proveedor. Hoy solo las usan
+    # las sugerencias; si otra función de IA las necesita, las comparte.
+    SettingDef("ai_gemini_api_key", "API key de Google Gemini", "ai", "IA del negocio (claves y sugerencias)", secret=True),
+    SettingDef("ai_openai_api_key", "API key de OpenAI", "ai", "IA del negocio (claves y sugerencias)", secret=True),
+    # Solo las sugerencias de respuesta del copiloto (ver
+    # app/modules/ai/infrastructure/native_provider.py): el análisis del lead
+    # y otras funciones de IA tienen su propia configuración. El nombre lo
+    # dice para que una función nueva no herede estos modelos sin querer.
+    SettingDef("ai_suggestions_primary_model", "Sugerencias: modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    SettingDef("ai_suggestions_fallback_model", "Sugerencias: modelo secundario (si el principal falla)", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
     SettingDef(
         "interactive_default_footer",
@@ -263,6 +289,24 @@ def validate_business_timezone(value: str) -> str:
     return normalized
 
 
+def validate_erp_catalog_url(value: str) -> str:
+    """Solo http(s) con host: el worker la va a pedir a ciegas cada hora."""
+    normalized = value.strip()
+    if not normalized:
+        return ""
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("La URL del catálogo del ERP debe empezar con http:// o https://")
+    return normalized
+
+
+def validate_ai_model(value: str) -> str:
+    """``proveedor:modelo`` del catálogo cerrado de app.integrations.llm."""
+    normalized = value.strip()
+    provider, model = parse_model_spec(normalized)
+    return f"{provider}:{model}"
+
+
 def normalize_user_ids(value: str) -> str:
     """Lista de ids de usuario como texto canónico (ordenada, sin repetir)."""
     parts = [part.strip() for part in value.split(",") if part.strip()]
@@ -397,6 +441,11 @@ async def update_settings(values: dict[str, str]) -> None:
         raise ValueError(f"Configuración desconocida: {', '.join(sorted(unknown))}")
 
     values = dict(values)
+    if "erp_catalog_url" in values:
+        values["erp_catalog_url"] = validate_erp_catalog_url(values["erp_catalog_url"])
+    for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
+        if values.get(key):
+            values[key] = validate_ai_model(values[key])
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]

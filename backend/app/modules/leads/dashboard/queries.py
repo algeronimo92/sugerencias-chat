@@ -31,7 +31,7 @@ _cache_lock = asyncio.Lock()
 
 
 async def _compute(scope: DashboardScope) -> dict:
-    summary_block, leads_block, automations_block, tags_block, appointments_block, activity_block = (
+    summary_block, leads_block, automations_block, tags_block, appointments_block, activity_block, sales_block = (
         await asyncio.gather(
             summary.collect(scope),
             leads.collect(scope),
@@ -39,6 +39,7 @@ async def _compute(scope: DashboardScope) -> dict:
             tags.collect(scope),
             appointments.collect(scope),
             activity.collect(scope),
+            leads.collect_sales(scope),
         )
     )
     # La cobertura de etiquetado ya se calculó en su bloque; se repite en la
@@ -53,6 +54,7 @@ async def _compute(scope: DashboardScope) -> dict:
         "tags": tags_block,
         "appointments": appointments_block,
         "activity": activity_block,
+        "sales": sales_block,
         "generated_at": scope.now.isoformat(),
     }
 

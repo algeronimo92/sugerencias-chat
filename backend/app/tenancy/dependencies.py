@@ -12,8 +12,6 @@ _SELF_SCOPED_PATHS = frozenset(
     {
         "/api/webhooks/analysis-context",
         "/api/webhooks/catalog",
-        "/api/webhooks/rag-search",
-        "/api/webhooks/rag-context",
     }
 )
 _SELF_SCOPED_PREFIXES = (

@@ -42,6 +42,7 @@ export const CHATS_UPDATE_REASONS = [
   'tag_changed',
   'conversation_opened',
   'conversation_closed',
+  'sale_changed',
 ] as const
 export type ChatsUpdateReason = typeof CHATS_UPDATE_REASONS[number]
 

@@ -20,6 +20,7 @@ vi.mock('../../catalogs/public/useLeadServices', () => ({
 vi.mock('../queries', () => ({
   useCreateAppointment: () => ({ isPending: false, mutate: mocks.mutate }),
 }))
+vi.mock('../../platform/public/useGoogleCalendar', () => ({ useGoogleCalendarStatus: () => ({ data: { connected: true } }) }))
 vi.mock('./AppointmentHistoryList', () => ({ AppointmentHistoryList: () => null }))
 vi.mock('./AppointmentCalendar', () => ({ AppointmentCalendar: () => null }))
 

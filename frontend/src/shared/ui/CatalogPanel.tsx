@@ -40,6 +40,9 @@ interface CatalogPanelProps<T> {
   isPending: (item: T) => boolean
   onSave: (item: T) => void
   onToggle: (item: T) => void
+  /** Cuándo el ítem admite activarse o desactivarse acá (por defecto siempre);
+   *  un servicio que administra el ERP del negocio, por ejemplo, no. */
+  canToggle?: (item: T) => boolean
   formError: string | null
 }
 
@@ -70,6 +73,7 @@ export function CatalogPanel<T>({
   isPending,
   onSave,
   onToggle,
+  canToggle,
   formError,
 }: CatalogPanelProps<T>) {
   const [query, setQuery] = useState('')
@@ -166,6 +170,7 @@ export function CatalogPanel<T>({
             const changed = hasChanges(item)
             const pending = isPending(item)
             const name = getName(item)
+            const toggleable = canToggle ? canToggle(item) : true
             return (
               <li
                 key={id}
@@ -195,7 +200,7 @@ export function CatalogPanel<T>({
                     size="sm"
                     className="h-11 sm:h-9"
                     onClick={() => onToggle(item)}
-                    disabled={pending}
+                    disabled={pending || !toggleable}
                     aria-label={`${active ? 'Desactivar' : 'Activar'} ${name}`}
                   >
                     {pending && !changed

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchAiProfile, fetchAiUsage, deleteKnowledgeDocument, fetchKnowledgeDocument, fetchKnowledgeDocuments, saveAiProfile, saveKnowledgeDocument, setAiResourceDescription } from './api'
+import { fetchAiProfile, fetchAiUsage, deleteKnowledgeDocument, fetchKnowledgeDocument, fetchKnowledgeDocuments, saveAiProfile, saveKnowledgeDocument, setAiResourceDescription, importKnowledgePdf, fetchKnowledgeTemplates, importKnowledgeTemplate } from './api'
 import { mediaKeys } from '../media/public/keys'
 import type { MediaAsset } from '../media/types'
 import { aiKeys } from './keys'
@@ -85,5 +85,29 @@ export function useSetAiResourceDescription() {
       context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: mediaKeys.all }),
+  })
+}
+
+export function useImportKnowledgePdf() {
+  // Solo extrae el texto del PDF para revisarlo en el editor: el servidor no
+  // guarda nada, así que no hay caché que invalidar. Lo que se guarda después
+  // pasa por useSaveKnowledgeDocument, que sí invalida.
+  // react-doctor-disable-next-line react-doctor/query-mutation-missing-invalidation
+  return useMutation({ mutationFn: importKnowledgePdf })
+}
+
+export function useKnowledgeTemplates(enabled: boolean) {
+  return useQuery({ queryKey: aiKeys.knowledgeTemplates, queryFn: fetchKnowledgeTemplates, enabled })
+}
+
+export function useImportKnowledgeTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: importKnowledgeTemplate,
+    onSuccess: data => {
+      queryClient.setQueryData(aiKeys.knowledge(data.id), data)
+      queryClient.invalidateQueries({ queryKey: aiKeys.knowledgeTemplates })
+      return queryClient.invalidateQueries({ queryKey: aiKeys.knowledgeAll, exact: true })
+    },
   })
 }

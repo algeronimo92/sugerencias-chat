@@ -5,7 +5,7 @@
 CRM conversacional de WhatsApp para clínicas estéticas, vendido como SaaS multi-tenant
 (**CliniVentas**; un schema de PostgreSQL por negocio). **DermicaPro** es el primer tenant.
 Backend FastAPI hexagonal + React 19 por features; Meta Cloud API nativa (recepción y envío);
-n8n solo para la IA (sugerencias y analista) y callbacks; MinIO para media; Traefik blue-green.
+n8n solo para el analista de leads y callbacks (las sugerencias las genera el backend con las claves de IA de cada negocio); MinIO para media; Traefik blue-green.
 
 Nombres que conviven y son lo mismo: repo `sugerencias-chat`, red y volúmenes `dermicapro-*`,
 dominio `*.cliniventas.com`. "Sugerencias" es hoy una función del CRM, no el producto.

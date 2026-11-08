@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     # una variable de entorno requiera sintaxis JSON; en producción debe ser una
     # lista explícita y mínima.
     tenant_platform_hosts: str = "localhost,testserver"
+    # Sin uso: era la URL del workflow de sugerencias, que ahora genera el CRM.
+    # Se conserva para que un .env viejo con N8N_WEBHOOK_URL no impida arrancar.
     n8n_webhook_url: str = ""
     n8n_analyst_webhook_url: str = ""
     # El backend lo manda como `Authorization: Bearer <valor>` al llamar al
@@ -71,7 +73,7 @@ class Settings(BaseSettings):
     # despliegues multitenant; nunca contiene ni acepta nombres de schema.
     ai_job_signing_secret: str = ""
     # Webhook del workflow FORM-NUEVAS-CITAS (registro de citas/ventas desde
-    # el CRM). Distinto de n8n_webhook_url (sugerencias IA).
+    # el CRM). Distinto de n8n_analyst_webhook_url (analista IA).
     n8n_citas_webhook_url: str = ""
     # URL de prueba ("Listen for test event" en el editor de n8n). Solo la
     # usan los admins desde el toggle "modo prueba" del formulario.

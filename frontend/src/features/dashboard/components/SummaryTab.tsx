@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import type { ChatFilters } from '../../leads/types'
 import type { DashboardMetrics } from '../types'
-import { formatDuration, formatNumber } from './format'
+import { formatAmount, formatDuration, formatNumber } from './format'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
 
 interface Props {
@@ -89,6 +89,24 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
 
         <Panel title="Quién manda más mensajes" subtitle={`Ranking del equipo · ${period}`}>
           <BarList items={activity.messages.by_user} emptyLabel="Nadie envió mensajes desde la app" />
+        </Panel>
+
+        <Panel title="Ventas" subtitle={isMine ? `Lo que cerré · ${period}` : `Lo que cerró el equipo · ${period}`}>
+          <StatGrid
+            stats={[
+              { label: 'Compras', value: formatNumber(data.sales.count) },
+              { label: 'Total cobrado', value: formatAmount(data.sales.total) },
+              { label: 'Ticket promedio', value: formatAmount(data.sales.avg_ticket) },
+            ]}
+          />
+          {!isMine && (
+            <>
+              <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Por vendedor (monto)</p>
+              <BarList items={data.sales.by_seller} emptyLabel="Nadie registró compras en el período" />
+            </>
+          )}
+          <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Paquetes más vendidos</p>
+          <BarList items={data.sales.by_package} emptyLabel="Sin compras registradas en el período" />
         </Panel>
 
         <Panel title="Ritmo de atención" subtitle="Conversaciones y leads que se están enfriando">

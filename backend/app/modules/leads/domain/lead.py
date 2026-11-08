@@ -246,6 +246,23 @@ class Lead:
         self.changes.update(toques_seguimiento=touches, fecha_ultimo_toque=now, updated_at=now)
         return touches
 
+    def record_sale(self, sale: dict[str, Any], *, actor: Actor, deleted: bool = False) -> None:
+        """Una compra registrada (o eliminada) queda en el historial del lead:
+        el hilo del chat la muestra junto a los mensajes que la precedieron."""
+        snapshot = {
+            "sale_id": sale["id"],
+            "service": sale["service_name"],
+            "package": sale["package_name"],
+            "sessions": sale["sessions"],
+            "amount": str(sale["amount"]),
+            "list_price": str(sale["list_price"]),
+        }
+        self.activities.append(ActivityRecord(
+            "sale_deleted" if deleted else "sale_recorded", actor,
+            old_value=snapshot if deleted else None,
+            new_value=None if deleted else snapshot,
+        ))
+
     def record_tag(self, tag: dict[str, Any], *, added: bool, actor: Actor) -> None:
         self.activities.append(ActivityRecord(
             "tag_added" if added else "tag_removed", actor,

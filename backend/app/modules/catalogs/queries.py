@@ -1,7 +1,9 @@
 """Lado de lectura de los catálogos: etiquetas y servicios."""
 
 from sqlalchemy import func, select, true
-from app.db.models.catalogs import LeadService, LeadTag
+from collections import defaultdict
+
+from app.db.models.catalogs import LeadService, LeadTag, ServicePackage
 from app.db.models.auth import User
 from app.db.uow import session_scope
 from app.core.time_format import iso_utc_micros as _fmt_ts
@@ -25,15 +27,52 @@ async def list_tags(include_inactive: bool = False) -> list[dict]:
 
 
 # Lo que el asistente IA usa para cotizar; el resto del CRM solo mira el nombre.
-_SERVICE_AI_COLUMNS = (LeadService.description, LeadService.price, LeadService.price_notes)
+_SERVICE_AI_COLUMNS = (LeadService.description, LeadService.price_notes)
+
+PACKAGE_COLUMNS = (
+    ServicePackage.id,
+    ServicePackage.service_id,
+    ServicePackage.name,
+    ServicePackage.sessions,
+    ServicePackage.price,
+    ServicePackage.notes,
+    ServicePackage.position,
+    ServicePackage.is_active,
+    ServicePackage.external_id,
+)
+
+
+def packages_by_service_stmt(service_ids: list[int], include_inactive: bool):
+    """Paquetes de varios servicios en el orden en que el negocio los muestra."""
+    stmt = (
+        select(*PACKAGE_COLUMNS)
+        .where(ServicePackage.service_id.in_(service_ids))
+        .order_by(ServicePackage.service_id, ServicePackage.position, ServicePackage.id)
+    )
+    if not include_inactive:
+        stmt = stmt.where(ServicePackage.is_active == true())
+    return stmt
+
+
+async def _packages_grouped(session, service_ids: list[int], include_inactive: bool) -> dict[int, list[dict]]:
+    grouped: dict[int, list[dict]] = defaultdict(list)
+    if not service_ids:
+        return grouped
+    rows = (await session.execute(packages_by_service_stmt(service_ids, include_inactive))).mappings().all()
+    for row in rows:
+        grouped[row["service_id"]].append(dict(row))
+    return grouped
 
 
 async def list_lead_services(include_inactive: bool = False) -> list[dict]:
+    """Servicios con sus paquetes. ``include_inactive`` aplica a ambos: el
+    admin ve todo para poder reactivar; el equipo solo lo vendible."""
     stmt = select(
         LeadService.id,
         LeadService.name,
         LeadService.is_active,
         *_SERVICE_AI_COLUMNS,
+        LeadService.external_id,
         LeadService.created_by.label("created_by_user_id"),
         User.name.label("created_by_name"),
         LeadService.created_at,
@@ -44,7 +83,11 @@ async def list_lead_services(include_inactive: bool = False) -> list[dict]:
         stmt = stmt.where(LeadService.is_active == true())
     async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
-    return [{**dict(row), "created_at": _fmt_ts(row["created_at"])} for row in rows]
+        packages = await _packages_grouped(session, [row["id"] for row in rows], include_inactive)
+    return [
+        {**dict(row), "created_at": _fmt_ts(row["created_at"]), "packages": packages.get(row["id"], [])}
+        for row in rows
+    ]
 
 
 async def get_lead_service_by_name(name: str, active_only: bool = True) -> dict | None:
@@ -55,6 +98,31 @@ async def get_lead_service_by_name(name: str, active_only: bool = True) -> dict 
     ).where(func.lower(LeadService.name) == name.strip().casefold())
     if active_only:
         stmt = stmt.where(LeadService.is_active == true())
+    async with session_scope() as session:
+        row = (await session.execute(stmt)).mappings().first()
+    return dict(row) if row else None
+
+
+async def get_sellable_package(service_id: int, package_id: int) -> dict | None:
+    """El paquete que un vendedor puede cerrar: activo y de un servicio
+    activo. Devuelve lo que la venta copia (nombres, sesiones, precio)."""
+    stmt = (
+        select(
+            LeadService.id.label("service_id"),
+            LeadService.name.label("service_name"),
+            ServicePackage.id.label("package_id"),
+            ServicePackage.name.label("package_name"),
+            ServicePackage.sessions,
+            ServicePackage.price,
+        )
+        .join(ServicePackage, ServicePackage.service_id == LeadService.id)
+        .where(
+            LeadService.id == service_id,
+            ServicePackage.id == package_id,
+            LeadService.is_active == true(),
+            ServicePackage.is_active == true(),
+        )
+    )
     async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row else None

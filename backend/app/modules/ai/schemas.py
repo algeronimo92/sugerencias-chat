@@ -1,4 +1,5 @@
 """Contratos HTTP de ai."""
+from typing import Literal
 
 from datetime import datetime
 from pydantic import BaseModel, field_validator
@@ -11,6 +12,10 @@ class TtsRequest(BaseModel):
 class TtsResponse(BaseModel):
     content_type: str
     data_base64: str
+
+
+class TtsStatus(BaseModel):
+    configured: bool
 
 
 # Tope de la indicación del asesor. Alineado con el maxLength del input del
@@ -94,14 +99,22 @@ class AIProfileBody(BaseModel):
 class AIProfileItem(AIProfileBody):
     updated_at: str | None = None
 
+KnowledgeDocumentType = Literal["ficha", "politica", "faq", "guion", "otro"]
+
+
 class KnowledgeDocumentBody(BaseModel):
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     content: str = Field(min_length=1, max_length=MAX_CONTENT_LENGTH)
+    document_type: KnowledgeDocumentType | None = None
+    # Servicio del catálogo; sin valor es conocimiento general.
+    service_id: int | None = None
 
 class KnowledgeDocumentSummary(BaseModel):
     id: str
     title: str
     document_type: str | None = None
+    service_id: int | None = None
+    template_id: int | None = None
     characters: int
     chunk_count: int
     created_at: str
@@ -129,3 +142,69 @@ class LeadAnalysisResult(BaseModel):
     # los traen.
     changed: bool | None = None
     stage: str | None = None
+
+
+class AiProviderModels(BaseModel):
+    provider: str
+    label: str
+    models: list[str]
+    key_configured: bool
+
+
+class AiProvidersStatus(BaseModel):
+    """Lo que la tarjeta "Asistente IA" de Integraciones necesita."""
+
+    providers: list[AiProviderModels]
+    primary_model: str
+    fallback_model: str
+    # Hay clave para el modelo principal o el secundario.
+    ready: bool
+
+
+class AiProviderTestRequest(BaseModel):
+    provider: str
+    # En blanco, se prueba la clave guardada.
+    api_key: str | None = Field(default=None, max_length=500)
+    model: str | None = Field(default=None, max_length=80)
+
+
+class AiProviderTestResult(BaseModel):
+    ok: bool
+    provider: str
+    model: str | None = None
+    error: str | None = None
+    latency_ms: int | None = None
+
+
+class KnowledgePdfImportRequest(BaseModel):
+    filename: str = Field(default="", max_length=255)
+    # El PDF en base64 (sin el prefijo ``data:``); hasta 10 MB.
+    data_base64: str = Field(min_length=1, max_length=14_500_000)
+
+
+class KnowledgePdfImport(BaseModel):
+    """Texto extraído para revisar antes de guardarlo como documento."""
+
+    title: str
+    content: str
+    pages: int
+    characters: int
+    truncated: bool
+
+
+class KnowledgeTemplateSummary(BaseModel):
+    """Plantilla de la plataforma que el negocio puede importar."""
+
+    id: int
+    title: str
+    document_type: str | None = None
+    service_hint: str | None = None
+    content: str
+    version: int
+    characters: int
+    imported: bool
+
+
+class KnowledgeTemplateImport(BaseModel):
+    # Servicio del negocio al que queda vinculada la copia; sin valor, general.
+    service_id: int | None = None

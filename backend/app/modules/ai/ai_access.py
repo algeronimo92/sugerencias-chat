@@ -16,8 +16,10 @@ from sqlalchemy import and_, func, or_, select
 from app.db.models.ai import AIJob
 from app.db.models.control import Organization
 from app.db.session import control_session
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec
 from app.modules.ai.ai_job_tokens import signing_key_configured
 from app.modules.auth.public import try_send_operational_alert
+from app.modules.platform.ports.settings_service import get_effective_many
 from app.modules.platform.public import platform_setting
 from app.tenancy.context import get_current_tenant
 from app.db.uow import session_scope
@@ -30,8 +32,9 @@ BILLABLE_OPERATIONS = ("rag", "analyst")
 # marcó como vencidos) no descuentan cuota.
 _DELIVERED_STATUSES = ("succeeded", "applied")
 _IN_FLIGHT_STATUSES = ("pending", "running")
-# Workflow que atiende cada operación, configurado en la plataforma.
-_WORKFLOW_URL_KEYS = {"rag": "n8n_webhook_url", "analyst": "n8n_analyst_webhook_url"}
+# Workflow de n8n que atiende cada operación, configurado en la plataforma.
+# Las sugerencias ("rag") no tienen: las genera el CRM con las claves del negocio.
+_WORKFLOW_URL_KEYS = {"analyst": "n8n_analyst_webhook_url"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,12 +111,37 @@ async def usage_summary() -> dict:
 
 
 async def platform_ready(operation: str) -> bool:
-    """La plataforma tiene lo necesario para atender la operación: el secreto
-    que firma los jobs y la URL del workflow."""
+    """Lo necesario para atender la operación: el secreto que firma los jobs y,
+    para el analista, la URL del workflow. Las sugerencias no pasan por n8n: lo
+    que necesitan es una clave del negocio, y su falta es del negocio y se
+    explica como tal (no "avisa a soporte")."""
 
     if not signing_key_configured():
         return False
+    if operation == "rag":
+        if not await business_ai_ready():
+            raise AIUnavailableError(
+                "ai_not_configured",
+                "Las sugerencias con IA no están conectadas: carga la clave de tu "
+                "proveedor en Integraciones › Sugerencias con IA.",
+                503,
+            )
+        return True
     return bool(await platform_setting(_WORKFLOW_URL_KEYS[operation]))
+
+
+async def business_ai_ready() -> bool:
+    """El negocio tiene al menos una clave para el modelo principal o el
+    secundario de las sugerencias."""
+    values = await get_effective_many(("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key"))
+    for spec in (values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY, values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK):
+        try:
+            provider, _ = parse_model_spec(spec)
+        except ValueError:
+            continue
+        if values[key_setting_for(provider)].strip():
+            return True
+    return False
 
 
 async def _notify_quota(entitlement: AIEntitlement, used: int) -> None:

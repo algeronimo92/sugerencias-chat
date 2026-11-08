@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models.catalogs import LeadService, LeadTag, MessageTemplate, TemplateCategory
+from app.db.models.catalogs import LeadService, LeadTag, MessageTemplate, ServicePackage, TemplateCategory
 from app.db.uow import collect, current_session, session_scope, unit_of_work
 from app.modules.catalogs.events import TemplatesChanged
 from app.modules.catalogs.template_validation import validate_template_values
@@ -93,8 +93,9 @@ async def seed_starter_catalog(
 async def onboarding_catalog_status(starter_shortcuts: frozenset[str]) -> dict:
     """Lo que el checklist necesita de los catálogos.
 
-    - ``priced_services``: servicios activos con precio; es lo que el asistente
-      IA usa para cotizar, así que un servicio sin precio no cuenta.
+    - ``priced_services``: servicios activos con al menos un paquete activo; es
+      lo que el asistente IA usa para cotizar, así que un servicio sin paquetes
+      no cuenta.
     - ``templates_customized``: el admin ya tocó las plantillas (editó una,
       o tiene alguna global que no vino en el paquete).
     """
@@ -102,9 +103,10 @@ async def onboarding_catalog_status(starter_shortcuts: frozenset[str]) -> dict:
     async with session_scope() as session:
         priced_services = (
             await session.execute(
-                select(func.count(LeadService.id)).where(
-                    LeadService.is_active == true(), LeadService.price.is_not(None)
-                )
+                select(func.count(func.distinct(ServicePackage.service_id)))
+                .select_from(ServicePackage)
+                .join(LeadService, LeadService.id == ServicePackage.service_id)
+                .where(LeadService.is_active == true(), ServicePackage.is_active == true())
             )
         ).scalar_one()
         customized = (

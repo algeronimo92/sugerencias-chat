@@ -19,16 +19,101 @@ class TagUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ServicePackageItem(BaseModel):
+    """Presentación vendible de un servicio (1 sesión, pack x3...)."""
+
+    id: int
+    service_id: int
+    name: str
+    sessions: int
+    price: Decimal
+    notes: str | None = None
+    position: int
+    is_active: bool = True
+    # Con valor, lo administra el ERP del negocio y el CRM lo muestra en solo lectura.
+    external_id: str | None = None
+
+
+class ServicePackageCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    sessions: int = Field(default=1, ge=1, le=1000)
+    # Precio total del paquete en la moneda del perfil del negocio.
+    price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=500)
+    position: int | None = Field(default=None, ge=0, le=10000)
+
+
+class ServicePackageUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    sessions: int | None = Field(default=None, ge=1, le=1000)
+    price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=500)
+    position: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = None
+
+
 class LeadServiceItem(BaseModel):
     id: int
     name: str
     is_active: bool = True
     description: str | None = None
-    price: Decimal | None = None
     price_notes: str | None = None
+    packages: list[ServicePackageItem] = Field(default_factory=list)
+    # Con valor, nombre, paquetes y alta/baja los administra el ERP del
+    # negocio; el CRM solo edita descripción y notas.
+    external_id: str | None = None
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     created_at: str | None = None
+
+
+class ErpSyncSummary(BaseModel):
+    services_total: int = 0
+    services_created: int = 0
+    services_updated: int = 0
+    services_deactivated: int = 0
+    packages_created: int = 0
+    packages_updated: int = 0
+    packages_deactivated: int = 0
+    conflicts: list[str] = Field(default_factory=list)
+
+
+class ErpSyncStatus(BaseModel):
+    """Estado de la sincronización con el ERP del negocio."""
+
+    configured: bool
+    url: str | None = None
+    synced_at: str | None = None
+    last_error: str | None = None
+    last_summary: ErpSyncSummary | None = None
+
+
+class ErpTestRequest(BaseModel):
+    # En blanco, se prueba la URL guardada.
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class ErpSamplePackage(BaseModel):
+    label: str
+    sessions: int
+    price: str
+
+
+class ErpSampleService(BaseModel):
+    name: str
+    packages: list[ErpSamplePackage]
+
+
+class ErpTestResult(BaseModel):
+    """Resultado de la prueba de conexión con el ERP."""
+
+    ok: bool
+    url: str | None = None
+    error: str | None = None
+    services_total: int = 0
+    packages_total: int = 0
+    services_without_packages: list[str] = Field(default_factory=list)
+    sample: list[ErpSampleService] = Field(default_factory=list)
 
 
 class LeadServiceCreate(BaseModel):
@@ -38,10 +123,9 @@ class LeadServiceCreate(BaseModel):
 class LeadServiceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
-    # Catálogo que consulta el asistente IA. La moneda es la del perfil del
-    # negocio; ``price_notes`` cubre packs, promociones o rangos.
+    # Catálogo que consulta el asistente IA. El precio vive en los paquetes;
+    # ``price_notes`` queda para condiciones generales (promociones, vigencia).
     description: str | None = Field(default=None, max_length=1000)
-    price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     price_notes: str | None = Field(default=None, max_length=500)
 
 

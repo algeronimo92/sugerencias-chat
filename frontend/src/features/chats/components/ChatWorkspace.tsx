@@ -9,6 +9,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
+import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
 import { useLayout } from "../../../shared/hooks/useBreakpoint";
 import { Button } from "../../../shared/ui/Button";
 import { PageLoader } from "../../../shared/ui/PageLoader";
@@ -118,11 +119,12 @@ function SuggestionsEmptyState() {
 
 export function ChatWorkspace() {
   const { data: me } = useMe();
+  const isAdmin = me?.role === "admin";
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
   const navigate = useNavigate();
   const location = useLocation();
   const handleSelectChat = useOpenChat();
-  const { chatFilters, openSettings } = useLayoutContext();
+  const { chatFilters, openIntegrations } = useLayoutContext();
   const {
     search,
     setSearch,
@@ -336,7 +338,7 @@ export function ChatWorkspace() {
             hasNextPageError={isFetchNextPageError}
             onLoadMore={handleLoadMore}
             showConnectWhatsapp={showConnectWhatsapp}
-            onConnectWhatsapp={() => openSettings("whatsapp")}
+            onConnectWhatsapp={() => openIntegrations("whatsapp")}
           />
         </div>
 
@@ -346,6 +348,17 @@ export function ChatWorkspace() {
             className={`h-full min-w-0 flex-1 overflow-hidden bg-white shadow-sm dark:bg-wa-panel-dark ${isMobile ? "" : "rounded-2xl border border-wa-border dark:border-wa-border-dark"}`}
           >
             {selectedChat ? (
+              <div className="flex h-full flex-col">
+                {whatsappStatus != null && whatsappStatus.state !== "open" && (
+                  <IntegrationNotice
+                    className="m-2 mb-0"
+                    tone="warning"
+                    message="WhatsApp no está conectado: lo que escribas acá no se enviará al cliente."
+                    anchor="whatsapp"
+                    canConnect={isAdmin}
+                  />
+                )}
+                <div className="min-h-0 flex-1">
               <ChatThread
                 chat={selectedChat}
                 highlightMessageId={
@@ -357,6 +370,8 @@ export function ChatWorkspace() {
                   isDesktop ? undefined : () => setIsSuggestionsOpen(true)
                 }
               />
+                </div>
+              </div>
             ) : chatId ? (
               /* El lead todavía no llegó (entrada directa por URL o
                recarga). En móvil la lista está oculta, así que sin esta

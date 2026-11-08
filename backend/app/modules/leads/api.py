@@ -17,11 +17,13 @@ from app.modules.auth.public import get_current_user, list_active_sellers, requi
 from app.modules.catalogs.ports.custom_fields import CustomFieldError, normalize_values
 from app.modules.conversations.ports.chat_queries import fetch_chat, fetch_chats
 from app.modules.conversations.ports.inbox_queries import fetch_total_unread_chat_count
-from app.modules.leads.application import commands
+from app.modules.leads.application import commands, sales
 from app.modules.leads.domain.lead import Actor
 from app.modules.leads.kanban_queries import fetch_kanban_counts, fetch_kanban_snapshot, fetch_kanban_stage
-from app.modules.leads.queries import list_lead_activity
+from app.modules.leads.queries import list_lead_activity, list_lead_sales
 from app.modules.leads.schemas import (
+    LeadSaleCreate,
+    LeadSaleItem,
     PhoneConfig,
     UnreadCount,
     Chat,
@@ -133,12 +135,38 @@ async def get_kanban_stage(
     return await fetch_kanban_stage(stage, search.strip() if search else None, offset, limit)
 
 
+def _sale_input(body: LeadSaleCreate) -> sales.SaleInput:
+    return sales.SaleInput(
+        service_id=body.service_id, package_id=body.package_id,
+        amount=body.amount, notes=body.notes, sold_at=body.sold_at,
+    )
+
+
 @router.patch("/{chat_id}/stage", response_model=Chat)
 async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
-    await commands.change_stage(
-        chat_id, body.stage, actor=Actor.user(user.id), lost_reason=body.razon_perdido,
-    )
+    actor = Actor.user(user.id)
+    if body.sale is not None:
+        await sales.close_with_sale(chat_id, body.stage, _sale_input(body.sale), actor=actor)
+    else:
+        await commands.change_stage(chat_id, body.stage, actor=actor, lost_reason=body.razon_perdido)
     return await _chat_or_404(chat_id)
+
+
+@router.get("/{chat_id}/sales", response_model=list[LeadSaleItem])
+async def get_chat_sales(chat_id: str, _user: User = Depends(get_current_user)):
+    return await list_lead_sales(chat_id)
+
+
+@router.post("/{chat_id}/sales", response_model=LeadSaleItem, status_code=201)
+async def post_chat_sale(chat_id: str, body: LeadSaleCreate, user: User = Depends(get_current_user)):
+    await sales.record_sale(chat_id, _sale_input(body), actor=Actor.user(user.id))
+    # Con el nombre del vendedor, como la lista.
+    return (await list_lead_sales(chat_id))[0]
+
+
+@router.delete("/{chat_id}/sales/{sale_id}", status_code=204)
+async def delete_chat_sale(chat_id: str, sale_id: int, user: User = Depends(get_current_user)):
+    await sales.delete_sale(chat_id, sale_id, actor=Actor.user(user.id), is_admin=user.role == "admin")
 
 
 @router.post("", response_model=Chat, status_code=201)

@@ -3,6 +3,9 @@ import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
+import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
+import { useMe } from '../../../shared/auth'
+import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../constants'
 import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
 
@@ -61,8 +64,20 @@ export function AppointmentHistoryList() {
     })
   }, [data, search, activeStatuses, hideTestMode])
 
+  const { data: calendar } = useGoogleCalendarStatus()
+  const { data: me } = useMe()
+  const calendarConnected = calendar?.connected !== false
+
   return (
     <div className="mx-auto max-w-3xl">
+      {!calendarConnected && (
+        <IntegrationNotice
+          className="mb-3"
+          message="Google Calendar no está conectado: las citas quedan solo en la app y no se pueden sincronizar."
+          anchor="calendario"
+          canConnect={me?.role === 'admin'}
+        />
+      )}
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted" />
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por contacto, servicio o campos personalizados" className="pl-9" />
@@ -185,7 +200,7 @@ export function AppointmentHistoryList() {
                 {item.adelanto > 0 && <span>Pago: S/{item.adelanto.toFixed(2)}</span>}
                 {item.calendar_sync_status === 'error' && <span className="text-amber-700 dark:text-amber-300">Google Calendar pendiente</span>}
                 <span>Registrado por {item.created_by_name} · {formatDateTime(item.created_at)}</span>
-                {!item.test_mode && item.calendar_sync_status !== 'synced' && (
+                {!item.test_mode && item.calendar_sync_status !== 'synced' && calendarConnected && (
                   <button
                     type="button"
                     onClick={() => syncCalendar.mutate(item.id)}

@@ -14,6 +14,7 @@ import { LeadAnalysisAction } from '../../ai/public/LeadAnalysisAction'
 import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { SuggestionCard } from './SuggestionCard'
 import { SuggestionInstructionBox } from '../../ai/public/SuggestionInstructionBox'
+import { Link } from 'react-router-dom'
 
 interface Props {
   chat: Chat
@@ -186,7 +187,14 @@ function CopilotError({ message, retryable, onRetry }: { message: string; retrya
     return (
       <div role="status" className="flex gap-2 rounded-xl border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        <p>{message}</p>
+        <p>
+          {message}
+          {/* Las claves del copiloto las carga el admin del negocio: el aviso
+              lleva directo a donde se resuelve. */}
+          {message.includes('Integraciones') && (
+            <>{' '}<Link to="/integraciones#ia-sugerencias" className="font-semibold underline">Ir a Integraciones</Link></>
+          )}
+        </p>
       </div>
     )
   }

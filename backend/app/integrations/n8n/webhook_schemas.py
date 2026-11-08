@@ -81,14 +81,6 @@ class LeadAnalysisResultWebhookBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class RagSearchWebhookBody(BaseModel):
-    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
-    context_revision: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-    top_k: int = Field(default=5, ge=1, le=20)
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class LeadInboundActivityWebhookBody(BaseModel):
     """Último mensaje del chat, tal como lo veía el nodo `update lead4`."""
 

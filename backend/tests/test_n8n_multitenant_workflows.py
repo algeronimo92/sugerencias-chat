@@ -7,11 +7,10 @@ import pytest
 
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "n8n"
-RAG_PATH = FIXTURE_ROOT / "rag.json"
 ANALYST_PATH = FIXTURE_ROOT / "analista.json"
 META_PATH = FIXTURE_ROOT / "meta-cloud-api.json"
 CONFIG_PATH = FIXTURE_ROOT / "config.json"
-EXPORTS = (RAG_PATH, ANALYST_PATH, META_PATH, CONFIG_PATH)
+EXPORTS = (ANALYST_PATH, META_PATH, CONFIG_PATH)
 
 
 def load(path: Path) -> dict:
@@ -93,33 +92,6 @@ def test_meta_workflow_is_only_a_relay_to_the_backend():
     text = META_PATH.read_text(encoding="utf-8")
     for removed in ("normalizar", "s.whatsapp.net", "@lid", "resolve-whatsapp-identity", "meta-events/inbox"):
         assert removed not in text
-
-
-def test_rag_is_only_an_authorized_on_demand_copilot():
-    workflow = load(RAG_PATH)
-    by_name = nodes(workflow)
-    workflow_text = RAG_PATH.read_text(encoding="utf-8")
-
-    assert has_path(workflow, "When Executed by Another Workflow", "Agente Copiloto Ventas1")
-    assert has_path(workflow, "Webhook1", "Agente Copiloto Ventas1")
-    assert not any("supabase" in node["type"].lower() for node in workflow["nodes"])
-    assert "Call analista" not in by_name
-    assert "Evolution" not in workflow_text
-    assert "dermicapro-business" not in workflow_text
-    assert by_name["RAG1"]["type"] == "n8n-nodes-base.httpRequestTool"
-    assert by_name["RAG1"]["parameters"]["url"].endswith("/api/webhooks/rag-search' }}")
-    assert by_name["precios1"]["parameters"]["url"].endswith("/api/webhooks/catalog' }}")
-    assert by_name["cargar contexto RAG"]["parameters"]["url"].endswith(
-        "/api/webhooks/rag-context' }}"
-    )
-    for name in ("RAG1", "precios1", "cargar contexto RAG"):
-        assert {"X-Tenant-Context", "X-Job-Id"} <= header_names(by_name[name]), name
-    # El workflow es uno solo para todos los negocios: lo que sabe de cada uno
-    # llega en el contexto del job, no escrito en el prompt.
-    prompt = by_name["Agente Copiloto Ventas1"]["parameters"]["text"]
-    assert "$json.tenant_config" in prompt
-    assert "$json.recursos" in prompt
-    assert "tenant_config" in by_name["preparar contexto RAG"]["parameters"]["jsCode"]
 
 
 def test_analyst_is_sql_free_on_demand_and_revision_guarded():

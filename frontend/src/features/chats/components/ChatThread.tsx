@@ -28,6 +28,7 @@ import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
+import { SaleCard } from './SaleCard'
 import { StageChangeCard } from './StageChangeCard'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
@@ -465,7 +466,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               if (item.kind === 'activity') {
                 return (
                   <Fragment key={item.key}>
-                    <StageChangeCard activity={item.activity} />
+                    {item.activity.event_type === 'stage_changed'
+                      ? <StageChangeCard activity={item.activity} />
+                      : <SaleCard activity={item.activity} />}
                   </Fragment>
                 )
               }

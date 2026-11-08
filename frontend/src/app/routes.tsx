@@ -65,6 +65,11 @@ const MyAutomationExecutionsPage = lazy(() =>
     default: module.MyAutomationExecutionsPage,
   })),
 );
+const IntegrationsPage = lazy(() =>
+  import("./IntegrationsPage").then((module) => ({
+    default: module.IntegrationsPage,
+  })),
+);
 const CatalogsPage = lazy(() =>
   import("./CatalogsPage").then((module) => ({
     default: module.CatalogsPage,
@@ -190,6 +195,7 @@ const crmRoutes = createRoutesFromElements(
         <Route path="media-library" element={<MediaLibraryPage />} />
         <Route path="automations" element={<AutomationsPage />} />
         <Route path="catalogs" element={<CatalogsPage />} />
+        <Route path="integraciones" element={<IntegrationsPage />} />
         <Route path="ai-assistant" element={<AiAssistantPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

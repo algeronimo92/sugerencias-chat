@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.modules.catalogs.schemas import LeadServiceUpdate
+from app.modules.catalogs.schemas import LeadServiceUpdate, ServicePackageCreate
 from app.modules.catalogs import services_api as lead_services
 from app.modules.platform import api as platform
 from app.modules.platform import settings_api as settings_router
@@ -99,7 +99,7 @@ async def test_tenant_cannot_write_platform_managed_settings(monkeypatch):
     update.assert_not_awaited()
 
 
-async def test_service_catalog_accepts_price_and_clears_blank_texts(monkeypatch):
+async def test_service_catalog_clears_blank_texts(monkeypatch):
     received = {}
 
     async def fake_update(service_id, values, actor_user_id):
@@ -110,20 +110,59 @@ async def test_service_catalog_accepts_price_and_clears_blank_texts(monkeypatch)
 
     await lead_services.patch_service(
         4,
-        LeadServiceUpdate(price=Decimal("150.5"), description="  Toxina   botulínica ", price_notes="  "),
+        LeadServiceUpdate(description="  Toxina   botulínica ", price_notes="  "),
         SimpleNamespace(id=1),
     )
 
     assert received == {
-        "price": Decimal("150.5"),
         "description": "Toxina botulínica",
         "price_notes": None,
     }
 
 
-def test_service_price_cannot_be_negative():
+def test_service_has_no_price_of_its_own():
+    """El precio vive en los paquetes: un ``price`` en el servicio se ignora."""
+    assert "price" not in LeadServiceUpdate(price=Decimal("150")).model_dump(exclude_unset=True)
+
+
+def test_package_price_cannot_be_negative():
     with pytest.raises(ValidationError):
-        LeadServiceUpdate(price=Decimal("-1"))
+        ServicePackageCreate(name="Pack x3", sessions=3, price=Decimal("-1"))
+
+
+def test_package_needs_at_least_one_session():
+    with pytest.raises(ValidationError):
+        ServicePackageCreate(name="Pack", sessions=0, price=Decimal("100"))
+
+
+async def test_ai_catalog_quotes_from_packages(monkeypatch):
+    """El asistente recibe cada paquete y, como ``price``, la sesión suelta
+    (lo que el prompt de n8n ya leía). Sin paquetes, el precio es nulo."""
+    from app.modules.ai import ai_assistant_service
+
+    async def fake_rows():
+        return [
+            {
+                "id": 1, "name": "Hollywood Peel", "description": "Peeling con carbón", "price_notes": None,
+                "packages": [
+                    {"name": "Pack x3", "sessions": 3, "price": Decimal("400"), "notes": "Vigencia 90 días"},
+                    {"name": "1 sesión", "sessions": 1, "price": Decimal("150"), "notes": None},
+                ],
+            },
+            {"id": 2, "name": "Consulta", "description": None, "price_notes": None, "packages": []},
+        ]
+
+    monkeypatch.setattr(ai_assistant_service, "list_ai_catalog_rows", fake_rows)
+
+    catalog = await ai_assistant_service.list_ai_catalog()
+
+    assert catalog[0]["price"] == "150.00"
+    assert catalog[0]["packages"] == [
+        {"name": "Pack x3", "sessions": 3, "price": "400.00", "notes": "Vigencia 90 días"},
+        {"name": "1 sesión", "sessions": 1, "price": "150.00", "notes": None},
+    ]
+    assert catalog[1]["price"] is None
+    assert catalog[1]["packages"] == []
 
 
 async def test_platform_sets_ai_entitlement(monkeypatch):
@@ -164,3 +203,30 @@ async def test_platform_reports_missing_organization_as_404(monkeypatch):
         await platform.get_organization_ai(ORG_ID)
 
     assert exc.value.status_code == 404
+
+
+def test_markdown_sections_are_their_own_chunks_with_their_heading_trail():
+    document = (
+        "Intro para el agente.\n\n"
+        "## ROSTRO Y PIEL\n\n"
+        '### "Tengo manchas"\n- Solución: ácido tranexámico.\n\n'
+        '### "Tengo la piel grasa"\n- Solución: Hollywood Peel.\n\n'
+        "## CUERPO\n\n"
+        '### "Tengo mucho vello"\n- Solución: depilación láser.\n'
+    )
+    chunks = chunk_text(document, target=500)
+
+    # Un dolor por fragmento: la búsqueda no devuelve el vecino pegado.
+    assert chunks == [
+        "Intro para el agente.",
+        '[ROSTRO Y PIEL › "Tengo manchas"]\n\n- Solución: ácido tranexámico.',
+        '[ROSTRO Y PIEL › "Tengo la piel grasa"]\n\n- Solución: Hollywood Peel.',
+        '[CUERPO › "Tengo mucho vello"]\n\n- Solución: depilación láser.',
+    ]
+
+
+def test_a_long_markdown_section_is_split_but_keeps_its_heading():
+    document = "## Guiones\n\n" + "\n\n".join(f"Párrafo {n} " + "palabra " * 30 for n in range(6))
+    chunks = chunk_text(document, target=400, overlap=0)
+    assert len(chunks) > 1
+    assert all(chunk.startswith("[Guiones]\n\n") for chunk in chunks)
