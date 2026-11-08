@@ -34,3 +34,25 @@ def rename_service_references(value, old_name: str, new_name: str):
         result["service_contains"] = new_name
         changed = True
     return result, changed
+
+
+def references_service(value, name: str) -> bool:
+    """Si una regla nombra al servicio en sus partes estructuradas (las mismas
+    que sigue ``rename_service_references``)."""
+    if isinstance(value, list):
+        return any(references_service(item, name) for item in value)
+    if not isinstance(value, dict):
+        return False
+    wanted = name.casefold()
+    service = value.get("service")
+    if value.get("type") == "change_service" and isinstance(service, str) and service.casefold() == wanted:
+        return True
+    condition = value.get("service_contains")
+    if isinstance(condition, str) and condition.casefold() == wanted:
+        return True
+    return any(references_service(item, name) for item in value.values())
+
+
+def count_label(count: int, singular: str, plural: str) -> str:
+    """"1 lead" / "12 leads": cómo cada módulo anota lo que usa un servicio."""
+    return f"{count} {singular if count == 1 else plural}"

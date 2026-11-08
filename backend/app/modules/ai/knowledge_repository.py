@@ -128,3 +128,10 @@ async def imported_template_ids() -> set[int]:
             )
         ).scalars().all()
     return {int(value) for value in rows if value and value.isdigit()}
+
+
+async def count_documents_for_service(service_id: int) -> int:
+    async with session_scope() as session:
+        return await session.scalar(
+            select(func.count()).select_from(KnowledgeDocument).where(KnowledgeDocument.service_id == service_id)
+        ) or 0

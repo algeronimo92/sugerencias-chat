@@ -7,11 +7,11 @@ la pantalla necesita. Un archivo ``*queries.py`` nunca escribe (ver
 
 from __future__ import annotations
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
-from app.db.models.leads import LeadActivity, LeadSale
+from app.db.models.leads import Lead, LeadActivity, LeadSale
 from app.core.serialization import json_safe_row as _json_safe_row
 from app.db.uow import session_scope
 
@@ -129,3 +129,16 @@ async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
             )
         ).mappings().all()
     return [_json_safe_row(dict(row)) for row in rows]
+
+
+async def service_usage(service_id: int, name: str) -> tuple[int, int]:
+    """Cuántos leads tienen el servicio como interés y cuántas ventas lo
+    registran. El interés se compara como lo sigue un renombre: sin
+    mayúsculas ni espacios de los bordes."""
+    async with session_scope() as session:
+        leads = await session.scalar(
+            select(func.count()).select_from(Lead)
+            .where(func.lower(func.btrim(Lead.servicio_interes)) == name.strip().lower())
+        )
+        sales = await session.scalar(select(func.count()).select_from(LeadSale).where(LeadSale.service_id == service_id))
+    return leads or 0, sales or 0

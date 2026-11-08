@@ -217,3 +217,52 @@ async def test_update_package_of_other_service_is_404(monkeypatch):
         await lead_services.patch_service_package(4, 9, ServicePackageUpdate(is_active=False), ADMIN)
 
     assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_service_in_use_explains_what_uses_it(monkeypatch):
+    from app.modules.catalogs.errors import ServiceInUseError
+
+    async def fake_delete(_service_id):
+        raise ServiceInUseError(["12 leads", "1 plantilla", "2 automatizaciones"])
+
+    monkeypatch.setattr(lead_services, "delete_lead_service", fake_delete)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.remove_service(4, SimpleNamespace(id=1))
+
+    assert error.value.status_code == 409
+    assert error.value.detail == (
+        "No se puede eliminar porque está en uso: 12 leads, 1 plantilla y 2 automatizaciones. "
+        "Desactívalo: deja de ofrecerse y el historial se conserva."
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_missing_service_is_404_and_erp_service_is_409(monkeypatch):
+    from app.modules.catalogs.errors import ErpManagedError
+
+    async def missing(_service_id):
+        return False
+
+    monkeypatch.setattr(lead_services, "delete_lead_service", missing)
+    with pytest.raises(HTTPException) as error:
+        await lead_services.remove_service(4, SimpleNamespace(id=1))
+    assert error.value.status_code == 404
+
+    async def erp(service_id):
+        raise ErpManagedError(service_id)
+
+    monkeypatch.setattr(lead_services, "delete_lead_service", erp)
+    with pytest.raises(HTTPException) as error:
+        await lead_services.remove_service(4, SimpleNamespace(id=1))
+    assert error.value.status_code == 409
+
+
+def test_references_service_finds_structured_mentions_only():
+    from app.modules.catalogs.public import references_service
+
+    assert references_service({"service_contains": "BOTOX"}, "Botox")
+    assert references_service([{"nodes": [{"type": "change_service", "service": "botox"}]}], "Botox")
+    assert not references_service({"type": "send_text", "text": "Hola, ¿te interesa Botox?"}, "Botox")
+    assert not references_service({"service_contains": "Botox capilar"}, "Botox")

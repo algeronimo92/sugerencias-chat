@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createLeadService, createServicePackage, fetchErpSyncStatus, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
+import { createLeadService, createServicePackage, deleteLeadService, fetchErpSyncStatus, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
 import { serviceKeys } from '../keys'
 
 export function useLeadServices(includeInactive = false) {
@@ -22,6 +22,14 @@ export function useUpdateLeadService() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateLeadService,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
+  })
+}
+
+export function useDeleteLeadService() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteLeadService,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
   })
 }

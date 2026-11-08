@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
-from app.db.models.catalogs import LeadService, LeadTag, ServicePackage
+from app.db.models.catalogs import LeadService, LeadTag, MessageTemplate, ServicePackage
 from app.db.models.auth import User
 from app.db.uow import collect, current_session, session_scope, unit_of_work
 from app.modules.catalogs.events import ServiceRenamed
@@ -122,6 +122,29 @@ async def is_erp_managed(service_id: int) -> bool:
     async with session_scope() as session:
         external_id = await session.scalar(select(LeadService.external_id).where(LeadService.id == service_id))
     return bool(external_id)
+
+
+async def service_origin(service_id: int) -> dict | None:
+    """Nombre y origen (``external_id``) del servicio, o None si no existe."""
+    async with session_scope() as session:
+        row = (await session.execute(
+            select(LeadService.name, LeadService.external_id).where(LeadService.id == service_id)
+        )).mappings().first()
+    return dict(row) if row else None
+
+
+async def count_templates_for_service(name: str) -> int:
+    """Las plantillas apuntan al servicio por nombre con ``ON DELETE RESTRICT``."""
+    async with session_scope() as session:
+        return await session.scalar(
+            select(func.count()).select_from(MessageTemplate).where(MessageTemplate.service == name)
+        ) or 0
+
+
+async def delete_lead_service(service_id: int) -> None:
+    """Sus paquetes se van con él (``ON DELETE CASCADE``)."""
+    async with session_scope() as session:
+        await session.execute(delete(LeadService).where(LeadService.id == service_id))
 
 
 async def create_service_package(service_id: int, values: dict) -> dict | None:

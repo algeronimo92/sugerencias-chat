@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import (
@@ -18,9 +18,11 @@ from app.modules.catalogs.queries import list_lead_services
 from app.modules.catalogs.service import (
     ErpManagedError,
     LeadServiceAlreadyExistsError,
+    ServiceInUseError,
     ServicePackageAlreadyExistsError,
     create_lead_service,
     create_service_package,
+    delete_lead_service,
     update_lead_service,
     update_service_package,
 )
@@ -98,6 +100,24 @@ async def patch_service(
     if service is None:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
     return service
+
+
+def _in_use_message(usages: list[str]) -> str:
+    listed = usages[0] if len(usages) == 1 else f"{', '.join(usages[:-1])} y {usages[-1]}"
+    return f"No se puede eliminar porque está en uso: {listed}. Desactívalo: deja de ofrecerse y el historial se conserva."
+
+
+@router.delete("/{service_id}", status_code=204)
+async def remove_service(service_id: int, _admin: User = Depends(require_admin)):
+    try:
+        deleted = await delete_lead_service(service_id)
+    except ErpManagedError:
+        raise HTTPException(status_code=409, detail="Ese servicio lo administra el ERP: dalo de baja allí y sincroniza")
+    except ServiceInUseError as exc:
+        raise HTTPException(status_code=409, detail=_in_use_message(exc.usages))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    return Response(status_code=204)
 
 
 def _clean_package_values(values: dict) -> dict:

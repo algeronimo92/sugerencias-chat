@@ -228,6 +228,13 @@ class InMemoryRuleStore:
     async def rename_service(self, old_name, new_name, rename):
         self.renames.append((old_name, new_name))
 
+    async def count_referencing_service(self, name, references):
+        fields = ("conditions", "actions", "flow_definition", "published_flow_definition")
+        return sum(
+            1 for rule in self.rules.values()
+            if not rule.get("deleted_at") and any(references(rule.get(field), name) for field in fields)
+        )
+
 
 class FakeScheduling:
     def __init__(self) -> None:

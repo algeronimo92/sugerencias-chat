@@ -31,7 +31,13 @@ from app.modules.automations.domain.events import (
     ExecutionFailed,
 )
 from app.modules.automations.infrastructure import wakeup
-from app.modules.catalogs.public import ServiceRenamed, rename_service_references
+from app.modules.catalogs.public import (
+    ServiceDeletionRequested,
+    ServiceRenamed,
+    count_label,
+    references_service,
+    rename_service_references,
+)
 from app.modules.conversations.ports.message_queries import fetch_message_by_wa_id
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_ERROR_CODE
 from app.modules.conversations.public import ExternalMessageDetected, ProviderMessageStored
@@ -80,6 +86,13 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
     """Las reglas referencian servicios por nombre en condiciones, acciones y
     en el flujo publicado: siguen el renombre en la misma transacción."""
     await automation_ports().rules.rename_service(event.old_name, event.new_name, rename_service_references)
+
+
+@subscribe(ServiceDeletionRequested, phase=Phase.TRANSACTION)
+async def report_service_usage(event: ServiceDeletionRequested) -> None:
+    rules = await automation_ports().rules.count_referencing_service(event.name, references_service)
+    if rules:
+        event.usages.append(count_label(rules, "automatización", "automatizaciones"))
 
 
 @subscribe(LeadUpdated, phase=Phase.AFTER_COMMIT)
