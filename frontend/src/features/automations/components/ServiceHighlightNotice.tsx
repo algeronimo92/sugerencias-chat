@@ -6,6 +6,9 @@ import { Link } from 'react-router-dom'
 export interface ServiceHighlight {
   service: string
   reason: string | null
+  /** La acción que lo asigna (impide eliminarlo) o la condición que filtra
+   *  por su nombre (solo se avisa). */
+  part: 'action' | 'condition'
 }
 
 /** Mismo realce ámbar que el servicio de interés del lead (LeadFormDialog). */

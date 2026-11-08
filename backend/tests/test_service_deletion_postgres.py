@@ -1,6 +1,7 @@
 """Borrar un servicio del catálogo contra PostgreSQL real: se borra el manual
 que nadie usa (con sus paquetes) y se rechaza, diciendo qué lo usa, el que ya
-tiene leads, ventas, plantillas, reglas o documentos de la IA."""
+tiene leads, ventas, plantillas, reglas que lo asignan o documentos de la IA.
+Una regla que solo filtra por su nombre no lo impide: se avisa qué le pasa."""
 
 from __future__ import annotations
 
@@ -84,6 +85,12 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
             ))
             await session.execute(insert(MessageTemplate).values(name="Info peeling", content="Hola", service=name, created_by_user_id=admin_id, created_at=NOW, updated_at=NOW))
             await session.execute(insert(AutomationRule).values(
+                name="Asignar peeling", trigger_type="manual", trigger_config={}, conditions={},
+                actions=[{"type": "change_service", "service": name.upper()}], delay_minutes=0,
+                created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
+            ))
+            # Solo filtra por el nombre: se avisa, no impide borrarlo.
+            await session.execute(insert(AutomationRule).values(
                 name="Seguimiento peeling", trigger_type="manual", trigger_config={},
                 conditions={"service_contains": name.lower()}, actions=[], delay_minutes=0,
                 created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
@@ -102,13 +109,16 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
 
         # Lo mismo, con a quién ir a ver: el cuadro de eliminar lo muestra
         # antes de intentarlo (antes solo decía "1 lead", sin cuál).
-        by_kind = {usage.kind: usage for usage in await service_usage(service_id)}
+        report = await service_usage(service_id)
+        by_kind = {usage.kind: usage for usage in report.usages}
         assert set(by_kind) == {"plantillas", "leads", "ventas", "automatizaciones", "documentos"}
         assert len(by_kind["leads"].items) == 2 and lead_id in {item_id for item_id, _ in by_kind["leads"].items}
         assert by_kind["leads"].count == 2
         assert by_kind["ventas"].items == ((lead_id, by_kind["ventas"].items[0][1]),)
         assert [name for _, name in by_kind["plantillas"].items] == ["Info peeling"]
-        assert [name for _, name in by_kind["automatizaciones"].items] == ["Seguimiento peeling"]
+        assert [name for _, name in by_kind["automatizaciones"].items] == ["Asignar peeling"]
+        assert [(notice.kind, [rule for _, rule in notice.items]) for notice in report.notices] == [("filtros", ["Seguimiento peeling"])]
+        assert "dejarán de aplicarse" in report.notices[0].detail
         assert [name for _, name in by_kind["documentos"].items] == ["Ficha del peeling"]
 
         async with session_scope() as session:
@@ -137,7 +147,7 @@ async def test_leads_can_be_cleared_in_bulk_and_then_the_service_deleted(tenant)
         destination = await create_lead_service("Borrado de Tatuajes - XL", admin_id)
         first, second = await _lead_interested_in(service["name"]), await _lead_interested_in(service["name"])
 
-        assert {usage.kind for usage in await service_usage(service["id"])} == {"leads"}
+        assert {usage.kind for usage in (await service_usage(service["id"])).usages} == {"leads"}
 
         # A otro servicio activo: el nombre queda como está en el catálogo.
         assert await reassign_service_interest("borrado de tatuajes", "BORRADO DE TATUAJES - XL", actor=Actor.user(admin_id)) == 2
@@ -147,5 +157,29 @@ async def test_leads_can_be_cleared_in_bulk_and_then_the_service_deleted(tenant)
 
         # Y de ahí, sin servicio.
         assert await reassign_service_interest(destination["name"], None, actor=Actor.user(admin_id)) == 2
-        assert await service_usage(service["id"]) == []
+        assert (await service_usage(service["id"])).usages == []
         assert await delete_lead_service(service["id"]) is True
+
+
+async def test_a_rule_that_only_filters_by_the_name_does_not_block_deletion(tenant) -> None:
+    with tenant_context(tenant):
+        admin_id = await _admin()
+        service = await create_lead_service("Hollywood Peel", admin_id)
+        for zone in ("Axilas", "Cuello", "Rostro", "Rostro + Cuello"):
+            await create_lead_service(f"Hollywood Peel - {zone}", admin_id)
+        async with session_scope() as session:
+            await session.execute(insert(AutomationRule).values(
+                name="Anuncio peel", trigger_type="manual", trigger_config={},
+                conditions={"service_contains": "hollywood peel"}, actions=[], delay_minutes=0,
+                created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
+            ))
+
+        report = await service_usage(service["id"])
+        assert report.usages == []
+        # El filtro es texto: sigue atrapando al otro servicio que lo contiene.
+        assert "«Hollywood Peel - Axilas», «Hollywood Peel - Cuello», «Hollywood Peel - Rostro» y otros" in report.notices[0].detail
+
+        assert await delete_lead_service(service["id"]) is True
+        async with session_scope() as session:
+            conditions = await session.scalar(select(AutomationRule.conditions).where(AutomationRule.name == "Anuncio peel"))
+        assert conditions == {"service_contains": "hollywood peel"}

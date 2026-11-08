@@ -261,27 +261,37 @@ async def test_delete_missing_service_is_404_and_erp_service_is_409(monkeypatch)
     assert error.value.status_code == 409
 
 
-def test_references_service_finds_structured_mentions_only():
-    from app.modules.catalogs.public import references_service
+def test_rules_set_or_filter_by_service_only_in_structured_parts():
+    from app.modules.catalogs.public import filters_by_service, sets_service
 
-    assert references_service({"service_contains": "BOTOX"}, "Botox")
-    assert references_service([{"nodes": [{"type": "change_service", "service": "botox"}]}], "Botox")
-    assert not references_service({"type": "send_text", "text": "Hola, ¿te interesa Botox?"}, "Botox")
-    assert not references_service({"service_contains": "Botox capilar"}, "Botox")
+    # Poner el servicio (impide borrarlo) y filtrar por su nombre (solo se avisa) son cosas distintas.
+    assert sets_service([{"nodes": [{"type": "change_service", "service": "botox"}]}], "Botox")
+    assert not sets_service({"service_contains": "BOTOX"}, "Botox")
+    assert filters_by_service({"service_contains": "BOTOX"}, "Botox")
+    assert filters_by_service({"conditions": {"service_contains": "botox"}}, "Botox")
+    assert not filters_by_service({"type": "change_service", "service": "Botox"}, "Botox")
+    assert not filters_by_service({"service_contains": "Botox capilar"}, "Botox")
+    assert not sets_service({"type": "send_text", "text": "Hola, ¿te interesa Botox?"}, "Botox")
 
 
 
 @pytest.mark.asyncio
 async def test_service_usage_lists_what_uses_it_with_links(monkeypatch):
     from app.modules.catalogs.public import ServiceUsage
+    from app.modules.catalogs.service import ServiceUsageReport
 
     async def fake_usage(service_id):
-        return [ServiceUsage("leads", "1 lead", (("lead-uuid", "Lucía Paredes"),), 1)]
+        return ServiceUsageReport(
+            usages=[ServiceUsage("leads", "1 lead", (("lead-uuid", "Lucía Paredes"),), 1)],
+            notices=[ServiceUsage("filtros", "1 automatización filtra por este nombre", (("7", "Bienvenida"),), 1, "Dejarán de aplicarse.")],
+        )
 
     monkeypatch.setattr(lead_services, "service_usage", fake_usage)
 
     assert await lead_services.get_service_usage(4, SimpleNamespace(id=1)) == {
-        "usages": [{"kind": "leads", "label": "1 lead", "count": 1, "items": [{"id": "lead-uuid", "name": "Lucía Paredes"}]}],
+        "usages": [{"kind": "leads", "label": "1 lead", "count": 1, "detail": None, "items": [{"id": "lead-uuid", "name": "Lucía Paredes"}]}],
+        "notices": [{"kind": "filtros", "label": "1 automatización filtra por este nombre", "count": 1, "detail": "Dejarán de aplicarse.",
+                     "items": [{"id": "7", "name": "Bienvenida"}]}],
     }
 
     async def missing(_service_id):

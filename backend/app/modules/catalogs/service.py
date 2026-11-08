@@ -4,6 +4,8 @@ viven en queries.py."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+
 from app.core.events import dispatch_in_transaction
 from app.db.uow import unit_of_work
 from app.modules.catalogs import repository
@@ -52,7 +54,36 @@ async def update_lead_service(service_id: int, values: dict, actor_user_id: int 
         return await repository.update_lead_service(service_id, values, actor_user_id)
 
 
-async def _usages(service_id: int, name: str) -> list:
+@dataclass(frozen=True)
+class ServiceUsageReport:
+    """Lo que impide borrar el servicio (``usages``) y lo que no lo impide
+    pero cambia al borrarlo (``notices``, cada uno con su ``detail``)."""
+
+    usages: list
+    notices: list
+
+
+# Cuántos servicios nombrar en el aviso; con más se dice "y otros".
+_LISTED_SERVICES = 3
+
+
+async def _with_outcome(notice, service_id: int, name: str):
+    """Qué pasa con las reglas que filtran por el nombre: el filtro es un
+    texto que se busca dentro del servicio de interés, así que puede seguir
+    coincidiendo con otro servicio (borrar "Hollywood Peel" no frena una regla
+    que también atrapa "Hollywood Peel - Rostro")."""
+    others = await repository.other_services_containing(name, service_id, limit=_LISTED_SERVICES + 1)
+    if others:
+        listed = ", ".join(f"«{other}»" for other in others[:_LISTED_SERVICES])
+        if len(others) > _LISTED_SERVICES:
+            listed += " y otros"
+        detail = f"Seguirán aplicándose a los leads con {listed}, que también contienen «{name}»."
+    else:
+        detail = f"Ningún otro servicio del catálogo contiene «{name}»: dejarán de aplicarse, salvo que un lead lo tenga escrito a mano."
+    return replace(notice, detail=detail)
+
+
+async def _usages(service_id: int, name: str) -> ServiceUsageReport:
     """Qué nombra al servicio: sus plantillas y lo que anotan los módulos que
     lo usan (``ServiceDeletionRequested``). Se despacha en el acto y no al
     cerrar la unidad de trabajo: hay que saberlo antes de cualquier DELETE."""
@@ -61,10 +92,11 @@ async def _usages(service_id: int, name: str) -> list:
     if templates:
         check.usages.append(describe_usage("plantillas", templates, "plantilla", "plantillas", examples))
     await dispatch_in_transaction([check])
-    return check.usages
+    notices = [await _with_outcome(notice, service_id, name) for notice in check.notices]
+    return ServiceUsageReport(usages=check.usages, notices=notices)
 
 
-async def service_usage(service_id: int) -> list | None:
+async def service_usage(service_id: int) -> ServiceUsageReport | None:
     """Lo que usa al servicio, para mostrarlo antes de intentar borrarlo.
     None si no existe."""
     async with unit_of_work():
@@ -89,9 +121,9 @@ async def delete_lead_service(service_id: int) -> bool:
             return False
         if service["external_id"]:
             raise ErpManagedError(service_id)
-        usages = await _usages(service_id, service["name"])
-        if usages:
-            raise ServiceInUseError(usages)
+        report = await _usages(service_id, service["name"])
+        if report.usages:
+            raise ServiceInUseError(report.usages)
         await repository.delete_lead_service(service_id)
     return True
 

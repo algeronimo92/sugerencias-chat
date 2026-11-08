@@ -5,8 +5,9 @@ import { readEditField, withoutEditField } from '../../../shared/navigation/edit
 import type { ServiceHighlight } from '../components/ServiceHighlightNotice'
 import type { AutomationRule } from '../types'
 
-/** Campo que Catálogos pide cambiar al no poder eliminar un servicio. */
-export const SERVICE_FIELD = 'servicio'
+/** Lo que Catálogos pide revisar: la acción que asigna el servicio (impide
+ *  eliminarlo) o la condición que filtra por su nombre (solo se avisa). */
+const PARTS: Record<string, ServiceHighlight['part']> = { servicio: 'action', servicio_filtro: 'condition' }
 
 export interface ServiceEditLink {
   /** Distingue un enlace de otro: la pantalla abre cada uno una sola vez. */
@@ -16,7 +17,7 @@ export interface ServiceEditLink {
 }
 
 /**
- * Catálogos llega con `?editar=servicio&registro=<regla>&valor=<servicio>`:
+ * Catálogos llega con `?editar=servicio|servicio_filtro&registro=<regla>&valor=<servicio>`:
  * la pantalla abre esa regla con lo que nombra al servicio resaltado. Antes el
  * enlace llevaba a la lista y el usuario tenía que adivinar qué regla y qué parte.
  *
@@ -27,8 +28,9 @@ export interface ServiceEditLink {
 export function useServiceEditLink(rules: AutomationRule[], isLoading: boolean): ServiceEditLink | null {
   const [params, setParams] = useSearchParams()
   const request = readEditField(params)
-  const record = request?.field === SERVICE_FIELD ? request.record : null
-  const service = request?.field === SERVICE_FIELD ? request.value : null
+  const part = request ? PARTS[request.field] : undefined
+  const record = part ? request?.record ?? null : null
+  const service = part ? request?.value ?? null : null
   const pending = record !== null && service !== null && !isLoading
   const rule = pending ? rules.find(item => String(item.id) === record) ?? null : null
 
@@ -38,7 +40,7 @@ export function useServiceEditLink(rules: AutomationRule[], isLoading: boolean):
     if (!rule) toast.error('Esa automatización ya no existe. Vuelve a Catálogos para ver qué usa el servicio ahora.')
   }, [pending, rule, setParams])
 
-  return rule && service !== null
-    ? { key: `${record}:${service}`, rule, highlight: { service, reason: request?.reason ?? null } }
+  return rule && service !== null && part
+    ? { key: `${part}:${record}:${service}`, rule, highlight: { service, reason: request?.reason ?? null, part } }
     : null
 }

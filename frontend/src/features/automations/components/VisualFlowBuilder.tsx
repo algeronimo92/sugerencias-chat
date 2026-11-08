@@ -28,7 +28,7 @@ import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as Acti
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
-import { actionNamesService, conditionsNameService, flowServiceReferences, flowServiceSummary } from '../domain/serviceReferences'
+import { actionNamesService, conditionsNameService, flowServiceReferences, flowServiceSummary, onlyPart } from '../domain/serviceReferences'
 import { HIGHLIGHT_RING, ServiceHighlightNotice, type ServiceHighlight } from './ServiceHighlightNotice'
 import { useFlowHistory } from '../hooks/useFlowHistory'
 import {
@@ -297,13 +297,13 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
   })
   // Desde Catálogos se abre en lo que nombra al servicio: las condiciones de
   // entrada o el primer bloque que lo cambia, no en el disparador.
-  const initialReferences = highlight ? flowServiceReferences(flow, highlight.service) : null
+  const initialReferences = highlight ? onlyPart(flowServiceReferences(flow, highlight.service), highlight.part) : null
   const [editor, dispatch] = useFlowEditor(
     rule, initialDefinition, initialPublishedDefinition,
     initialReferences?.nodeIds[0] ?? flow.nodes[0]?.id ?? null,
     initialReferences?.entryConditions ?? false,
   )
-  const serviceReferences = useMemo(() => highlight ? flowServiceReferences(flow, highlight.service) : null, [flow, highlight])
+  const serviceReferences = useMemo(() => highlight ? onlyPart(flowServiceReferences(flow, highlight.service), highlight.part) : null, [flow, highlight])
   const flaggedNodeIds = useMemo(() => new Set(serviceReferences?.nodeIds ?? []), [serviceReferences])
   const {
     ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour, visibleToSellers,
@@ -723,7 +723,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
       </main>
 
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.service} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Propiedades del bloque</p></div>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar nodo (Ctrl/Cmd+D)" aria-label="Duplicar nodo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
@@ -741,7 +741,7 @@ export function VisualFlowBuilder({ rule, highlight, onClose }: VisualFlowBuilde
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo hijo<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (inactivo)'}</option>)}</Select></label><p className="rounded-lg bg-indigo-50 p-2 text-[10px] leading-relaxed text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">El hijo se inicia para el mismo lead. Esta ruta del padre continúa inmediatamente por su salida; normalmente puedes conectarla a Fin.</p>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Primero publica al menos otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de esta salida<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span><strong className="block text-xs">Cerrar conversación al finalizar</strong><span className="mt-0.5 block text-wa-muted">Marca el chat como cerrado cuando la ejecución llega a esta salida.</span></span></label></div>}
-          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.service} />}
+          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.part === 'action' ? highlight.service : undefined} />}
           <div className="mt-5 border-t border-wa-border pt-4 dark:border-wa-border-dark"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-wa-muted">Conexiones de salida</p>{selectedOutgoingEdges.length === 0 ? <p className="text-[10px] text-wa-muted">Sin conexiones.</p> : selectedOutgoingEdges.map(edge => <div key={edge.id} className="mb-1 flex items-center gap-2 rounded-lg bg-wa-hover px-2 py-1.5 text-[10px] dark:bg-wa-head-dark"><ArrowRight className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{outputHandleLabel(selected, edge.source_handle)} → {nodeTitle(flow.nodes.find(node => node.id === edge.target)!, automationRules)}</span><button type="button" onClick={() => removeEdge(edge.id)} className="text-red-500"><X className="h-3 w-3" /></button></div>)}</div>
         </>}
       </aside>}
@@ -1078,8 +1078,9 @@ function EntryConditionsEditor({ conditions, updateConditions, users, tags, high
     <label className="grid gap-1 text-[10px] text-wa-muted">Origen contiene
       <input maxLength={120} value={conditions.origin_contains ?? ''} onChange={event => updateConditions({ ...conditions, origin_contains: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} />
     </label>
-    <label data-highlighted={serviceHighlighted || undefined} className={`grid gap-1 text-[10px] text-wa-muted ${serviceHighlighted ? HIGHLIGHT_RING : ''}`}>Servicio contiene
+    <label data-highlighted={serviceHighlighted || undefined} className={`grid gap-1 text-[10px] text-wa-muted ${serviceHighlighted ? HIGHLIGHT_RING : ''}`}>Servicio de interés contiene
       <input maxLength={120} value={conditions.service_contains ?? ''} onChange={event => updateConditions({ ...conditions, service_contains: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} />
+      <span className="text-[10px] text-wa-muted">Se aplica si el servicio de interés del lead incluye este texto, sin importar mayúsculas.</span>
     </label>
     <label className="grid gap-1 text-[10px] text-wa-muted">Vendedor
       <Select value={conditions.seller_id ?? ''} onChange={event => updateConditions({ ...conditions, seller_id: event.target.value ? Number(event.target.value) : null })} className={fieldClass}>

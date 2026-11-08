@@ -175,7 +175,7 @@ export type FlowConditionTypeValue = ValueOf<typeof FlowConditionType>
 export const FLOW_CONDITION_LABELS = {
   [FlowConditionType.StageEquals]: 'Etapa es',
   [FlowConditionType.OriginContains]: 'Origen contiene',
-  [FlowConditionType.ServiceContains]: 'Servicio contiene',
+  [FlowConditionType.ServiceContains]: 'Servicio de interés contiene',
   [FlowConditionType.MessageContains]: 'Mensaje contiene',
   [FlowConditionType.MessageEquals]: 'Mensaje es igual a',
   [FlowConditionType.MessageNotContains]: 'Mensaje no contiene',

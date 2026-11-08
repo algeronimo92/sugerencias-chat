@@ -38,21 +38,36 @@ def rename_service_references(value, old_name: str, new_name: str):
     return result, changed
 
 
-def references_service(value, name: str) -> bool:
-    """Si una regla nombra al servicio en sus partes estructuradas (las mismas
-    que sigue ``rename_service_references``)."""
+def _anywhere(value, found) -> bool:
+    """Si ``found`` reconoce alguna parte (dict) de la regla o de su flujo."""
     if isinstance(value, list):
-        return any(references_service(item, name) for item in value)
+        return any(_anywhere(item, found) for item in value)
     if not isinstance(value, dict):
         return False
+    return found(value) or any(_anywhere(item, found) for item in value.values())
+
+
+def sets_service(value, name: str) -> bool:
+    """Si una regla le pone el servicio a los leads (acción "Cambiar/quitar
+    servicio de interés"). Esto sí impide borrarlo: la regla seguiría
+    asignando un servicio que ya no está en el catálogo."""
     wanted = name.casefold()
-    service = value.get("service")
-    if value.get("type") == "change_service" and isinstance(service, str) and service.casefold() == wanted:
-        return True
-    condition = value.get("service_contains")
-    if isinstance(condition, str) and condition.casefold() == wanted:
-        return True
-    return any(references_service(item, name) for item in value.values())
+    return _anywhere(value, lambda part: (
+        part.get("type") == "change_service"
+        and isinstance(part.get("service"), str)
+        and part["service"].casefold() == wanted
+    ))
+
+
+def filters_by_service(value, name: str) -> bool:
+    """Si una regla filtra por el nombre del servicio ("Servicio de interés
+    contiene"). No impide borrarlo: la condición es un texto que se busca en el
+    servicio de interés del lead, no apunta al catálogo, y la regla sigue
+    funcionando igual. Se avisa al borrar porque puede dejar de aplicarse."""
+    wanted = name.casefold()
+    return _anywhere(value, lambda part: (
+        isinstance(part.get("service_contains"), str) and part["service_contains"].casefold() == wanted
+    ))
 
 
 # Cuántos de cada cosa se nombran: para ir a revisarlos alcanza; el total

@@ -29,6 +29,8 @@ class ServiceUsage:
     label: str
     items: tuple[tuple[str, str], ...] = ()
     count: int = 0
+    # Qué le pasa al borrar el servicio, en los avisos (``notices``).
+    detail: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -36,6 +38,9 @@ class ServiceDeletionRequested(DomainEvent):
     """Se pidió borrar un servicio manual. Se despacha antes de borrarlo y
     dentro de la misma transacción: cada módulo que lo referencia anota en
     ``usages`` qué tiene (``ServiceUsage``). Con algo anotado no se borra.
+    En ``notices`` va lo que no impide borrarlo pero cambia al hacerlo (una
+    regla que filtra por el nombre del servicio): el cuadro de eliminar lo
+    muestra para decidir con eso a la vista.
 
     Va antes del borrado porque ventas y documentos de la IA lo referencian
     con ``ON DELETE SET NULL``: después del DELETE ya no se sabría que eran
@@ -46,6 +51,7 @@ class ServiceDeletionRequested(DomainEvent):
     service_id: int
     name: str
     usages: list[ServiceUsage] = field(default_factory=list)
+    notices: list[ServiceUsage] = field(default_factory=list)
 
 
 @dataclass(frozen=True, kw_only=True)

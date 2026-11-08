@@ -131,6 +131,19 @@ async def service_origin(service_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+async def other_services_containing(text: str, service_id: int, limit: int = 3) -> list[str]:
+    """Servicios activos, además de este, cuyo nombre contiene ``text``: a
+    los leads con alguno de ellos les sigue aplicando una regla que filtra por
+    "Servicio de interés contiene <text>"."""
+    async with session_scope() as session:
+        return list((await session.execute(
+            select(LeadService.name)
+            .where(LeadService.id != service_id, LeadService.is_active.is_(True))
+            .where(func.lower(LeadService.name).contains(text.strip().lower(), autoescape=True))
+            .order_by(LeadService.name).limit(limit)
+        )).scalars())
+
+
 async def templates_for_service(name: str) -> tuple[int, list[tuple[int, str]]]:
     """Las plantillas apuntan al servicio por nombre con ``ON DELETE RESTRICT``:
     cuántas son y las primeras por nombre."""

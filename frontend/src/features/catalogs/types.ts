@@ -95,4 +95,13 @@ export interface ServiceUsageGroup {
   label: string
   count: number
   items?: { id: string; name: string }[]
+  /** En los avisos: qué les pasa al eliminar el servicio. */
+  detail?: string | null
+}
+
+/** `usages` impide eliminar el servicio; `notices` no lo impide pero cambia
+ *  al hacerlo (reglas que filtran por su nombre). */
+export interface ServiceUsageReport {
+  usages: ServiceUsageGroup[]
+  notices: ServiceUsageGroup[]
 }

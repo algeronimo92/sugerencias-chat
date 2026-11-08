@@ -1,4 +1,4 @@
-import { Loader2, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, Trash2 } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -13,14 +13,38 @@ import { ReassignServiceLeads } from './ReassignServiceLeads'
 /** Adónde ir a quitar el servicio de cada cosa que lo usa. Un lead se abre
  *  con su servicio de interés listo para cambiar y resaltado, no solo el chat;
  *  una automatización, abierta en esa regla con lo que nombra al servicio
- *  marcado (antes llevaba a la lista y había que adivinar qué tocar). */
+ *  marcado (antes llevaba a la lista y había que adivinar qué tocar).
+ *  `servicio` marca la acción que lo asigna (impide eliminarlo) y
+ *  `servicio_filtro`, la condición que filtra por su nombre (solo se avisa). */
 function usageHref(kind: string, id: string, serviceName: string): string {
   const reason = `Cámbialo o quítalo para poder eliminar «${serviceName}» del catálogo.`
   if (kind === 'leads') return editFieldHref(`/chat/${id}`, 'servicio_interes', reason)
   if (kind === 'automatizaciones') return editFieldHref('/automations', 'servicio', reason, { record: id, value: serviceName })
+  if (kind === 'filtros') {
+    const filterReason = `Esta regla filtra por «${serviceName}». No impide eliminar el servicio; cámbiala si ya no corresponde (por ejemplo, por una etiqueta).`
+    return editFieldHref('/automations', 'servicio_filtro', filterReason, { record: id, value: serviceName })
+  }
   if (kind === 'ventas') return `/chat/${id}`
   if (kind === 'plantillas') return '/templates'
   return '/ai-assistant'
+}
+
+function UsageLinks({ usage, serviceName }: { usage: ServiceUsageGroup; serviceName: string }) {
+  const items = usage.items ?? []
+  const more = usage.count - items.length
+  return (
+    <>
+      {items.map((item, index) => (
+        <Fragment key={item.id}>
+          {index > 0 && ', '}
+          <Link to={usageHref(usage.kind, item.id, serviceName)} className="text-wa-primary-strong hover:underline dark:text-wa-primary">
+            {item.name.trim() || 'Sin nombre'}
+          </Link>
+        </Fragment>
+      ))}
+      {more > 0 && ` y ${more} más`}
+    </>
+  )
 }
 
 /** Lo que usa al servicio, grupo por grupo. Los nombres van seguidos y no
@@ -28,26 +52,30 @@ function usageHref(kind: string, id: string, serviceName: string): string {
 function UsageList({ usages, serviceName }: { usages: ServiceUsageGroup[]; serviceName: string }) {
   return (
     <ul aria-label="Dónde se usa" className="mt-3 max-h-56 space-y-2.5 overflow-y-auto text-sm">
-      {usages.map(usage => {
-        const items = usage.items ?? []
-        const more = usage.count - items.length
-        return (
-          <li key={usage.kind}>
-            <p className="font-semibold text-wa-text dark:text-wa-text-dark">{usage.label}</p>
-            <p className="mt-0.5 leading-6 text-wa-muted dark:text-wa-muted-dark">
-              {items.map((item, index) => (
-                <Fragment key={item.id}>
-                  {index > 0 && ', '}
-                  <Link to={usageHref(usage.kind, item.id, serviceName)} className="text-wa-primary-strong hover:underline dark:text-wa-primary">
-                    {item.name.trim() || 'Sin nombre'}
-                  </Link>
-                </Fragment>
-              ))}
-              {more > 0 && ` y ${more} más`}
-            </p>
-          </li>
-        )
-      })}
+      {usages.map(usage => (
+        <li key={usage.kind}>
+          <p className="font-semibold text-wa-text dark:text-wa-text-dark">{usage.label}</p>
+          <p className="mt-0.5 leading-6 text-wa-muted dark:text-wa-muted-dark"><UsageLinks usage={usage} serviceName={serviceName} /></p>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Lo que no impide eliminar pero cambia al hacerlo: una regla que filtra por
+ *  el nombre del servicio sigue funcionando (es texto, no un vínculo), y puede
+ *  dejar de aplicarse o seguir atrapando otro servicio que lo contenga. */
+function NoticeList({ notices, serviceName }: { notices: ServiceUsageGroup[]; serviceName: string }) {
+  return (
+    <ul aria-label="Avisos" className="mt-3 space-y-2 text-xs">
+      {notices.map(notice => (
+        <li key={notice.kind} className="flex items-start gap-1.5 rounded-md bg-amber-50 p-2 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <p className="leading-5">
+            <strong>{notice.label}</strong> («Servicio de interés contiene»): <UsageLinks usage={notice} serviceName={serviceName} />. {notice.detail}
+          </p>
+        </li>
+      ))}
     </ul>
   )
 }
@@ -62,7 +90,8 @@ export function DeleteServiceButton({ service }: { service: LeadService }) {
   const [open, setOpen] = useState(false)
   const usage = useServiceUsage(service.id, open)
   const deleteService = useDeleteLeadService()
-  const usages = usage.data ?? []
+  const usages = usage.data?.usages ?? []
+  const notices = usage.data?.notices ?? []
   const inUse = usages.length > 0
 
   function handleDelete() {
@@ -72,7 +101,9 @@ export function DeleteServiceButton({ service }: { service: LeadService }) {
     })
   }
 
-  let description = 'Nadie lo usa: se borra junto con sus paquetes y no se puede deshacer.'
+  let description = notices.length > 0
+    ? 'Se puede eliminar: se borra junto con sus paquetes y no se puede deshacer. Antes, mira qué pasa con estas automatizaciones.'
+    : 'Nadie lo usa: se borra junto con sus paquetes y no se puede deshacer.'
   let details = null
   if (usage.isPending) {
     description = 'Revisando dónde se usa…'
@@ -88,8 +119,11 @@ export function DeleteServiceButton({ service }: { service: LeadService }) {
       <>
         {leads && <ReassignServiceLeads serviceName={service.name} leadCount={leads.count} />}
         <UsageList usages={usages} serviceName={service.name} />
+        {notices.length > 0 && <NoticeList notices={notices} serviceName={service.name} />}
       </>
     )
+  } else if (notices.length > 0) {
+    details = <NoticeList notices={notices} serviceName={service.name} />
   }
 
   return (
