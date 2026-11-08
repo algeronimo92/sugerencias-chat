@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
+  usage: vi.fn(() => ({ data: [] as unknown[], isPending: false, isError: false }) as Record<string, unknown>),
   createPackage: vi.fn(),
   updatePackage: vi.fn(),
   runSync: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('../hooks/useLeadServices', () => ({
   useCreateLeadService: () => ({ mutate: mocks.create, isPending: false }),
   useUpdateLeadService: () => ({ mutate: mocks.update, isPending: false, variables: undefined }),
   useDeleteLeadService: () => ({ mutate: mocks.remove, isPending: false }),
+  useServiceUsage: () => mocks.usage(),
   useCreateServicePackage: () => ({ mutate: mocks.createPackage, isPending: false }),
   useUpdateServicePackage: () => ({ mutate: mocks.updatePackage, isPending: false, variables: undefined }),
   useErpSyncStatus: () => ({ data: mocks.erpStatus(), isLoading: false }),
@@ -48,6 +50,8 @@ describe('ServicesManagementPanel', () => {
     mocks.create.mockReset()
     mocks.update.mockReset()
     mocks.remove.mockReset()
+    mocks.usage.mockReset()
+    mocks.usage.mockReturnValue({ data: [], isPending: false, isError: false })
     mocks.createPackage.mockReset()
     mocks.updatePackage.mockReset()
     mocks.runSync.mockReset()
@@ -246,5 +250,27 @@ describe('ServicesManagementPanel', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Eliminar' }))
     expect(mocks.remove).toHaveBeenCalledWith(1, expect.any(Object))
+  })
+
+  it('si el servicio está en uso, dice qué lo usa con enlaces y no deja eliminarlo', async () => {
+    mocks.usage.mockReturnValue({
+      data: [
+        { kind: 'leads', label: '12 leads', count: 12, items: [{ id: 'lead-1', name: 'Lucía Paredes' }] },
+        { kind: 'plantillas', label: '1 plantilla', count: 1, items: [{ id: '7', name: 'Info botox' }] },
+      ],
+      isPending: false,
+      isError: false,
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Eliminar Botox' }))
+    const dialog = screen.getByRole('alertdialog')
+
+    expect(within(dialog).getByText(/está en uso/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'Lucía Paredes' })).toHaveAttribute('href', '/chat/lead-1')
+    expect(within(dialog).getByRole('link', { name: 'Info botox' })).toHaveAttribute('href', '/templates')
+    expect(within(dialog).getByText('y 11 más')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Eliminar' })).toBeDisabled()
   })
 })

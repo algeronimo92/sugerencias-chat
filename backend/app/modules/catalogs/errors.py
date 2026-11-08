@@ -23,6 +23,6 @@ class ServiceInUseError(Exception):
     reglas, documentos de la IA). Borrarlo dejaría esas referencias huérfanas:
     para sacarlo de las listas está "Desactivar", que conserva el historial."""
 
-    def __init__(self, usages: list[str]):
-        super().__init__(", ".join(usages))
+    def __init__(self, usages):
         self.usages = list(usages)
+        super().__init__(", ".join(usage.label for usage in self.usages))

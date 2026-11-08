@@ -15,7 +15,7 @@ from app.modules.catalogs.errors import (
     TagAlreadyExistsError,
 )
 from app.modules.catalogs.events import ServiceDeletionRequested
-from app.modules.catalogs.policies import count_label
+from app.modules.catalogs.policies import describe_usage
 
 __all__ = [
     "ErpManagedError",
@@ -27,6 +27,7 @@ __all__ = [
     "create_service_package",
     "create_tag",
     "delete_lead_service",
+    "service_usage",
     "update_lead_service",
     "update_service_package",
     "update_tag",
@@ -51,6 +52,28 @@ async def update_lead_service(service_id: int, values: dict, actor_user_id: int 
         return await repository.update_lead_service(service_id, values, actor_user_id)
 
 
+async def _usages(service_id: int, name: str) -> list:
+    """Qué nombra al servicio: sus plantillas y lo que anotan los módulos que
+    lo usan (``ServiceDeletionRequested``). Se despacha en el acto y no al
+    cerrar la unidad de trabajo: hay que saberlo antes de cualquier DELETE."""
+    check = ServiceDeletionRequested(service_id=service_id, name=name)
+    templates, examples = await repository.templates_for_service(name)
+    if templates:
+        check.usages.append(describe_usage("plantillas", templates, "plantilla", "plantillas", examples))
+    await dispatch_in_transaction([check])
+    return check.usages
+
+
+async def service_usage(service_id: int) -> list | None:
+    """Lo que usa al servicio, para mostrarlo antes de intentar borrarlo.
+    None si no existe."""
+    async with unit_of_work():
+        service = await repository.service_origin(service_id)
+        if service is None:
+            return None
+        return await _usages(service_id, service["name"])
+
+
 async def delete_lead_service(service_id: int) -> bool:
     """Borra un servicio cargado a mano que nadie usa todavía (típicamente,
     uno creado por error). False si no existe.
@@ -66,15 +89,9 @@ async def delete_lead_service(service_id: int) -> bool:
             return False
         if service["external_id"]:
             raise ErpManagedError(service_id)
-        check = ServiceDeletionRequested(service_id=service_id, name=service["name"])
-        templates = await repository.count_templates_for_service(service["name"])
-        if templates:
-            check.usages.append(count_label(templates, "plantilla", "plantillas"))
-        # En el acto y no al cerrar la unidad de trabajo: hay que saber qué
-        # lo usa antes del DELETE (ver ServiceDeletionRequested).
-        await dispatch_in_transaction([check])
-        if check.usages:
-            raise ServiceInUseError(check.usages)
+        usages = await _usages(service_id, service["name"])
+        if usages:
+            raise ServiceInUseError(usages)
         await repository.delete_lead_service(service_id)
     return True
 

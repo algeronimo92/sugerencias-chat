@@ -224,7 +224,9 @@ async def test_delete_service_in_use_explains_what_uses_it(monkeypatch):
     from app.modules.catalogs.errors import ServiceInUseError
 
     async def fake_delete(_service_id):
-        raise ServiceInUseError(["12 leads", "1 plantilla", "2 automatizaciones"])
+        from app.modules.catalogs.public import ServiceUsage
+        raise ServiceInUseError([ServiceUsage("leads", "12 leads"), ServiceUsage("plantillas", "1 plantilla"),
+                                 ServiceUsage("automatizaciones", "2 automatizaciones")])
 
     monkeypatch.setattr(lead_services, "delete_lead_service", fake_delete)
 
@@ -266,3 +268,26 @@ def test_references_service_finds_structured_mentions_only():
     assert references_service([{"nodes": [{"type": "change_service", "service": "botox"}]}], "Botox")
     assert not references_service({"type": "send_text", "text": "Hola, ¿te interesa Botox?"}, "Botox")
     assert not references_service({"service_contains": "Botox capilar"}, "Botox")
+
+
+
+@pytest.mark.asyncio
+async def test_service_usage_lists_what_uses_it_with_links(monkeypatch):
+    from app.modules.catalogs.public import ServiceUsage
+
+    async def fake_usage(service_id):
+        return [ServiceUsage("leads", "1 lead", (("lead-uuid", "Lucía Paredes"),), 1)]
+
+    monkeypatch.setattr(lead_services, "service_usage", fake_usage)
+
+    assert await lead_services.get_service_usage(4, SimpleNamespace(id=1)) == {
+        "usages": [{"kind": "leads", "label": "1 lead", "count": 1, "items": [{"id": "lead-uuid", "name": "Lucía Paredes"}]}],
+    }
+
+    async def missing(_service_id):
+        return None
+
+    monkeypatch.setattr(lead_services, "service_usage", missing)
+    with pytest.raises(HTTPException) as error:
+        await lead_services.get_service_usage(4, SimpleNamespace(id=1))
+    assert error.value.status_code == 404

@@ -18,11 +18,24 @@ class ServiceRenamed(DomainEvent):
     actor_user_id: int | None
 
 
+@dataclass(frozen=True)
+class ServiceUsage:
+    """Algo que nombra a un servicio: qué es (``kind``: leads, ventas,
+    plantillas, automatizaciones, documentos), cuántos (``label``: "12
+    leads") y algunos de ellos para poder ir a cada uno (``items``: hasta 10
+    pares id, nombre)."""
+
+    kind: str
+    label: str
+    items: tuple[tuple[str, str], ...] = ()
+    count: int = 0
+
+
 @dataclass(frozen=True, kw_only=True)
 class ServiceDeletionRequested(DomainEvent):
     """Se pidió borrar un servicio manual. Se despacha antes de borrarlo y
     dentro de la misma transacción: cada módulo que lo referencia anota en
-    ``usages`` qué tiene ("12 leads"). Con algo anotado no se borra.
+    ``usages`` qué tiene (``ServiceUsage``). Con algo anotado no se borra.
 
     Va antes del borrado porque ventas y documentos de la IA lo referencian
     con ``ON DELETE SET NULL``: después del DELETE ya no se sabría que eran
@@ -32,7 +45,7 @@ class ServiceDeletionRequested(DomainEvent):
 
     service_id: int
     name: str
-    usages: list[str] = field(default_factory=list)
+    usages: list[ServiceUsage] = field(default_factory=list)
 
 
 @dataclass(frozen=True, kw_only=True)

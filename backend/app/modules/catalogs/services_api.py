@@ -11,6 +11,7 @@ from app.modules.catalogs.schemas import (
     ServicePackageCreate,
     ServicePackageItem,
     ServicePackageUpdate,
+    ServiceUsageResponse,
 )
 from app.modules.catalogs.erp_catalog import ErpCatalogError, sync_catalog, sync_status, test_catalog
 from app.modules.auth.public import get_current_user, require_admin
@@ -23,6 +24,7 @@ from app.modules.catalogs.service import (
     create_lead_service,
     create_service_package,
     delete_lead_service,
+    service_usage,
     update_lead_service,
     update_service_package,
 )
@@ -98,8 +100,28 @@ async def patch_service(
     return service
 
 
-def _in_use_message(usages: list[str]) -> str:
-    listed = usages[0] if len(usages) == 1 else f"{', '.join(usages[:-1])} y {usages[-1]}"
+def _usage_payload(usages) -> dict:
+    return {"usages": [
+        {"kind": usage.kind, "label": usage.label, "count": usage.count,
+         "items": [{"id": item_id, "name": name} for item_id, name in usage.items]}
+        for usage in usages
+    ]}
+
+
+@router.get("/{service_id}/usage", response_model=ServiceUsageResponse)
+async def get_service_usage(service_id: int, _admin: User = Depends(require_admin)):
+    """Qué usa al servicio (leads, ventas, plantillas, automatizaciones,
+    documentos), con algunos de cada uno para ir a revisarlos: lo muestra el
+    cuadro de eliminar antes de intentarlo."""
+    usages = await service_usage(service_id)
+    if usages is None:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    return _usage_payload(usages)
+
+
+def _in_use_message(usages) -> str:
+    labels = [usage.label for usage in usages]
+    listed = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} y {labels[-1]}"
     return f"No se puede eliminar porque está en uso: {listed}. Desactívalo: deja de ofrecerse y el historial se conserva."
 
 

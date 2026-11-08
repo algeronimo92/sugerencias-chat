@@ -12,6 +12,7 @@ export const serviceKeys = {
   all: ['lead-services'] as const,
   list: (includeInactive: boolean) => ['lead-services', { includeInactive }] as const,
   erpSync: ['lead-services', 'erp-sync'] as const,
+  usage: (id: number) => ['lead-services', 'usage', id] as const,
 }
 
 export const customFieldKeys = {

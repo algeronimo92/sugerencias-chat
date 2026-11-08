@@ -114,6 +114,25 @@ class ErpTestResult(BaseModel):
     sample: list[ErpSampleService] = Field(default_factory=list)
 
 
+class ServiceUsageItem(BaseModel):
+    id: str
+    name: str
+
+
+class ServiceUsageGroup(BaseModel):
+    # leads | ventas | plantillas | automatizaciones | documentos
+    kind: str
+    label: str
+    # Cuántos son en total; ``items`` trae solo los primeros.
+    count: int
+    items: list[ServiceUsageItem] = Field(default_factory=list)
+
+
+class ServiceUsageResponse(BaseModel):
+    """Lo que nombra a un servicio. Vacío: se puede eliminar."""
+    usages: list[ServiceUsageGroup] = Field(default_factory=list)
+
+
 class LeadServiceCreate(BaseModel):
     name: str = Field(max_length=120)
 

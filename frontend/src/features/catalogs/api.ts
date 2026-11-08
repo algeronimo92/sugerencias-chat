@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, ErpTestResult, LeadService, ServicePackage, Tag } from './types'
+import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, ErpTestResult, LeadService, ServicePackage, ServiceUsageGroup, Tag } from './types'
 
 export async function fetchTags(includeInactive: boolean): Promise<Tag[]> {
   if (includeInactive) return (await client.get<ApiResponse<'/api/tags/all', 'get'>>('/api/tags/all')).data
@@ -30,6 +30,10 @@ export async function updateLeadService({ id, ...values }: {
       is_active?: boolean
     }): Promise<LeadService> {
   return (await client.patch<ApiResponse<'/api/services/{service_id}', 'patch'>>(`/api/services/${id}`, values)).data
+}
+
+export async function fetchServiceUsage(id: number): Promise<ServiceUsageGroup[]> {
+  return (await client.get<ApiResponse<'/api/services/{service_id}/usage', 'get'>>(`/api/services/${id}/usage`)).data.usages ?? []
 }
 
 /** Solo un servicio manual que nadie usa; si algo lo usa, el 409 dice qué. */

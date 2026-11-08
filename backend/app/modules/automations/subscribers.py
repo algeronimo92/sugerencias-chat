@@ -34,7 +34,7 @@ from app.modules.automations.infrastructure import wakeup
 from app.modules.catalogs.public import (
     ServiceDeletionRequested,
     ServiceRenamed,
-    count_label,
+    describe_usage,
     references_service,
     rename_service_references,
 )
@@ -90,9 +90,9 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
 
 @subscribe(ServiceDeletionRequested, phase=Phase.TRANSACTION)
 async def report_service_usage(event: ServiceDeletionRequested) -> None:
-    rules = await automation_ports().rules.count_referencing_service(event.name, references_service)
+    rules = await automation_ports().rules.rules_referencing_service(event.name, references_service)
     if rules:
-        event.usages.append(count_label(rules, "automatización", "automatizaciones"))
+        event.usages.append(describe_usage("automatizaciones", len(rules), "automatización", "automatizaciones", rules))
 
 
 @subscribe(LeadUpdated, phase=Phase.AFTER_COMMIT)

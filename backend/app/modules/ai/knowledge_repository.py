@@ -130,8 +130,11 @@ async def imported_template_ids() -> set[int]:
     return {int(value) for value in rows if value and value.isdigit()}
 
 
-async def count_documents_for_service(service_id: int) -> int:
+async def documents_for_service(service_id: int) -> list[tuple[str, str]]:
+    """(id, título) de los documentos vinculados al servicio, por título."""
     async with session_scope() as session:
-        return await session.scalar(
-            select(func.count()).select_from(KnowledgeDocument).where(KnowledgeDocument.service_id == service_id)
-        ) or 0
+        rows = (await session.execute(
+            select(KnowledgeDocument.id, KnowledgeDocument.title)
+            .where(KnowledgeDocument.service_id == service_id).order_by(KnowledgeDocument.title)
+        )).all()
+    return [(str(row.id), row.title) for row in rows]

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from app.core.events import Phase, subscribe
-from app.modules.catalogs.public import ServiceDeletionRequested, ServiceRenamed, count_label
+from app.modules.catalogs.public import USAGE_ITEMS, ServiceDeletionRequested, ServiceRenamed, describe_usage
 from app.modules.conversations.public import InternalNoteWritten
 from app.modules.leads.application.commands import record_note_activity, rename_service
 from app.modules.leads.domain.events import (
@@ -89,11 +89,13 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
 
 @subscribe(ServiceDeletionRequested, phase=Phase.TRANSACTION)
 async def report_service_usage(event: ServiceDeletionRequested) -> None:
-    leads, sales = await service_usage(event.service_id, event.name)
-    if leads:
-        event.usages.append(count_label(leads, "lead", "leads"))
-    if sales:
-        event.usages.append(count_label(sales, "venta registrada", "ventas registradas"))
+    usage = await service_usage(event.service_id, event.name, USAGE_ITEMS)
+    if usage["leads"]:
+        event.usages.append(describe_usage("leads", usage["leads"], "lead", "leads", usage["lead_items"]))
+    if usage["sales"]:
+        event.usages.append(describe_usage(
+            "ventas", usage["sales"], "venta registrada", "ventas registradas", usage["sale_items"],
+        ))
 
 
 @subscribe(InternalNoteWritten, phase=Phase.TRANSACTION)
