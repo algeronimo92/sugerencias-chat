@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -204,7 +204,10 @@ describe('ServicesManagementPanel', () => {
   it('deja en solo lectura lo que administra el ERP', () => {
     render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
 
-    expect(screen.getByLabelText('Nombre de Hollywood Peel - Rostro')).toHaveAttribute('readonly')
+    // El nombre del ERP se muestra como texto con candado, no como un campo deshabilitado.
+    expect(screen.queryByLabelText('Nombre de Hollywood Peel - Rostro')).not.toBeInTheDocument()
+    expect(screen.getByText('(nombre administrado por el ERP)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Nombre de Botox')).not.toHaveAttribute('readonly')
     expect(screen.getByRole('button', { name: 'Desactivar Hollywood Peel - Rostro' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Añadir paquete a Hollywood Peel - Rostro' })).not.toBeInTheDocument()
     const packages = screen.getByRole('list', { name: 'Paquetes de Hollywood Peel - Rostro' })
@@ -214,5 +217,22 @@ describe('ServicesManagementPanel', () => {
     expect(screen.getByText('Sincronizado desde el ERP')).toBeInTheDocument()
     // La descripción sigue siendo del CRM.
     expect(screen.getByLabelText('Descripción de Hollywood Peel - Rostro')).not.toHaveAttribute('readonly')
+  })
+
+  it('cada servicio dice de dónde viene y se puede filtrar por origen', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><ServicesManagementPanel /></MemoryRouter>)
+
+    expect(screen.getAllByText('ERP · solo lectura')).toHaveLength(1)
+    expect(screen.getAllByText('Manual · editable')).toHaveLength(2)
+
+    const filter = screen.getByRole('group', { name: 'Filtrar por origen' })
+    await user.click(within(filter).getByRole('button', { name: /Del ERP/ }))
+    expect(screen.queryByLabelText('Nombre de Botox')).not.toBeInTheDocument()
+    expect(screen.getByText('Hollywood Peel - Rostro')).toBeInTheDocument()
+
+    await user.click(within(filter).getByRole('button', { name: /Manuales/ }))
+    expect(screen.getByLabelText('Nombre de Botox')).toBeInTheDocument()
+    expect(screen.queryByText('Hollywood Peel - Rostro')).not.toBeInTheDocument()
   })
 })
