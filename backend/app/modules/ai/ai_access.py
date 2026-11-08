@@ -16,7 +16,7 @@ from sqlalchemy import and_, func, or_, select
 from app.db.models.ai import AIJob
 from app.db.models.control import Organization
 from app.db.session import control_session
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec, resolve_model_spec
 from app.modules.ai.ai_job_tokens import signing_key_configured
 from app.modules.auth.public import try_send_operational_alert
 from app.modules.platform.ports.settings_service import get_effective_many
@@ -138,7 +138,7 @@ async def business_ai_ready() -> bool:
     values = await get_effective_many(("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key"))
     for spec in (values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY, values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK):
         try:
-            provider, _ = parse_model_spec(spec)
+            provider, _ = parse_model_spec(resolve_model_spec(spec))
         except ValueError:
             continue
         if values[key_setting_for(provider)].strip():

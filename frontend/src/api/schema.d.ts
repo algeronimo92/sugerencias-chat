@@ -3656,6 +3656,60 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * AiModelParam
+         * @description Un parámetro que el modelo acepta (registro de app.integrations.llm.catalog).
+         */
+        AiModelParam: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "choice" | "float" | "int" | "text_list";
+            /** Label */
+            label: string;
+            /**
+             * Help
+             * @default
+             */
+            help: string;
+            /**
+             * Choices
+             * @default []
+             */
+            choices: string[];
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Default */
+            default?: string | number | null;
+            /**
+             * Requires
+             * @default {}
+             */
+            requires: {
+                [key: string]: string[];
+            };
+        };
+        /** AiModelParams */
+        AiModelParams: {
+            /** Label */
+            label: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Context Window */
+            context_window: number;
+            /** Max Output Tokens */
+            max_output_tokens: number;
+            /** Params */
+            params: components["schemas"]["AiModelParam"][];
+        };
         /** AiProviderModels */
         AiProviderModels: {
             /** Provider */
@@ -3688,6 +3742,8 @@ export interface components {
             error?: string | null;
             /** Latency Ms */
             latency_ms?: number | null;
+            /** Models Available */
+            models_available?: number | null;
         };
         /**
          * AiProvidersStatus
@@ -3702,6 +3758,27 @@ export interface components {
             fallback_model: string;
             /** Ready */
             ready: boolean;
+            /**
+             * Model Params
+             * @default {}
+             */
+            model_params: {
+                [key: string]: components["schemas"]["AiModelParams"];
+            };
+            /**
+             * Primary Params
+             * @default {}
+             */
+            primary_params: {
+                [key: string]: string | number | string[];
+            };
+            /**
+             * Fallback Params
+             * @default {}
+             */
+            fallback_params: {
+                [key: string]: string | number | string[];
+            };
         };
         /** AnalysisRequest */
         AnalysisRequest: {

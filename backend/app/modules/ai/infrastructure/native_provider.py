@@ -25,7 +25,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.integrations.llm.base import LlmClient, LlmError, LlmRequest
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, effective_params, key_setting_for, parse_model_spec, parse_overrides, resolve_model_spec
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_assistant_service import fetch_tenant_config, list_ai_catalog, list_ai_resources
 from app.modules.ai.ai_context import fetch_analysis_context
@@ -49,7 +49,11 @@ KNOWLEDGE_MAX_CHARS = 9000
 # Últimos mensajes del cliente que alimentan la consulta de conocimiento.
 QUERY_CUSTOMER_MESSAGES = 3
 
-SETTING_KEYS = ("ai_suggestions_primary_model", "ai_suggestions_fallback_model", "ai_gemini_api_key", "ai_openai_api_key")
+SETTING_KEYS = (
+    "ai_suggestions_primary_model", "ai_suggestions_fallback_model",
+    "ai_suggestions_primary_params", "ai_suggestions_fallback_params",
+    "ai_gemini_api_key", "ai_openai_api_key",
+)
 
 
 class NativeSuggestionError(Exception):
@@ -282,19 +286,22 @@ def _trim_knowledge(chunks: list[dict]) -> list[dict]:
     return kept
 
 
-async def _models_for_tenant() -> list[tuple[str, str]]:
-    """``[(spec, api_key)]`` en orden: principal y, si tiene clave, secundario."""
+async def _models_for_tenant() -> list[tuple[str, str, dict]]:
+    """``[(spec, api_key, sobrescrituras)]`` en orden: principal y, si tiene
+    clave, secundario. Cada posición lleva los parámetros que el negocio
+    configuró para ella; ``build_client`` descarta lo que el modelo no acepte."""
     values = await get_effective_many(SETTING_KEYS)
-    primary = values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY
-    fallback = values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK
-    chain = []
-    for spec in (primary, fallback):
-        if spec in [s for s, _ in chain]:
+    chain: list[tuple[str, str, dict]] = []
+    for slot, default in (("primary", DEFAULT_PRIMARY), ("fallback", DEFAULT_FALLBACK)):
+        # Un modelo que el proveedor retiró se lee como su reemplazo: el
+        # negocio no se queda sin sugerencias por no haber entrado a cambiarlo.
+        spec = resolve_model_spec(values[f"ai_suggestions_{slot}_model"].strip() or default)
+        if spec in [item[0] for item in chain]:
             continue
         provider, _ = parse_model_spec(spec)
         key = values[key_setting_for(provider)].strip()
         if key:
-            chain.append((spec, key))
+            chain.append((spec, key, parse_overrides(values[f"ai_suggestions_{slot}_params"])))
     return chain
 
 
@@ -338,8 +345,8 @@ class NativeAiProvider:
         )
 
         errors: list[str] = []
-        for spec, api_key in chain:
-            client = self._build(spec, api_key)
+        for spec, api_key, overrides in chain:
+            client = self._build(spec, api_key, overrides)
             try:
                 suggestion, result = await _generate_validated(client, request)
             except LlmError as exc:
@@ -354,6 +361,10 @@ class NativeAiProvider:
                 tokens_in=result.tokens_in, tokens_out=result.tokens_out,
                 knowledge_chunk_ids=[chunk["id"] for chunk in knowledge],
                 failed_models=errors or None,
+                # Con qué parámetros se generó: sin esto, un cambio en la
+                # configuración del negocio no se puede relacionar con un
+                # cambio en la calidad o el costo de las sugerencias.
+                params=effective_params(spec, overrides),
             )
             return suggestion
         raise NativeSuggestionError("; ".join(errors) or "Ningún modelo respondió")

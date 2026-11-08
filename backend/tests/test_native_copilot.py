@@ -65,16 +65,23 @@ class FakeClient:
     async def ping(self):
         return LlmResult(text="OK", model=self.model)
 
+    async def list_models(self):
+        return {"modelo-a", "modelo-b"}
+
 
 def _world(monkeypatch, settings: dict, chain: dict[str, list]):
     """Un negocio con sus claves y un cliente simulado por modelo."""
     clients: dict[str, FakeClient] = {}
+    built_with: dict[str, dict | None] = {}
 
-    def factory(spec, api_key):
+    def factory(spec, api_key, overrides=None):
         provider, model = spec.split(":", 1)
         assert api_key, "nunca se construye un cliente sin clave"
+        built_with[spec] = overrides
         clients[spec] = FakeClient(provider, model, chain[spec])
         return clients[spec]
+
+    factory.built_with = built_with
 
     defaults = {"ai_suggestions_primary_model": "", "ai_suggestions_fallback_model": "", "ai_gemini_api_key": "", "ai_openai_api_key": ""}
     values = {**defaults, **settings}
@@ -120,7 +127,7 @@ async def _suggest(provider):
 
 async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(monkeypatch):
     provider, clients, searched, steps, metadata = _world(
-        monkeypatch, {"ai_gemini_api_key": "g-key"}, {"gemini:gemini-2.5-flash": [GOOD]},
+        monkeypatch, {"ai_gemini_api_key": "g-key"}, {"gemini:gemini-3.6-flash": [GOOD]},
     )
 
     suggestion = await _suggest(provider)
@@ -144,7 +151,7 @@ async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(m
     ]
     assert "Contraindicado en embarazo" in prompt and '"tipo": "ficha"' in prompt
     assert steps == ["context_loaded", "knowledge_searched"]
-    assert metadata["model"] == "gemini:gemini-2.5-flash"
+    assert metadata["model"] == "gemini:gemini-3.6-flash"
     assert metadata["knowledge_chunk_ids"] == ["s1", "c1"]
     assert (metadata["tokens_in"], metadata["tokens_out"]) == (100, 20)
     assert metadata["prompt_version"] == native_provider.PROMPT_VERSION
@@ -154,30 +161,30 @@ async def test_invalid_json_gets_one_retry_then_the_fallback_model(monkeypatch):
     provider, clients, *_ , metadata = _world(
         monkeypatch,
         {"ai_gemini_api_key": "g-key", "ai_openai_api_key": "o-key"},
-        {"gemini:gemini-2.5-flash": ["no es json", '{"analisis": "sin sugerencias"}'], "openai:gpt-5.6-terra": [GOOD]},
+        {"gemini:gemini-3.6-flash": ["no es json", '{"analisis": "sin sugerencias"}'], "openai:gpt-5.6-terra": [GOOD]},
     )
 
     suggestion = await _suggest(provider)
 
     assert suggestion.confianza == "alta"
-    gemini = clients["gemini:gemini-2.5-flash"]
+    gemini = clients["gemini:gemini-3.6-flash"]
     assert len(gemini.requests) == 2
     assert "no cumplió el esquema" in gemini.requests[1].user
     assert metadata["model"] == "openai:gpt-5.6-terra"
-    assert metadata["failed_models"] and metadata["failed_models"][0].startswith("gemini:gemini-2.5-flash")
+    assert metadata["failed_models"] and metadata["failed_models"][0].startswith("gemini:gemini-3.6-flash")
 
 
 async def test_primary_outage_falls_back_and_total_failure_is_reported(monkeypatch):
     provider, clients, *_ = _world(
         monkeypatch,
-        {"ai_suggestions_primary_model": "openai:gpt-5.5", "ai_suggestions_fallback_model": "gemini:gemini-2.5-flash", "ai_gemini_api_key": "g", "ai_openai_api_key": "o"},
-        {"openai:gpt-5.5": [LlmError("OpenAI respondió 503", status=503)], "gemini:gemini-2.5-flash": [GOOD]},
+        {"ai_suggestions_primary_model": "openai:gpt-5.5", "ai_suggestions_fallback_model": "gemini:gemini-2.0-flash", "ai_gemini_api_key": "g", "ai_openai_api_key": "o"},
+        {"openai:gpt-5.5": [LlmError("OpenAI respondió 503", status=503)], "gemini:gemini-3.6-flash": [GOOD]},
     )
     assert (await _suggest(provider)).confianza == "alta"
-    assert list(clients) == ["openai:gpt-5.5", "gemini:gemini-2.5-flash"]
+    assert list(clients) == ["openai:gpt-5.5", "gemini:gemini-3.6-flash"]
 
     provider, *_ = _world(
-        monkeypatch, {"ai_gemini_api_key": "g"}, {"gemini:gemini-2.5-flash": [LlmError("Gemini respondió 403", status=403, retryable=False)]},
+        monkeypatch, {"ai_gemini_api_key": "g"}, {"gemini:gemini-3.6-flash": [LlmError("Gemini respondió 403", status=403, retryable=False)]},
     )
     with pytest.raises(NativeSuggestionError) as error:
         await _suggest(provider)
@@ -253,8 +260,11 @@ async def test_connection_test_uses_typed_key_or_saved_one(monkeypatch):
 
     monkeypatch.setattr(providers_service, "get_effective_many", saved)
 
+    # Sin modelo se prueba solo la clave, con la lista de modelos: una clave
+    # buena no se rechaza porque el modelo elegido haya sido retirado.
     result = await providers_service.test_provider("gemini", api_key=" nueva ", model=None, client_factory=factory)
-    assert result["ok"] is True and result["model"] == "gemini-2.5-flash" and built[-1] == ("gemini:gemini-2.5-flash", "nueva")
+    assert result["ok"] is True and result["model"] is None and result["models_available"] == 2
+    assert built[-1][1] == "nueva"
 
     result = await providers_service.test_provider("openai", api_key=None, model="gpt-5.5", client_factory=factory)
     assert result["ok"] is True and built[-1] == ("openai:gpt-5.5", "guardada")
@@ -269,8 +279,28 @@ async def test_connection_test_uses_typed_key_or_saved_one(monkeypatch):
         return FakeClient(*spec.split(":", 1), replies=[])
 
     class Broken(FakeClient):
-        async def ping(self):
+        async def list_models(self):
             raise LlmError("OpenAI respondió 401: bad key", status=401, retryable=False)
 
     result = await providers_service.test_provider("openai", api_key="k", model=None, client_factory=lambda s, k: Broken(*s.split(":", 1), replies=[]))
     assert result["ok"] is False and "401" in result["error"]
+
+
+async def test_each_slot_uses_the_parameters_the_business_set_for_it(monkeypatch):
+    provider, clients, *_, metadata = _world(
+        monkeypatch,
+        {
+            "ai_gemini_api_key": "g", "ai_openai_api_key": "o",
+            "ai_suggestions_primary_params": '{"reasoning": "high"}',
+            "ai_suggestions_fallback_params": '{"reasoning": "none", "temperature": 0.4}',
+        },
+        {"gemini:gemini-3.6-flash": [LlmError("Gemini respondió 503", status=503)], "openai:gpt-5.6-terra": [GOOD]},
+    )
+
+    await _suggest(provider)
+
+    built = provider._build.built_with
+    assert built["gemini:gemini-3.6-flash"] == {"reasoning": "high"}
+    assert built["openai:gpt-5.6-terra"] == {"reasoning": "none", "temperature": 0.4}
+    # El job guarda con qué parámetros efectivos se generó (defaults incluidos).
+    assert metadata["params"]["temperature"] == 0.4 and metadata["params"]["max_output_tokens"] == 8000

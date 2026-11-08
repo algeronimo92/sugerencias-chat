@@ -7,6 +7,7 @@ import { Input, Select, labelClass } from '../../../shared/ui/Input'
 import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSaveSettings } from '../../platform/public/useSettings'
+import { AdvancedModelSettings, ModelParamsEditor } from './ModelParamsEditor'
 import { useAiProviders, useRefreshAiProviders, useTestAiProvider } from '../hooks/useAiProviders'
 import type { AiProvidersStatus, AiProviderTestResult } from '../types'
 
@@ -16,11 +17,12 @@ const KEY_SETTING: Record<string, string> = { gemini: 'ai_gemini_api_key', opena
 type Provider = AiProvidersStatus['providers'][number]
 
 /**
- * "Probar y guardar" prueba la clave tipeada contra el modelo principal de ese
- * proveedor y solo la guarda si responde: así nunca queda guardada una clave
- * que haría fallar las sugerencias.
+ * "Probar y guardar" valida la clave tipeada contra el proveedor (pidiendo su
+ * lista de modelos, sin generar nada) y solo la guarda si la acepta. No se
+ * prueba contra el modelo elegido: cuando Google retiró gemini-2.0-flash, una
+ * clave buena se rechazaba por culpa del modelo y no de la clave.
  */
-function useProviderKey(provider: Provider, testModel: string | null, onSaved: () => void) {
+function useProviderKey(provider: Provider, onSaved: () => void) {
   const [apiKey, setApiKey] = useState('')
   const [result, setResult] = useState<AiProviderTestResult | null>(null)
   const test = useTestAiProvider()
@@ -37,7 +39,7 @@ function useProviderKey(provider: Provider, testModel: string | null, onSaved: (
 
   function testKey() {
     setResult(null)
-    test.mutate({ provider: provider.provider, apiKey: typed || null, model: testModel }, {
+    test.mutate({ provider: provider.provider, apiKey: typed || null, model: null }, {
       onSuccess: outcome => {
         setResult(outcome)
         if (outcome.ok && typed) saveTyped()
@@ -77,15 +79,15 @@ function KeyTestResult({ result, typed }: { result: AiProviderTestResult; typed:
   return (
     <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
       <Check className="h-3.5 w-3.5" aria-hidden="true" />
-      {result.model} responde{latency}{typed ? '' : ' con la clave guardada'}
+      {typed ? 'Clave válida' : 'La clave guardada sigue siendo válida'}{latency}
     </p>
   )
 }
 
 /** Una fila por proveedor: su clave, la prueba y el resultado. */
-function ProviderKeyRow({ provider, testModel, onSaved }: { provider: Provider; testModel: string | null; onSaved: () => void }) {
+function ProviderKeyRow({ provider, onSaved }: { provider: Provider; onSaved: () => void }) {
   const Mark = MARKS[provider.provider] ?? Sparkles
-  const key = useProviderKey(provider, testModel, onSaved)
+  const key = useProviderKey(provider, onSaved)
   const inputId = `ai-key-${provider.provider}`
   const configured = provider.key_configured
 
@@ -160,12 +162,6 @@ export function AiIntegrationCard() {
     })
   }
 
-  function testModelFor(provider: string): string | null {
-    for (const spec of [status!.primary_model, status!.fallback_model]) {
-      if (spec.startsWith(`${provider}:`)) return spec.split(':', 2)[1]
-    }
-    return null
-  }
 
   return (
     <IntegrationCard
@@ -179,7 +175,7 @@ export function AiIntegrationCard() {
       <div className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-2">
           {status.providers.map(provider => (
-            <ProviderKeyRow key={provider.provider} provider={provider} testModel={testModelFor(provider.provider)} onSaved={refresh} />
+            <ProviderKeyRow key={provider.provider} provider={provider} onSaved={refresh} />
           ))}
         </div>
 
@@ -199,6 +195,25 @@ export function AiIntegrationCard() {
             </Select>
           </div>
         </div>
+
+        <AdvancedModelSettings customized={Object.keys(status.primary_params ?? {}).length + Object.keys(status.fallback_params ?? {}).length}>
+          <ModelParamsEditor
+            key={`${status.primary_model}|${JSON.stringify(status.primary_params)}`}
+            title="Modelo principal"
+            schema={status.model_params?.[status.primary_model]}
+            overrides={status.primary_params ?? {}}
+            disabled={save.isPending}
+            onSave={overrides => saveValues({ ai_suggestions_primary_params: JSON.stringify(overrides) }, 'Ajustes del modelo principal guardados')}
+          />
+          <ModelParamsEditor
+            key={`${status.fallback_model}|${JSON.stringify(status.fallback_params)}`}
+            title="Modelo secundario"
+            schema={status.model_params?.[status.fallback_model]}
+            overrides={status.fallback_params ?? {}}
+            disabled={save.isPending}
+            onSave={overrides => saveValues({ ai_suggestions_fallback_params: JSON.stringify(overrides) }, 'Ajustes del modelo secundario guardados')}
+          />
+        </AdvancedModelSettings>
 
         <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
           {status.ready

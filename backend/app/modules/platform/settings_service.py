@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -6,7 +7,14 @@ from time import monotonic
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
-from app.integrations.llm.catalog import parse_model_spec
+from app.integrations.llm.catalog import (
+    DEFAULT_FALLBACK,
+    DEFAULT_PRIMARY,
+    parse_model_spec,
+    parse_overrides,
+    sanitize_overrides,
+    validate_overrides,
+)
 from app.modules.platform import settings_repository
 from app.core.config import settings as env_settings
 from app.db.models.settings import AppSetting
@@ -129,6 +137,11 @@ SETTING_DEFS: list[SettingDef] = [
     # dice para que una función nueva no herede estos modelos sin querer.
     SettingDef("ai_suggestions_primary_model", "Sugerencias: modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False),
     SettingDef("ai_suggestions_fallback_model", "Sugerencias: modelo secundario (si el principal falla)", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    # Lo que el negocio sobrescribe de los parámetros de cada modelo (JSON con
+    # nombres neutrales: reasoning, max_output_tokens…). Lo que no está toma el
+    # default del registro de app.integrations.llm.catalog.
+    SettingDef("ai_suggestions_primary_params", "Sugerencias: parámetros del modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False, hidden=True),
+    SettingDef("ai_suggestions_fallback_params", "Sugerencias: parámetros del modelo secundario", "ai", "IA del negocio (claves y sugerencias)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
@@ -300,6 +313,22 @@ def validate_erp_catalog_url(value: str) -> str:
     return normalized
 
 
+async def _normalize_model_params(values: dict[str, str], slot: str) -> None:
+    """Valida las sobrescrituras de parámetros contra el modelo de esa posición.
+    Si cambia el modelo y no vienen parámetros nuevos, se descarta lo guardado
+    que el modelo nuevo no acepta (temperature al pasar a un gpt-5.x…)."""
+    model_key, params_key = f"ai_suggestions_{slot}_model", f"ai_suggestions_{slot}_params"
+    if params_key not in values and model_key not in values:
+        return
+    default = DEFAULT_PRIMARY if slot == "primary" else DEFAULT_FALLBACK
+    model = values.get(model_key) or (await get_effective(model_key)).strip() or default
+    if params_key in values:
+        clean = validate_overrides(model, parse_overrides(values[params_key]))
+    else:
+        clean, _dropped = sanitize_overrides(model, parse_overrides(await get_effective(params_key)))
+    values[params_key] = json.dumps(clean, sort_keys=True) if clean else ""
+
+
 def validate_ai_model(value: str) -> str:
     """``proveedor:modelo`` del catálogo cerrado de app.integrations.llm."""
     normalized = value.strip()
@@ -446,6 +475,8 @@ async def update_settings(values: dict[str, str]) -> None:
     for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
         if values.get(key):
             values[key] = validate_ai_model(values[key])
+    for slot in ("primary", "fallback"):
+        await _normalize_model_params(values, slot)
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]
