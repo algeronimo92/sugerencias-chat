@@ -351,11 +351,12 @@ activar el modo nativo solo allí y comparar 20 conversaciones contra n8n.
   queda solo para el analista. `N8N_WEBHOOK_URL` sigue declarada en la config para
   que un `.env` viejo no impida arrancar, pero no se usa.
 - El analista sigue en n8n sin cambios.
-- Para producción, antes de desplegar: el admin de cada negocio carga y prueba su
-  clave en Integraciones; la plataforma publica las plantillas
-  (`python -m scripts.seed_knowledge_templates --apply`) y el negocio importa las
-  suyas. Después del despliegue, el workflow de sugerencias de n8n se puede
-  desactivar.
+- Las 19 plantillas se publican solas al desplegar: la migración
+  `b7d2f4a8c913` inserta las que falten por título (no pisa las editadas). El
+  script `seed_knowledge_templates` queda para actualizar contenido después.
+- Para producción, al desplegar: el admin de cada negocio carga y prueba su clave
+  en Integraciones (hasta entonces no hay sugerencias) e importa sus plantillas.
+  Después, el workflow de sugerencias de n8n se puede desactivar.
 
 ## 7. Decisiones tomadas y pendientes
 

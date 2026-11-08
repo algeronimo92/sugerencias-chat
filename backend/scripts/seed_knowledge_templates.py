@@ -15,9 +15,11 @@ Cada archivo es markdown con una cabecera mínima:
     service_hint: HIFU 12D
     ---
 
-Idempotente por título: re-correrlo actualiza el contenido (la versión sube
-solo si cambió) y no reactiva una plantilla que el operador ocultó. Las copias
-que los negocios ya importaron no se tocan.
+La primera carga la hace la migración ``b7d2f4a8c913`` al desplegar (solo las
+que faltan). Este script sirve para publicar cambios de contenido después:
+es idempotente por título, actualiza el contenido (la versión sube solo si
+cambió) y no reactiva una plantilla que el operador ocultó. Las copias que los
+negocios ya importaron no se tocan.
 
 Uso (dry-run salvo --apply):
     python -m scripts.seed_knowledge_templates
