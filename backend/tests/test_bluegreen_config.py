@@ -369,3 +369,56 @@ def test_compose_for_embeds_color_port_for_every_subcommand(tmp_path, color: str
     result = _run_bash(_sandbox(tmp_path), f'compose_for {color}')
     assert result.returncode == 0, result.stderr
     assert f"COLOR_PORT={PORTS[color]}" in result.stdout
+
+
+def _fake_docker(sandbox: Path, *, fail_on: str | None = None) -> str:
+    """Un `docker` en el PATH que anota cada llamada y falla si sus
+    argumentos contienen ``fail_on``. compose_for() ejecuta docker a través
+    de `env`, así que una función de bash no lo reemplazaría."""
+    bin_dir = sandbox / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "docker"
+    fail = f'case "$*" in *"{fail_on}"*) exit 1;; esac\n' if fail_on else ""
+    fake.write_text(f'#!/usr/bin/env bash\necho "$*" >> "{sandbox}/calls.txt"\n{fail}exit 0\n', encoding="utf-8")
+    fake.chmod(0o755)
+    return f'PATH="{bin_dir}:$PATH"; HEALTH_ATTEMPTS=1; HEALTH_INTERVAL=0; '
+
+
+@requires_bash
+def test_failed_migration_never_starts_the_new_color(tmp_path) -> None:
+    """Regresión del 2026-11-08: la migración falló después del `up -d`, el
+    script cortó por `set -e` y el color nuevo quedó reiniciándose en bucle
+    (SchemaNotMigratedError) media hora. Ahora se migra antes de levantarlo y
+    lo que haya quedado se baja."""
+    sandbox = _sandbox(tmp_path)
+    before = (sandbox / "active.yml").read_text(encoding="utf-8")
+
+    result = _run_bash(sandbox, _fake_docker(sandbox, fail_on="scripts.migrate") + "cmd_deploy")
+
+    assert result.returncode == 1
+    assert "las migraciones fallaron" in result.stderr
+    calls = (sandbox / "calls.txt").read_text(encoding="utf-8").splitlines()
+    verbs = [call.split("compose.bluegreen.yml ", 1)[-1] for call in calls]
+    assert verbs[0] == "build"
+    assert verbs[1].startswith("run --rm --no-deps backend python -m scripts.migrate")
+    assert verbs[2] == "down --remove-orphans"
+    assert not any(verb.startswith("up") for verb in verbs)
+    assert (sandbox / "active.yml").read_text(encoding="utf-8") == before
+
+
+@requires_bash
+def test_new_color_that_never_gets_healthy_is_taken_down(tmp_path) -> None:
+    sandbox = _sandbox(tmp_path)
+    before = (sandbox / "active.yml").read_text(encoding="utf-8")
+
+    # El docker falso responde a todo, pero nada escucha en el puerto del
+    # color: curl falla y el color nunca queda sano.
+    result = _run_bash(sandbox, _fake_docker(sandbox) + "cmd_deploy")
+
+    assert result.returncode == 1
+    assert "no llegó a estar sano" in result.stderr
+    verbs = [call.split("compose.bluegreen.yml ", 1)[-1]
+             for call in (sandbox / "calls.txt").read_text(encoding="utf-8").splitlines()]
+    assert verbs.index("up -d") > verbs.index("build")
+    assert verbs[-1] == "down --remove-orphans"
+    assert (sandbox / "active.yml").read_text(encoding="utf-8") == before
