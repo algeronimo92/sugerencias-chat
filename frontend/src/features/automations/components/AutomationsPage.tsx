@@ -227,10 +227,16 @@ export function AutomationsPage() {
     setFormOpen(false); setEditingId(null); setError(null); setFormHighlight(null)
   }
 
-  useServiceEditLink(rules, isLoading, (rule, highlight) => {
+  // Enlace desde Catálogos: se abre al renderizar (no en un efecto) y una sola
+  // vez por enlace; el hook quita los parámetros de la URL.
+  const serviceLink = useServiceEditLink(rules, isLoading)
+  const [openedLink, setOpenedLink] = useState<string | null>(null)
+  if (serviceLink && serviceLink.key !== openedLink) {
+    setOpenedLink(serviceLink.key)
+    const { rule, highlight } = serviceLink
     if (rule.builder_mode === AutomationBuilderMode.Visual) { setTab('flows'); setFlowBuilder({ rule, highlight }) }
     else { setTab('rules'); openEdit(rule, highlight) }
-  })
+  }
   const highlightedService = formHighlight?.service ?? null
   const conditionHighlighted = highlightedService !== null && conditionsNameService(form.conditions, highlightedService)
   const highlightedActions = form.actions.filter(action => highlightedService !== null && actionNamesService(action, highlightedService)).length
