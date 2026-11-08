@@ -45,3 +45,7 @@ class LlmClient(Protocol):
 
     async def ping(self) -> LlmResult:
         """Una llamada mínima para comprobar clave y modelo."""
+
+    async def list_models(self) -> set[str]:
+        """Modelos que la clave ve. Valida la clave sin generar nada (no
+        consume tokens) y sin depender de que un modelo puntual exista."""

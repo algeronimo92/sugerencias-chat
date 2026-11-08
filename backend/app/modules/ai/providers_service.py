@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import monotonic
 
 from app.integrations.llm.base import LlmError
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, PROVIDERS, key_setting_for, parse_model_spec
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, PROVIDERS, key_setting_for, parse_model_spec, resolve_model_spec
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_access import business_ai_ready
 from app.modules.platform.ports.settings_service import get_effective_many
@@ -25,13 +25,25 @@ async def providers_status() -> dict:
             }
             for name, meta in PROVIDERS.items()
         ],
-        "primary_model": values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY,
-        "fallback_model": values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK,
+        # Lo que de verdad se usa: un modelo retirado se muestra con su reemplazo.
+        "primary_model": _resolved(values["ai_suggestions_primary_model"], DEFAULT_PRIMARY),
+        "fallback_model": _resolved(values["ai_suggestions_fallback_model"], DEFAULT_FALLBACK),
         "ready": await business_ai_ready(),
     }
 
 
+def _resolved(stored: str, default: str) -> str:
+    try:
+        return resolve_model_spec(stored.strip() or default)
+    except ValueError:
+        return default
+
+
 async def test_provider(provider: str, *, api_key: str | None, model: str | None, client_factory=build_client) -> dict:
+    """Sin ``model``, prueba solo la clave: pide la lista de modelos, que no
+    genera nada ni depende de que un modelo puntual exista. Antes se probaba
+    contra el modelo elegido, y una clave buena se rechazaba cuando Google
+    había retirado ese modelo. Con ``model``, hace una generación mínima."""
     if provider not in PROVIDERS:
         return {"ok": False, "provider": provider, "error": "Proveedor desconocido"}
     key = (api_key or "").strip()
@@ -39,17 +51,24 @@ async def test_provider(provider: str, *, api_key: str | None, model: str | None
         key = (await get_effective_many((key_setting_for(provider),)))[key_setting_for(provider)].strip()
     if not key:
         return {"ok": False, "provider": provider, "error": "Falta la API key"}
-    chosen = (model or "").strip() or PROVIDERS[provider]["models"][0]
+    chosen = (model or "").strip()
     try:
-        parse_model_spec(f"{provider}:{chosen}")
+        parse_model_spec(f"{provider}:{chosen or PROVIDERS[provider]['models'][0]}")
     except ValueError as exc:
         return {"ok": False, "provider": provider, "model": chosen, "error": str(exc)}
-    client = client_factory(f"{provider}:{chosen}", key)
+    client = client_factory(f"{provider}:{chosen or PROVIDERS[provider]['models'][0]}", key)
     started = monotonic()
     try:
+        if not chosen:
+            available = await client.list_models()
+            return {
+                "ok": True, "provider": provider, "model": None,
+                "latency_ms": int((monotonic() - started) * 1000),
+                "models_available": len(available),
+            }
         result = await client.ping()
     except LlmError as exc:
-        return {"ok": False, "provider": provider, "model": chosen, "error": str(exc)}
+        return {"ok": False, "provider": provider, "model": chosen or None, "error": str(exc)}
     return {
         "ok": True, "provider": provider, "model": result.model or chosen,
         "latency_ms": int((monotonic() - started) * 1000),

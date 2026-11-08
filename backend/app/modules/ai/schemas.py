@@ -181,9 +181,12 @@ class AiProviderTestRequest(BaseModel):
 class AiProviderTestResult(BaseModel):
     ok: bool
     provider: str
+    # Vacío en la prueba de clave (no se genera con ningún modelo).
     model: str | None = None
     error: str | None = None
     latency_ms: int | None = None
+    # Prueba de clave: cuántos modelos ve la clave en el proveedor.
+    models_available: int | None = None
 
 
 class KnowledgePdfImportRequest(BaseModel):

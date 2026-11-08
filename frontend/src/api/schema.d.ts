@@ -3688,6 +3688,8 @@ export interface components {
             error?: string | null;
             /** Latency Ms */
             latency_ms?: number | null;
+            /** Models Available */
+            models_available?: number | null;
         };
         /**
          * AiProvidersStatus

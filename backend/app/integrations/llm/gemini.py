@@ -9,6 +9,21 @@ from app.integrations.llm.base import LlmError, LlmRequest, LlmResult
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 TIMEOUT_SECONDS = 60.0
 
+# Igual que el nodo de n8n: con los filtros por defecto Gemini devolvía vacío
+# ante conversaciones legítimas de una clínica (lactancia, depilación íntima,
+# anticoagulantes) y el vendedor se quedaba sin sugerencias.
+SAFETY_SETTINGS = [
+    {"category": category, "threshold": "BLOCK_NONE"}
+    for category in (
+        "HARM_CATEGORY_HARASSMENT",
+        "HARM_CATEGORY_HATE_SPEECH",
+        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "HARM_CATEGORY_DANGEROUS_CONTENT",
+    )
+]
+# Motivos de corte que dejan la respuesta incompleta o vacía.
+_BLOCKED = {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "OTHER"}
+
 
 def to_gemini_schema(schema: dict) -> dict:
     """Gemini acepta un subconjunto de OpenAPI: tipos en mayúsculas,
@@ -57,12 +72,20 @@ class GeminiClient:
                 retryable=response.status_code not in (400, 401, 403, 404),
             )
         payload = response.json()
-        try:
-            candidate = payload["candidates"][0]
-            text = "".join(part.get("text", "") for part in candidate["content"]["parts"])
-        except (KeyError, IndexError, TypeError):
+        candidates = payload.get("candidates") or []
+        if not candidates:
             reason = (payload.get("promptFeedback") or {}).get("blockReason") or "sin candidatos"
             raise LlmError(f"Gemini no devolvió texto ({reason})")
+        candidate = candidates[0]
+        finish = candidate.get("finishReason")
+        if finish == "MAX_TOKENS":
+            raise LlmError(f"Gemini cortó la respuesta por longitud ({self.model})")
+        if finish in _BLOCKED:
+            raise LlmError(f"Gemini bloqueó la respuesta ({finish})")
+        try:
+            text = "".join(part.get("text", "") for part in candidate["content"]["parts"])
+        except (KeyError, TypeError):
+            raise LlmError(f"Gemini no devolvió texto ({finish or 'sin contenido'})")
         usage = payload.get("usageMetadata") or {}
         return LlmResult(
             text=text,
@@ -76,6 +99,7 @@ class GeminiClient:
         return await self._generate({
             "system_instruction": {"parts": [{"text": request.system}]},
             "contents": [{"role": "user", "parts": [{"text": request.user}]}],
+            "safetySettings": SAFETY_SETTINGS,
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "responseSchema": to_gemini_schema(request.schema),
@@ -86,8 +110,27 @@ class GeminiClient:
     async def ping(self) -> LlmResult:
         return await self._generate({
             "contents": [{"role": "user", "parts": [{"text": "Responde únicamente con la palabra OK."}]}],
-            "generationConfig": {"maxOutputTokens": 50},
+            "generationConfig": {"maxOutputTokens": 300},
         })
+
+    async def list_models(self) -> set[str]:
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(
+                    f"{BASE_URL}/models", params={"pageSize": 1000}, headers={"x-goog-api-key": self._api_key},
+                )
+        except httpx.HTTPError as exc:
+            raise LlmError(f"No se pudo conectar con Gemini: {exc}") from exc
+        if response.status_code >= 400:
+            raise LlmError(
+                f"Gemini respondió {response.status_code}: {_error_detail(response)}",
+                status=response.status_code, retryable=response.status_code >= 500,
+            )
+        return {
+            item["name"].removeprefix("models/")
+            for item in response.json().get("models", [])
+            if "generateContent" in item.get("supportedGenerationMethods", [])
+        }
 
 
 def _error_detail(response: httpx.Response) -> str:

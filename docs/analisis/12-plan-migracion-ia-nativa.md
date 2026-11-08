@@ -358,6 +358,31 @@ activar el modo nativo solo allí y comparar 20 conversaciones contra n8n.
   en Integraciones (hasta entonces no hay sugerencias) e importa sus plantillas.
   Después, el workflow de sugerencias de n8n se puede desactivar.
 
+## 6e. Modelos: catálogo vigente y parámetros por modelo (2026-11-08)
+
+Probado contra las APIs reales con claves de OpenAI y Gemini:
+
+- La lista de modelos del proveedor no es fuente confiable: Gemini listaba
+  `gemini-2.5-flash`/`2.5-pro`/`2.5-flash-lite` y respondía 404 "no longer
+  available to new users"; `gemini-2.0-flash`, retirado. Responden JSON de
+  sugerencias: `gemini-3.5-flash` (~7 s), `gemini-3.6-flash` (~8 s),
+  `gemini-3.5-flash-lite` y `gemini-3.1-flash-lite` (~2 s). `3.1-pro` y `4-argon`
+  piden un plan pago; `3.7`/`3.8-flash` no respondieron en 30 s.
+- Catálogo nuevo con esos cuatro; principal por defecto `gemini-3.5-flash`.
+  `RETIRED_MODELS` lleva lo guardado de un modelo retirado a su reemplazo al
+  leerlo (no se puede guardar uno retirado).
+- `MODEL_OPTIONS`: `reasoning_effort: low` solo en los gpt-5.x (gpt-4.1-mini
+  responde 400 si se lo manda; sin fijarlo, gpt-5-mini gastó en razonar todo el
+  presupuesto y devolvió vacío).
+- Gemini con `safetySettings` en `BLOCK_NONE` como el nodo de n8n; corte por
+  longitud o bloqueo de seguridad (de ambos proveedores) falla con un error
+  claro y pasa al secundario en vez de terminar como "JSON inválido".
+- "Probar y guardar" valida la clave con la lista de modelos (no genera, no
+  depende del modelo elegido).
+- Pendiente (pasos 2 y 3 de la revisión): perfiles completos por modelo,
+  prueba real de cada modelo con la clave del negocio, aviso de retiro en
+  Integraciones y tiempo máximo total por sugerencia.
+
 ## 7. Decisiones tomadas y pendientes
 
 Tomadas (2026-11-07):

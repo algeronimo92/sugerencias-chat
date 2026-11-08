@@ -25,7 +25,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.integrations.llm.base import LlmClient, LlmError, LlmRequest
-from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec
+from app.integrations.llm.catalog import DEFAULT_FALLBACK, DEFAULT_PRIMARY, key_setting_for, parse_model_spec, resolve_model_spec
 from app.integrations.llm.client import build_client
 from app.modules.ai.ai_assistant_service import fetch_tenant_config, list_ai_catalog, list_ai_resources
 from app.modules.ai.ai_context import fetch_analysis_context
@@ -285,10 +285,14 @@ def _trim_knowledge(chunks: list[dict]) -> list[dict]:
 async def _models_for_tenant() -> list[tuple[str, str]]:
     """``[(spec, api_key)]`` en orden: principal y, si tiene clave, secundario."""
     values = await get_effective_many(SETTING_KEYS)
-    primary = values["ai_suggestions_primary_model"].strip() or DEFAULT_PRIMARY
-    fallback = values["ai_suggestions_fallback_model"].strip() or DEFAULT_FALLBACK
     chain = []
-    for spec in (primary, fallback):
+    for stored, default in (
+        (values["ai_suggestions_primary_model"], DEFAULT_PRIMARY),
+        (values["ai_suggestions_fallback_model"], DEFAULT_FALLBACK),
+    ):
+        # Un modelo que el proveedor retiró se lee como su reemplazo: el
+        # negocio no se queda sin sugerencias por no haber entrado a cambiarlo.
+        spec = resolve_model_spec(stored.strip() or default)
         if spec in [s for s, _ in chain]:
             continue
         provider, _ = parse_model_spec(spec)
