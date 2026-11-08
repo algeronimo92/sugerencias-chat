@@ -113,13 +113,17 @@ class SqlRuleStore:
             ).where(AutomationRule.deleted_at.is_(None)))).mappings().all()
         return {row["id"]: dict(row) for row in rows}
 
-    async def count_referencing_service(self, name: str, references: Callable) -> int:
+    async def rules_referencing_service(self, name: str, references: Callable) -> list[tuple[int, str]]:
         columns = [getattr(AutomationRule, field) for field in _RULE_FIELDS_WITH_SERVICES]
         async with session_scope() as session:
             rules = (await session.execute(
-                select(*columns).where(AutomationRule.deleted_at.is_(None))
+                select(AutomationRule.id, AutomationRule.name, *columns)
+                .where(AutomationRule.deleted_at.is_(None)).order_by(AutomationRule.name)
             )).mappings().all()
-        return sum(1 for rule in rules if any(references(rule[field], name) for field in _RULE_FIELDS_WITH_SERVICES))
+        return [
+            (rule["id"], rule["name"]) for rule in rules
+            if any(references(rule[field], name) for field in _RULE_FIELDS_WITH_SERVICES)
+        ]
 
     async def rename_service(self, old_name: str, new_name: str, rename: Callable) -> None:
         """Las reglas referencian servicios por nombre en condiciones, acciones

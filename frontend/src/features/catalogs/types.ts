@@ -87,3 +87,12 @@ export interface ErpTestResult {
   services_without_packages: string[]
   sample: ErpSampleService[]
 }
+
+/** Qué nombra a un servicio (leads, ventas, plantillas, automatizaciones,
+ *  documentos): cuántos y los primeros, para ir a revisarlos. */
+export interface ServiceUsageGroup {
+  kind: string
+  label: string
+  count: number
+  items?: { id: string; name: string }[]
+}

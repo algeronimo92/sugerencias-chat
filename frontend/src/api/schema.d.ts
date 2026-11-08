@@ -2072,6 +2072,28 @@ export interface paths {
         patch: operations["patch_service_api_services__service_id__patch"];
         trace?: never;
     };
+    "/api/services/{service_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Service Usage
+         * @description Qué usa al servicio (leads, ventas, plantillas, automatizaciones,
+         *     documentos), con algunos de cada uno para ir a revisarlos: lo muestra el
+         *     cuadro de eliminar antes de intentarlo.
+         */
+        get: operations["get_service_usage_api_services__service_id__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/services/{service_id}/packages": {
         parameters: {
             query?: never;
@@ -6423,6 +6445,32 @@ export interface components {
             position?: number | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /** ServiceUsageGroup */
+        ServiceUsageGroup: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+            /** Items */
+            items?: components["schemas"]["ServiceUsageItem"][];
+        };
+        /** ServiceUsageItem */
+        ServiceUsageItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ServiceUsageResponse
+         * @description Lo que nombra a un servicio. Vacío: se puede eliminar.
+         */
+        ServiceUsageResponse: {
+            /** Usages */
+            usages?: components["schemas"]["ServiceUsageGroup"][];
         };
         /**
          * SessionAuthMethod
@@ -11160,6 +11208,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeadServiceItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_service_usage_api_services__service_id__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceUsageResponse"];
                 };
             };
             /** @description Validation Error */

@@ -20,7 +20,7 @@ from app.modules.ai.knowledge_service import create_document
 from app.modules.catalogs.erp_catalog import apply_catalog, parse_catalog
 from app.modules.catalogs.errors import ErpManagedError, ServiceInUseError
 from app.modules.catalogs.queries import list_lead_services
-from app.modules.catalogs.service import create_lead_service, create_service_package, delete_lead_service
+from app.modules.catalogs.service import create_lead_service, create_service_package, delete_lead_service, service_usage
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
 from app.tenancy.context import tenant_context
 from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
@@ -51,7 +51,7 @@ async def _lead_interested_in(name: str) -> str:
 async def _usages(service_id: int) -> list[str]:
     with pytest.raises(ServiceInUseError) as error:
         await delete_lead_service(service_id)
-    return error.value.usages
+    return [usage.label for usage in error.value.usages]
 
 
 async def test_unused_manual_service_is_deleted_with_its_packages(tenant) -> None:
@@ -100,6 +100,17 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
             "1 plantilla", "2 leads", "1 venta registrada", "1 automatización", "1 documento de conocimiento",
         ])
 
+        # Lo mismo, con a quién ir a ver: el cuadro de eliminar lo muestra
+        # antes de intentarlo (antes solo decía "1 lead", sin cuál).
+        by_kind = {usage.kind: usage for usage in await service_usage(service_id)}
+        assert set(by_kind) == {"plantillas", "leads", "ventas", "automatizaciones", "documentos"}
+        assert len(by_kind["leads"].items) == 2 and lead_id in {item_id for item_id, _ in by_kind["leads"].items}
+        assert by_kind["leads"].count == 2
+        assert by_kind["ventas"].items == ((lead_id, by_kind["ventas"].items[0][1]),)
+        assert [name for _, name in by_kind["plantillas"].items] == ["Info peeling"]
+        assert [name for _, name in by_kind["automatizaciones"].items] == ["Seguimiento peeling"]
+        assert [name for _, name in by_kind["documentos"].items] == ["Ficha del peeling"]
+
         async with session_scope() as session:
             assert await session.scalar(select(LeadService.id).where(LeadService.id == service_id)) == service_id
             assert await session.scalar(select(LeadSale.service_id).where(LeadSale.lead_id == lead_id)) == service_id
@@ -112,3 +123,5 @@ async def test_erp_service_cannot_be_deleted_in_the_crm(tenant) -> None:
 
         with pytest.raises(ErpManagedError):
             await delete_lead_service(service["id"])
+
+        assert await service_usage(999_999) is None

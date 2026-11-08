@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createLeadService, createServicePackage, deleteLeadService, fetchErpSyncStatus, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
+import { createLeadService, createServicePackage, deleteLeadService, fetchErpSyncStatus, fetchServiceUsage, fetchLeadServices, runErpSync, testErpConnection, updateLeadService, updateServicePackage } from '../api'
 import { serviceKeys } from '../keys'
 
 export function useLeadServices(includeInactive = false) {
@@ -23,6 +23,17 @@ export function useUpdateLeadService() {
   return useMutation({
     mutationFn: updateLeadService,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: serviceKeys.all }),
+  })
+}
+
+/** Lo que usa al servicio, al abrir el cuadro de eliminar: siempre fresco,
+ *  porque se mira para decidir. */
+export function useServiceUsage(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: serviceKeys.usage(id),
+    queryFn: () => fetchServiceUsage(id),
+    enabled,
+    staleTime: 0,
   })
 }
 

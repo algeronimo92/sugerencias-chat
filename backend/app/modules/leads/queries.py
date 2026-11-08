@@ -131,14 +131,31 @@ async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
     return [_json_safe_row(dict(row)) for row in rows]
 
 
-async def service_usage(service_id: int, name: str) -> tuple[int, int]:
-    """Cuántos leads tienen el servicio como interés y cuántas ventas lo
-    registran. El interés se compara como lo sigue un renombre: sin
+def _lead_label(nombre: str | None, telefono: str | None) -> str:
+    return (nombre or "").strip() or (telefono or "").strip() or "Sin nombre"
+
+
+async def service_usage(service_id: int, name: str, limit: int) -> dict:
+    """Leads que tienen el servicio como interés y ventas que lo registran:
+    cuántos y los más recientes (id del lead, nombre o teléfono), para ir a
+    cada chat. El interés se compara como lo sigue un renombre: sin
     mayúsculas ni espacios de los bordes."""
+    interested = func.lower(func.btrim(Lead.servicio_interes)) == name.strip().lower()
+    sold = LeadSale.service_id == service_id
     async with session_scope() as session:
-        leads = await session.scalar(
-            select(func.count()).select_from(Lead)
-            .where(func.lower(func.btrim(Lead.servicio_interes)) == name.strip().lower())
-        )
-        sales = await session.scalar(select(func.count()).select_from(LeadSale).where(LeadSale.service_id == service_id))
-    return leads or 0, sales or 0
+        leads = await session.scalar(select(func.count()).select_from(Lead).where(interested)) or 0
+        lead_rows = (await session.execute(
+            select(Lead.id, Lead.nombre, Lead.telefono).where(interested)
+            .order_by(Lead.ultimo_mensaje_at.desc().nulls_last()).limit(limit)
+        )).all() if leads else []
+        sales = await session.scalar(select(func.count()).select_from(LeadSale).where(sold)) or 0
+        sale_rows = (await session.execute(
+            select(Lead.id, Lead.nombre, Lead.telefono).join(LeadSale, LeadSale.lead_id == Lead.id).where(sold)
+            .group_by(Lead.id).order_by(func.max(LeadSale.sold_at).desc()).limit(limit)
+        )).all() if sales else []
+    return {
+        "leads": leads,
+        "lead_items": [(str(row.id), _lead_label(row.nombre, row.telefono)) for row in lead_rows],
+        "sales": sales,
+        "sale_items": [(str(row.id), _lead_label(row.nombre, row.telefono)) for row in sale_rows],
+    }

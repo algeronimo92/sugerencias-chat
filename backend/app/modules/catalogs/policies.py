@@ -1,5 +1,7 @@
 """Reglas de renombre del catálogo, independientes de SQL y HTTP."""
 
+from app.modules.catalogs.events import ServiceUsage
+
 
 def rename_service_references(value, old_name: str, new_name: str):
     """Cambia referencias estructuradas sin tocar texto libre de los mensajes."""
@@ -53,6 +55,17 @@ def references_service(value, name: str) -> bool:
     return any(references_service(item, name) for item in value.values())
 
 
-def count_label(count: int, singular: str, plural: str) -> str:
-    """"1 lead" / "12 leads": cómo cada módulo anota lo que usa un servicio."""
-    return f"{count} {singular if count == 1 else plural}"
+# Cuántos de cada cosa se nombran: para ir a revisarlos alcanza; el total
+# va en la etiqueta.
+USAGE_ITEMS = 10
+
+
+def describe_usage(kind: str, count: int, singular: str, plural: str, items=()):
+    """Cómo cada módulo anota lo que usa un servicio: "1 lead" / "12 leads",
+    con hasta ``USAGE_ITEMS`` de ellos (id, nombre)."""
+    return ServiceUsage(
+        kind=kind,
+        label=f"{count} {singular if count == 1 else plural}",
+        items=tuple((str(item_id), name) for item_id, name in list(items)[:USAGE_ITEMS]),
+        count=count,
+    )

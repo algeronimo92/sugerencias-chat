@@ -12,6 +12,10 @@ interface ConfirmDialogProps {
   cancelLabel?: string
   confirmVariant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   disabled?: boolean
+  /** Contenido debajo de la descripción (p. ej. qué impide confirmar). */
+  details?: ReactNode
+  /** Deshabilita solo el botón de confirmar, no el que abre el diálogo. */
+  confirmDisabled?: boolean
   onConfirm: () => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -26,6 +30,8 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   confirmVariant = 'danger',
   disabled,
+  details,
+  confirmDisabled,
   onConfirm,
   open,
   onOpenChange,
@@ -40,9 +46,10 @@ export function ConfirmDialog({
           <AlertDialog.Description className="mt-2 text-sm leading-relaxed text-wa-muted dark:text-wa-muted-dark">
             {description}
           </AlertDialog.Description>
+          {details}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild><Button variant="ghost">{cancelLabel}</Button></AlertDialog.Cancel>
-            <AlertDialog.Action asChild><Button variant={confirmVariant} onClick={onConfirm}>{confirmLabel}</Button></AlertDialog.Action>
+            <AlertDialog.Action asChild><Button variant={confirmVariant} onClick={onConfirm} disabled={confirmDisabled}>{confirmLabel}</Button></AlertDialog.Action>
           </div>
         </AlertDialog.Content>
       </AlertDialog.Portal>

@@ -13,6 +13,7 @@ from app.modules.catalogs.errors import (
     ServicePackageAlreadyExistsError,
     TagAlreadyExistsError,
 )
+from app.modules.catalogs.policies import USAGE_ITEMS
 from app.modules.catalogs.queries import PACKAGE_COLUMNS, packages_by_service_stmt
 
 
@@ -130,12 +131,17 @@ async def service_origin(service_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-async def count_templates_for_service(name: str) -> int:
-    """Las plantillas apuntan al servicio por nombre con ``ON DELETE RESTRICT``."""
+async def templates_for_service(name: str) -> tuple[int, list[tuple[int, str]]]:
+    """Las plantillas apuntan al servicio por nombre con ``ON DELETE RESTRICT``:
+    cuántas son y las primeras por nombre."""
+    condition = MessageTemplate.service == name
     async with session_scope() as session:
-        return await session.scalar(
-            select(func.count()).select_from(MessageTemplate).where(MessageTemplate.service == name)
-        ) or 0
+        total = await session.scalar(select(func.count()).select_from(MessageTemplate).where(condition)) or 0
+        rows = (await session.execute(
+            select(MessageTemplate.id, MessageTemplate.name).where(condition)
+            .order_by(MessageTemplate.name).limit(USAGE_ITEMS)
+        )).all() if total else []
+    return total, [(row.id, row.name) for row in rows]
 
 
 async def delete_lead_service(service_id: int) -> None:

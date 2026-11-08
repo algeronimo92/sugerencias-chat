@@ -1,13 +1,13 @@
-import { Database, Loader2, Lock, PencilLine, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Database, Loader2, Lock, PencilLine, Plus, Sparkles } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { CatalogPanel } from '../../../shared/ui/CatalogPanel'
-import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCreateLeadService, useDeleteLeadService, useLeadServices, useUpdateLeadService } from '../hooks/useLeadServices'
+import { useCreateLeadService, useLeadServices, useUpdateLeadService } from '../hooks/useLeadServices'
 import type { LeadService } from '../types'
+import { DeleteServiceButton } from './DeleteServiceButton'
 import { ErpSyncCard } from './ErpSyncCard'
 import { ServicePackagesEditor } from './ServicePackagesEditor'
 
@@ -69,34 +69,6 @@ function OriginFilter({ value, counts, onChange }: { value: Origin; counts: Reco
         </button>
       ))}
     </div>
-  )
-}
-
-/** Solo para lo cargado a mano: un servicio creado por error ya no queda para
- *  siempre en el listado. Si algo lo usa, el backend no lo borra y dice qué lo
- *  usa; para eso está desactivarlo. */
-function DeleteServiceButton({ service }: { service: LeadService }) {
-  const deleteService = useDeleteLeadService()
-  function handleDelete() {
-    deleteService.mutate(service.id, {
-      onSuccess: () => toast.success(`"${service.name}" eliminado`),
-      onError: err => toast.error(extractErrorMessage(err), { duration: 8000 }),
-    })
-  }
-  return (
-    <ConfirmDialog
-      title={`¿Eliminar "${service.name}"?`}
-      description="Se borra junto con sus paquetes y no se puede deshacer. Si ya lo usa algún lead, venta, plantilla, automatización o documento de la IA, no se elimina: en ese caso desactívalo."
-      confirmLabel="Eliminar"
-      disabled={deleteService.isPending}
-      onConfirm={handleDelete}
-    >
-      {/* Solo ícono: la fila ya tiene Guardar y Desactivar, y con un tercer
-          botón con texto los campos del servicio quedaban demasiado angostos. */}
-      <Button variant="ghost" size="sm" className="h-11 w-11 shrink-0 px-0 text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40 sm:h-9 sm:w-9" aria-label={`Eliminar ${service.name}`} title="Eliminar servicio">
-        {deleteService.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
-      </Button>
-    </ConfirmDialog>
   )
 }
 
