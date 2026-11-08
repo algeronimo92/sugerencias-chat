@@ -1,15 +1,14 @@
-"""Búsqueda por significado en el conocimiento del negocio.
+"""Búsqueda por significado en el conocimiento del negocio (pgvector).
 
 La búsqueda por palabras (``knowledge_search``) no relaciona "tengo la cara
 caída" con una ficha que dice "flacidez"; los embeddings sí. Las dos se
 combinan con RRF en el armado del contexto del copiloto.
 
-Sin pgvector: la imagen de PostgreSQL de producción no trae la extensión, y un
-negocio tiene a lo sumo unos miles de fragmentos (200 documentos). Los
-vectores viven en ``knowledge_chunks.embedding`` y la similitud se calcula acá
-contra una matriz en memoria por schema, que se recarga solo cuando cambian
-los fragmentos. Si el corpus creciera a cientos de miles, esto se reemplaza
-por pgvector sin tocar a quien llama.
+La similitud se calcula en PostgreSQL, en la tabla del schema del negocio que
+pide la sugerencia: el backend no guarda vectores en memoria (con un schema
+por empresa, eso crecería con cada empresa) y la búsqueda de una clínica nunca
+toca los vectores de otra. Sin índice: recorrido exacto, que con unos miles de
+fragmentos tarda milisegundos y no pierde resultados al filtrar por servicio.
 
 Los vectores se calculan tarde, no al guardar: guardar un documento no depende
 de que la API de IA responda, y el mismo camino completa lo que falta después
@@ -19,42 +18,42 @@ de otro modelo no se comparan; se recalculan).
 
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass
-
-import numpy as np
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import or_, select, text, update
 
 from app.db.models.ai import KnowledgeChunk, KnowledgeDocument
 from app.db.uow import session_scope
 from app.integrations.llm.embeddings import EmbeddingClient
-
-logger = logging.getLogger(__name__)
 
 # Tope por sugerencia: cubre de una vez la biblioteca de plantillas (unos
 # 150 fragmentos) y acota la demora si alguien importa 200 documentos juntos;
 # lo que quede se completa en las siguientes.
 MAX_EMBED_PER_CALL = 200
 
-
-@dataclass
-class _Index:
-    version: tuple
-    ids: list[str]
-    service_ids: np.ndarray
-    matrix: np.ndarray
-
-
-# Por schema y modelo de embeddings. Cada proceso tiene la suya; la versión
-# (cuántos fragmentos tienen vector y el último cambio) detecta lo que otro
-# proceso escribió.
-_indexes: dict[tuple[str, str], _Index] = {}
+# ``<=>`` es la distancia coseno; los vectores llegan normalizados, así que
+# 1 - distancia es la similitud. El vector de la consulta viaja como texto
+# ('[0.1,...]') y se convierte acá: asyncpg no conoce el tipo ``vector``.
+_SEARCH_SQL = text(
+    """
+    SELECT c.id, 1 - (c.embedding <=> CAST(CAST(:query AS text) AS vector)) AS similarity
+    FROM knowledge_chunks AS c
+    JOIN knowledge_documents AS d ON d.id = c.document_id
+    WHERE c.embedding_model = :spec
+      AND c.embedding IS NOT NULL
+      AND (CAST(:service_id AS integer) IS NULL OR d.service_id = CAST(:service_id AS integer))
+    ORDER BY c.embedding <=> CAST(CAST(:query AS text) AS vector), c.id
+    LIMIT :top_k
+    """
+)
 
 
 def embedding_text(title: str, content: str) -> str:
     """El título va con el fragmento: un párrafo de la ficha de Botox que no
     repite "Botox" igual tiene que quedar cerca de una pregunta por Botox."""
     return f"{title}\n\n{content}"
+
+
+def _literal(vector: list[float]) -> str:
+    return "[" + ",".join(repr(float(value)) for value in vector) + "]"
 
 
 async def ensure_embeddings(client: EmbeddingClient) -> int:
@@ -81,48 +80,13 @@ async def ensure_embeddings(client: EmbeddingClient) -> int:
     return len(pending)
 
 
-async def _load_index(spec: str) -> _Index | None:
-    async with session_scope() as session:
-        schema, count, last_change = (await session.execute(
-            select(func.current_schema(), func.count(), func.max(KnowledgeChunk.updated_at))
-            .select_from(KnowledgeChunk)
-            .where(KnowledgeChunk.embedding_model == spec)
-        )).one()
-        if not count:
-            return None
-        key, version = (schema, spec), (count, last_change)
-        cached = _indexes.get(key)
-        if cached is not None and cached.version == version:
-            return cached
-        rows = (await session.execute(
-            select(KnowledgeChunk.id, KnowledgeDocument.service_id, KnowledgeChunk.embedding)
-            .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
-            .where(KnowledgeChunk.embedding_model == spec)
-        )).all()
-    index = _Index(
-        version=version,
-        ids=[str(row[0]) for row in rows],
-        service_ids=np.array([row[1] if row[1] is not None else -1 for row in rows], dtype=np.int64),
-        matrix=np.array([row[2] for row in rows], dtype=np.float32),
-    )
-    _indexes[key] = index
-    return index
-
-
 async def vector_search(
     query_vector: list[float], spec: str, top_k: int, service_id: int | None = None,
 ) -> list[tuple[str, float]]:
-    """``[(chunk_id, similitud)]`` de mayor a menor. Los vectores vienen
-    normalizados: el producto punto es la similitud coseno."""
-    index = await _load_index(spec)
-    if index is None:
-        return []
-    scores = index.matrix @ np.asarray(query_vector, dtype=np.float32)
-    if service_id is not None:
-        scores = np.where(index.service_ids == service_id, scores, -np.inf)
-    count = min(top_k, int(np.isfinite(scores).sum()))
-    if count <= 0:
-        return []
-    best = np.argpartition(-scores, count - 1)[:count]
-    best = best[np.argsort(-scores[best])]
-    return [(index.ids[i], float(scores[i])) for i in best]
+    """``[(chunk_id, similitud)]`` de mayor a menor, solo entre los vectores
+    del mismo modelo que el de la consulta."""
+    async with session_scope() as session:
+        rows = (await session.execute(_SEARCH_SQL, {
+            "query": _literal(query_vector), "spec": spec, "service_id": service_id, "top_k": top_k,
+        })).all()
+    return [(str(chunk_id), float(similarity)) for chunk_id, similarity in rows]

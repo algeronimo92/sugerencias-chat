@@ -2,8 +2,9 @@
 
 from datetime import datetime
 from typing import Any
-from sqlalchemy import REAL, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, func, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -135,13 +136,11 @@ class KnowledgeChunk(Base):
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict, server_default="{}"
     )
-    # Vector para la búsqueda por significado y qué lo generó
-    # (``proveedor:modelo@dimensiones``). Un arreglo y no pgvector: la imagen de
-    # PostgreSQL de producción no trae la extensión y con unos miles de
-    # fragmentos por negocio la similitud se calcula en el backend en
-    # milisegundos (ver ``knowledge_vectors``). Vacío hasta que la primera
-    # sugerencia después de guardar el documento lo calcula.
-    embedding: Mapped[list[float] | None] = mapped_column(ARRAY(REAL))
+    # Vector para la búsqueda por significado (pgvector) y qué lo generó
+    # (``proveedor:modelo@dimensiones``). Vacío hasta que la primera sugerencia
+    # después de guardar el documento lo calcula (ver ``knowledge_vectors``).
+    # Las dimensiones son las de ``app.integrations.llm.embeddings.DIMENSIONS``.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
     embedding_model: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

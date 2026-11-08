@@ -56,7 +56,11 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16.14-alpine
+        # Con pgvector, como la base de producción (db/Dockerfile). Es la imagen
+        # oficial de pgvector (Debian): para correr migraciones y tests el
+        # sistema base da igual; la imagen alpine que va a producción se
+        # construye y se ensaya en docker-build-check.
+        image: pgvector/pgvector:0.8.7-pg16
         env:
           POSTGRES_DB: app
           POSTGRES_USER: app
@@ -147,6 +151,13 @@ jobs:
         run: |
           docker rm -f backend frontend 2>/dev/null || true
           docker network rm ci-net 2>/dev/null || true
+      # La imagen de la base (PostgreSQL + pgvector) se construye recién en el
+      # servidor, al desplegar, y reemplaza a la que tiene los datos. Acá se
+      # ensaya ese reemplazo completo antes del merge: datos creados con la
+      # imagen anterior, la nueva arrancando sobre el mismo volumen, pgvector
+      # disponible y los índices de texto intactos (amcheck).
+      - name: Database image upgrade rehearsal
+        run: scripts/ci-db-upgrade-rehearsal.sh
 
   # Un config de monitoreo roto no rompe la app, así que nadie se entera hasta
   # que hace falta una alerta que ya no existe. Se valida acá, contra las
@@ -262,16 +273,18 @@ jobs:
             # trabajo, para que un corte aquí deje el repositorio todavía en
             # $PREVIOUS, igual que el resto de comprobaciones previas.
             git fetch origin main
-            PG_NUEVO=$(git show origin/main:compose.db.yml \
-              | sed -n 's/^[[:space:]]*image:[[:space:]]*postgres:\([0-9]\{1,\}\).*/\1/p' \
+            # La versión la fija el FROM de db/Dockerfile (PostgreSQL oficial +
+            # pgvector), que es lo que compose.db.yml construye.
+            PG_NUEVO=$(git show origin/main:db/Dockerfile \
+              | sed -n 's/^FROM[[:space:]]\{1,\}postgres:\([0-9]\{1,\}\).*/\1/p' \
               | head -1)
             # Falla cerrado si el pin dejó de ser legible —una variable, otro
             # formato—, que es justo cuando conviene que alguien mire. El `head`
             # final también garantiza salida 0: con un `grep` pelado, `set -e`
             # mataría el script en esta asignación y sin ningún mensaje.
             if [ -z "$PG_NUEVO" ]; then
-              echo "ERROR: no se pudo leer la versión de postgres en compose.db.yml." >&2
-              echo "Se esperaba una línea 'image: postgres:<mayor>...'. Si cambió" >&2
+              echo "ERROR: no se pudo leer la versión de postgres en db/Dockerfile." >&2
+              echo "Se esperaba una línea 'FROM postgres:<mayor>...'. Si cambió" >&2
               echo "el formato, hay que actualizar esta comprobación en ci-cd.yml." >&2
               exit 1
             fi
@@ -290,7 +303,7 @@ jobs:
                 | cut -d. -f1 | tr -dc '0-9')
               if [ -z "$PG_VIVO" ]; then
                 PG_VIVO=$(docker inspect -f '{{.Config.Image}}' "$PG_CID" 2>/dev/null \
-                  | sed -n 's/^postgres:\([0-9]\{1,\}\).*/\1/p' | head -1)
+                  | sed -n 's/^\(cliniventas-\)\{0,1\}postgres:\([0-9]\{1,\}\).*/\2/p' | head -1)
               fi
             fi
 
@@ -440,7 +453,30 @@ jobs:
             # Sin ella, levantar la aplicación falla con "network declared as
             # external, but could not be found". Es idempotente: si ya está
             # arriba, no hace nada.
-            if $COMPOSE_DB up -d && ./scripts/deploy-bluegreen.sh; then
+            # La imagen de la base (db/Dockerfile) se construye acá y solo cuando
+            # su tag todavía no existe en el servidor: es el único momento en que
+            # este deploy reemplaza el contenedor que tiene los datos. Antes de
+            # eso, un respaldo; y se construye antes del `up` para que el corte
+            # dure lo que tarda en reiniciar PostgreSQL, no lo que tarda en
+            # compilar pgvector.
+            DB_IMAGE=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(cliniventas-postgres:[^[:space:]]*\).*/\1/p' compose.db.yml | head -1)
+            if [ -z "$DB_IMAGE" ]; then
+              echo "ERROR: compose.db.yml no tiene 'image: cliniventas-postgres:<tag>'." >&2
+              exit 1
+            fi
+            if ! docker image inspect "$DB_IMAGE" >/dev/null 2>&1; then
+              echo "AVISO: imagen de base nueva ($DB_IMAGE): respaldo, construcción y recreación de PostgreSQL."
+              if [ -n "$PG_CID" ]; then
+                ./scripts/db-backup.sh
+              fi
+              $COMPOSE_DB build postgres
+            fi
+
+            # --wait: las extensiones y las migraciones necesitan la base ya
+            # aceptando conexiones, no solo el contenedor arrancado.
+            # db-extensions.sh crea con el administrador de la base lo que el
+            # usuario de la aplicación no puede (pgvector); es idempotente.
+            if $COMPOSE_DB up -d --wait && ./scripts/db-extensions.sh && ./scripts/deploy-bluegreen.sh; then
               echo "Despliegue verificado"
 
               # Monitoreo. Va DESPUÉS de que la app quedó servida y dentro de
