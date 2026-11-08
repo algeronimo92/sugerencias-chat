@@ -162,7 +162,7 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
         current["name"], current["flow_definition"], current_rule_id=rule_id,
     )
     if validated["flow_definition"] == current["published_flow_definition"]:
-        raise InvalidAutomation("No hay cambios pendientes para publicar")
+        raise InvalidAutomation("No hay cambios para publicar: esta versión ya está publicada.")
     rules = automation_ports().rules
     async with unit_of_work():
         await rules.publish(rule_id, validated, version=current["flow_version"] + 1, now=_now())
@@ -293,8 +293,7 @@ async def resume_automation_execution(execution_id: int) -> dict | None:
             lead = await fetch_lead_raw(execution.lead_id)
             if lead is not None and lead.get("automatizacion_pausada"):
                 raise AutomationConflict(
-                    "Este chat tiene la automatización pausada: reanúdala con el botón "
-                    "del bot en la cabecera para que el flujo siga."
+                    "Este chat tiene la automatización pausada: reanúdala con el botón del bot, arriba en el chat, para que el flujo siga."
                 )
         if not await executions.resume(execution_id, _now()):
             return None
@@ -327,13 +326,13 @@ async def start_manual_flow_execution(
     """
     rule = await automation_ports().rules.get(rule_id)
     if rule is None:
-        raise InvalidAutomation("Flujo no encontrado")
+        raise InvalidAutomation("Este flujo ya no existe.")
     if rule["builder_mode"] != AutomationBuilderMode.VISUAL or rule["trigger_type"] != AutomationTrigger.MANUAL:
-        raise InvalidAutomation("La regla no es un flujo de inicio manual")
+        raise InvalidAutomation("Este flujo no se puede iniciar desde el chat: su disparador no es «Inicio manual (vendedor)».")
     if not rule["is_active"]:
-        raise InvalidAutomation("Publica y activa el flujo antes de iniciarlo")
+        raise InvalidAutomation("Este flujo está pausado o todavía no se publicó, así que no se puede iniciar.")
     if not is_admin and not rule["visible_to_sellers"]:
-        raise InvalidAutomation("Este flujo no está disponible para vendedores")
+        raise InvalidAutomation("Este flujo no está disponible para vendedores. Un administrador puede activarlo con «Visible para vendedores».")
 
     event_key = f"manual:{uuid4()}"
     try:
@@ -348,15 +347,14 @@ async def start_manual_flow_execution(
         )
     except ExecutionAlreadyRunning as exc:
         raise InvalidAutomation(
-            "Ya hay una ejecución de este flujo en curso para este lead. "
-            "Espera a que termine o cancélala antes de iniciar otra."
+            "Este flujo ya está en curso con este lead. Espera a que termine o cancélalo antes de iniciarlo otra vez."
         ) from exc
     if not created:
-        raise InvalidAutomation("No se pudo iniciar el flujo: verifica que el lead exista")
+        raise InvalidAutomation("No se pudo iniciar el flujo. Puede que este lead ya no exista; recarga la página.")
 
     executions = automation_ports().executions
     execution_id = await executions.find_by_event_key(rule_id, event_key)
     execution = await executions.view(execution_id) if execution_id else None
     if execution is None:
-        raise InvalidAutomation("No se pudo recuperar la ejecución iniciada")
+        raise InvalidAutomation("El flujo se inició, pero no se pudo mostrar. Recarga la página para verlo.")
     return execution

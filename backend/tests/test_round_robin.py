@@ -73,7 +73,7 @@ class TestRoundRobinTopology:
         # arreglar.
         flow["edges"] = [edge for edge in flow["edges"] if edge["source_handle"] != "out_3"]
         flow["nodes"] = [node for node in flow["nodes"] if node["id"] != "e_out_3"]
-        with pytest.raises(ValueError, match="salida del round robin"):
+        with pytest.raises(ValueError, match="le puede tocar el próximo lead"):
             validate_graph_topology(flow["nodes"], flow["edges"], "t")
 
     def test_rejects_two_connections_on_the_same_output(self):
@@ -81,7 +81,7 @@ class TestRoundRobinTopology:
         flow["edges"].append(
             {"id": "extra", "source": "rr", "target": "e_out_2", "source_handle": "out_1"}
         )
-        with pytest.raises(ValueError, match="salida del round robin"):
+        with pytest.raises(ValueError, match="le puede tocar el próximo lead"):
             validate_graph_topology(flow["nodes"], flow["edges"], "t")
 
 

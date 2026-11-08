@@ -116,7 +116,7 @@ def child_flow_payload(parent: Any, flow_rule_id: int) -> dict:
     ancestry = [int(item) for item in (payload.get("flow_ancestry") or [])]
     ancestry.append(parent.rule_id)
     if flow_rule_id in ancestry:
-        raise StepFailed("La invocación entre flujos contiene un ciclo")
+        raise StepFailed("Estos flujos se inician entre sí en círculo y se repetirían sin fin. Quita uno de los bloques «Iniciar otro flujo».")
     if len(ancestry) >= MAX_FLOW_INVOCATION_DEPTH:
         raise StepFailed("La cadena de flujos invocados es demasiado profunda")
     message_context = execution_message_context(parent)

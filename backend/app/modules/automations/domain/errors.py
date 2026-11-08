@@ -56,7 +56,7 @@ class AutomationConflict(Conflict, ValueError):
     code = "automation_conflict"
 
 
-MALFORMED_INPUT = "La configuración enviada tiene un formato inválido"
+MALFORMED_INPUT = "No se pudo leer lo que se guardó. Recarga la página e inténtalo de nuevo; si importaste un JSON, revísalo."
 
 
 def rejects_malformed_input(func):
