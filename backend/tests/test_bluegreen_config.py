@@ -419,6 +419,42 @@ def test_new_color_that_never_gets_healthy_is_taken_down(tmp_path) -> None:
     assert "no llegó a estar sano" in result.stderr
     verbs = [call.split("compose.bluegreen.yml ", 1)[-1]
              for call in (sandbox / "calls.txt").read_text(encoding="utf-8").splitlines()]
-    assert verbs.index("up -d") > verbs.index("build")
+    assert verbs.index("up -d --force-recreate") > verbs.index("build")
     assert verbs[-1] == "down --remove-orphans"
+    assert (sandbox / "active.yml").read_text(encoding="utf-8") == before
+
+
+
+def test_nginx_resolves_the_backend_on_every_request() -> None:
+    """Regresión del 2026-11-08: con `proxy_pass http://backend:8000`
+    literal, nginx resolvía `backend` una sola vez al arrancar. El frontend de
+    green quedó de un deploy fallido, el siguiente recreó backend y worker,
+    se intercambiaron las IPs y toda la API respondió 502."""
+    conf = "\n".join(
+        line.split("#", 1)[0]
+        for line in (ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8").splitlines()
+    )
+    assert "proxy_pass http://backend" not in conf
+    assert "resolver 127.0.0.11" in conf
+    assert "location = /api/health/ready" in conf
+
+
+@requires_bash
+def test_deploy_requires_the_api_to_answer_through_the_frontend(tmp_path) -> None:
+    """El frontend sirviendo index.html no alcanza: el 2026-11-08 `/`
+    respondía 200 y toda `/api` 502. healthy() tiene que pasar por nginx
+    hasta el backend antes de conmutar."""
+    sandbox = _sandbox(tmp_path)
+    before = (sandbox / "active.yml").read_text(encoding="utf-8")
+    curl_fake = (
+        'curl() { echo "curl ${@: -1}" >> calls.txt; '
+        'case "${@: -1}" in */api/health/ready) return 22;; *) return 0;; esac; }; '
+    )
+
+    result = _run_bash(sandbox, _fake_docker(sandbox) + curl_fake + "cmd_deploy")
+
+    assert result.returncode == 1
+    calls = (sandbox / "calls.txt").read_text(encoding="utf-8")
+    assert "curl http://127.0.0.1:8081/api/health/ready" in calls or "curl http://127.0.0.1:8082/api/health/ready" in calls
+    assert "no llegó a estar sano" in result.stderr
     assert (sandbox / "active.yml").read_text(encoding="utf-8") == before

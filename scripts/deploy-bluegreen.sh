@@ -95,7 +95,9 @@ healthy() {
     if $compose exec -T backend python -c \
          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=5)" \
          >/dev/null 2>&1 \
-       && curl -fsS -o /dev/null "http://127.0.0.1:$port/"        && worker_running "$color"; then
+       && curl -fsS -o /dev/null "http://127.0.0.1:$port/" \
+       && curl -fsS -o /dev/null "http://127.0.0.1:$port/api/health/ready" \
+       && worker_running "$color"; then
       return 0
     fi
     attempt=$((attempt + 1))
@@ -232,7 +234,10 @@ cmd_deploy() {
     exit 1
   fi
 
-  if ! $compose_target up -d; then
+  # --force-recreate: todo el color nuevo arranca de cero. Sin esto, un
+  # contenedor que quedó de un deploy anterior (el frontend del 2026-11-08) se
+  # reutiliza con el estado de entonces.
+  if ! $compose_target up -d --force-recreate; then
     echo "ERROR: $target no pudo levantarse. $active sigue sirviendo." >&2
     discard_target "$compose_target"
     exit 1
