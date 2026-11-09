@@ -4,7 +4,6 @@ import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopov
 import { VoiceRecorder } from '../../../shared/ui/VoiceRecorder'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { compressImage, uploadSizeError } from '../../../shared/utils/media'
-import { FlowPicker } from '../../automations/public/FlowPicker'
 import { availableNativeInteractives } from '../domain/nativeInteractive'
 import type { OutboundOf } from '../domain/outbound'
 import { useChatDraft } from '../draftStore'
@@ -564,8 +563,6 @@ export function ChatComposer({
               onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
             />
           )}
-
-          {!isRecordingAudio && <FlowPicker chatId={chat.chat_id} />}
 
           {!isRecordingAudio && (
             <div ref={slashPopoverRef} className="relative flex-1">

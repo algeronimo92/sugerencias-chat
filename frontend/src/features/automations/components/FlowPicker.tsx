@@ -13,6 +13,12 @@ interface Props {
  * Botón "Iniciar flujo" del chat: lista los flujos visuales de trigger
  * manual que el admin marcó visibles (o todos, si quien mira es admin) y
  * dispara uno sobre este lead puntual. Mismo patrón que TemplatePicker.
+ *
+ * Vive en la cabecera del hilo, junto al botón del bot, y no en la fila de
+ * composición: ahí estaba pegado a "Plantillas" con el mismo icono gris, a
+ * 36 px y sin nombre accesible (solo `title`, que no existe en táctil). Una
+ * admin lanzó un flujo creyendo que mandaba una plantilla. El popover abre
+ * hacia abajo y alineado a la derecha porque ahora cuelga de la cabecera.
  */
 export function FlowPicker({ chatId }: Props) {
   const [open, setOpen] = useState(false)
@@ -52,14 +58,19 @@ export function FlowPicker({ chatId }: Props) {
     <div ref={containerRef} className="relative">
       <button
         type="button"
+        aria-label="Iniciar un flujo para este lead"
+        aria-haspopup="menu"
+        aria-expanded={open}
         title="Iniciar un flujo automático para este lead"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark"
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${
+          open ? 'bg-black/5 text-wa-primary-strong dark:bg-white/5 dark:text-wa-primary' : 'text-wa-muted dark:text-wa-muted-dark'
+        }`}
       >
-        <Workflow className="h-4 w-4" />
+        <Workflow className="h-5 w-5" />
       </button>
       {open && (
-        <div className="absolute bottom-11 left-0 z-30 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
+        <div className="absolute right-0 top-12 z-30 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
           <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">
             Iniciar flujo
           </p>
