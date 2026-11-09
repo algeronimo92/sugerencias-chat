@@ -15,6 +15,9 @@ vi.mock('../../leads/public/LeadTagsPanel', () => ({ LeadTagsPanel: () => null }
 vi.mock('../../tasks/public/LeadTaskCard', () => ({ LeadTaskCard: () => null }))
 vi.mock('../../ai/public/LeadAnalysisAction', () => ({ LeadAnalysisAction: () => null }))
 vi.mock('../../appointments/public/LeadAppointmentAction', () => ({ LeadAppointmentAction: () => null }))
+// La ventana de 24 h la lee el panel para no ofrecer texto libre cuando no se puede enviar.
+let serviceWindow: { is_open: boolean; last_customer_message_at: string | null } | undefined
+vi.mock('../hooks/useCustomerServiceWindow', () => ({ useCustomerServiceWindow: () => ({ data: serviceWindow, isLoading: false }) }))
 
 const chat = { chat_id: 'lead-1', phone: '51999' } as unknown as Chat
 const savedByN8n: SuggestionResponse = {
@@ -78,6 +81,33 @@ describe('SuggestionPanel sin IA conectada', () => {
 
     expect(screen.getByRole('link', { name: 'Conectar en Integraciones' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument()
+  })
+})
+
+describe('SuggestionPanel con la ventana de 24 h cerrada', () => {
+  it('no ofrece generar y explica que solo salen plantillas', () => {
+    serviceWindow = { is_open: false, last_customer_message_at: '2026-11-01T10:00:00Z' }
+    renderPanel()
+
+    expect(screen.getByRole('status')).toHaveTextContent('solo puedes enviar una plantilla aprobada')
+    expect(screen.queryByRole('button', { name: /Genera/ })).not.toBeInTheDocument()
+    serviceWindow = undefined
+  })
+
+  it('con sugerencias viejas las muestra pero no deja pedir nuevas', () => {
+    serviceWindow = { is_open: false, last_customer_message_at: '2026-11-01T10:00:00Z' }
+    renderPanel({ data: { ...savedByN8n, analisis: 'Quiere el pack' }, isStale: true })
+
+    expect(screen.getByText('Quiere el pack')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Genera/ })).not.toBeInTheDocument()
+    serviceWindow = undefined
+  })
+
+  it('con la ventana abierta sí se puede generar', () => {
+    serviceWindow = { is_open: true, last_customer_message_at: '2026-11-09T10:00:00Z' }
+    renderPanel()
+    expect(screen.getByRole('button', { name: 'Genera sugerencias' })).toBeInTheDocument()
+    serviceWindow = undefined
   })
 })
 

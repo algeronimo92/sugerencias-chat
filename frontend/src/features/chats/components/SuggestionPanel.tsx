@@ -1,5 +1,6 @@
-import { AlertTriangle, ChevronDown, MessageSquareDot, Sparkles, TrendingUp } from 'lucide-react'
+import { AlertTriangle, ChevronDown, LockKeyhole, MessageSquareDot, Sparkles, TrendingUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ScheduledMessageCard } from './ScheduledMessageCard'
@@ -42,6 +43,9 @@ interface Props {
   /** Genera sugerencias a demanda; `force` pide otras ignorando lo guardado.
    * `instruction` es la indicación opcional del asesor para orientar a la IA. */
   onGenerate: (force?: boolean, instruction?: string) => void
+  /** El vendedor llevó una sugerencia al compositor (fuera de escritorio el
+   * panel tapa el chat: quien lo monta lo cierra). */
+  onUse?: () => void
 }
 
 // Plegar el copiloto es una preferencia de quien usa este navegador, no del
@@ -79,6 +83,10 @@ export function SuggestionPanel(props: Props) {
   const [instruction, setInstruction] = useState('')
   useEffect(() => setInstruction(''), [chat.chat_id])
   const [collapsed, toggleCollapsed] = useCollapsed()
+  // Con la ventana de 24 h cerrada solo salen plantillas aprobadas: generar
+  // texto libre gastaba IA en algo que no se podía enviar.
+  const { data: customerWindow } = useCustomerServiceWindow(chat.chat_id)
+  const windowClosed = customerWindow ? !customerWindow.is_open : false
 
   function generate(force: boolean) {
     props.onGenerate(force, instruction.trim() || undefined)
@@ -89,7 +97,7 @@ export function SuggestionPanel(props: Props) {
       <CopilotHeader
         collapsed={collapsed}
         onToggle={toggleCollapsed}
-        canRegenerate={Boolean(props.data) && !props.unavailable && !collapsed}
+        canRegenerate={Boolean(props.data) && !props.unavailable && !collapsed && !windowClosed}
         isGenerating={props.isGenerating}
         onRegenerate={() => generate(true)}
       />
@@ -97,7 +105,7 @@ export function SuggestionPanel(props: Props) {
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {!collapsed && (
           <section id="copiloto-ia" aria-label="Sugerencias con IA" className="space-y-3">
-            <CopilotBody {...props} instruction={instruction} onInstructionChange={setInstruction} onGenerate={generate} />
+            <CopilotBody {...props} instruction={instruction} onInstructionChange={setInstruction} onGenerate={generate} windowClosed={windowClosed} />
           </section>
         )}
 
@@ -160,6 +168,7 @@ type BodyProps = Omit<Props, 'onGenerate' | 'chat'> & {
   instruction: string
   onInstructionChange: (value: string) => void
   onGenerate: (force: boolean) => void
+  windowClosed: boolean
 }
 
 function CopilotBody(props: BodyProps) {
@@ -266,7 +275,8 @@ function CopilotError({ message, code, canConnect, retryable, onRetry }: {
 
 /** Sin sugerencias todavía: una tarjeta chica que invita a generarlas, sin
  *  gastar IA de entrada ni empujar la ficha del lead hacia abajo. */
-function EmptyCopilot({ instruction, onInstructionChange, onGenerate }: BodyProps) {
+function EmptyCopilot({ instruction, onInstructionChange, onGenerate, windowClosed }: BodyProps) {
+  if (windowClosed) return <WindowClosedNotice />
   return (
     <div className="space-y-2.5 rounded-xl border border-wa-border px-3 py-3 dark:border-wa-border-dark">
       <p className="text-sm text-wa-muted dark:text-wa-muted-dark">
@@ -281,13 +291,24 @@ function EmptyCopilot({ instruction, onInstructionChange, onGenerate }: BodyProp
   )
 }
 
-function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, instruction, onInstructionChange, onGenerate }: BodyProps & { data: SuggestionResponse }) {
+/** Sin ventana de 24 h abierta no se puede mandar texto libre: se dice qué
+ *  hacer en vez de ofrecer sugerencias que no se podrían enviar. */
+function WindowClosedNotice() {
+  return (
+    <div role="status" className="flex gap-2 rounded-xl border border-wa-border px-3 py-2.5 text-sm text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
+      <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p>Sin ventana de 24 h abierta solo puedes enviar una plantilla aprobada. Las sugerencias vuelven cuando el cliente escriba.</p>
+    </div>
+  )
+}
+
+function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, instruction, onInstructionChange, onGenerate, onUse, windowClosed }: BodyProps & { data: SuggestionResponse }) {
   const generatedLabel = generatedAt
     ? `${formatDayLabel(generatedAt).toLowerCase()} a las ${formatMessageTime(generatedAt)}`
     : null
   return (
     <>
-      <SuggestionInstructionBox value={instruction} onChange={onInstructionChange} disabled={isGenerating} />
+      {windowClosed ? <WindowClosedNotice /> : <SuggestionInstructionBox value={instruction} onChange={onInstructionChange} disabled={isGenerating} />}
 
       {/* Regeneración con datos en pantalla: aviso sutil, sin bloquear */}
       {isGenerating && (
@@ -302,7 +323,7 @@ function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, ins
         <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300">
           <MessageSquareDot className="h-4 w-4 shrink-0" aria-hidden="true" />
           <p className="min-w-0 flex-1">El cliente volvió a escribir después.</p>
-          <Button variant="secondary" size="sm" onClick={() => onGenerate(false)}>Genera nuevas</Button>
+          {!windowClosed && <Button variant="secondary" size="sm" onClick={() => onGenerate(false)}>Genera nuevas</Button>}
         </div>
       )}
 
@@ -316,7 +337,8 @@ function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, ins
         {generatedLabel && <span className="ml-auto text-[11px] text-wa-muted/80 dark:text-wa-muted-dark/80">{generatedLabel}</span>}
       </div>
 
-      {data.tipo_objecion && <Notice tone="amber" label="Objeción" text={data.tipo_objecion} />}
+      {/* `tipo_objecion` ya no viene en la respuesta (el analista lo guarda en
+          el lead): el aviso «Objeción» que había acá nunca se mostraba. */}
       {data.alerta && <Notice tone="red" label="Alerta" text={data.alerta} />}
 
       {/* El análisis es contexto, no acción: cerrado salvo que se pida. */}
@@ -334,7 +356,7 @@ function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, ins
         </h3>
         <div className="space-y-2.5">
           {data.sugerencias.map((s, i) => (
-            <SuggestionCard key={i} sugerencia={s} index={i} chatId={chat.chat_id} />
+            <SuggestionCard key={i} sugerencia={s} index={i} chatId={chat.chat_id} onUse={onUse} />
           ))}
           {data.sugerencias.length === 0 && (
             <p className="py-3 text-center text-sm text-wa-muted dark:text-wa-muted-dark">
@@ -348,7 +370,6 @@ function SuggestionResults({ chat, data, generatedAt, isStale, isGenerating, ins
 }
 
 const NOTICE_TONES = {
-  amber: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400',
   red: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400',
 } as const
 

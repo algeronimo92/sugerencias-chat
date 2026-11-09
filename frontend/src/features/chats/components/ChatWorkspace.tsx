@@ -270,6 +270,7 @@ export function ChatWorkspace() {
         errorCode={suggestionsError instanceof SuggestionError ? suggestionsError.code : null}
         unavailable={suggestionStatus?.unavailable ?? null}
         canConnect={isAdmin}
+        onUse={() => setIsSuggestionsOpen(false)}
         onGenerate={(force = false, instruction) =>
           generateSuggestionsMutation.mutate({
             chat_id: chat.chat_id,

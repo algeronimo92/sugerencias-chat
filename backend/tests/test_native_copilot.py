@@ -104,6 +104,7 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list], embedder=None):
         {"key": "calificado", "name": "Calificado", "kind": "open", "description": "Ya dijo qué quiere y para cuándo"},
     ]))
     monkeypatch.setattr(native_provider, "business_timezone", AsyncMock(return_value=ZoneInfo("America/Lima")))
+    monkeypatch.setattr(native_provider, "get_cached_suggestion", AsyncMock(return_value=json.loads(GOOD)))
     searched: list[str] = []
 
     async def search(query, top_k, service_id=None):
@@ -131,8 +132,8 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list], embedder=None):
     return NativeAiProvider(client_factory=factory, embedder_factory=lambda provider, key: embedder), clients, searched, steps, metadata
 
 
-async def _suggest(provider):
-    return await provider.suggest("lead-1", "51999", refresh=False, instruction="no dar descuento", job_id="job-1", context_revision="rev-1", tenant_context_token="tok")
+async def _suggest(provider, refresh=False):
+    return await provider.suggest("lead-1", "51999", refresh=refresh, instruction="no dar descuento", job_id="job-1", context_revision="rev-1", tenant_context_token="tok")
 
 
 async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(monkeypatch):
@@ -159,6 +160,9 @@ async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(m
     # Horas en la zona del negocio (Lima = UTC-5), en el historial y en "ahora".
     assert '"fecha": "2026-11-07T10:00-05:00"' in prompt and "-05:00" in prompt.split("Fecha y hora actual")[1][:60]
     assert '"origen": "Escribió desde un anuncio: Limpieza facial — Agenda tu cita"' in prompt
+    # Sin «Genera otras» no hay jugadas descartadas que mostrar.
+    assert "<descartadas>" not in prompt
+    assert '"description"' in json.dumps(client.requests[0].schema)
     # Primero los documentos del servicio de interés (sin coincidencias con la
     # conversación, sus fichas en orden), después la búsqueda general. El
     # servicio se busca sin la zona (« - Rostro» sería un NOT para Postgres).
@@ -172,6 +176,18 @@ async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(m
     assert metadata["knowledge_chunk_ids"] == ["s1", "c1"]
     assert (metadata["tokens_in"], metadata["tokens_out"]) == (100, 20)
     assert metadata["prompt_version"] == native_provider.PROMPT_VERSION
+
+
+async def test_asking_for_other_suggestions_shows_the_model_what_was_discarded(monkeypatch):
+    provider, clients, *_ = _world(monkeypatch, {"ai_gemini_api_key": "g-key"}, {"gemini:gemini-3.6-flash": [GOOD]})
+
+    await _suggest(provider, refresh=True)
+
+    [client] = clients.values()
+    prompt = client.requests[0].user
+    assert "<descartadas>" in prompt
+    assert prompt.index("<descartadas>") < prompt.index("<indicacion_vendedor>")
+    assert '{"tactica": "Cerrar con el pack", "texto": "Hola Ana, el pack x3 de Hollywood Peel - Rostro cuesta 400."}' in prompt
 
 
 async def test_invalid_json_gets_one_retry_then_the_fallback_model(monkeypatch):
