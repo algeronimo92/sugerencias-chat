@@ -4003,6 +4003,12 @@ export interface components {
              * @default false
              */
             rule_deleted: boolean;
+            /** Parent Execution Id */
+            parent_execution_id?: number | null;
+            /** Parent Rule Id */
+            parent_rule_id?: number | null;
+            /** Parent Rule Name */
+            parent_rule_name?: string | null;
             /** Lead Id */
             lead_id?: string | null;
             /** Lead Name */
@@ -5958,6 +5964,7 @@ export interface components {
             pinned_at?: string | null;
             /** Error Detail */
             error_detail?: string | null;
+            origin?: components["schemas"]["MessageOrigin"] | null;
         };
         /**
          * MessageDirection
@@ -5965,6 +5972,28 @@ export interface components {
          * @enum {string}
          */
         MessageDirection: "inbound" | "outbound";
+        /**
+         * MessageOrigin
+         * @description De dónde salió un mensaje del negocio (ver domain/origin.py).
+         *
+         *     ``user``: una persona desde la app; ``automation``: una ejecución de flujo
+         *     (``execution_id``); ``scheduled``: un programado, acreditado a quien lo
+         *     programó; ``echo``: salió del celular del negocio, no de la app. Los
+         *     mensajes del cliente no traen origen.
+         */
+        MessageOrigin: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "user" | "automation" | "scheduled" | "echo";
+            /** User Id */
+            user_id?: number | null;
+            /** User Name */
+            user_name?: string | null;
+            /** Execution Id */
+            execution_id?: number | null;
+        };
         /**
          * MessageOutboxStatus
          * @description Estado interno de un envío en ``wsp_messages.outbox_status``.

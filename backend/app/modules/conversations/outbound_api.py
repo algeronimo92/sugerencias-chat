@@ -16,6 +16,7 @@ from app.modules.media.ports.media_library_service import (get_media_asset)
 from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.platform.public import effective_country_code
 from app.modules.conversations.message_history import fetch_messages_to_forward, filter_existing_leads, fetch_reply_target
+from app.modules.conversations.message_origin import attach_origin, with_user_origin
 from app.modules.auth.public import get_current_user
 from app.modules.conversations.message_media import mediatype_from_content_type as _mediatype_from_content_type
 from app.modules.conversations.application.outbound import (
@@ -73,7 +74,7 @@ async def _enqueue_one(chat_id: str, item: dict, user: User, reply_to: dict | No
     """Encola un envío del vendedor. Una salida que Meta no acepta (tipo,
     forma o capacidad de la cuenta) se rechaza antes de crear nada."""
     [message] = await queue_messages(chat_id, [{**item, "reply_to": reply_to}], actor_user_id=user.id)
-    return message
+    return with_user_origin(message, user)
 
 
 @router.post("/{chat_id}/messages", response_model=Message)
@@ -207,7 +208,8 @@ async def send_template(
     user: User = Depends(get_current_user),
 ):
     try:
-        return await chat_messaging.send_template(chat_id, template_id, body.text, body.parameters, user.id)
+        sent = await chat_messaging.send_template(chat_id, template_id, body.text, body.parameters, user.id)
+        return [with_user_origin(message, user) for message in sent]
     except ChatMessagingError as exc:
         raise HTTPException(TEMPLATE_ERROR_STATUS[type(exc)], str(exc)) from exc
 
@@ -310,9 +312,9 @@ async def forward_messages(
 
 @router.post("/{chat_id}/messages/{message_id}/retry", response_model=Message)
 async def retry_message(chat_id: str, message_id: int):
-    return await retry_failed_message(chat_id, message_id)
+    return await attach_origin(await retry_failed_message(chat_id, message_id))
 
 
 @router.post("/{chat_id}/messages/{message_id}/discard", response_model=Message)
 async def discard_message(chat_id: str, message_id: int):
-    return await discard_failed_message(chat_id, message_id)
+    return await attach_origin(await discard_failed_message(chat_id, message_id))
