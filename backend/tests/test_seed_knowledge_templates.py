@@ -24,7 +24,7 @@ def test_the_library_is_publishable_as_is():
     templates = load_library()
     titles = [template["title"] for template in templates]
 
-    assert len(templates) == 19 and len(set(titles)) == len(titles)
+    assert len(templates) == 20 and len(set(titles)) == len(titles)
     assert sum(template["document_type"] == "ficha" for template in templates) == 16
     for template in templates:
         assert template["document_type"] in DOCUMENT_TYPES
@@ -32,6 +32,16 @@ def test_the_library_is_publishable_as_is():
         # Plantilla de plataforma: ni el nombre del negocio de origen, ni la
         # navegación del vault, ni las notas internas de validación.
         for leftover in ("DermicaPro", "[[", "[VALIDAR", "[COMPLETAR", "[CONFIRMAR", "[DEFINIR"):
+            assert leftover not in template["content"], (template["title"], leftover)
+        # Ni los datos de la clínica de origen (dirección, medios de pago,
+        # montos), ni referencias a documentos del vault que acá no existen,
+        # ni nombres de autores de ventas: lo decidió el panel del 2026-11-09.
+        for leftover in (
+            "Trujillo", "maps.app", "Yape", "Plin", "S/ 50", "S/ 80", "S/ 160", "S/ 590", "S/ 400",
+            "decisiones-agente", "funnel-estados-leads", "formatos-mensaje", "fichas-procedimientos",
+            "playbook-objeciones", "mapa-dolores-soluciones", "herramienta 'precios'",
+            "Hormozi", "Miner", "Voss", "Belfort", "Cardone", "Ziglar", "Sandler", "Rackham",
+        ):
             assert leftover not in template["content"], (template["title"], leftover)
 
 

@@ -4,7 +4,7 @@ document_type: faq
 ---
 
 > Índice inverso para el agente: el lead pregunta por SU problema, no por el nombre del tratamiento. Cada entrada está escrita como pregunta el lead (con sinónimos), con la pregunta de afinación y la solución.
-> **Regla médica:** el agente SUGIERE el tratamiento que aplica y hace el filtro de contraindicaciones (fichas-procedimientos); el diagnóstico firme lo da SIEMPRE la especialista en la evaluación. Nunca prometer resultados médicos por chat.
+> **Regla médica:** el agente SUGIERE el tratamiento que aplica y hace el filtro de contraindicaciones (están en la ficha de cada servicio); el diagnóstico firme lo da SIEMPRE la especialista en la evaluación. Nunca prometer resultados médicos por chat.
 
 ## ROSTRO Y PIEL
 
@@ -64,7 +64,7 @@ document_type: faq
 ### "Tengo mucho vello" / "me quiero depilar" / "vellos encarnados" / "me irrita la cera o rasurarme" / "no tengo tiempo para depilarme cada semana"
 - **Afinar:** "¿Qué zonas te gustaría? ¿Y cómo te depilas ahora?"
 - **Solución:** **Depilación láser tridiodo** (casi todo tipo de piel, incluidas morenas; ideal para foliculitis y vello encarnado).
-- **Venta:** costo recurrente de cera vs. pack de 6 al precio de 4 (2 sesiones gratis).
+- **Venta:** costo recurrente de cera vs. el pack del catálogo (sale menos por sesión).
 
 ### "Se me nota el bigotito" / "tengo vello en la cara" (mujer)
 - **Solución:** **Depilación láser de bozo, patillas o rostro completo** — tickets de entrada bajísimos, fáciles de cerrar. Existe combo bozo + bikini.
@@ -117,7 +117,7 @@ document_type: faq
 - **Venta:** tratarlo con total naturalidad; los hombres suelen llegar con más vergüenza de preguntar.
 
 ### "Acabo de ser mamá y quiero recuperarme"
-- **⚠️ Filtro primero:** si está en **lactancia**, la mayoría de tratamientos está contraindicada (fichas-procedimientos). Compatible mientras tanto: limpieza facial (confirmar con la especialista).
+- **⚠️ Filtro primero:** si está en **lactancia**, la mayoría de tratamientos está contraindicada (ver la ficha de cada servicio). Compatible mientras tanto: limpieza facial (confirmar con la especialista).
 - **Acción:** validar su deseo con calidez, explicar el porqué de la espera (cuidarla a ella y al bebé = autoridad y confianza), **registrar fecha estimada de recontacto** — es una venta futura casi segura si se maneja bien.
 
 ### "Quiero verme bien para mi boda / evento"
@@ -128,8 +128,8 @@ document_type: faq
 - **Solución:** **Plan pareja de limpieza** (las dos juntas, precio en catálogo) · o una limpieza/HP individual como regalo.
 
 ### "Nunca me he hecho nada, no sé por dónde empezar" / "solo quiero saber qué necesito"
-- **Solución:** **Consulta de valoración (S/ 50)** — la especialista revisa su caso y le dice exactamente qué necesita, sin compromiso; si se trata, se descuenta. O la **Limpieza facial** como experiencia de entrada (y la especialista la evalúa ahí mismo).
-- **Venta:** cero presión (Miner): "empieza por la valoración, la especialista te dice qué le haría a tu piel, y si decides tratarte esos S/ 50 se descuentan — no pierdes nada".
+- **Solución:** la **evaluación con la especialista** (gratuita o consulta de valoración, según la política del negocio en el Perfil): revisa su caso y le dice exactamente qué necesita, sin compromiso. O la **Limpieza facial** como experiencia de entrada (y la especialista la evalúa ahí mismo).
+- **Venta:** cero presión: "empieza por la evaluación, la especialista te dice qué le haría a tu piel, y después decides". Si la consulta se cobra y se descuenta del tratamiento, decirlo: "no pierdes nada".
 
 ### "Sudo mucho de las axilas" / "bruxismo"
 - **Solución:** Botox según evaluación de la especialista → **derivar** (no cotizar por chat; la ficha lo marca "según evaluación").
