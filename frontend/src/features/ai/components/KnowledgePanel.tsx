@@ -1,5 +1,6 @@
-import { BookText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -8,6 +9,7 @@ import { Input, Select, Textarea, labelClass } from '../../../shared/ui/Input'
 import { ServiceChecklist } from './ServiceChecklist'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useLeadServices } from '../../catalogs/public/useLeadServices'
+import { familyMembers } from '../domain/serviceFamilies'
 import {
   useDeleteKnowledgeDocument,
   useImportKnowledgePdf,
@@ -64,14 +66,15 @@ interface FormValues { title: string; content: string; documentType: string; ser
 
 interface EditorProps {
   documentId: string | null
-  defaultServiceId: number | null
+  /** Con qué servicios nace un documento nuevo (la familia del servicio desde el que se llegó). */
+  defaultServiceIds: number[]
   dirtyRef: MutableRefObject<boolean>
   onSaved: (id: string) => void
   onCancel: () => void
   onDeleted: () => void
 }
 
-function KnowledgeEditor({ documentId, defaultServiceId, ...rest }: EditorProps) {
+function KnowledgeEditor({ documentId, defaultServiceIds, ...rest }: EditorProps) {
   const { data, isLoading } = useKnowledgeDocument(documentId)
   if (documentId && (isLoading || !data)) return <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Cargando documento…</p>
   // El formulario arranca con los valores del documento ya puestos: si los
@@ -84,14 +87,14 @@ function KnowledgeEditor({ documentId, defaultServiceId, ...rest }: EditorProps)
         title: data?.title ?? '',
         content: data?.content ?? '',
         documentType: data?.document_type ?? '',
-        serviceIds: data ? data.service_ids : (defaultServiceId ? [defaultServiceId] : []),
+        serviceIds: data ? data.service_ids : defaultServiceIds,
       }}
       {...rest}
     />
   )
 }
 
-function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDeleted }: Omit<EditorProps, 'defaultServiceId'> & { initial: FormValues }) {
+function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDeleted }: Omit<EditorProps, 'defaultServiceIds'> & { initial: FormValues }) {
   const formId = useId()
   const fileInput = useRef<HTMLInputElement>(null)
   const services = useServiceNames()
@@ -171,7 +174,7 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
       <label htmlFor={`${formId}-title`} className={labelClass}>Título</label>
       <Input id={`${formId}-title`} value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Ficha: limpieza facial profunda" required />
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
         <div>
           <label htmlFor={`${formId}-type`} className={labelClass}>Tipo</label>
           <Select id={`${formId}-type`} aria-label="Tipo" value={documentType} onValueChange={setDocumentType}>
@@ -179,8 +182,6 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
             {DOCUMENT_TYPES.map(type => <option key={type.key} value={type.key}>{type.label}</option>)}
           </Select>
         </div>
-      </div>
-      <div className="mt-4">
         <ServiceChecklist services={[...services.values()]} selected={serviceIds} onChange={setServiceIds} />
       </div>
 
@@ -293,11 +294,12 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
 
   const visible = documents.filter(document => matchesFilter(document, filter))
   const filterServiceId = filter !== ALL && filter !== GENERAL ? Number(filter) : null
-  // El servicio filtrado aparece aunque todavía no tenga documentos.
-  const filterOptions = [...new Set([
-    ...documents.flatMap(document => document.service_ids),
-    ...(filterServiceId ? [filterServiceId] : []),
-  ])]
+  // Todos los servicios activos (también los que aún no tienen documentos:
+  // así se ve cuáles faltan) más los inactivos que todavía tengan alguno.
+  const withDocuments = new Set(documents.flatMap(document => document.service_ids))
+  const filterOptions = [...services.values()]
+    .filter(service => service.is_active !== false || withDocuments.has(service.id) || service.id === filterServiceId)
+    .sort((left, right) => left.name.localeCompare(right.name, 'es'))
   const serviceNamesOf = (ids: number[]) => (ids.length ? ids.map(id => services.get(id)?.name ?? 'Servicio').join(', ') : GENERAL_LABEL)
 
   return (
@@ -305,6 +307,11 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
     // (411 px) y en un teléfono de 390 "Nuevo" y los campos quedaban cortados.
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
       <div className={`${panelClass} min-w-0`}>
+        {initialServiceId && (
+          <Link to="/catalogs" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-wa-primary-strong hover:underline dark:text-wa-primary">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />Volver a Catálogos
+          </Link>
+        )}
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Documentos</h2>
           <div className="flex items-center gap-1.5">
@@ -322,8 +329,8 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <Select aria-label="Filtrar por servicio" value={filter} onValueChange={setFilter}>
             <option value={ALL}>Todos los documentos</option>
             <option value={GENERAL}>{GENERAL_LABEL}</option>
-            {filterOptions.map(id => (
-              <option key={id} value={String(id)}>{services.get(id)?.name ?? `Servicio ${id}`}</option>
+            {filterOptions.map(service => (
+              <option key={service.id} value={String(service.id)}>{service.name}{withDocuments.has(service.id) ? '' : ' · sin documentos'}</option>
             ))}
           </Select>
         </div>
@@ -350,7 +357,7 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <KnowledgeEditor
             key={`${editing}:${formKey}`}
             documentId={editing === 'new' ? null : editing}
-            defaultServiceId={editing === 'new' ? filterServiceId : null}
+            defaultServiceIds={editing === 'new' && filterServiceId ? familyMembers([...services.values()], filterServiceId) : []}
             dirtyRef={dirtyRef}
             onSaved={id => goTo(id)}
             onCancel={() => requestEditing(editing === 'new' ? null : editing)}

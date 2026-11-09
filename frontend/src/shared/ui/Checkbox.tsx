@@ -7,7 +7,7 @@ interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'typ
   onCheckedChange?: (checked: boolean) => void
 }
 
-export function Checkbox({ checked, defaultChecked, onChange, onCheckedChange, className, disabled, required, name, id }: CheckboxProps) {
+export function Checkbox({ checked, defaultChecked, onChange, onCheckedChange, className, disabled, required, name, id, 'aria-label': ariaLabel }: CheckboxProps) {
   function handleCheckedChange(next: boolean | 'indeterminate') {
     const nextChecked = next === true
     onCheckedChange?.(nextChecked)
@@ -21,6 +21,7 @@ export function Checkbox({ checked, defaultChecked, onChange, onCheckedChange, c
     <CheckboxPrimitive.Root
       id={id}
       name={name}
+      aria-label={ariaLabel}
       checked={checked}
       defaultChecked={defaultChecked}
       onCheckedChange={handleCheckedChange}

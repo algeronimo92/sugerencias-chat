@@ -14,7 +14,9 @@ export function ServiceKnowledgeLink({ serviceId, serviceName }: { serviceId: nu
     <Link
       to={`/ai-assistant?tab=knowledge&servicio=${serviceId}`}
       aria-label={`${count ? 'Ver' : 'Subir'} fichas para la IA de ${serviceName}`}
-      className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-wa-primary-strong hover:underline dark:text-wa-primary"
+      // 24 px de alto para tocarlo bien; verde solo donde ya hay fichas, para
+      // que 56 enlaces iguales no compitan con los que importan.
+      className={`mt-2 inline-flex min-h-6 items-center gap-1.5 text-xs font-medium hover:underline ${count ? 'text-wa-primary-strong dark:text-wa-primary' : 'text-wa-muted dark:text-wa-muted-dark'}`}
     >
       <BookText className="h-3.5 w-3.5" aria-hidden="true" />
       {count ? `${count} ${count === 1 ? 'ficha' : 'fichas'} para la IA` : 'Subir ficha para la IA'}
