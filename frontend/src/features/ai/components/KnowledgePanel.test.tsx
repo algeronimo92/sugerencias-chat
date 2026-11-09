@@ -124,6 +124,21 @@ describe('KnowledgePanel: reabrir un documento', () => {
     expect(screen.getByRole('combobox', { name: 'Tipo' })).toHaveTextContent('Ficha del servicio')
   })
 
+  it('el botón dice si el documento está guardado o tiene cambios', async () => {
+    const user = userEvent.setup()
+    wrap(<KnowledgePanel />)
+    await user.click(await screen.findByRole('button', { name: /Ficha Hollywood Peel/ }))
+    await waitFor(() => expect(screen.getByLabelText('Contenido')).toHaveValue('Usa carbón activado.'))
+
+    // Recién abierto: nada que guardar.
+    expect(screen.getByRole('button', { name: 'Guardado' })).toBeDisabled()
+    expect(screen.queryByText('Cambios sin guardar')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Contenido'), ' Tres sesiones.')
+    expect(screen.getByText('Cambios sin guardar')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled()
+  })
+
   it('con cambios sin guardar, cambiar de documento pide confirmar', async () => {
     const user = userEvent.setup()
     wrap(<KnowledgePanel />)

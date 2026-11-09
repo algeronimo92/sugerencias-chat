@@ -1,4 +1,4 @@
-import { ArrowLeft, BookText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookText, Check, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -197,10 +197,16 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
             </Button>
           </ConfirmDialog>
         )}
+        {/* El botón dice en qué estado está el documento: antes decía siempre
+            «Guardar documento» y no se sabía si lo editado ya estaba guardado. */}
+        {dirty && !save.isPending && (
+          <span role="status" className="text-xs text-amber-700 dark:text-amber-300">Cambios sin guardar</span>
+        )}
         <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" disabled={save.isPending || importer.isPending || !title.trim() || !content.trim() || overLimit}>
+        <Button type="submit" disabled={save.isPending || importer.isPending || !title.trim() || !content.trim() || overLimit || (!!documentId && !dirty)}>
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          Guardar documento
+          {!save.isPending && documentId && !dirty && <Check className="h-4 w-4" aria-hidden="true" />}
+          {save.isPending ? 'Guardando…' : documentId ? (dirty ? 'Guardar cambios' : 'Guardado') : 'Guardar documento'}
         </Button>
       </div>
     </form>
