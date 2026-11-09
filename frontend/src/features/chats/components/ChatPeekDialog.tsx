@@ -9,7 +9,8 @@ import { useMessages } from '../hooks/useMessages'
 import type { Chat } from '../../leads/types'
 import type { Message } from '../../whatsapp/types'
 import { avatarInitial, displayName } from '../../leads/public/chat'
-import { formatMessageTime, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
+import { parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
+import { MessageFooter } from './MessageFooter'
 
 const MESSAGE_LIMIT = 12
 
@@ -27,8 +28,8 @@ function PeekMessage({ message }: { message: Message }) {
       <div
         className={`max-w-[86%] rounded-xl px-3 py-2 text-sm shadow-sm ${
           isOwn
-            ? 'rounded-tr-sm bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]'
-            : 'rounded-tl-sm bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]'
+            ? 'rounded-tr-sm bg-wa-out text-wa-text dark:bg-wa-out-dark dark:text-wa-text-dark'
+            : 'rounded-tl-sm bg-wa-in text-wa-text dark:bg-wa-in-dark dark:text-wa-text-dark'
         }`}
       >
         {imageUrl && (
@@ -42,7 +43,7 @@ function PeekMessage({ message }: { message: Message }) {
           {Icon && !imageUrl && <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />}
           <p className={message.deleted_at ? 'italic opacity-70' : 'whitespace-pre-wrap break-words'}>{text}</p>
         </div>
-        <span className="mt-1 block text-right text-[10px] opacity-60">{formatMessageTime(message.sent_at)}</span>
+        <MessageFooter className="mt-1" sentAt={message.sent_at} editedAt={message.deleted_at ? null : message.edited_at} />
       </div>
     </div>
   )

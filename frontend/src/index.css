@@ -49,6 +49,9 @@
   --color-wa-muted-dark: #8696a0;
   --color-wa-faint: #8696a0; /* metadatos dentro de burbujas (claro) */
   --color-wa-faint-dark: #667781;
+  /* Pie de burbuja (hora, Editado, ticks) a 12 px: wa-faint sobre wa-out da
+     2,75:1 y no pasa WCAG AA; este da 5,06:1. En oscuro basta wa-muted-dark. */
+  --color-wa-faint-strong: #54656f;
 
   /* Gráficos del dashboard. Dos pasos por rol (claro/oscuro), elegidos para
      la superficie de cada modo y validados como conjunto: banda de luminosidad,
