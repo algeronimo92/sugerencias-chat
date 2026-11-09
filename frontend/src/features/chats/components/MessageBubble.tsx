@@ -155,6 +155,11 @@ interface Props {
   message: Message;
   /** Primero de una tanda del mismo autor: lleva la "colita" y más margen. */
   isFirstOfGroup: boolean;
+  /** Quién o qué mandó este mensaje ("Grecia G.", "Flujo Hollywood peel",
+   * "Programado · Grecia", "Fuera de la app"). Se muestra solo en la primera
+   * burbuja de cada grupo, como el nombre del remitente en un grupo de
+   * WhatsApp. Ver domain/messageOrigin.ts. */
+  originLabel?: string | null;
   /** Resaltado temporal tras saltar a este mensaje desde una búsqueda o cita. */
   isFlashing: boolean;
   /** Ancho del hilo, para reservar la caja exacta de imágenes y videos. */
@@ -211,6 +216,7 @@ export function MessageBubble({
   chat,
   message: m,
   isFirstOfGroup,
+  originLabel = null,
   isFlashing,
   threadWidth,
   hasFailedMedia,
@@ -472,6 +478,14 @@ export function MessageBubble({
                 aria-hidden="true"
                 className="absolute inset-0 z-20 rounded-bubble"
               />
+            )}
+            {originLabel && isFirstOfGroup && (
+              <p
+                data-testid="message-origin"
+                className={`mb-0.5 truncate text-xs font-semibold text-wa-primary-strong dark:text-wa-primary ${isVisualMedia ? "px-2 pt-1" : ""}`}
+              >
+                {originLabel}
+              </p>
             )}
             {isDeleted ? (
               <DeletedBody isVendedor={isVendedor} />
