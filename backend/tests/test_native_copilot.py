@@ -4,14 +4,16 @@ reintenta y cae al secundario, qué pasos y metadatos deja en el job."""
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.integrations.llm.base import LlmError, LlmRequest, LlmResult
 from app.modules.ai import ai_access, providers_service
 from app.modules.ai.infrastructure import native_provider
-from app.modules.ai.infrastructure.native_provider import NativeAiProvider, NativeSuggestionError, build_user_prompt, knowledge_queries
+from app.modules.ai.infrastructure.native_provider import NativeAiProvider, NativeSuggestionError, build_user_prompt, knowledge_queries, service_id_for
 from app.modules.ai.infrastructure.routing_provider import RoutingAiProvider
 
 GOOD = json.dumps({
@@ -33,13 +35,14 @@ CONTEXT = {
     "context_revision": "rev-1",
     "lead": {
         "nombre": "Ana", "estado": "calificado", "servicio_interes": "Hollywood Peel - Rostro", "ultimo_emisor": "cliente",
-        "ultimo_mensaje_at": "2026-11-07T15:00:00+00:00",
+        "ultimo_mensaje_at": "2026-11-07T15:00:00+00:00", "contador_noshow": 1,
         "compras": [{"servicio": "Borrado de Cejas", "paquete": "Individual", "sesiones": 1, "monto": "300.00", "fecha": "2026-10-01"}],
     },
     "messages": [
         {"id": 3, "sender": "cliente", "content": "¿Cuánto cuesta el pack de 3?", "sent_at": "2026-11-07T15:00:00+00:00", "message_type": "text"},
         {"id": 2, "sender": "vendedor", "content": "Hola Ana", "sent_at": "2026-11-07T14:00:00+00:00", "message_type": "text"},
-        {"id": 1, "sender": "cliente", "content": "Hola, quiero quitar manchas", "sent_at": "2026-11-07T13:00:00+00:00", "message_type": "text"},
+        {"id": 1, "sender": "cliente", "content": "Hola, quiero quitar manchas", "sent_at": "2026-11-07T13:00:00+00:00", "message_type": "text",
+         "anuncio": "Escribió desde un anuncio: Limpieza facial — Agenda tu cita"},
     ],
     "system_events": [],
     "message_cursor": None,
@@ -96,6 +99,11 @@ def _world(monkeypatch, settings: dict, chain: dict[str, list], embedder=None):
     monkeypatch.setattr(native_provider, "fetch_tenant_config", AsyncMock(return_value={"negocio": {"nombre": "DermicaPro"}, "moneda": "PEN"}))
     monkeypatch.setattr(native_provider, "list_ai_catalog", AsyncMock(return_value=CATALOG))
     monkeypatch.setattr(native_provider, "list_ai_resources", AsyncMock(return_value=[{"id": 9, "nombre": "flyer.pdf", "url": "https://m/flyer.pdf", "descripcion": "Promo"}]))
+    monkeypatch.setattr(native_provider, "list_stages_for_ai", AsyncMock(return_value=[
+        {"key": "nuevo", "name": "Nuevo", "kind": "open", "description": None},
+        {"key": "calificado", "name": "Calificado", "kind": "open", "description": "Ya dijo qué quiere y para cuándo"},
+    ]))
+    monkeypatch.setattr(native_provider, "business_timezone", AsyncMock(return_value=ZoneInfo("America/Lima")))
     searched: list[str] = []
 
     async def search(query, top_k, service_id=None):
@@ -145,11 +153,18 @@ async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(m
     assert "no dar descuento" in prompt
     assert "DermicaPro" in prompt
     assert client.requests[0].system.startswith("# IDENTIDAD Y MISION")
+    # La etapa con su nombre y descripción, no solo la clave.
+    assert '"etapa": {"nombre": "Calificado", "tipo": "open", "descripcion": "Ya dijo qué quiere y para cuándo"}' in prompt
+    assert '"contador_noshow": 1' in prompt
+    # Horas en la zona del negocio (Lima = UTC-5), en el historial y en "ahora".
+    assert '"fecha": "2026-11-07T10:00-05:00"' in prompt and "-05:00" in prompt.split("Fecha y hora actual")[1][:60]
+    assert '"origen": "Escribió desde un anuncio: Limpieza facial — Agenda tu cita"' in prompt
     # Primero los documentos del servicio de interés (sin coincidencias con la
-    # conversación, sus fichas en orden), después la búsqueda general.
+    # conversación, sus fichas en orden), después la búsqueda general. El
+    # servicio se busca sin la zona (« - Rostro» sería un NOT para Postgres).
     assert searched == [
         ("quitar or manchas or cuesta or pack", 1), ("servicio", 1),
-        "Hollywood Peel - Rostro", "quitar or manchas or cuesta or pack", "descuento",
+        "Hollywood Peel", "quitar or manchas or cuesta or pack", "descuento",
     ]
     assert "Contraindicado en embarazo" in prompt and '"tipo": "ficha"' in prompt
     assert steps == ["context_loaded", "knowledge_searched"]
@@ -208,14 +223,27 @@ async def test_only_models_with_a_key_enter_the_chain(monkeypatch):
 
 def test_knowledge_queries_and_prompt_without_messages():
     assert knowledge_queries({"servicio_interes": "Botox"}, [], None) == ["Botox"]
+    # 56 de los 62 servicios del ERP se llaman "Tratamiento - Zona": el nombre
+    # entero era "hifu & 12d & !rostro" para websearch_to_tsquery.
+    assert knowledge_queries({"servicio_interes": "HIFU 12D - Rostro"}, [], None) == ["HIFU 12D"]
+    assert knowledge_queries({"servicio_interes": "Hollywood Peel - Rostro + Cuello"}, [], None) == ["Hollywood Peel"]
     assert native_provider.or_query("¿Cuántas sesiones necesito para las manchas? 3") == "sesiones or manchas"
     assert knowledge_queries({}, [], "  ") == []
-    from datetime import datetime, timezone
     prompt = build_user_prompt(
         tenant_config={}, lead={}, messages=[], resources=[], catalog=[], knowledge=[], instruction=None,
         now=datetime(2026, 11, 7, tzinfo=timezone.utc),
     )
     assert "<catalogo>" in prompt and "<historial>" in prompt
+
+
+def test_service_of_interest_is_found_by_name_or_by_treatment():
+    catalog = [{"id": 1, "name": "Botox - 1 Zona"}, {"id": 2, "name": "Botox - 2 Zonas"}, {"id": 3, "name": "Depilación Láser - Axilas"}]
+    assert service_id_for({"servicio_interes": "botox - 2 zonas"}, catalog) == 2
+    # El analista escribe el tratamiento, no la variante exacta del catálogo.
+    assert service_id_for({"servicio_interes": "Botox"}, catalog) == 1
+    assert service_id_for({"servicio_interes": "depilacion laser"}, catalog) == 3
+    assert service_id_for({"servicio_interes": "Masajes"}, catalog) is None
+    assert service_id_for({}, catalog) is None
 
 
 async def test_suggestions_are_always_native_and_analysis_stays_in_n8n():

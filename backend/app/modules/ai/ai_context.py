@@ -48,6 +48,26 @@ async def fetch_context_revision(chat_id: str) -> str | None:
     return make_context_revision(updated_at, latest_message_id)
 
 
+def _conversational_text(row) -> str:
+    """Lo que dijo el mensaje, también cuando no es texto. Una foto, un audio
+    o un botón tocado llegaban como ``content: null`` y el modelo veía un
+    turno vacío del cliente; ahora lee "[imagen] <pie>", "Tocó el botón: …".
+    Un texto plano sigue siendo su texto."""
+    if row["message_type"] in (None, "text"):
+        return str(row["content"] or "").strip()
+    return message_text(row["message_type"], row["message_subtype"], row["content"], row["provider_payload"]).strip()
+
+
+def ad_description(referral: dict) -> str:
+    """Desde qué anuncio escribió el cliente (``messages[].referral`` de
+    Meta): el titular y el texto del anuncio dicen qué promoción vio, que
+    rara vez repite en su primer mensaje."""
+    parts = [str(referral.get(key) or "").strip() for key in ("headline", "body")]
+    described = " — ".join(part for part in parts if part)
+    kind = "publicación" if referral.get("source_type") == "post" else "anuncio"
+    return f"Escribió desde un {kind}: {described}" if described else f"Escribió desde un {kind}"
+
+
 async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
     """Return the allowlisted analyst snapshot in legacy descending order."""
 
@@ -64,6 +84,11 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
         Lead.proxima_cita,
         Lead.con_especialista,
         Lead.ultimo_emisor,
+        # El prompt del copiloto los lee desde el principio, pero hasta
+        # 2026-11-09 no se seleccionaban: llegaban siempre vacíos y el
+        # modelo nunca supo de un no-show ni cuánto llevaba callado el chat.
+        Lead.contador_noshow,
+        Lead.ultimo_mensaje_at,
         Lead.updated_at,
     )
     message_columns = (
@@ -117,10 +142,13 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
             continue
         analysis = item.pop("analysis", None)
         summary = analysis.get("summary") if isinstance(analysis, dict) else None
-        parts = [str(item.get("content") or "").strip()]
+        parts = [_conversational_text(row)]
         if summary:
             parts.append(f"[Analisis IA] {str(summary).strip()}")
         item["content"] = "\n".join(part for part in parts if part) or None
+        referral = (row["provider_payload"] or {}).get("referral") if isinstance(row["provider_payload"], dict) else None
+        if isinstance(referral, dict):
+            item["anuncio"] = ad_description(referral)
         messages.append(item)
 
     latest = message_rows[0] if message_rows else None

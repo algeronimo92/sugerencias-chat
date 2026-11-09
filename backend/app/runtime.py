@@ -39,6 +39,7 @@ from app.integrations.meta_webhook.worker import watch_meta_webhook_inbox
 from app.integrations.n8n.client import close_n8n_client
 from app.integrations.storage.media_storage import storage_backend
 from app.integrations.tts_service import close_tts_client
+from app.modules.ai.public import rechunk_outdated_documents
 from app.modules.auth.auth_service import hash_password
 from app.modules.auth.users_repository import seed_admin_if_needed
 from app.modules.automations.public import (
@@ -342,6 +343,7 @@ async def _normalize_settings() -> None:
                         decrypted_settings,
                     )
                 await backfill_automation_state()
+                await _rechunk_knowledge(context.organization_id)
         return
 
     encrypted_settings, decrypted_settings = await migrate_settings_encryption()
@@ -359,6 +361,19 @@ async def _normalize_settings() -> None:
             migrated_platform_settings,
         )
     await backfill_automation_state()
+    await _rechunk_knowledge(None)
+
+
+async def _rechunk_knowledge(organization_id) -> None:
+    """Los fragmentos del conocimiento se rehacen cuando cambia el troceador;
+    si falla, el arranque sigue: el conocimiento viejo sirve igual."""
+    try:
+        count = await rechunk_outdated_documents()
+    except SQLAlchemyError as exc:
+        logger.warning("No se pudo retrocear el conocimiento organization_id=%s: %s", organization_id, exc)
+        return
+    if count:
+        logger.info("Conocimiento retroceado organization_id=%s documentos=%s", organization_id, count)
 
 
 async def _maintain() -> None:

@@ -53,19 +53,6 @@ _LEXICAL_SQL = text(
     """
 )
 
-_FALLBACK_SQL = text(
-    f"""
-    SELECT {_COLUMNS}, 0.0 AS score
-    FROM knowledge_chunks AS c
-    JOIN knowledge_documents AS d ON d.id = c.document_id
-    WHERE (c.content ILIKE :pattern ESCAPE '\\'
-       OR d.title ILIKE :pattern ESCAPE '\\')
-      AND (CAST(:service_id AS integer) IS NULL OR {_OF_SERVICE})
-    ORDER BY d.title, c.ordinal
-    LIMIT :top_k
-    """
-)
-
 # Los primeros fragmentos de los documentos de un servicio, para cuando la
 # conversación todavía no dice nada que buscar ("hola, info del peel").
 _SERVICE_SQL = text(
@@ -105,24 +92,16 @@ _BY_IDS_SQL = text(
 )
 
 
-def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 async def search_knowledge_chunks(query: str, top_k: int, service_id: int | None = None) -> list[dict]:
     """Search only the knowledge tables selected by the current tenant session.
     Con ``service_id`` busca solo en los documentos de ese servicio."""
 
+    # Hubo un segundo intento con ILIKE sobre la consulta entera; desde que
+    # las consultas son "palabra or palabra" no podía coincidir con nada y
+    # solo costaba una consulta más por sugerencia (2026-11-09).
     params = {"query": query, "top_k": top_k, "service_id": service_id}
     async with session_scope() as session:
         rows = (await session.execute(_LEXICAL_SQL, params)).mappings().all()
-        if not rows:
-            rows = (
-                await session.execute(
-                    _FALLBACK_SQL,
-                    {"pattern": f"%{_escape_like(query)}%", "top_k": top_k, "service_id": service_id},
-                )
-            ).mappings().all()
     return _rows(rows)
 
 
