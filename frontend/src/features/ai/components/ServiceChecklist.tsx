@@ -11,6 +11,11 @@ interface ServiceOption { id: number; name: string; is_active?: boolean }
  * es conocimiento general. Los servicios inactivos solo se muestran si el
  * documento ya los tenía, para poder quitarlos.
  */
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? ''
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
+}
+
 export function ServiceChecklist({ services, selected, onChange, label = 'Servicios' }: {
   services: ServiceOption[]
   selected: number[]
@@ -20,6 +25,9 @@ export function ServiceChecklist({ services, selected, onChange, label = 'Servic
   const id = useId()
   const chosen = new Set(selected)
   const shown = services.filter(service => service.is_active !== false || chosen.has(service.id))
+  // Con muchos servicios los marcados quedan fuera de la vista de la lista:
+  // el aviso los nombra para verlos de un vistazo.
+  const chosenNames = shown.filter(service => chosen.has(service.id)).map(service => service.name)
 
   function toggle(serviceId: number, checked: boolean) {
     onChange(checked ? [...selected, serviceId] : selected.filter(item => item !== serviceId))
@@ -31,7 +39,7 @@ export function ServiceChecklist({ services, selected, onChange, label = 'Servic
       <p id={`${id}-hint`} className="mb-2 text-xs text-wa-muted dark:text-wa-muted-dark">
         {selected.length === 0
           ? 'Sin marcar ninguno, es conocimiento general: sirve para todos los servicios.'
-          : `Para ${selected.length === 1 ? '1 servicio' : `${selected.length} servicios`}. El asistente lo usa primero con los leads interesados en ellos.`}
+          : `Para ${listNames(chosenNames)}. El asistente lo usa primero con los leads interesados.`}
       </p>
       {shown.length === 0
         ? <p className="text-xs text-wa-muted dark:text-wa-muted-dark">Todavía no hay servicios en el catálogo.</p>
