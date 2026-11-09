@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
-import { Select, labelClass } from '../../../shared/ui/Input'
+import { ServiceChecklist } from './ServiceChecklist'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useLeadServices } from '../../catalogs/public/useLeadServices'
 import { useImportKnowledgeTemplate, useKnowledgeTemplates } from '../queries'
@@ -51,19 +51,18 @@ export function KnowledgeTemplatesDialog({ preferredServiceId, onClose, onImport
   const { data: services = [] } = useLeadServices()
   const importTemplate = useImportKnowledgeTemplate()
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [serviceByTemplate, setServiceByTemplate] = useState<Record<number, string>>({})
+  const [servicesByTemplate, setServicesByTemplate] = useState<Record<number, number[]>>({})
   const selected = templates.find(template => template.id === selectedId) ?? templates[0] ?? null
 
   const activeServices = useMemo(() => services.filter(service => service.is_active !== false), [services])
-  function serviceFor(template: KnowledgeTemplateSummary): string {
-    if (template.id in serviceByTemplate) return serviceByTemplate[template.id]
+  function servicesFor(template: KnowledgeTemplateSummary): number[] {
+    if (template.id in servicesByTemplate) return servicesByTemplate[template.id]
     const id = preferredServiceId ?? matchService(template.service_hint, activeServices)
-    return id ? String(id) : ''
+    return id ? [id] : []
   }
 
   function handleImport(template: KnowledgeTemplateSummary) {
-    const serviceId = serviceFor(template)
-    importTemplate.mutate({ templateId: template.id, serviceId: serviceId ? Number(serviceId) : null }, {
+    importTemplate.mutate({ templateId: template.id, serviceIds: servicesFor(template) }, {
       onSuccess: document => {
         toast.success('Plantilla importada: ahora es tuya. Edítala a tu gusto y guárdala.')
         onImported(document.id)
@@ -128,11 +127,12 @@ export function KnowledgeTemplatesDialog({ preferredServiceId, onClose, onImport
                   </div>
                   <div className="flex flex-col gap-3 border-t border-wa-border p-4 sm:flex-row sm:items-end dark:border-wa-border-dark">
                     <div className="min-w-0 flex-1">
-                      <label htmlFor="template-service" className={labelClass}>Vincular a mi servicio</label>
-                      <Select id="template-service" aria-label="Vincular a mi servicio" value={serviceFor(selected)} onValueChange={value => setServiceByTemplate(current => ({ ...current, [selected.id]: value }))}>
-                        <option value="">General (todos los servicios)</option>
-                        {activeServices.map(service => <option key={service.id} value={String(service.id)}>{service.name}</option>)}
-                      </Select>
+                      <ServiceChecklist
+                        label="Vincular a mis servicios"
+                        services={services}
+                        selected={servicesFor(selected)}
+                        onChange={ids => setServicesByTemplate(current => ({ ...current, [selected.id]: ids }))}
+                      />
                     </div>
                     <Button className="h-10" onClick={() => handleImport(selected)} disabled={importTemplate.isPending}>
                       {importTemplate.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}

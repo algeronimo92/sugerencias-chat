@@ -18,8 +18,8 @@ export interface KnowledgeDocumentSummary {
   id: string
   title: string
   document_type: string | null
-  /** Servicio del catálogo; null = conocimiento general. */
-  service_id: number | null
+  /** Servicios del catálogo a los que pertenece; vacío = conocimiento general. */
+  service_ids: number[]
   /** Plantilla de la plataforma de la que se importó; la copia es del negocio. */
   template_id: number | null
   characters: number

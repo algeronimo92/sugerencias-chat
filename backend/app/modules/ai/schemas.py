@@ -116,14 +116,15 @@ class KnowledgeDocumentBody(BaseModel):
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     content: str = Field(min_length=1, max_length=MAX_CONTENT_LENGTH)
     document_type: KnowledgeDocumentType | None = None
-    # Servicio del catálogo; sin valor es conocimiento general.
-    service_id: int | None = None
+    # Servicios del catálogo a los que pertenece (una ficha puede servir a
+    # "Botox - 1 Zona" y "2 Zonas"); vacío es conocimiento general.
+    service_ids: list[int] = Field(default_factory=list, max_length=50)
 
 class KnowledgeDocumentSummary(BaseModel):
     id: str
     title: str
     document_type: str | None = None
-    service_id: int | None = None
+    service_ids: list[int] = Field(default_factory=list)
     template_id: int | None = None
     characters: int
     chunk_count: int
@@ -247,5 +248,5 @@ class KnowledgeTemplateSummary(BaseModel):
 
 
 class KnowledgeTemplateImport(BaseModel):
-    # Servicio del negocio al que queda vinculada la copia; sin valor, general.
-    service_id: int | None = None
+    # Servicios del negocio a los que queda vinculada la copia; vacío, general.
+    service_ids: list[int] = Field(default_factory=list, max_length=50)

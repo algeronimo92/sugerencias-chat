@@ -9,7 +9,7 @@ import { useKnowledgeDocuments } from '../queries'
  */
 export function ServiceKnowledgeLink({ serviceId, serviceName }: { serviceId: number; serviceName: string }) {
   const { data: documents = [] } = useKnowledgeDocuments()
-  const count = documents.filter(document => document.service_id === serviceId).length
+  const count = documents.filter(document => document.service_ids.includes(serviceId)).length
   return (
     <Link
       to={`/ai-assistant?tab=knowledge&servicio=${serviceId}`}

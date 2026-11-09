@@ -39,7 +39,9 @@ _SEARCH_SQL = text(
     JOIN knowledge_documents AS d ON d.id = c.document_id
     WHERE c.embedding_model = :spec
       AND c.embedding IS NOT NULL
-      AND (CAST(:service_id AS integer) IS NULL OR d.service_id = CAST(:service_id AS integer))
+      AND (CAST(:service_id AS integer) IS NULL OR EXISTS (
+            SELECT 1 FROM knowledge_document_services AS ds
+            WHERE ds.document_id = d.id AND ds.service_id = CAST(:service_id AS integer)))
     ORDER BY c.embedding <=> CAST(CAST(:query AS text) AS vector), c.id
     LIMIT :top_k
     """

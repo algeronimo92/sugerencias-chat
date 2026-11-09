@@ -17,9 +17,14 @@ _COLUMNS = """
         c.content,
         d.metadata AS document_metadata,
         c.metadata AS chunk_metadata,
-        d.service_id,
+        (SELECT array_agg(ds.service_id ORDER BY ds.service_id)
+           FROM knowledge_document_services AS ds WHERE ds.document_id = d.id) AS service_ids,
         d.document_type
 """
+
+# Un documento puede ser de varios servicios: el filtro mira sus vínculos.
+_OF_SERVICE = """EXISTS (SELECT 1 FROM knowledge_document_services AS ds
+                     WHERE ds.document_id = d.id AND ds.service_id = CAST(:service_id AS integer))"""
 
 _LEXICAL_SQL = text(
     f"""
@@ -40,7 +45,7 @@ _LEXICAL_SQL = text(
         -- también tiene que aparecer al buscar el servicio.
         OR to_tsvector('spanish'::regconfig, d.title) @@ websearch_to_tsquery('spanish'::regconfig, :query)
     )
-      AND (CAST(:service_id AS integer) IS NULL OR d.service_id = CAST(:service_id AS integer))
+      AND (CAST(:service_id AS integer) IS NULL OR {_OF_SERVICE})
     -- Desempate estable (no por id, que es aleatorio): con el mismo
     -- conocimiento, la misma consulta arma siempre el mismo contexto.
     ORDER BY score DESC, d.title, c.ordinal
@@ -55,7 +60,7 @@ _FALLBACK_SQL = text(
     JOIN knowledge_documents AS d ON d.id = c.document_id
     WHERE (c.content ILIKE :pattern ESCAPE '\\'
        OR d.title ILIKE :pattern ESCAPE '\\')
-      AND (CAST(:service_id AS integer) IS NULL OR d.service_id = CAST(:service_id AS integer))
+      AND (CAST(:service_id AS integer) IS NULL OR {_OF_SERVICE})
     ORDER BY d.title, c.ordinal
     LIMIT :top_k
     """
@@ -68,7 +73,7 @@ _SERVICE_SQL = text(
     SELECT {_COLUMNS}, 0.0 AS score
     FROM knowledge_chunks AS c
     JOIN knowledge_documents AS d ON d.id = c.document_id
-    WHERE d.service_id = :service_id
+    WHERE {_OF_SERVICE}
     ORDER BY CASE d.document_type WHEN 'ficha' THEN 0 WHEN 'faq' THEN 1 ELSE 2 END,
              c.ordinal, d.updated_at DESC, c.id
     LIMIT :top_k
@@ -211,7 +216,7 @@ def _rows(rows) -> list[dict]:
             "title": row["title"],
             "source": row["source"],
             "content": row["content"],
-            "service_id": row["service_id"],
+            "service_ids": list(row["service_ids"] or []),
             "document_type": row["document_type"],
             "metadata": {
                 **(row["document_metadata"] or {}),

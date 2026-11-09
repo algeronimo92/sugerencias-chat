@@ -37,7 +37,7 @@ describe('KnowledgeTemplatesDialog', () => {
       if (url === '/api/services') return Promise.resolve({ data: SERVICES })
       return Promise.reject(new Error(url))
     })
-    api.post.mockResolvedValue({ data: { id: 'doc-7', title: 'Ficha Hollywood Peel', content: 'x', document_type: 'ficha', service_id: 3, template_id: 1, characters: 1, chunk_count: 1, created_at: '', updated_at: '' } })
+    api.post.mockResolvedValue({ data: { id: 'doc-7', title: 'Ficha Hollywood Peel', content: 'x', document_type: 'ficha', service_ids: [3], template_id: 1, characters: 1, chunk_count: 1, created_at: '', updated_at: '' } })
   })
 
   it('propone el servicio que mejor coincide y crea una copia propia', async () => {
@@ -45,10 +45,10 @@ describe('KnowledgeTemplatesDialog', () => {
     const { onImported } = renderDialog()
 
     expect(await screen.findByText('Qué es: peeling con carbón.')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Vincular a mi servicio' })).toHaveTextContent('Hollywood Peel - Rostro'))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Hollywood Peel - Rostro' })).toBeChecked())
     await user.click(screen.getByRole('button', { name: 'Importar y editar' }))
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/1/import', { service_id: 3 }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/1/import', { service_ids: [3] }))
     expect(onImported).toHaveBeenCalledWith('doc-7')
   })
 
@@ -59,7 +59,7 @@ describe('KnowledgeTemplatesDialog', () => {
     await user.click(await screen.findByRole('button', { name: /Pagos y reservas/ }))
     expect(screen.getByRole('list', { name: 'Plantillas disponibles' })).toHaveTextContent('importada')
     await user.click(screen.getByRole('button', { name: 'Importar otra copia' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/2/import', { service_id: null }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/2/import', { service_ids: [] }))
   })
 
   it('el servicio que se está mirando gana a la sugerencia de la plantilla', async () => {
@@ -67,8 +67,8 @@ describe('KnowledgeTemplatesDialog', () => {
     renderDialog({ preferredServiceId: 5 })
 
     await screen.findByText('Qué es: peeling con carbón.')
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Vincular a mi servicio' })).toHaveTextContent('Botox'))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Botox' })).toBeChecked())
     await user.click(screen.getByRole('button', { name: 'Importar y editar' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/1/import', { service_id: 5 }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/1/import', { service_ids: [5] }))
   })
 })

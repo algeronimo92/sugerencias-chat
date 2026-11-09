@@ -47,12 +47,18 @@ export async function saveAiProfile(profile: Omit<AIProfile, 'updated_at'>): Pro
   return (await client.put<ApiResponse<'/api/ai/profile', 'put'>>('/api/ai/profile', profile)).data
 }
 
+/** Durante el despliegue la versión anterior del servidor no manda
+ *  `service_ids`; sin esto la pantalla de Conocimiento se caía entera. */
+function withServiceIds<T extends { service_ids?: number[] }>(document: T): T & { service_ids: number[] } {
+  return { ...document, service_ids: document.service_ids ?? [] }
+}
+
 export async function fetchKnowledgeDocuments(): Promise<KnowledgeDocumentSummary[]> {
-  return (await client.get<ApiResponse<'/api/ai/knowledge', 'get'>>('/api/ai/knowledge')).data
+  return (await client.get<ApiResponse<'/api/ai/knowledge', 'get'>>('/api/ai/knowledge')).data.map(withServiceIds)
 }
 
 export async function fetchKnowledgeDocument(id: string | null): Promise<KnowledgeDocument> {
-  return (await client.get<ApiResponse<'/api/ai/knowledge/{document_id}', 'get'>>(`/api/ai/knowledge/${id}`)).data
+  return withServiceIds((await client.get<ApiResponse<'/api/ai/knowledge/{document_id}', 'get'>>(`/api/ai/knowledge/${id}`)).data)
 }
 
 export async function saveKnowledgeDocument({ id, ...body }: {
@@ -60,7 +66,7 @@ export async function saveKnowledgeDocument({ id, ...body }: {
   title: string
   content: string
   document_type: KnowledgeDocumentType | null
-  service_id: number | null
+  service_ids: number[]
 }) {
   return id
         ? (await client.put<ApiResponse<'/api/ai/knowledge/{document_id}', 'put'>>(`/api/ai/knowledge/${id}`, body)).data
@@ -103,8 +109,8 @@ export async function fetchKnowledgeTemplates(): Promise<KnowledgeTemplateSummar
 }
 
 /** Crea una copia propia del negocio de la plantilla, lista para editar. */
-export async function importKnowledgeTemplate({ templateId, serviceId }: { templateId: number; serviceId: number | null }): Promise<KnowledgeDocument> {
+export async function importKnowledgeTemplate({ templateId, serviceIds }: { templateId: number; serviceIds: number[] }): Promise<KnowledgeDocument> {
   return (await client.post<ApiResponse<'/api/ai/knowledge/templates/{template_id}/import', 'post'>>(
-    `/api/ai/knowledge/templates/${templateId}/import`, { service_id: serviceId },
+    `/api/ai/knowledge/templates/${templateId}/import`, { service_ids: serviceIds },
   )).data
 }
