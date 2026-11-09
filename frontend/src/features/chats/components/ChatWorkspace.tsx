@@ -17,6 +17,7 @@ import { PageLoader } from "../../../shared/ui/PageLoader";
 import { Spinner } from "../../../shared/ui/Spinner";
 import { extractErrorMessage } from "../../../shared/utils/errors";
 import { hasOpenOverlay } from "../../../shared/utils/overlay";
+import { setPwaCurrentChatId } from "../../../shared/pwaUpdate";
 import {
 SuggestionError,
 useGenerateSuggestions,
@@ -252,6 +253,13 @@ export function ChatWorkspace() {
   // otro lead tiene que cerrarse, o quedaría mostrando el anterior.
   useEffect(() => {
     setIsSuggestionsOpen(false);
+  }, [chatId]);
+
+  // El aviso de versión nueva se vuelve a ofrecer al cambiar de chat, y quien
+  // lo muestra vive fuera del router: se le cuenta por el store.
+  useEffect(() => {
+    setPwaCurrentChatId(chatId);
+    return () => setPwaCurrentChatId(null);
   }, [chatId]);
 
   // El panel de sugerencias, compartido por la columna de escritorio y el

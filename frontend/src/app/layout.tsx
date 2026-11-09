@@ -10,6 +10,7 @@ import { PageLoader } from "../shared/ui/PageLoader";
 import { type IntegrationAnchor, type LayoutContext, type SettingsTab } from '../features/chats/public/layoutContext';
 import { useChatFiltersState } from '../features/chats/public/useChatFiltersState';
 import { MobileNavBar } from "./MobileNavBar";
+import { PwaUpdateChip } from "./PwaUpdateChip";
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
@@ -148,6 +149,7 @@ export function MainLayout() {
         <span className="ml-1 hidden rounded-full bg-wa-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-wa-primary-strong sm:inline dark:bg-wa-primary/15 dark:text-wa-primary">
           CRM
         </span>
+        <PwaUpdateChip />
         <span className="flex-1" />
         {me && (
           <button
