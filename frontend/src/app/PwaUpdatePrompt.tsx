@@ -1,6 +1,8 @@
+import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { toast } from 'sonner'
+import { publishActivityLease } from '../shared/activity'
 import { currentBrandName } from '../shared/branding'
 import {
   registerPwaUpdater,
@@ -8,6 +10,8 @@ import {
   usePwaCurrentChatId,
 } from '../shared/pwaUpdate'
 import { useChatSocketConnected } from '../realtime/useRealtime'
+import { usePendingSends } from '../features/chats/public/usePendingSends'
+import { describeUpdateBlocker, updateBlocker } from './pwaUpdateGuard'
 
 // Id fijo para que el aviso no se apile si el efecto vuelve a correr.
 const UPDATE_TOAST_ID = 'pwa-update'
@@ -22,6 +26,10 @@ export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 // el socket reconecta cada 3 s y un deploy produce reconexiones en ráfaga:
 // este tope evita pedir sw.js decenas de veces en un minuto.
 export const MIN_UPDATE_CHECK_GAP_MS = 5 * 60 * 1000
+
+// Si el worker nuevo no toma el control en este tiempo, algo falló: se quita
+// el velo de "Actualizando…" y se le pide a la persona que recargue a mano.
+export const APPLY_TIMEOUT_MS = 15_000
 
 // Marca que sobrevive a la recarga para poder decir en consola que el build
 // que acaba de cargar es el resultado de aplicar una actualización.
@@ -46,19 +54,30 @@ function consumeUpdateApplied() {
 }
 
 /**
- * Registra el service worker, busca versiones nuevas y avisa cuando hay una.
+ * Registra el service worker, busca versiones nuevas, avisa cuando hay una y
+ * la aplica sola en el primer momento seguro.
  *
- * No recarga solo a propósito: hacerlo mientras alguien escribe un mensaje o
- * graba un audio le borraría el trabajo. El usuario elige el momento. Lo que
- * sí hace es no dejar que el aviso se pierda: descartarlo lo esconde hasta que
- * la persona vuelve a la pestaña o cambia de chat, y la cabecera lo muestra
- * fijo mientras tanto. El 2026-11-09 una pestaña siguió sirviendo el build
- * anterior con el worker nuevo en `waiting` porque el único aviso era un
- * toast descartable que no volvía hasta el siguiente sondeo.
+ * El momento es el cambio de chat: es la navegación que una vendedora hace
+ * seguro en su jornada (casi nunca sale de /chat/*), y lo que tiene a medias
+ * ya se terminó o se abandonó. "Seguro" lo decide `updateBlocker`: nada
+ * grabándose, sin adjuntos pendientes ni envíos en vuelo, sin respuesta
+ * citada ni selección, sin cambios sin guardar en el editor de flujos, sin
+ * diálogo abierto y sin otra pestaña del CRM ocupada (aplicar el worker
+ * recarga todas). El botón manual pasa por el mismo filtro y, si algo lo
+ * frena, lo dice. Mientras se aplica hay un velo con texto visible; sin
+ * cuenta atrás (WCAG 2.2.1).
+ *
+ * Si no se puede aplicar, el aviso no se pierde: descartarlo lo esconde hasta
+ * que la persona vuelve a la pestaña o cambia de chat, y la cabecera lo
+ * muestra fijo. El 2026-11-09 una pestaña siguió sirviendo el build anterior
+ * con el worker nuevo en `waiting` porque el único aviso era un toast
+ * descartable que no volvía hasta el siguiente sondeo.
  */
 export function PwaUpdatePrompt() {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
+  const [applying, setApplying] = useState(false)
   const lastCheckAtRef = useRef(0)
+  const pendingSends = usePendingSends()
 
   const {
     needRefresh: [needRefresh],
@@ -84,24 +103,38 @@ export function PwaUpdatePrompt() {
     })
   }, [registration])
 
-  const applyUpdate = useCallback(() => {
+  /** Aplica la versión nueva si es seguro. Devuelve si lo hizo. */
+  const tryApplyUpdate = useCallback((trigger: 'manual' | 'navigation') => {
+    const blocker = updateBlocker({ pendingSends })
+    if (blocker) {
+      const reason = describeUpdateBlocker(blocker)
+      if (trigger === 'manual') {
+        toast.info('Todavía no se puede actualizar', { description: `Ahora mismo ${reason}. Termina eso y vuelve a intentarlo.` })
+      } else {
+        console.info(`${currentBrandName()}: versión nueva pendiente, no se aplica al cambiar de chat porque ${reason}`)
+      }
+      return false
+    }
+    toast.dismiss(UPDATE_TOAST_ID)
+    setApplying(true)
     rememberUpdateApplied()
     // `true` recarga la página una vez que el worker nuevo toma el control.
     void updateServiceWorker(true)
-  }, [updateServiceWorker])
+    return true
+  }, [pendingSends, updateServiceWorker])
 
   const offerUpdate = useCallback(() => {
     toast(`Hay una versión nueva de ${currentBrandName()}`, {
       id: UPDATE_TOAST_ID,
       description: 'Actualiza para aplicar los cambios.',
       duration: Infinity,
-      action: { label: 'Actualizar', onClick: applyUpdate },
+      action: { label: 'Actualizar', onClick: () => void tryApplyUpdate('manual') },
       // "Ahora no" solo esconde el aviso. El build sigue pendiente (lo dice
       // el chip de la cabecera) y el toast vuelve al volver a la pestaña o al
       // cambiar de chat.
       cancel: { label: 'Ahora no', onClick: () => {} },
     })
-  }, [applyUpdate])
+  }, [tryApplyUpdate])
 
   // Sondeo horario.
   useEffect(() => {
@@ -116,7 +149,7 @@ export function PwaUpdatePrompt() {
   // que cambia un callback.
   const onBackToForeground = useEffectEvent(() => {
     checkForUpdate()
-    if (needRefresh) offerUpdate()
+    if (needRefresh && !applying) offerUpdate()
   })
   useEffect(() => {
     function handleVisibilityChange() {
@@ -135,25 +168,62 @@ export function PwaUpdatePrompt() {
     wasConnectedRef.current = socketConnected
   }, [socketConnected, checkForUpdate])
 
+  // Las demás pestañas tienen que saber si esta tiene algo a medias.
+  useEffect(() => publishActivityLease(), [])
+
   // Estado compartido con la cabecera (chip) y cómo aplicar la actualización.
   useEffect(() => {
     setPwaUpdatePending(needRefresh)
-    registerPwaUpdater(needRefresh ? applyUpdate : null)
+    registerPwaUpdater(needRefresh ? () => void tryApplyUpdate('manual') : null)
     return () => registerPwaUpdater(null)
-  }, [needRefresh, applyUpdate])
+  }, [needRefresh, tryApplyUpdate])
 
-  // Primera oferta cuando aparece el build nuevo, y de nuevo en cada cambio
-  // de chat mientras siga pendiente. `toast` con el mismo id actualiza el
-  // aviso si está en pantalla y lo vuelve a mostrar si se había descartado.
+  // Cambio de chat con una versión ya pendiente: se aplica si es seguro; si
+  // no, se vuelve a ofrecer. `armed` evita aplicar en el mismo render en que
+  // aparece el build nuevo o justo al cargar la página en un chat.
   const chatId = usePwaCurrentChatId()
+  const previousChatIdRef = useRef(chatId)
+  const armedRef = useRef(false)
   useEffect(() => {
-    if (!needRefresh) return
+    const changed = previousChatIdRef.current !== chatId
+    previousChatIdRef.current = chatId
+    if (!needRefresh || applying) return
+    if (changed && armedRef.current && tryApplyUpdate('navigation')) return
+    // Primera oferta, o re-oferta al cambiar de chat. `toast` con el mismo
+    // id actualiza el aviso si está en pantalla y lo vuelve a mostrar si se
+    // había descartado.
     offerUpdate()
-  }, [needRefresh, chatId, offerUpdate])
+  }, [needRefresh, chatId, applying, tryApplyUpdate, offerUpdate])
+  useEffect(() => {
+    armedRef.current = needRefresh
+  }, [needRefresh])
 
   useEffect(() => {
     if (!needRefresh) toast.dismiss(UPDATE_TOAST_ID)
   }, [needRefresh])
 
-  return null
+  // Si la recarga no llega, se suelta el velo y se avisa.
+  useEffect(() => {
+    if (!applying) return
+    const timeoutId = window.setTimeout(() => {
+      setApplying(false)
+      toast.error('No se pudo aplicar la versión nueva', { description: 'Recarga la página para intentarlo de nuevo.' })
+    }, APPLY_TIMEOUT_MS)
+    return () => window.clearTimeout(timeoutId)
+  }, [applying])
+
+  if (!applying) return null
+  return (
+    <div
+      // role="status" ya es una región viva cortés: un aria-live asertivo
+      // pisaría lo que el lector de pantalla estuviera anunciando.
+      role="status"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-wa-app/80 backdrop-blur-sm dark:bg-wa-app-dark/80"
+    >
+      <div className="flex items-center gap-3 rounded-2xl border border-wa-border bg-white px-5 py-4 text-sm font-medium text-wa-text shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
+        <Loader2 className="h-5 w-5 animate-spin text-wa-primary" aria-hidden="true" />
+        <span>Actualizando {currentBrandName()}…</span>
+      </div>
+    </div>
+  )
 }
