@@ -40,7 +40,15 @@ from app.modules.platform.ports.settings_service import get_effective_many
 logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "copiloto-2026-11-08"
-_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "copiloto.md"
+# Dos mitades, con los mismos nombres que el nodo de n8n del que viene:
+# - system prompt (prompts/system_prompt.md): texto fijo de la plataforma,
+#   igual para todos los negocios; dice cómo comportarse y cómo leer cada
+#   bloque del user prompt.
+# - user prompt (build_user_prompt): los datos de este pedido, armados en cada
+#   sugerencia: <negocio> (el Perfil del negocio), <lead>, <catalogo>,
+#   <compras>, <recursos_disponibles>, <conocimiento> (solo los fragmentos
+#   que la búsqueda eligió), <historial> e <indicacion_vendedor>.
+_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.md"
 # Mensajes recientes que entran al prompt (los más viejos quedan fuera: el
 # contexto de una venta vive en las últimas semanas, no en todo el historial).
 MAX_MESSAGES = 80
@@ -99,7 +107,8 @@ SUGGESTION_SCHEMA: dict = {
 
 
 def load_system_prompt() -> str:
-    return _PROMPT_PATH.read_text(encoding="utf-8")
+    """El system prompt: fijo, de la plataforma, sin datos de ningún negocio."""
+    return _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def _json(value: Any) -> str:
@@ -204,6 +213,8 @@ def _hours_since(value: Any, now: datetime) -> float | None:
 
 def build_user_prompt(
     *,
+    # El Perfil del negocio (pestaña "Perfil" de Asistente IA) viaja acá, en
+    # <negocio>, como dato: el system prompt solo dice cómo usarlo.
     tenant_config: dict,
     lead: dict,
     messages: list[dict],

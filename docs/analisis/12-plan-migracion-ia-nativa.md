@@ -200,7 +200,7 @@ Entregable: el admin del negocio puede cargar sus claves y probarlas; las sugere
   2. Carga el catálogo con paquetes y lo serializa compacto.
   3. Precarga conocimiento: consulta formada por últimos mensajes del cliente y
      `servicio_interes`; registra `knowledge_searched`.
-  4. Arma el prompt (`prompts/copiloto.md`) con las mismas secciones del workflow:
+  4. Arma el prompt (`prompts/system_prompt.md` (system prompt) y `build_user_prompt` (user prompt)) con las mismas secciones del workflow:
      negocio, lead, datos temporales, recursos, historial, indicación del vendedor, y
      las nuevas: catálogo y compras.
   5. Llama a `LlmClient` con la herramienta `buscar_conocimiento`; máximo 3 vueltas.
@@ -309,7 +309,7 @@ Diferencias con lo propuesto arriba, decididas al implementar:
   solo guarda una clave que respondió.
 
 Archivos: `app/integrations/llm/*`, `app/modules/ai/infrastructure/{native_provider,routing_provider}.py`,
-`app/modules/ai/prompts/copiloto.md`, `app/modules/ai/providers_service.py`,
+`app/modules/ai/prompts/system_prompt.md`, `app/modules/ai/providers_service.py`,
 `app/modules/ai/ai_access.py`, `app/composition.py`; frontend
 `features/ai/components/AiIntegrationCard.tsx` y `app/IntegrationsPage.tsx`.
 Pruebas: `tests/test_llm_clients.py`, `tests/test_native_copilot.py`,
