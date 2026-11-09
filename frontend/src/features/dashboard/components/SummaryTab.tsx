@@ -15,6 +15,7 @@ interface Props {
   onOpenFlows: () => void
   onOpenChat: (leadId: string) => void
   onFilterChats: (filters: Partial<ChatFilters>) => void
+  onOpenSales: () => void
 }
 
 /** La hora llega tal como se registró en el formulario (texto), así que no se
@@ -28,7 +29,7 @@ function formatAppointmentDate(date: string, time: string): string {
   return `${label} · ${time}`
 }
 
-export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
+export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats, onOpenSales }: Props) {
   const { summary, pipeline, activity, appointments } = data
   const period = `Últimos ${days} días`
   const leadScope = isMine ? 'Asignados a mí' : 'Base del equipo'
@@ -98,7 +99,19 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
           <BarList items={activity.messages.by_user} emptyLabel="Nadie envió mensajes desde la app" />
         </Panel>
 
-        <Panel title="Ventas" subtitle={isMine ? `Lo que cerré · ${period}` : `Lo que cerró el equipo · ${period}`}>
+        <Panel
+          title="Ventas"
+          subtitle={isMine ? `Lo que cerré · ${period}` : `Lo que cerró el equipo · ${period}`}
+          action={
+            <button
+              type="button"
+              onClick={onOpenSales}
+              className="shrink-0 text-xs font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"
+            >
+              Ver ventas
+            </button>
+          }
+        >
           <StatGrid
             stats={[
               {

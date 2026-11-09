@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -25,6 +25,13 @@ vi.mock('../../leads/public/useLeadStages', async () => {
 vi.mock('./primitives', async () => {
   const actual = await vi.importActual<typeof import('./primitives')>('./primitives')
   return { ...actual, TrendChart: ({ label }: { label: string }) => <div>Serie: {label}</div> }
+})
+
+// Recharts necesita medir el contenedor y jsdom no mide nada: el gráfico se
+// reemplaza por su etiqueta y la tabla equivalente se prueba aparte.
+vi.mock('./SalesCharts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./SalesCharts')>()
+  return { ...actual, SalesTrendChart: () => <div>Serie: ventas</div> }
 })
 
 function metrics(): DashboardMetrics {
@@ -54,20 +61,33 @@ function metrics(): DashboardMetrics {
       currency: 'PEN',
       totals: { count: 3, revenue: 1250, avg_ticket: 416.67, sessions: 7, discount: 40, discount_rate: 3.1, buyers: 3 },
       previous: { count: 2, revenue: 1000, avg_ticket: 500, sessions: 4, discount: 0, discount_rate: 0, buyers: 2 },
-      trend: [], previous_trend: [],
+      trend: [
+        { date: '2026-09-20', count: 1, revenue: 400 },
+        { date: '2026-09-21', count: 2, revenue: 850 },
+      ],
+      previous_trend: [
+        { date: '2026-08-21', count: 1, revenue: 500 },
+        { date: '2026-08-22', count: 1, revenue: 500 },
+      ],
       by_package: [
         {
           package_id: 4, service_name: 'Hollywood Peel - Rostro', package_name: 'x3', sessions: 3,
           count: 2, revenue: 850, avg_ticket: 425, previous_count: 1,
         },
         {
-          package_id: 5, service_name: 'Láser', package_name: 'x6', sessions: 6,
+          package_id: 5, service_name: 'Láser', package_name: 'x10', sessions: 10,
           count: 1, revenue: 400, avg_ticket: 400, previous_count: 0,
         },
       ],
       by_service: [{ service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 }],
-      by_seller: [{ user_id: 2, name: 'Lucía Ramos', count: 2, revenue: 850, avg_ticket: 425, discount_rate: 4.5 }],
-      recent: [],
+      by_seller: [
+        { user_id: 2, name: 'Lucía Ramos', count: 2, revenue: 850, avg_ticket: 425, discount_rate: 4.5 },
+        { user_id: 3, name: 'Marco Díaz', count: 1, revenue: 400, avg_ticket: 400, discount_rate: 11.1 },
+      ],
+      recent: [{
+        id: 31, lead_id: 'lead-7', lead_name: 'Rosa Quispe', service_name: 'Láser', package_name: 'x6',
+        amount: 400, list_price: 450, sold_at: '2026-09-21T15:00:00Z', seller_name: 'Marco Díaz',
+      }],
     },
     automations: {
       by_flow: [{
@@ -193,7 +213,57 @@ describe('DashboardPage', () => {
     expect(screen.getByText('▼ -17% vs. período anterior')).toBeInTheDocument()
     // Los paquetes se cuentan por compras aunque el backend los ordene por ingresos.
     expect(screen.getByText('Hollywood Peel - Rostro · x3')).toBeInTheDocument()
-    expect(screen.getByText('Láser · x6')).toBeInTheDocument()
+    expect(screen.getByText('Láser · x10')).toBeInTheDocument()
+  })
+
+  it('lleva de Resumen a la pestaña de ventas', async () => {
+    const user = userEvent.setup()
+    renderDashboard(true)
+
+    await user.click(screen.getByRole('button', { name: 'Ver ventas' }))
+    expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Ingresos cobrados')).toBeInTheDocument()
+  })
+
+  it('compara cada cifra de ventas con el período anterior', async () => {
+    const user = userEvent.setup()
+    renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    expect(screen.getByText('3 clientes')).toBeInTheDocument()
+    // Compras +50 %, ingresos +25 %, ticket -17 %, sesiones +75 %.
+    for (const label of ['▲ +50%', '▲ +25%', '▼ -17%', '▲ +75%']) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0)
+    }
+    // Un descuento que sube se dice en puntos, no en porcentaje de porcentaje.
+    expect(screen.getByText('▲ +3.1 pts')).toBeInTheDocument()
+  })
+
+  it('ordena los paquetes por la columna elegida y marca los que antes no se vendían', async () => {
+    const user = userEvent.setup()
+    renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    const table = screen.getAllByRole('table')[0]
+    const firstPackage = () => within(table).getAllByRole('row')[1]
+    expect(within(firstPackage()).getByText('Hollywood Peel - Rostro')).toBeInTheDocument()
+    expect(within(table).getByText('Nuevo')).toBeInTheDocument()
+
+    // Láser x10 vende menos compras pero trae diez sesiones por compra.
+    await user.click(within(table).getByRole('button', { name: /Sesiones/ }))
+    expect(within(firstPackage()).getByText('Láser')).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: /Sesiones/ })).toHaveAttribute('aria-sort', 'descending')
+  })
+
+  it('marca al vendedor con descuento alto y abre el chat de una compra reciente', async () => {
+    const user = userEvent.setup()
+    const { onOpenChat } = renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    expect(screen.getByTitle('Descuento promedio por encima del 8%')).toHaveTextContent('11.1%')
+    expect(screen.getByText(/Lista S\/\s?450/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Rosa Quispe/ }))
+    expect(onOpenChat).toHaveBeenCalledWith('lead-7')
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {
