@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.events import Phase, subscribe
 from app.db.uow import collect, current_session
-from app.modules.automations.application.management import pause_lead_executions, resume_lead_executions
+from app.modules.automations.application.management import resume_lead_executions
 from app.modules.automations.application.ports import automation_ports
 from app.modules.automations.application.triggers import trigger_inbound_message
 from app.modules.automations.domain.events import (
@@ -108,13 +108,15 @@ async def report_service_usage(event: ServiceDeletionRequested) -> None:
 
 @subscribe(LeadUpdated, phase=Phase.AFTER_COMMIT)
 async def follow_lead_pause(event: LeadUpdated) -> None:
-    """La pausa congela y la reanudación descongela: lo que quedó a medias
-    sigue después por donde iba, con el tiempo que le faltaba."""
+    """Pausar el bot del chat solo impide lanzamientos nuevos (lo mira
+    schedule_in_session al crear ejecuciones): lo que ya está en marcha sigue
+    y se detiene, si hace falta, desde su tarjeta. Hasta el 2026-11-09 la
+    pausa congelaba las ejecuciones de sistema y el vendedor veía dos pausas
+    que prometían lo mismo; al reactivar el bot todavía se descongela lo que
+    aquella regla dejó pausado."""
     if "automatizacion_pausada" not in event.values:
         return
-    if event.values["automatizacion_pausada"]:
-        await pause_lead_executions(event.lead_id)
-    else:
+    if not event.values["automatizacion_pausada"]:
         await resume_lead_executions(event.lead_id)
 
 

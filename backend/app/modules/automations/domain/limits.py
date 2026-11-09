@@ -36,10 +36,11 @@ RATE_LIMIT_RETRY_MINUTES = 10
 # minutos configurados más esta gracia (3 días): activar una regla no debe
 # disparar contra todo el historial de conversaciones viejas.
 OVERDUE_LOOKBACK_GRACE_MINUTES = 4320
-# Quién congeló una ejecución (columna pause_scope): pausar el lead entero o el
-# vendedor pausando esa sola desde el panel del chat. Reanudar el lead solo
-# descongela las primeras; NULL (pausas anteriores a la columna) cuenta como
-# LEAD. Ver pause_lead_executions / pause_automation_execution.
+# Quién congeló una ejecución (columna pause_scope). Hoy solo se escribe
+# EXECUTION (el vendedor pausando esa sola desde el panel del chat); LEAD y
+# NULL quedan de cuando pausar el lead congelaba sus ejecuciones, y reanudar
+# el lead solo descongela esas. Ver resume_lead_executions /
+# pause_automation_execution.
 PAUSE_SCOPE_LEAD = "lead"
 PAUSE_SCOPE_EXECUTION = "execution"
 ACTION_TYPES = frozenset(AutomationActionType)

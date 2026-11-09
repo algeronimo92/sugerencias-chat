@@ -112,7 +112,7 @@ function KanbanCard({ chat, catalog, isMoving, isSelected, onToggleSelect, onOpe
                 )}
                 {chat.automatizacion_pausada && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                    <BotOff className="h-2.5 w-2.5" /> Bot pausado
+                    <BotOff className="h-2.5 w-2.5" /> Bot desactivado
                   </span>
                 )}
               </div>

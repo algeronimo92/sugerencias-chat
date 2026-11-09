@@ -29,8 +29,6 @@ class InMemoryExecutionStore:
         self.round_robin: dict[tuple[int, str], int] = {}
         self.children: list[dict] = []
         self.due: list[int] = []
-        self.frozen: list[int] = []
-        self.lead_pauses: list[str] = []
         self.lead_resumes: list[str] = []
         self._ids = itertools.count(1000)
 
@@ -100,8 +98,7 @@ class InMemoryExecutionStore:
 
     async def claim_due(self, now, limit):
         claimed, self.due = self.due[:limit], self.due[limit:]
-        frozen, self.frozen = self.frozen, []
-        return frozen, claimed
+        return claimed
 
     async def find_by_event_key(self, rule_id, event_key):
         for execution in self.executions.values():
@@ -126,15 +123,6 @@ class InMemoryExecutionStore:
             execution_id, {AutomationExecutionStatus.FAILED, AutomationExecutionStatus.SKIPPED},
             status=AutomationExecutionStatus.SCHEDULED, scheduled_for=now, error=None, error_code=None, attempts=0,
             window_override_by_user_id=override_by_user_id,
-        )
-
-    async def pause_lead(self, lead_id, now):
-        self.lead_pauses.append(lead_id)
-        return sum(
-            self._transition(execution.id, {AutomationExecutionStatus.SCHEDULED},
-                             status=AutomationExecutionStatus.PAUSED, paused_at=now, pause_scope="lead")
-            for execution in list(self.executions.values())
-            if execution.lead_id == lead_id and getattr(execution, "start_source", "system") != "manual"
         )
 
     async def resume_lead(self, lead_id, now):

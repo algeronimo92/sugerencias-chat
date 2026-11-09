@@ -89,7 +89,7 @@ export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
           stats={[
             { label: 'Programados', value: formatNumber(active.scheduled ?? 0), hint: 'Esperando su turno' },
             { label: 'En curso', value: formatNumber(active.running ?? 0) },
-            { label: 'Pausados', value: formatNumber(active.paused ?? 0), hint: 'Congelados a mano' },
+            { label: 'Pausados', value: formatNumber(active.paused ?? 0), hint: 'Pausados desde su tarjeta' },
           ]}
         />
         {activeTotal === 0 && <p className="mt-3 text-[11px] text-wa-muted">No hay nada en cola.</p>}

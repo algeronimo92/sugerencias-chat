@@ -22,7 +22,6 @@ from app.modules.automations.application.triggers import (
 from app.modules.automations.application.validation import validate_visual_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import normalize_visual_draft
-from app.modules.leads.public import fetch_lead_raw
 from app.modules.automations.domain.errors import AutomationConflict, InvalidAutomation
 
 _DEADLINE_FIELDS = {"is_active", "trigger_type", "trigger_config", "delay_minutes"}
@@ -226,25 +225,14 @@ async def retry_automation_execution(
     return await executions.view(execution_id)
 
 
-async def pause_lead_executions(lead_id: str) -> int:
-    """Al pausar la automatización de un lead, congela lo que tiene programado
-    de disparadores de sistema en vez de cancelarlo: `paused`, con
-    `scheduled_for` intacto y `paused_at` marcando desde cuándo, para que
-    `resume_lead_executions` le devuelva el tiempo que le faltaba.
-
-    No toca lo que está corriendo en este instante (el motor la congela al
-    llegar a su siguiente espera) ni los flujos manuales del vendedor, que
-    pidió a propósito y puede pausar o cancelar uno por uno desde el chat."""
-    async with unit_of_work():
-        paused = await automation_ports().executions.pause_lead(lead_id, _now())
-        if paused:
-            await _changed()
-    return paused
-
-
 async def resume_lead_executions(lead_id: str) -> int:
     """Devuelve a la cola lo que quedó congelado por la pausa del lead, con el
     tiempo que le faltaba.
+
+    Pausar el lead ya no congela nada: desde el 2026-11-09 el botón del bot
+    solo impide que los disparadores creen ejecuciones nuevas, y lo que está
+    en curso se pausa una por una desde el chat. Esto queda para descongelar
+    lo que la regla anterior dejó pausado en producción.
 
     `waiting_since` de los bloques Pausa/Pregunta no se corre a propósito: si
     el cliente escribió mientras el vendedor atendía a mano, esa respuesta es
@@ -262,8 +250,8 @@ async def resume_lead_executions(lead_id: str) -> int:
 
 async def pause_automation_execution(execution_id: int) -> dict | None:
     """Congela una sola ejecución: el botón de pausa del panel de
-    automatizaciones del chat. A diferencia de la pausa del lead, acá sí
-    entran los flujos manuales.
+    automatizaciones del chat. Es la única forma de detener algo que ya está
+    en marcha: el botón del bot del chat solo frena lanzamientos nuevos.
 
     Solo aplica a una ejecución `scheduled`; una `running` está enviando un
     paso en este instante y no se interrumpe. Devuelve None para que el
@@ -278,23 +266,11 @@ async def pause_automation_execution(execution_id: int) -> dict | None:
 
 async def resume_automation_execution(execution_id: int) -> dict | None:
     """Devuelve a la cola una ejecución congelada, con el tiempo que le
-    faltaba. Sirve para las dos pausas: la puntual del vendedor y la que dejó
-    la pausa del lead.
-
-    Con el lead todavía pausado no tiene sentido: el motor la volvería a
-    congelar al vencer. Eso se corta acá con un error claro — salvo en los
-    flujos manuales, que la pausa del lead nunca frena."""
+    faltaba. Sirve para la pausa puntual del vendedor y para lo que la regla
+    anterior congeló con el lead. El bot del chat en pausa no lo impide: ya
+    no congela nada, así que el motor no la volverá a detener al vencer."""
     executions = automation_ports().executions
     async with unit_of_work():
-        execution, _rule = await executions.load(execution_id)
-        if execution is None or execution.status != AutomationExecutionStatus.PAUSED:
-            return None
-        if execution.start_source != "manual" and execution.lead_id:
-            lead = await fetch_lead_raw(execution.lead_id)
-            if lead is not None and lead.get("automatizacion_pausada"):
-                raise AutomationConflict(
-                    "Este chat tiene la automatización pausada: reanúdala con el botón del bot, arriba en el chat, para que el flujo siga."
-                )
         if not await executions.resume(execution_id, _now()):
             return None
         await _changed(wake=True)

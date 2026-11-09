@@ -697,7 +697,7 @@ export function ChatList({
                   })
                 }
               />
-              Solo con automatización pausada
+              Solo con el bot desactivado
             </label>
           </div>
         )}
