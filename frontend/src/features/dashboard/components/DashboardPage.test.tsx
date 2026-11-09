@@ -51,9 +51,23 @@ function metrics(): DashboardMetrics {
       conversations_open: 5, conversations_closed: 7, avg_close_hours: 20.5,
     },
     sales: {
-      count: 3, total: 1250, avg_ticket: 416.67,
-      by_seller: [{ name: 'Lucía Ramos', value: 850 }],
-      by_package: [{ name: 'Hollywood Peel - Rostro · x3', value: 2 }],
+      currency: 'PEN',
+      totals: { count: 3, revenue: 1250, avg_ticket: 416.67, sessions: 7, discount: 40, discount_rate: 3.1, buyers: 3 },
+      previous: { count: 2, revenue: 1000, avg_ticket: 500, sessions: 4, discount: 0, discount_rate: 0, buyers: 2 },
+      trend: [], previous_trend: [],
+      by_package: [
+        {
+          package_id: 4, service_name: 'Hollywood Peel - Rostro', package_name: 'x3', sessions: 3,
+          count: 2, revenue: 850, avg_ticket: 425, previous_count: 1,
+        },
+        {
+          package_id: 5, service_name: 'Láser', package_name: 'x6', sessions: 6,
+          count: 1, revenue: 400, avg_ticket: 400, previous_count: 0,
+        },
+      ],
+      by_service: [{ service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 }],
+      by_seller: [{ user_id: 2, name: 'Lucía Ramos', count: 2, revenue: 850, avg_ticket: 425, discount_rate: 4.5 }],
+      recent: [],
     },
     automations: {
       by_flow: [{
@@ -166,6 +180,20 @@ describe('DashboardPage', () => {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
     expect(screen.getByText('1 ejecuciones no llegaron a enviarse')).toBeInTheDocument()
+  })
+
+  it('muestra las ventas en la moneda del negocio y contra el período anterior', () => {
+    renderDashboard(true)
+
+    // El total y el ticket llevan la moneda del perfil; el cambio dice la
+    // dirección con flecha y signo, no solo con color.
+    expect(screen.getByText(/S\/\s?1,250/)).toBeInTheDocument()
+    expect(screen.getByText('▲ +25% vs. período anterior')).toBeInTheDocument()
+    expect(screen.getByText('▲ +50% vs. período anterior')).toBeInTheDocument()
+    expect(screen.getByText('▼ -17% vs. período anterior')).toBeInTheDocument()
+    // Los paquetes se cuentan por compras aunque el backend los ordene por ingresos.
+    expect(screen.getByText('Hollywood Peel - Rostro · x3')).toBeInTheDocument()
+    expect(screen.getByText('Láser · x6')).toBeInTheDocument()
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {

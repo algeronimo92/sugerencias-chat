@@ -30,3 +30,10 @@ async def save_profile(normalized: dict[str, str | None], user_id: int | None, f
         await session.execute(statement)
         await session.flush()
     return await get_profile(fields)
+
+
+async def get_currency() -> str | None:
+    """Moneda del negocio (ISO 4217) tal como la cargó en el perfil, o None."""
+    async with session_scope() as session:
+        row = await session.get(AIProfile, 1)
+        return (row.currency or None) if row is not None else None

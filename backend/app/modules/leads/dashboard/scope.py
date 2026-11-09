@@ -39,6 +39,12 @@ class DashboardScope:
     def is_mine(self) -> bool:
         return self.scope == SCOPE_MINE
 
+    @property
+    def previous_start(self) -> datetime:
+        """Inicio de la ventana anterior de la misma duración, contra la que se
+        comparan las ventas: 30 días frente a los 30 de antes."""
+        return self.start - timedelta(days=self.days)
+
     def mine(self, column):
         """Condición que acota una consulta al usuario, o `true()` cuando el
         scope es del equipo. Se pasa siempre a `.where(...)`, así la misma

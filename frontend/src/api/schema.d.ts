@@ -4728,18 +4728,116 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** DashboardSaleRow */
+        DashboardSaleRow: {
+            /** Id */
+            id: number;
+            /** Lead Id */
+            lead_id: string;
+            /** Lead Name */
+            lead_name: string;
+            /** Service Name */
+            service_name: string;
+            /** Package Name */
+            package_name: string;
+            /** Amount */
+            amount: number;
+            /** List Price */
+            list_price: number;
+            /** Sold At */
+            sold_at: string;
+            /** Seller Name */
+            seller_name: string;
+        };
         /** DashboardSales */
         DashboardSales: {
+            /** Currency */
+            currency?: string | null;
+            totals: components["schemas"]["DashboardSalesTotals"];
+            previous?: components["schemas"]["DashboardSalesTotals"] | null;
+            /** Trend */
+            trend: components["schemas"]["DashboardSalesPoint"][];
+            /** Previous Trend */
+            previous_trend: components["schemas"]["DashboardSalesPoint"][];
+            /** By Package */
+            by_package: components["schemas"]["DashboardSalesPackage"][];
+            /** By Service */
+            by_service: components["schemas"]["DashboardSalesService"][];
+            /** By Seller */
+            by_seller: components["schemas"]["DashboardSalesSeller"][];
+            /** Recent */
+            recent: components["schemas"]["DashboardSaleRow"][];
+        };
+        /** DashboardSalesPackage */
+        DashboardSalesPackage: {
+            /** Package Id */
+            package_id?: number | null;
+            /** Service Name */
+            service_name: string;
+            /** Package Name */
+            package_name: string;
+            /** Sessions */
+            sessions: number;
             /** Count */
             count: number;
-            /** Total */
-            total: number;
+            /** Revenue */
+            revenue: number;
             /** Avg Ticket */
             avg_ticket?: number | null;
-            /** By Seller */
-            by_seller: components["schemas"]["DashboardMetricItem"][];
-            /** By Package */
-            by_package: components["schemas"]["DashboardMetricItem"][];
+            /** Previous Count */
+            previous_count: number;
+        };
+        /** DashboardSalesPoint */
+        DashboardSalesPoint: {
+            /** Date */
+            date: string;
+            /** Count */
+            count: number;
+            /** Revenue */
+            revenue: number;
+        };
+        /** DashboardSalesSeller */
+        DashboardSalesSeller: {
+            /** User Id */
+            user_id?: number | null;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Revenue */
+            revenue: number;
+            /** Avg Ticket */
+            avg_ticket?: number | null;
+            /** Discount Rate */
+            discount_rate?: number | null;
+        };
+        /** DashboardSalesService */
+        DashboardSalesService: {
+            /** Service Id */
+            service_id?: number | null;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Revenue */
+            revenue: number;
+        };
+        /** DashboardSalesTotals */
+        DashboardSalesTotals: {
+            /** Count */
+            count: number;
+            /** Revenue */
+            revenue: number;
+            /** Avg Ticket */
+            avg_ticket?: number | null;
+            /** Sessions */
+            sessions: number;
+            /** Discount */
+            discount: number;
+            /** Discount Rate */
+            discount_rate?: number | null;
+            /** Buyers */
+            buyers: number;
         };
         /** DashboardSummary */
         DashboardSummary: {
