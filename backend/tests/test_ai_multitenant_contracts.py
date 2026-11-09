@@ -27,7 +27,6 @@ from app.modules.ai import ai_jobs as ai_jobs_module
 from app.integrations.n8n import client as n8n_service
 from app.modules.ai.ai_job_tokens import AIJobClaims, decode_ai_job_token, issue_ai_job_token
 from app.modules.ai.ai_jobs import AIContextStale, AIJobConflict
-from app.modules.ai.knowledge_search import _escape_like
 from tests.conftest import patch_webhooks
 
 
@@ -411,10 +410,6 @@ async def test_catalog_tool_only_serves_the_analyst():
     with pytest.raises(HTTPException) as exc:
         await webhooks.ai_catalog_webhook(JOB_ID, _claims("rag"))
     assert exc.value.status_code == 403
-
-
-def test_knowledge_fallback_escapes_like_wildcards():
-    assert _escape_like(r"50%_promo\\hoy") == r"50\%\_promo\\\\hoy"
 
 
 async def test_analyst_dispatch_sends_operation_job_revision_and_tenant_token(monkeypatch):

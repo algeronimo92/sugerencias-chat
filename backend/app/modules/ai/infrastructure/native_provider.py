@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+import re
+import unicodedata
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +37,9 @@ from app.modules.ai.ai_jobs import record_ai_job_metadata, record_ai_job_step, s
 from app.modules.ai.knowledge_search import chunks_by_ids, fuse_rankings, referenced_chunks, search_knowledge_chunks, service_knowledge_chunks
 from app.modules.ai.knowledge_vectors import ensure_embeddings, vector_search
 from app.modules.ai.schemas import SuggestionResponse
+from app.modules.leads.ports.stages import list_stages_for_ai
 from app.modules.platform.ports.settings_service import get_effective_many
+from app.modules.platform.public import business_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +131,6 @@ MAX_QUERY_WORDS = 16
 
 
 def _fold(word: str) -> str:
-    import unicodedata
     return "".join(ch for ch in unicodedata.normalize("NFD", word) if unicodedata.category(ch) != "Mn")
 
 
@@ -137,7 +140,6 @@ def or_query(text: str) -> str:
     ``or``): con AND, "¿Cuántas sesiones necesito?" no encontraba una ficha
     que solo dice "sesiones". El ranking sigue premiando a los fragmentos que
     coinciden en más palabras."""
-    import re
     words: list[str] = []
     for raw in re.findall(r"[\wáéíóúüñÁÉÍÓÚÜÑ]+", text.lower()):
         if len(raw) < MIN_WORD_LENGTH or raw.isdigit() or _fold(raw) in _STOPWORDS:
@@ -159,11 +161,27 @@ def conversation_query(messages: list[dict]) -> str:
     return or_query(" ".join(customer))
 
 
+def service_family(name: str) -> str:
+    """El tratamiento sin la zona: "Botox - 2 Zonas" → "Botox". Es como el
+    ERP nombra las variantes y como el frontend las agrupa
+    (``serviceFamilies.ts``)."""
+    return name.split(" - ", 1)[0].strip()
+
+
+def service_query(name: str) -> str:
+    """El servicio de interés como consulta de texto. El nombre tal cual no
+    servía: ``websearch_to_tsquery`` lee el « - Zona» de 56 de los 62
+    servicios del ERP como un NOT ("HIFU 12D - Rostro" → ``hifu & 12d &
+    !rostro``) y la ficha, que habla del rostro, no aparecía nunca. Quedan
+    solo las palabras del tratamiento, unidas con AND."""
+    return " ".join(re.findall(r"[\wáéíóúüñÁÉÍÓÚÜÑ]+", service_family(name)))
+
+
 def knowledge_queries(lead: dict, messages: list[dict], instruction: str | None) -> list[str]:
     """Qué buscar antes de llamar al modelo: primero el servicio de interés
     solo (su ficha es lo más útil), después lo último que dijo el cliente y la
     indicación del vendedor, cada una como búsqueda por cualquier palabra."""
-    service = str(lead.get("servicio_interes") or "").strip()
+    service = service_query(str(lead.get("servicio_interes") or ""))
     queries = [service, conversation_query(messages)]
     if instruction and instruction.strip():
         queries.append(or_query(instruction))
@@ -174,14 +192,32 @@ def knowledge_queries(lead: dict, messages: list[dict], instruction: str | None)
     return unique
 
 
-def compact_messages(messages: list[dict]) -> list[dict]:
-    """Del más antiguo al más nuevo, solo lo que el modelo necesita leer."""
+def _local_time(value: Any, tz: tzinfo | None) -> Any:
+    """La hora como la vive el negocio. Los mensajes se guardan en UTC y así
+    llegaban al prompt: un "buenas noches" de las 21:00 en Lima decía 02:00
+    del día siguiente, y el modelo contaba mal las horas y los días."""
+    if tz is None or not value:
+        return value
+    try:
+        when = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(tz).isoformat(timespec="minutes")
+
+
+def compact_messages(messages: list[dict], tz: tzinfo | None = None) -> list[dict]:
+    """Del más antiguo al más nuevo, solo lo que el modelo necesita leer, con
+    las horas en la zona del negocio."""
     recent = list(reversed(messages))[-MAX_MESSAGES:]
     compact = []
     for message in recent:
-        item = {"de": message.get("sender"), "fecha": message.get("sent_at"), "texto": message.get("content")}
+        item = {"de": message.get("sender"), "fecha": _local_time(message.get("sent_at"), tz), "texto": message.get("content")}
         if message.get("message_type") not in (None, "text"):
             item["tipo"] = message.get("message_type")
+        if message.get("anuncio"):
+            item["origen"] = message["anuncio"]
         compact.append(item)
     return compact
 
@@ -223,11 +259,18 @@ def build_user_prompt(
     knowledge: list[dict],
     instruction: str | None,
     now: datetime,
+    stages: list[dict] | None = None,
 ) -> str:
     lead_view = {
         key: lead.get(key)
         for key in ("nombre", "estado", "tipo_objecion", "servicio_interes", "notas", "con_especialista", "contador_noshow", "proxima_cita")
     }
+    # ``estado`` es la clave de una etapa del negocio ("seguimiento_2"): sin
+    # su nombre y descripción el modelo adivinaba qué significaba.
+    stage = next((item for item in stages or [] if item.get("key") == lead.get("estado")), None)
+    if stage is not None:
+        lead_view["etapa"] = {"nombre": stage.get("name"), "tipo": stage.get("kind"), "descripcion": stage.get("description")}
+    lead_view["proxima_cita"] = _local_time(lead_view.get("proxima_cita"), now.tzinfo)
     knowledge_view = [
         {
             "titulo": item["title"],
@@ -239,9 +282,9 @@ def build_user_prompt(
     sections = [
         "<negocio>\nPerfil que cargó el negocio (nombre, descripción, ubicación, horarios, moneda, tono y reglas). Vacío si todavía no lo configuró:\n"
         + _json(tenant_config) + "\n</negocio>",
-        "<lead>\nEstado e información del lead (nombre, estado YA clasificado, tipo_objecion, servicio_interes, notas, con_especialista, contador_noshow, proxima_cita):\n"
+        "<lead>\nEstado e información del lead (nombre, estado YA clasificado y su etapa con nombre y descripción, tipo_objecion, servicio_interes, notas, con_especialista, contador_noshow, proxima_cita):\n"
         + _json(lead_view) + "\n</lead>",
-        "<datos_temporales>\n- Fecha y hora actual: " + now.isoformat()
+        "<datos_temporales>\n- Fecha y hora actual (zona del negocio): " + now.isoformat(timespec="minutes")
         + "\n- Último mensaje enviado por: " + str(lead.get("ultimo_emisor") or "desconocido") + "   (cliente | vendedor)"
         + "\n- Horas desde el último mensaje: " + str(_hours_since(lead.get("ultimo_mensaje_at"), now))
         + "\n</datos_temporales>",
@@ -249,21 +292,32 @@ def build_user_prompt(
         "<compras>\nLo que este lead ya compró (servicio, paquete, sesiones, monto, fecha):\n" + _json(lead.get("compras") or []) + "\n</compras>",
         "<recursos_disponibles>\nArchivos que el negocio autorizó como adjuntos (id, nombre, tipo, url, descripcion):\n" + _json(resources) + "\n</recursos_disponibles>",
         "<conocimiento>\nFragmentos de fichas, políticas y guías del negocio elegidos para esta conversación:\n" + _json(knowledge_view) + "\n</conocimiento>",
-        "<historial>\nConversación de WhatsApp (más antiguo arriba):\n" + _json(compact_messages(messages)) + "\n</historial>",
+        "<historial>\nConversación de WhatsApp (más antiguo arriba, horas en la zona del negocio):\n" + _json(compact_messages(messages, now.tzinfo)) + "\n</historial>",
         "<indicacion_vendedor>\nIndicación puntual del vendedor para ESTA generación (vacío si no dio ninguna):\n" + (instruction or "") + "\n</indicacion_vendedor>",
         "Analiza y devuelve el JSON según el esquema de salida.",
     ]
     return "\n\n".join(sections)
 
 
+def _same(name: str) -> str:
+    return " ".join(_fold(name).casefold().split())
+
+
 def service_id_for(lead: dict, catalog: list[dict]) -> int | None:
     """El servicio de interés del lead es texto (lo comparten n8n y las
-    automatizaciones): se ubica en el catálogo por nombre."""
-    wanted = str(lead.get("servicio_interes") or "").strip().casefold()
+    automatizaciones): se ubica en el catálogo por nombre. El analista nunca
+    ve el catálogo y escribe "Botox" o "depilación láser": si no hay un nombre
+    igual, vale la primera variante del mismo tratamiento (las fichas se
+    vinculan a todas sus zonas)."""
+    wanted = _same(str(lead.get("servicio_interes") or ""))
     if not wanted:
         return None
     for item in catalog:
-        if str(item.get("name") or "").strip().casefold() == wanted:
+        if _same(str(item.get("name") or "")) == wanted:
+            return item.get("id")
+    family = _same(service_family(wanted))
+    for item in catalog:
+        if _same(service_family(str(item.get("name") or ""))) == family:
             return item.get("id")
     return None
 
@@ -415,6 +469,8 @@ class NativeAiProvider:
         tenant_config = await fetch_tenant_config()
         catalog = await list_ai_catalog()
         resources = await list_ai_resources()
+        stages = await list_stages_for_ai()
+        tz = await business_timezone()
 
         # Los embeddings, con la clave del modelo principal: el mismo proveedor
         # para todo el conocimiento del negocio (vectores de modelos distintos
@@ -423,12 +479,12 @@ class NativeAiProvider:
         knowledge, retrieval = await gather_knowledge(lead, messages, instruction, catalog, embedder)
         await record_ai_job_step(job_id, "knowledge_searched")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(tz)
         request = LlmRequest(
             system=load_system_prompt(),
             user=build_user_prompt(
                 tenant_config=tenant_config, lead=lead, messages=messages, resources=resources,
-                catalog=catalog, knowledge=knowledge, instruction=instruction, now=now,
+                catalog=catalog, knowledge=knowledge, instruction=instruction, now=now, stages=stages,
             ),
             schema=SUGGESTION_SCHEMA,
             schema_name="sugerencias_copiloto",

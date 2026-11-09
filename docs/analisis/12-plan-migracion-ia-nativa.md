@@ -108,8 +108,10 @@ No-objetivos (por ahora):
   documento regenera todos sus fragmentos.
 - **Cómo se recupera** (`knowledge_search.search_knowledge_chunks`): la consulta que
   formula el modelo se convierte con `websearch_to_tsquery('spanish')`; se rankean
-  los fragmentos por `ts_rank_cd` y se devuelven los 5 mejores con título y fuente.
-  Si no hay coincidencia léxica, cae a `ILIKE` sobre contenido y título.
+  los fragmentos por `ts_rank_cd` y se devuelven los mejores con título y fuente.
+  El servicio de interés se busca sin su zona (`service_query`): « - Rostro» era un
+  NOT para `websearch_to_tsquery`. El segundo intento con `ILIKE` se retiró
+  (2026-11-09): con consultas "palabra or palabra" nunca coincidía.
 - **Qué más entra al prompt sin pasar por el RAG**: el perfil del negocio (qué
   ofrece, ubicación, horarios, moneda, tono, reglas "siempre"/"nunca"), el catálogo con
   paquetes, las compras del lead y los archivos de la biblioteca marcados como

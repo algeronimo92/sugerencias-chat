@@ -20,8 +20,14 @@ MAX_DOCUMENTS = 200
 # lexical, y un fragmento enorme empataría con casi cualquier consulta.
 CHUNK_TARGET_CHARS = 1200
 CHUNK_OVERLAP_CHARS = 150
+# Sube cuando cambia cómo se trocea: al arrancar, los documentos guardados
+# con una versión anterior se vuelven a trocear (``rechunk_outdated_documents``).
+# 2 (2026-11-09): conserva los saltos de línea dentro de un párrafo (listas,
+# guiones) y el solape arranca en una oración entera.
+CHUNKER_VERSION = 2
 
-_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+")
+# Fin de oración o salto de línea: donde se puede cortar sin partir una idea.
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(\S.*)$", re.MULTILINE)
 
 
@@ -38,16 +44,33 @@ def _hard_split(text: str, size: int) -> list[str]:
     return parts
 
 
+def _overlap_tail(chunk: str, overlap: int) -> str:
+    """La cola del fragmento anterior con la que arranca el siguiente, desde
+    el comienzo de una oración o de una línea. Antes se cortaba en el primer
+    espacio y 13 de los 26 fragmentos del guion de WhatsApp empezaban a
+    mitad de frase (2026-11-09)."""
+    if not overlap:
+        return ""
+    tail = chunk[-overlap:]
+    boundary = _SENTENCE_END_RE.search(tail)
+    if boundary is not None:
+        return tail[boundary.end():].strip()
+    return tail[tail.find(" ") + 1:].strip() if " " in tail else tail
+
+
 def _chunk_plain(content: str, target: int, overlap: int) -> list[str]:
     """Agrupa párrafos hasta ``target`` caracteres.
 
-    Un párrafo más largo que ``target`` se parte por oraciones. Cada fragmento
-    arranca con la cola del anterior para que una idea cortada en el borde
-    siga encontrándose desde cualquiera de los dos.
+    Un párrafo más largo que ``target`` se parte por oraciones o líneas. Cada
+    fragmento arranca con la cola del anterior para que una idea cortada en
+    el borde siga encontrándose desde cualquiera de los dos. Los saltos de
+    línea dentro de un párrafo se conservan: una lista de viñetas o los
+    turnos de un guion aplastados en una sola línea perdían su forma y el
+    modelo los leía como una frase corrida.
     """
 
     paragraphs = [
-        " ".join(block.split())
+        "\n".join(" ".join(line.split()) for line in block.split("\n") if line.strip())
         for block in re.split(r"\n\s*\n", content.replace("\r\n", "\n"))
     ]
     pieces: list[str] = []
@@ -62,9 +85,8 @@ def _chunk_plain(content: str, target: int, overlap: int) -> list[str]:
         candidate = f"{current}\n\n{piece}" if current else piece
         if current and len(candidate) > target:
             chunks.append(current)
-            tail = current[-overlap:]
-            tail = tail[tail.find(" ") + 1:] if " " in tail else tail
-            current = f"{tail} {piece}".strip() if overlap else piece
+            tail = _overlap_tail(current, overlap)
+            current = f"{tail}\n\n{piece}" if tail else piece
         else:
             current = candidate
     if current:
@@ -176,7 +198,19 @@ async def create_document(
     return await knowledge_repository.create_document(
         title, content, _validate_type(document_type), chunk_text(content), MAX_DOCUMENTS,
         service_ids=_clean_service_ids(service_ids), source=source, metadata=metadata,
+        chunker_version=CHUNKER_VERSION,
     )
+
+
+async def rechunk_outdated_documents() -> int:
+    """Vuelve a trocear los documentos guardados con un troceador anterior.
+    Corre en el mantenimiento de arranque, una vez por versión y por negocio;
+    los vectores de los fragmentos nuevos se calculan en la próxima
+    sugerencia. Devuelve cuántos documentos retroceó."""
+    outdated = await knowledge_repository.documents_chunked_before(CHUNKER_VERSION)
+    for document_id, content in outdated:
+        await knowledge_repository.replace_chunks(document_id, chunk_text(content), CHUNKER_VERSION)
+    return len(outdated)
 
 
 class TemplateNotFound(LookupError):
@@ -213,6 +247,7 @@ async def update_document(
     return await knowledge_repository.update_document(
         document_id, title, content, chunk_text(content),
         document_type=_validate_type(document_type), service_ids=_clean_service_ids(service_ids),
+        chunker_version=CHUNKER_VERSION,
     )
 
 

@@ -87,6 +87,7 @@ class UnknownServiceError(ValueError):
 async def create_document(
     title: str, content: str, document_type: str | None, chunks: list[str], max_documents: int,
     *, service_ids: list[int] | None = None, source: str = "manual", metadata: dict | None = None,
+    chunker_version: int | None = None,
 ) -> dict:
     async with session_scope() as session:
         existing = await session.scalar(select(func.count()).select_from(KnowledgeDocument))
@@ -94,7 +95,7 @@ async def create_document(
             raise KnowledgeLimitError(f"Se alcanzó el máximo de {max_documents} documentos")
         document = KnowledgeDocument(
             title=title, content=content, document_type=document_type, source=source,
-            metadata_=metadata or {},
+            metadata_=_with_chunker(metadata, chunker_version),
         )
         session.add(document)
         await session.flush()
@@ -106,9 +107,28 @@ async def create_document(
     assert created is not None
     return created
 
+def _with_chunker(metadata: dict | None, chunker_version: int | None) -> dict:
+    """Con qué versión del troceador se armaron los fragmentos, para
+    rehacerlos cuando cambie (ver ``knowledge_service.CHUNKER_VERSION``)."""
+    merged = dict(metadata or {})
+    if chunker_version is not None:
+        merged["chunker"] = chunker_version
+    return merged
+
+
+async def _replace_chunks(session, document: KnowledgeDocument, chunks: list[str], chunker_version: int | None) -> None:
+    document.metadata_ = _with_chunker(document.metadata_, chunker_version)
+    await session.execute(
+        delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id)
+    )
+    session.add_all(_chunk_rows(document.id, chunks))
+    await session.flush()
+
+
 async def update_document(
     document_id: str, title: str, content: str, chunks: list[str],
     *, document_type: str | None = None, service_ids: list[int] | None = None,
+    chunker_version: int | None = None,
 ) -> dict | None:
     async with session_scope() as session:
         document = await session.get(KnowledgeDocument, document_id, with_for_update=True)
@@ -119,12 +139,29 @@ async def update_document(
         document.document_type = document_type
         document.updated_at = func.now()
         await _set_services(session, document, service_ids or [])
-        await session.execute(
-            delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document_id)
-        )
-        session.add_all(_chunk_rows(document_id, chunks))
-        await session.flush()
+        await _replace_chunks(session, document, chunks, chunker_version)
     return await get_document(document_id)
+
+
+async def documents_chunked_before(chunker_version: int) -> list[tuple[str, str]]:
+    """(id, texto) de los documentos cuyos fragmentos armó un troceador
+    anterior (o ninguno registrado)."""
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(KnowledgeDocument.id, KnowledgeDocument.content)
+            .where(func.coalesce(KnowledgeDocument.metadata_["chunker"].as_integer(), 0) < chunker_version)
+            .order_by(KnowledgeDocument.created_at)
+        )).all()
+    return [(str(document_id), content or "") for document_id, content in rows]
+
+
+async def replace_chunks(document_id: str, chunks: list[str], chunker_version: int) -> None:
+    """Fragmentos nuevos para el mismo texto: el documento no cambia, solo
+    cómo se busca en él."""
+    async with session_scope() as session:
+        document = await session.get(KnowledgeDocument, document_id, with_for_update=True)
+        if document is not None:
+            await _replace_chunks(session, document, chunks, chunker_version)
 
 async def delete_document(document_id: str) -> bool:
     async with session_scope() as session:
