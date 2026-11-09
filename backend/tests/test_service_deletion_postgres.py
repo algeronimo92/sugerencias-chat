@@ -101,7 +101,7 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
                 actions=[{"type": "change_service", "service": name}], delay_minutes=0,
                 created_by_user_id=admin_id, created_at=NOW, updated_at=NOW, deleted_at=NOW,
             ))
-        await create_document("Ficha del peeling", "Renueva la piel.", "ficha", service_id=service_id)
+        await create_document("Ficha del peeling", "Renueva la piel.", "ficha", service_ids=[service_id])
 
         assert sorted(await _usages(service_id)) == sorted([
             "1 plantilla", "2 leads", "1 venta registrada", "1 automatización", "1 documento de conocimiento",
