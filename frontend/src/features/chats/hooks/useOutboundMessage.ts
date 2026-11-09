@@ -14,6 +14,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
+import { useMe } from '../../auth/public/queries'
 import type { Message } from '../../whatsapp/types'
 import { templateKeys } from '../../templates/public/keys'
 import { discardFailedMessage, retryFailedMessage, sendOutbound } from '../api'
@@ -34,12 +35,18 @@ export type { OutboundMessage } from '../domain/outbound'
 
 export function useOutboundMessage(chatId: string) {
   const queryClient = useQueryClient()
+  const { data: me } = useMe()
+  // La burbuja optimista nace firmada por quien envía, igual que la
+  // respuesta del servidor: así no salta de grupo al confirmarse.
+  const origin: Message['origin'] = me
+    ? { kind: 'user', user_id: me.id, user_name: me.name, execution_id: null }
+    : null
   return useMutation<Message[], Error, OutboundMessage, OptimisticContext>({
     mutationKey: messageKeys.sending(chatId),
     mutationFn: message => enqueueForChat(chatId, () => sendOutbound(chatId, message)),
     onMutate: async message => {
       await queryClient.cancelQueries({ queryKey: messageKeys.thread(chatId) })
-      return appendOptimisticMessages(queryClient, chatId, outboundDrafts(message))
+      return appendOptimisticMessages(queryClient, chatId, outboundDrafts(message), origin)
     },
     onSuccess: (messages, message, context) => {
       reconcileOptimisticMessages(queryClient, chatId, context, messages)

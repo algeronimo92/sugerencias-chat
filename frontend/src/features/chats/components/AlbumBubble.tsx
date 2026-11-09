@@ -13,6 +13,9 @@ interface Props {
    * en utils/mediaGroups) que se pintan como una sola grilla. */
   messages: Message[]
   isFirstOfGroup: boolean
+  /** Quién o qué mandó el álbum; solo se muestra si abre un grupo (ver
+   * MessageBubble.originLabel). */
+  originLabel?: string | null
   failedMediaIds: Set<number>
   onMediaFailed: (messageId: number) => void
   onOpenMedia: (media: OpenMedia) => void
@@ -35,6 +38,7 @@ interface Props {
 export function AlbumBubble({
   messages,
   isFirstOfGroup,
+  originLabel = null,
   failedMediaIds,
   onMediaFailed,
   onOpenMedia,
@@ -108,6 +112,11 @@ export function AlbumBubble({
           }`}
         >
           {selectionMode && <span aria-hidden="true" className="absolute inset-0 z-20 rounded-bubble" />}
+          {originLabel && isFirstOfGroup && (
+            <p data-testid="message-origin" className="mb-1 truncate px-1 pt-0.5 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
+              {originLabel}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-0.5 overflow-hidden rounded-lg">
             {visible.map((message, index) => {
               const { src, isVideo } = tileFor(message)

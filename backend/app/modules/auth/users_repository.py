@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime, timezone
 
 from sqlalchemy import func, insert, select, true, update
@@ -41,6 +42,21 @@ async def list_active_sellers() -> list[dict]:
     async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [dict(row) for row in rows]
+
+
+async def names_by_ids(user_ids: Iterable[int]) -> dict[int, str]:
+    """Nombre de cada usuario pedido, incluidos los inactivos.
+
+    Sirve para firmar cosas que pasaron (quién mandó un mensaje): la persona
+    puede haber dejado el equipo y el historial igual tiene que decir quién
+    fue. Por eso no filtra por ``is_active`` como ``list_active_sellers``."""
+    wanted = {int(user_id) for user_id in user_ids if user_id is not None}
+    if not wanted:
+        return {}
+    stmt = select(User.id, User.name).where(User.id.in_(wanted))
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).all()
+    return {user_id: name for user_id, name in rows}
 
 
 async def create_user(email: str, name: str, password_hash: str, role: str) -> dict:

@@ -28,8 +28,10 @@ import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
+import { FlowEventCard } from './FlowEventCard'
 import { SaleCard } from './SaleCard'
 import { StageChangeCard } from './StageChangeCard'
+import { originGroupKey, originLabel } from '../domain/messageOrigin'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const ForwardMessageDialog = lazy(() => import('./ForwardMessageDialog').then(m => ({ default: m.ForwardMessageDialog })))
@@ -72,6 +74,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const {
     messages,
     timeline,
+    flowNames,
     daySections,
     sentMessageHistory,
     chatMediaItems,
@@ -485,6 +488,20 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   </Fragment>
                 )
               }
+              if (item.kind === 'flow') {
+                return (
+                  <Fragment key={item.key}>
+                    <FlowEventCard execution={item.execution} />
+                  </Fragment>
+                )
+              }
+              // Un grupo de burbujas comparte remitente y origen: lo que mandó
+              // una persona no se pega a lo que mandó un flujo.
+              const opensGroup =
+                isFirstOfSection ||
+                !prevItem ||
+                prevItem.kind !== 'message' ||
+                originGroupKey(prevItem.message) !== originGroupKey(item.message)
               const group = albumGroups.get(item.message.id)
               if (group) {
                 const groupIds = group.map(m => m.id)
@@ -492,12 +509,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   <Fragment key={item.key}>
                     <AlbumBubble
                       messages={group}
-                      isFirstOfGroup={
-                        isFirstOfSection ||
-                        !prevItem ||
-                        prevItem.kind !== 'message' ||
-                        prevItem.message.sender !== item.message.sender
-                      }
+                      isFirstOfGroup={opensGroup}
+                      originLabel={originLabel(item.message.origin, flowNames)}
                       failedMediaIds={failedMediaIds}
                       onMediaFailed={(id) => setFailedMediaIds((prev) => new Set(prev).add(id))}
                       onOpenMedia={setOpenMedia}
@@ -517,12 +530,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   <MessageBubble
                     chat={chat}
                     message={item.message}
-                    isFirstOfGroup={
-                      isFirstOfSection ||
-                      !prevItem ||
-                      prevItem.kind !== 'message' ||
-                      prevItem.message.sender !== item.message.sender
-                    }
+                    isFirstOfGroup={opensGroup}
+                    originLabel={originLabel(item.message.origin, flowNames)}
                     isFlashing={flashMessageId === item.message.id}
                     threadWidth={threadWidth}
                     hasFailedMedia={failedMediaIds.has(item.message.id)}

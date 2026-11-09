@@ -59,6 +59,7 @@ function serverMessage(overrides: Partial<ContractMessage> = {}): ContractMessag
     deleted_at: null,
     media_width: null,
     media_height: null,
+    origin: null,
     quoted_message_id: null,
     quoted_sender: null,
     quoted_content: null,
