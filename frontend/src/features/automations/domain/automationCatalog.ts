@@ -68,6 +68,38 @@ export const AUTOMATION_ACTION_LABELS = {
   [AutomationActionType.ReactToLastCustomerMessage]: 'Reaccionar al último mensaje del cliente',
 } satisfies Record<AutomationActionTypeValue, string>
 
+/**
+ * Las acciones agrupadas por lo que hacen, en el selector (2026-11-09). Antes
+ * eran 14 opciones seguidas, sin orden: "Cambiar servicio" quedaba entre las
+ * de mensajes y se usó para marcar de qué anuncio venía un lead, que es lo
+ * que hace una etiqueta.
+ */
+export const AUTOMATION_ACTION_GROUPS: ReadonlyArray<{ label: string; types: readonly AutomationActionTypeValue[] }> = [
+  {
+    label: 'Escribirle al cliente',
+    types: [
+      AutomationActionType.SendMessage,
+      AutomationActionType.SendTemplate,
+      AutomationActionType.SendMedia,
+      AutomationActionType.SendAttachment,
+      AutomationActionType.SendAudio,
+      AutomationActionType.ReactToLastCustomerMessage,
+    ],
+  },
+  {
+    label: 'Ordenar el lead',
+    types: [
+      AutomationActionType.AddTag,
+      AutomationActionType.RemoveTag,
+      AutomationActionType.ChangeStage,
+      AutomationActionType.ChangeService,
+      AutomationActionType.AssignSeller,
+    ],
+  },
+  { label: 'Avisar al equipo', types: [AutomationActionType.CreateTask, AutomationActionType.Notify] },
+  { label: 'Conversación', types: [AutomationActionType.SetConversationState] },
+]
+
 export const AUTOMATION_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const
 
 export const FlowNodeType = {

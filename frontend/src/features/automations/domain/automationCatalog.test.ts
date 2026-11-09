@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { automationStepLabel } from './automationCatalog'
+import { AUTOMATION_ACTION_GROUPS, AutomationActionType, automationStepLabel } from './automationCatalog'
 
 describe('automationStepLabel', () => {
   it('names the steps that are neither an action nor a block', () => {
@@ -18,5 +18,18 @@ describe('automationStepLabel', () => {
   it('falls back to a generic name or the raw code', () => {
     expect(automationStepLabel(null)).toBe('Paso')
     expect(automationStepLabel('something_new')).toBe('something_new')
+  })
+})
+
+describe('AUTOMATION_ACTION_GROUPS', () => {
+  it('cada acción aparece en un grupo, una sola vez', () => {
+    const grouped = AUTOMATION_ACTION_GROUPS.flatMap(group => group.types)
+    expect(new Set(grouped).size).toBe(grouped.length)
+    expect([...grouped].sort()).toEqual(Object.values(AutomationActionType).sort())
+  })
+
+  it('"Cambiar servicio" va con lo que ordena el lead, no con los mensajes', () => {
+    const group = AUTOMATION_ACTION_GROUPS.find(item => item.types.includes(AutomationActionType.ChangeService))
+    expect(group?.types).toContain(AutomationActionType.AddTag)
   })
 })

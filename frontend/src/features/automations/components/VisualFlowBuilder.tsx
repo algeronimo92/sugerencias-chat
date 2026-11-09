@@ -2,7 +2,7 @@ import {
 Beaker,Braces,Check,
 Copy,
 History,LayoutGrid,
-ListFilter,Loader2,LocateFixed,MessageSquareText,Play,Plus,Redo2,Save,Undo2,Upload,UserRound,X,
+EyeOff,ListFilter,Loader2,LocateFixed,MessageSquareText,Play,Plus,Redo2,Save,Undo2,Upload,X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -23,7 +23,7 @@ import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import { useUsers } from '../../platform/public/useUsers'
 import type { AppUser } from '../../platform/types'
-import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
+import { AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
@@ -41,6 +41,8 @@ import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { FlowCanvas } from './flow/FlowCanvas'
 import { FlowNodeConnections, type FlowConnection } from './flow/FlowNodeConnections'
 import { FLOW_PALETTE } from './flow/flowPalette'
+import { FLOW_TONES, flowTone, MESSAGE_ICON } from '../domain/flowTones'
+import { placeNewNode } from '../domain/flowPlacement'
 import { FlowNodeSearch } from './flow/FlowNodeSearch'
 import { FeedbackBar } from './flow/FeedbackBar'
 import { FlowStatusPill } from './flow/FlowStatusPill'
@@ -51,6 +53,8 @@ import { numberFlowNodes, reachableFromTrigger } from '../domain/flowNumbering'
 import { INBOUND_MESSAGE_TYPE_OPTIONS } from '../domain/inboundMessageTypes'
 import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
+import { actionTypeOptions } from './actionTypeOptions'
+import { SellerVisibilityField } from './flow/SellerVisibilityField'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
 
 /** Condiciones que se comparan contra un texto libre que escribe el usuario.
@@ -223,9 +227,11 @@ function createFlowNode(type: AutomationFlowNodeType, id: string, x: number, y: 
   }
 }
 
-function nodeIcon(type: AutomationFlowNodeType) {
-  const { icon: Icon, iconClass } = FLOW_NODE_VIEW[type]
-  return <Icon className={`h-4 w-4 ${iconClass}`} />
+function nodeIcon(node: AutomationFlowNode) {
+  const actionType = node.type === NodeType.Action ? node.data.action?.type : undefined
+  const tone = flowTone(node.type, actionType)
+  const Icon = tone === 'message' ? MESSAGE_ICON : FLOW_NODE_VIEW[node.type].icon
+  return <Icon className={`h-4 w-4 ${FLOW_TONES[tone].icon}`} />
 }
 
 function nodeTitle(node: AutomationFlowNode, rules: ReadonlyArray<{ id: number; name: string }> = []) {
@@ -518,7 +524,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
   const addNode = useCallback((type: AutomationFlowNodeType, position: { x: number; y: number }, from?: { source: string; handle: string }) => {
     if (type === NodeType.Trigger) {
       dispatch({ type: 'fail', message: 'El flujo solo puede tener un disparador.' })
-      return
+      return null
     }
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     // Con `from` (se soltó una conexión en el vacío) el bloque nace conectado,
@@ -536,7 +542,16 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
     }))
     dispatch({ type: 'select', nodeId: id })
     dispatch({ type: 'clearFeedback' })
+    return id
   }, [setFlow, dispatch])
+
+  // Clic en la barra lateral: el bloque va después del elegido y, si su única
+  // salida está libre, nace conectado (domain/flowPlacement). La vista va a él.
+  function addFromPalette(type: AutomationFlowNodeType) {
+    const placement = placeNewNode(flow.nodes, flow.edges, selectedId)
+    const id = addNode(type, placement.position, placement.from)
+    if (id) goToNode(id)
+  }
 
   // La comprobación del disparador se hace antes de actualizar, leyendo `flow`
   // de las dependencias. Antes vivía dentro del updater de setFlow, que debe
@@ -758,19 +773,12 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
       </div>
       <button type="button" onClick={() => dispatch({ type: 'toggleEntryConditions' })} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-emerald-700/50 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-wa-border text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones de entrada{entryConditionCount > 0 && <span className="rounded-full bg-wa-primary px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
       <label title={ruleId == null ? 'Guarda el borrador primero' : 'Cuántos leads pueden entrar al flujo por hora. Los que pasen el límite entran más tarde. Vacío = sin límite.'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">Máximo por hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => dispatch({ type: 'maxPerHourChanged', value: event.target.value ? Number(event.target.value) : null })} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-white/10 dark:bg-white/10 dark:text-white" /></label>
-      {isManualTrigger && (
-        <label
-          title={ruleId == null ? 'Guarda el borrador primero' : 'Aparece en el botón "Iniciar flujo" del chat para cualquier vendedor'}
-          className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"
-        >
-          <Checkbox
-            checked={visibleToSellers}
-            disabled={ruleId == null}
-            onChange={event => commitVisibleToSellers(event.target.checked)}
-          />
-          <UserRound className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-          Visible para vendedores
-        </label>
+      {isManualTrigger && !visibleToSellers && ruleId != null && triggerNode && (
+        // El ajuste vive en el disparador; acá solo se avisa, porque oculto
+        // los vendedores no lo encuentran en el chat.
+        <button type="button" onClick={() => goToNode(triggerNode.id)} title="Ver el ajuste en el disparador" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
+          <EyeOff className="h-4 w-4" aria-hidden="true" />Oculto para vendedores
+        </button>
       )}
       <button type="button" onClick={autoLayout} title="Acomoda los bloques en columnas según la ruta" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
       <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => dispatch({ type: 'openDialog', dialog: 'versions' })} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
@@ -790,8 +798,8 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
 
     <div className="flex min-h-0 flex-1">
       <aside className="w-48 shrink-0 overflow-y-auto border-r border-wa-border bg-white p-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Arrastra al lienzo</p>
-        {FLOW_PALETTE.map(({ type, label, icon: Icon, description }) => <div key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} className="group mb-2 cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 active:cursor-grabbing dark:border-transparent dark:bg-transparent dark:hover:bg-white/5 dark:transition-colors"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className="h-4 w-4 text-gray-500 transition-colors group-hover:text-wa-primary-strong dark:text-gray-400 dark:group-hover:text-wa-primary" />{label}</div><p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{description}</p></div>)}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Agregar bloque</p><p className="mb-2 mt-0.5 text-[10px] text-wa-muted dark:text-wa-muted-dark">Clic: va después del bloque elegido. También puedes arrastrarlo.</p>
+        {FLOW_PALETTE.map(({ type, label, icon: Icon, description }) => <button type="button" key={type} draggable onDragStart={event => event.dataTransfer.setData('application/x-flow-palette', type)} onClick={() => addFromPalette(type)} className="group mb-2 block w-full cursor-grab rounded-xl border border-wa-border bg-wa-hover p-3 text-left hover:border-wa-primary/40 focus-visible:outline-2 focus-visible:outline-wa-primary active:cursor-grabbing dark:border-transparent dark:bg-transparent dark:hover:bg-white/5 dark:transition-colors"><div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-wa-text-dark"><Icon className={`h-4 w-4 ${FLOW_TONES[flowTone(type)].icon}`} />{label}</div><p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{description}</p></button>)}
       </aside>
 
       <main className="relative min-w-0 flex-1 bg-wa-field dark:bg-flow-canvas-dark">
@@ -818,8 +826,8 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
       </main>
 
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected.type)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Bloque #{numbers.get(selected.id)} · propiedades</p></div><button type="button" onClick={() => goToNode(selected.id)} title="Acercar la vista a este bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver</button>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar bloque (Cmd+D o Ctrl+D)" aria-label="Duplicar bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
-          {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Bloque #{numbers.get(selected.id)} · propiedades</p></div><button type="button" onClick={() => goToNode(selected.id)} title="Acercar la vista a este bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver</button>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar bloque (Cmd+D o Ctrl+D)" aria-label="Duplicar bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
+          {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}{selected.data.trigger_type === TriggerType.Manual && <SellerVisibilityField visible={visibleToSellers} saved={ruleId != null} onChange={commitVisibleToSellers} />}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
           {selected.type === NodeType.Question && <QuestionEditor
@@ -1228,7 +1236,7 @@ function ActionEditor({ action, updateAction, users, tags, leadServices, templat
   const selectedTemplate = action.type === ActionType.SendTemplate
     ? templates.find(template => template.id === action.template_id) ?? null
     : null
-  return <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Acción<Select value={action.type} onChange={event => { if (isAutomationActionType(event.target.value)) updateAction(defaultAction(event.target.value)) }} className={fieldClass}>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
+  return <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Acción<Select value={action.type} onChange={event => { if (isAutomationActionType(event.target.value)) updateAction(defaultAction(event.target.value)) }} className={fieldClass}>{actionTypeOptions()}</Select></label>
     {action.type === ActionType.CreateTask && <><label className="grid gap-1 text-[10px] text-wa-muted">Título<input value={action.title} onChange={event => updateAction({ ...action, title: event.target.value })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-wa-muted">Descripción<textarea rows={2} value={action.description ?? ''} onChange={event => updateAction({ ...action, description: event.target.value })} className={fieldClass} /></label><div className="grid grid-cols-2 gap-2"><label className="grid gap-1 text-[10px] text-wa-muted">Tipo<Select value={action.task_type} onChange={event => { const value = event.target.value; if (isTaskType(value)) updateAction({ ...action, task_type: value }) }} className={fieldClass}>{TASK_TYPES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label><label className="grid gap-1 text-[10px] text-wa-muted">Prioridad<Select value={action.priority} onChange={event => { const value = event.target.value; if (isTaskPriority(value)) updateAction({ ...action, priority: value }) }} className={fieldClass}>{TASK_PRIORITY_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label><label className="grid gap-1 text-[10px] text-wa-muted">Vence en (minutos)<input type="number" min={1} max={43200} value={action.due_minutes} onChange={event => updateAction({ ...action, due_minutes: Number(event.target.value) })} className={fieldClass} /></label><label className="grid gap-1 text-[10px] text-wa-muted">Recordar antes (minutos)<input type="number" min={0} value={action.remind_minutes_before} onChange={event => updateAction({ ...action, remind_minutes_before: Number(event.target.value) })} className={fieldClass} /></label></div><label className="grid gap-1 text-[10px] text-wa-muted">Responsable<Select value={action.assigned_user_id ?? ''} onChange={event => updateAction({ ...action, assigned_user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Vendedor del lead</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select></label></>}
     {action.type === ActionType.AssignSeller && <Select value={action.user_id ?? ''} onChange={event => updateAction({ ...action, user_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona vendedor</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
     {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <Select value={action.tag_id ?? ''} onChange={event => updateAction({ ...action, tag_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
