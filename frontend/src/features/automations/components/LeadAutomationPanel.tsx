@@ -197,7 +197,7 @@ export function LeadAutomationPanel({ chatId, botDisabled = false }: Props) {
               nuevas apagadas y algo que sigue en marcha. Sin esta frase parece
               que el interruptor falló. */}
           {botDisabled && moving > 0 && (
-            <span className="text-wa-muted dark:text-wa-muted-dark">
+            <span className="text-amber-700 dark:text-amber-400">
               {' · '}
               <ZapOff className="inline h-3 w-3 align-[-2px]" aria-hidden="true" /> Sin automatizaciones nuevas: {moving === 1 ? 'esta sigue' : 'estas siguen'} en marcha
             </span>

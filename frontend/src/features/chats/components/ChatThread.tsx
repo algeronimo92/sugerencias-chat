@@ -402,9 +402,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             // arranquen automatizaciones nuevas. Por eso no habla de "pausar"
             // (ese verbo es de las tarjetas del panel) ni de "bot" (el icono
             // de robot hacía pensar que apagaba las automatizaciones en
-            // curso), y apagado se ve como botón hundido en gris, no en
-            // ámbar: el ámbar queda para lo que está en espera, y sobre
-            // wa-head daba 1,9:1 de contraste.
+            // curso). Apagado va en ámbar de alerta, igual que en la lista y
+            // en el panel: es un estado fuera de lo normal que hay que ver
+            // de un vistazo. amber-700 y no amber-500, que sobre wa-head
+            // daba 1,9:1 de contraste.
             aria-label={chat.automatizacion_pausada
               ? 'Volver a iniciar automatizaciones nuevas con este cliente'
               : 'No iniciar automatizaciones nuevas con este cliente'}
@@ -413,7 +414,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               : 'Automatizaciones nuevas activas. Toca para que no se inicien más'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
               chat.automatizacion_pausada
-                ? 'bg-black/8 text-wa-text hover:bg-black/12 dark:bg-white/10 dark:text-wa-text-dark dark:hover:bg-white/15'
+                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200/70 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
                 : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
             }`}
           >
