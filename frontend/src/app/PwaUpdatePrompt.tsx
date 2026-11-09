@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { toast } from 'sonner'
 import { currentBrandName } from '../shared/branding'
@@ -111,22 +111,20 @@ export function PwaUpdatePrompt() {
   }, [registration, checkForUpdate])
 
   // Al volver a primer plano: se busca versión nueva y, si ya hay una
-  // pendiente, se vuelve a ofrecer.
-  // El listener lee el ref para no reinscribirse en cada cambio; se escribe
-  // tras el commit, no durante el render (ver useRealtime.ts).
-  const needRefreshRef = useRef(needRefresh)
-  useEffect(() => {
-    needRefreshRef.current = needRefresh
-  }, [needRefresh])
+  // pendiente, se vuelve a ofrecer. Como Effect Event, el handler ve siempre
+  // el estado vigente sin que el listener tenga que reinscribirse cada vez
+  // que cambia un callback.
+  const onBackToForeground = useEffectEvent(() => {
+    checkForUpdate()
+    if (needRefresh) offerUpdate()
+  })
   useEffect(() => {
     function handleVisibilityChange() {
-      if (document.visibilityState !== 'visible') return
-      checkForUpdate()
-      if (needRefreshRef.current) offerUpdate()
+      if (document.visibilityState === 'visible') onBackToForeground()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [checkForUpdate, offerUpdate])
+  }, [])
 
   // Al pasar de desconectado a conectado. Un despliegue tira el socket y lo
   // vuelve a levantar: es el mejor momento para enterarse del build nuevo.
