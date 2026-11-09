@@ -1,8 +1,9 @@
 import { Check, CircleCheck, Download, Forward, Video } from 'lucide-react'
 import type { Message } from '../../whatsapp/types'
-import { formatMessageTime, resolveMediaUrl } from '../../whatsapp/public/message'
+import { resolveMediaUrl } from '../../whatsapp/public/message'
 import type { OpenMedia } from './MessageBubble'
 import { MessageStatusTicks } from './MessageBubble'
+import { MessageFooter } from './MessageFooter'
 
 // Máximo de miniaturas visibles en la grilla; el resto queda atrás del "+N"
 // de la última — igual que WhatsApp, que tampoco expande el preview entero.
@@ -157,10 +158,9 @@ export function AlbumBubble({
             })}
           </div>
           {caption && <p className="whitespace-pre-wrap break-words px-1 pt-1.5">{caption}</p>}
-          <div className="flex items-center justify-end gap-1 px-1 pt-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60">
-            <span>{formatMessageTime(last.sent_at)}</span>
+          <MessageFooter className="px-1 pt-1" sentAt={last.sent_at}>
             {isVendedor && <MessageStatusTicks outboxStatus={last.outbox_status} metaStatus={last.meta_status} statusPayload={last.status_payload} errorDetail={last.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
-          </div>
+          </MessageFooter>
         </div>
       </div>
       {!isVendedor && actions}

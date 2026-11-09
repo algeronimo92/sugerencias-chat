@@ -1,13 +1,14 @@
-import { AlertCircle, Ban, BookmarkPlus, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pin, PinOff, RefreshCw } from 'lucide-react'
+import { AlertCircle, Ban, Check, CheckCheck, CircleCheck, CornerUpLeft, Download, Forward, Loader2, Pin, PinOff, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { JsonObject } from '../../../shared/types'
 import type { Chat } from '../../leads/types'
 import type { Message, MetaStatus, OutboxStatus } from '../../whatsapp/types'
 import { displayName } from '../../leads/public/chat'
-import { formatMessageTime, messageAdReferral, metaErrors, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
+import { messageAdReferral, metaErrors, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
 import { AdReferralCard } from './AdReferralCard'
 import { MessageActionsMenu, type MessageMenuAction } from './MessageActionsMenu'
 import { MessageAnalysis, MessageBody } from './MessageBody'
+import { MessageFooter } from './MessageFooter'
 import { ReactionBadge, ReactionMenu } from './MessageReactions'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplateMessageButtons } from './TemplateMessageCard'
@@ -519,8 +520,7 @@ export function MessageBubble({
                   onDownloadMedia={onDownload}
                   onPreviewSticker={onPreviewSticker}
                   videoFooter={
-                    <>
-                      <span>{formatMessageTime(m.sent_at)}</span>
+                    <MessageFooter overlay sentAt={m.sent_at} editedAt={m.edited_at}>
                       {isVendedor && (
                         <MessageStatusTicks
                           outboxStatus={m.outbox_status}
@@ -531,7 +531,7 @@ export function MessageBubble({
                           onDiscard={onDiscard}
                         />
                       )}
-                    </>
+                    </MessageFooter>
                   }
                   hasQuote={m.quoted_message_id != null}
                 />
@@ -541,23 +541,16 @@ export function MessageBubble({
             {/* El pie va embebido en el reproductor de video, salvo que el
               mensaje se haya eliminado: ahí ya no hay reproductor. */}
             {(isDeleted || kind !== "video") && (
-              <div className="flex items-center justify-end gap-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60 mt-1">
-                {!isDeleted && isVendedor && kind === "text" && text.trim() && (
-                  <button
-                    type="button"
-                    title="Guardar como plantilla personal"
-                    onClick={() => onSaveTemplate(text.trim())}
-                    className="mr-1 rounded p-0.5 opacity-50 transition-opacity hover:text-wa-primary-strong dark:hover:text-wa-primary hover:opacity-100"
-                  >
-                    <BookmarkPlus className="h-3 w-3" />
-                  </button>
-                )}
-                {!isDeleted && m.edited_at && (
-                  <span title={`Editado ${formatMessageTime(m.edited_at)}`}>
-                    Editado
-                  </span>
-                )}
-                <span>{formatMessageTime(m.sent_at)}</span>
+              <MessageFooter
+                className="mt-1"
+                sentAt={m.sent_at}
+                editedAt={isDeleted ? null : m.edited_at}
+                onSaveTemplate={
+                  !isDeleted && isVendedor && kind === "text" && text.trim()
+                    ? () => onSaveTemplate(text.trim())
+                    : undefined
+                }
+              >
                 {isVendedor && (
                   <MessageStatusTicks
                     outboxStatus={m.outbox_status}
@@ -568,7 +561,7 @@ export function MessageBubble({
                     onDiscard={onDiscard}
                   />
                 )}
-              </div>
+              </MessageFooter>
             )}
             <ReactionBadge
               reactions={reactions}
