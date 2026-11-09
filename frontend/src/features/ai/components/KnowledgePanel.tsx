@@ -1,5 +1,6 @@
-import { BookText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -8,13 +9,14 @@ import { Input, Select, Textarea, labelClass } from '../../../shared/ui/Input'
 import { ServiceChecklist } from './ServiceChecklist'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useLeadServices } from '../../catalogs/public/useLeadServices'
+import { familyMembers } from '../domain/serviceFamilies'
 import {
   useDeleteKnowledgeDocument,
-  useImportKnowledgePdf,
   useKnowledgeDocument,
   useKnowledgeDocuments,
   useSaveKnowledgeDocument,
 } from '../queries'
+import { MAX_CONTENT, useKnowledgeImport } from '../hooks/useKnowledgeImport'
 import type { KnowledgeDocumentSummary, KnowledgeDocumentType } from '../types'
 import { DocumentListItem, DocumentsListStatus } from './KnowledgeDocumentsList'
 import { KnowledgeTemplatesDialog } from './KnowledgeTemplatesDialog'
@@ -38,18 +40,6 @@ const DOCUMENT_TYPES: readonly { key: KnowledgeDocumentType; label: string }[] =
 const GENERAL = 'general'
 const ALL = 'todos'
 const GENERAL_LABEL = 'Para todos los servicios'
-/** Mismo tope que el servidor (knowledge_service.MAX_CONTENT_LENGTH). */
-const MAX_CONTENT = 100_000
-
-async function fileToBase64(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let binary = ''
-  // Por tramos: String.fromCharCode con un PDF entero desborda la pila.
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
-  }
-  return btoa(binary)
-}
 
 function useServiceNames() {
   const { data: services = [] } = useLeadServices(true)
@@ -57,21 +47,23 @@ function useServiceNames() {
 }
 
 function sameIds(left: number[], right: number[]): boolean {
-  return left.length === right.length && left.every(id => right.includes(id))
+  const rightSet = new Set(right)
+  return left.length === right.length && left.every(id => rightSet.has(id))
 }
 
 interface FormValues { title: string; content: string; documentType: string; serviceIds: number[] }
 
 interface EditorProps {
   documentId: string | null
-  defaultServiceId: number | null
+  /** Con qué servicios nace un documento nuevo (la familia del servicio desde el que se llegó). */
+  defaultServiceIds: number[]
   dirtyRef: MutableRefObject<boolean>
   onSaved: (id: string) => void
   onCancel: () => void
   onDeleted: () => void
 }
 
-function KnowledgeEditor({ documentId, defaultServiceId, ...rest }: EditorProps) {
+function KnowledgeEditor({ documentId, defaultServiceIds, ...rest }: EditorProps) {
   const { data, isLoading } = useKnowledgeDocument(documentId)
   if (documentId && (isLoading || !data)) return <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Cargando documento…</p>
   // El formulario arranca con los valores del documento ya puestos: si los
@@ -84,24 +76,27 @@ function KnowledgeEditor({ documentId, defaultServiceId, ...rest }: EditorProps)
         title: data?.title ?? '',
         content: data?.content ?? '',
         documentType: data?.document_type ?? '',
-        serviceIds: data ? data.service_ids : (defaultServiceId ? [defaultServiceId] : []),
+        serviceIds: data ? data.service_ids : defaultServiceIds,
       }}
       {...rest}
     />
   )
 }
 
-function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDeleted }: Omit<EditorProps, 'defaultServiceId'> & { initial: FormValues }) {
+function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDeleted }: Omit<EditorProps, 'defaultServiceIds'> & { initial: FormValues }) {
   const formId = useId()
   const fileInput = useRef<HTMLInputElement>(null)
   const services = useServiceNames()
   const save = useSaveKnowledgeDocument()
   const remove = useDeleteKnowledgeDocument()
-  const importPdf = useImportKnowledgePdf()
   const [title, setTitle] = useState(initial.title)
   const [content, setContent] = useState(initial.content)
   const [documentType, setDocumentType] = useState<string>(initial.documentType)
   const [serviceIds, setServiceIds] = useState<number[]>(initial.serviceIds)
+  const importer = useKnowledgeImport((text, suggestedTitle) => {
+    setContent(text)
+    setTitle(current => (current.trim() ? current : suggestedTitle))
+  })
 
   // Cambios sin guardar: el panel los consulta antes de cambiar de documento
   // y el navegador avisa antes de cerrar la pestaña. Antes se perdían sin más
@@ -120,31 +115,6 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
   }, [dirty])
 
   const overLimit = content.length > MAX_CONTENT
-
-  function applyImportedText(text: string, fallbackTitle: string, notice: string) {
-    const truncated = text.length > MAX_CONTENT
-    setContent(truncated ? text.slice(0, MAX_CONTENT) : text)
-    if (!title.trim()) setTitle(fallbackTitle)
-    toast.success(notice, truncated ? { description: 'El archivo era más largo que el máximo de 100.000 caracteres: se cortó al final.' } : undefined)
-  }
-
-  async function importFile(file: File) {
-    if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
-      importPdf.mutate({ filename: file.name, dataBase64: await fileToBase64(file) }, {
-        onSuccess: result => {
-          setContent(result.content)
-          if (!title.trim()) setTitle(result.title)
-          toast.success(
-            `Texto de ${result.pages} ${result.pages === 1 ? 'página' : 'páginas'} importado. Revísalo antes de guardar.`,
-            result.truncated ? { description: 'El PDF era más largo que el máximo de 100.000 caracteres: se cortó al final.' } : undefined,
-          )
-        },
-        onError: err => toast.error(extractErrorMessage(err)),
-      })
-      return
-    }
-    applyImportedText(await file.text(), file.name.replace(/\.[^.]+$/, ''), 'Texto importado. Revísalo antes de guardar.')
-  }
 
   return (
     <form
@@ -171,7 +141,7 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
       <label htmlFor={`${formId}-title`} className={labelClass}>Título</label>
       <Input id={`${formId}-title`} value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Ficha: limpieza facial profunda" required />
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
         <div>
           <label htmlFor={`${formId}-type`} className={labelClass}>Tipo</label>
           <Select id={`${formId}-type`} aria-label="Tipo" value={documentType} onValueChange={setDocumentType}>
@@ -179,8 +149,6 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
             {DOCUMENT_TYPES.map(type => <option key={type.key} value={type.key}>{type.label}</option>)}
           </Select>
         </div>
-      </div>
-      <div className="mt-4">
         <ServiceChecklist services={[...services.values()]} selected={serviceIds} onChange={setServiceIds} />
       </div>
 
@@ -188,12 +156,12 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
         <label htmlFor={`${formId}-content`} className={labelClass}>Contenido</label>
         <input ref={fileInput} type="file" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" className="hidden" data-testid="knowledge-file" onChange={event => {
           const file = event.target.files?.[0]
-          if (file) void importFile(file)
+          if (file) void importer.importFile(file)
           event.target.value = ''
         }} />
-        <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()} disabled={importPdf.isPending}>
-          {importPdf.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
-          {importPdf.isPending ? 'Leyendo PDF…' : 'Importar PDF, .txt o .md'}
+        <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()} disabled={importer.isPending}>
+          {importer.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
+          {importer.isPending ? 'Leyendo PDF…' : 'Importar PDF, .txt o .md'}
         </Button>
       </div>
       <Textarea
@@ -230,7 +198,7 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
           </ConfirmDialog>
         )}
         <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" disabled={save.isPending || importPdf.isPending || !title.trim() || !content.trim() || overLimit}>
+        <Button type="submit" disabled={save.isPending || importer.isPending || !title.trim() || !content.trim() || overLimit}>
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
           Guardar documento
         </Button>
@@ -293,11 +261,12 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
 
   const visible = documents.filter(document => matchesFilter(document, filter))
   const filterServiceId = filter !== ALL && filter !== GENERAL ? Number(filter) : null
-  // El servicio filtrado aparece aunque todavía no tenga documentos.
-  const filterOptions = [...new Set([
-    ...documents.flatMap(document => document.service_ids),
-    ...(filterServiceId ? [filterServiceId] : []),
-  ])]
+  // Todos los servicios activos (también los que aún no tienen documentos:
+  // así se ve cuáles faltan) más los inactivos que todavía tengan alguno.
+  const withDocuments = new Set(documents.flatMap(document => document.service_ids))
+  const filterOptions = [...services.values()]
+    .filter(service => service.is_active !== false || withDocuments.has(service.id) || service.id === filterServiceId)
+    .sort((left, right) => left.name.localeCompare(right.name, 'es'))
   const serviceNamesOf = (ids: number[]) => (ids.length ? ids.map(id => services.get(id)?.name ?? 'Servicio').join(', ') : GENERAL_LABEL)
 
   return (
@@ -305,6 +274,11 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
     // (411 px) y en un teléfono de 390 "Nuevo" y los campos quedaban cortados.
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
       <div className={`${panelClass} min-w-0`}>
+        {initialServiceId && (
+          <Link to="/catalogs" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-wa-primary-strong hover:underline dark:text-wa-primary">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />Volver a Catálogos
+          </Link>
+        )}
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Documentos</h2>
           <div className="flex items-center gap-1.5">
@@ -322,8 +296,8 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <Select aria-label="Filtrar por servicio" value={filter} onValueChange={setFilter}>
             <option value={ALL}>Todos los documentos</option>
             <option value={GENERAL}>{GENERAL_LABEL}</option>
-            {filterOptions.map(id => (
-              <option key={id} value={String(id)}>{services.get(id)?.name ?? `Servicio ${id}`}</option>
+            {filterOptions.map(service => (
+              <option key={service.id} value={String(service.id)}>{service.name}{withDocuments.has(service.id) ? '' : ' · sin documentos'}</option>
             ))}
           </Select>
         </div>
@@ -350,7 +324,7 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <KnowledgeEditor
             key={`${editing}:${formKey}`}
             documentId={editing === 'new' ? null : editing}
-            defaultServiceId={editing === 'new' ? filterServiceId : null}
+            defaultServiceIds={editing === 'new' && filterServiceId ? familyMembers([...services.values()], filterServiceId) : []}
             dirtyRef={dirtyRef}
             onSaved={id => goTo(id)}
             onCancel={() => requestEditing(editing === 'new' ? null : editing)}
