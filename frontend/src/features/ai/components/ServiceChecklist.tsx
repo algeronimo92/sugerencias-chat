@@ -38,7 +38,7 @@ export function ServiceChecklist({ services, selected, onChange, label = 'Servic
       <legend className={labelClass}>{label}</legend>
       <p id={`${id}-hint`} className="mb-2 text-xs text-wa-muted dark:text-wa-muted-dark">
         {selected.length === 0
-          ? 'Sin marcar ninguno, es conocimiento general: sirve para todos los servicios.'
+          ? 'Sin marcar ninguno, sirve para todos los servicios.'
           : `Para ${listNames(chosenNames)}. El asistente lo usa primero con los leads interesados.`}
       </p>
       {shown.length === 0

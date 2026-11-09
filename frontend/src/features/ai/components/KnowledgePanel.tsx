@@ -1,5 +1,5 @@
-import { BookText, FileText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { BookText, Library, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -16,15 +16,16 @@ import {
   useSaveKnowledgeDocument,
 } from '../queries'
 import type { KnowledgeDocumentSummary, KnowledgeDocumentType } from '../types'
+import { DocumentListItem, DocumentsListStatus } from './KnowledgeDocumentsList'
 import { KnowledgeTemplatesDialog } from './KnowledgeTemplatesDialog'
 import { panelClass } from './styles'
 
 /**
  * Lo que el copiloto consulta para responder dudas, describir servicios y
- * manejar objeciones. Cada documento puede pertenecer a un servicio del
- * catálogo: cuando un lead se interesa en ese servicio, sus fichas entran
- * primero a la sugerencia. Sin servicio es conocimiento general (pagos,
- * garantías, ubicación).
+ * manejar objeciones. Cada documento puede pertenecer a uno o varios servicios
+ * del catálogo: cuando un lead se interesa en uno de ellos, sus fichas entran
+ * primero a la sugerencia. Sin servicio sirve para todos (pagos, garantías,
+ * ubicación).
  */
 const DOCUMENT_TYPES: readonly { key: KnowledgeDocumentType; label: string }[] = [
   { key: 'ficha', label: 'Ficha del servicio' },
@@ -36,6 +37,9 @@ const DOCUMENT_TYPES: readonly { key: KnowledgeDocumentType; label: string }[] =
 
 const GENERAL = 'general'
 const ALL = 'todos'
+const GENERAL_LABEL = 'Para todos los servicios'
+/** Mismo tope que el servidor (knowledge_service.MAX_CONTENT_LENGTH). */
+const MAX_CONTENT = 100_000
 
 async function fileToBase64(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer())
@@ -52,13 +56,22 @@ function useServiceNames() {
   return useMemo(() => new Map(services.map(service => [service.id, service])), [services])
 }
 
+function sameIds(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every(id => right.includes(id))
+}
+
+interface FormValues { title: string; content: string; documentType: string; serviceIds: number[] }
+
 interface EditorProps {
   documentId: string | null
   defaultServiceId: number | null
-  onDone: (id: string | null) => void
+  dirtyRef: MutableRefObject<boolean>
+  onSaved: (id: string) => void
+  onCancel: () => void
+  onDeleted: () => void
 }
 
-function KnowledgeEditor({ documentId, defaultServiceId, onDone }: EditorProps) {
+function KnowledgeEditor({ documentId, defaultServiceId, ...rest }: EditorProps) {
   const { data, isLoading } = useKnowledgeDocument(documentId)
   if (documentId && (isLoading || !data)) return <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Cargando documento…</p>
   // El formulario arranca con los valores del documento ya puestos: si los
@@ -73,18 +86,12 @@ function KnowledgeEditor({ documentId, defaultServiceId, onDone }: EditorProps) 
         documentType: data?.document_type ?? '',
         serviceIds: data ? data.service_ids : (defaultServiceId ? [defaultServiceId] : []),
       }}
-      onDone={onDone}
+      {...rest}
     />
   )
 }
 
-interface FormProps {
-  documentId: string | null
-  initial: { title: string; content: string; documentType: string; serviceIds: number[] }
-  onDone: (id: string | null) => void
-}
-
-function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
+function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDeleted }: Omit<EditorProps, 'defaultServiceId'> & { initial: FormValues }) {
   const formId = useId()
   const fileInput = useRef<HTMLInputElement>(null)
   const services = useServiceNames()
@@ -95,6 +102,31 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
   const [content, setContent] = useState(initial.content)
   const [documentType, setDocumentType] = useState<string>(initial.documentType)
   const [serviceIds, setServiceIds] = useState<number[]>(initial.serviceIds)
+
+  // Cambios sin guardar: el panel los consulta antes de cambiar de documento
+  // y el navegador avisa antes de cerrar la pestaña. Antes se perdían sin más
+  // al tocar otra fila de la lista (2026-11-09).
+  const dirty = title !== initial.title || content !== initial.content
+    || documentType !== initial.documentType || !sameIds(serviceIds, initial.serviceIds)
+  useEffect(() => {
+    dirtyRef.current = dirty
+    return () => { dirtyRef.current = false }
+  }, [dirty, dirtyRef])
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  const overLimit = content.length > MAX_CONTENT
+
+  function applyImportedText(text: string, fallbackTitle: string, notice: string) {
+    const truncated = text.length > MAX_CONTENT
+    setContent(truncated ? text.slice(0, MAX_CONTENT) : text)
+    if (!title.trim()) setTitle(fallbackTitle)
+    toast.success(notice, truncated ? { description: 'El archivo era más largo que el máximo de 100.000 caracteres: se cortó al final.' } : undefined)
+  }
 
   async function importFile(file: File) {
     if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
@@ -111,8 +143,7 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
       })
       return
     }
-    setContent(await file.text())
-    if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ''))
+    applyImportedText(await file.text(), file.name.replace(/\.[^.]+$/, ''), 'Texto importado. Revísalo antes de guardar.')
   }
 
   return (
@@ -128,13 +159,15 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
           service_ids: serviceIds,
         }, {
           onSuccess: saved => {
+            dirtyRef.current = false
             toast.success(documentId ? 'Documento actualizado' : 'Documento creado')
-            onDone(saved.id)
+            onSaved(saved.id)
           },
           onError: err => toast.error(extractErrorMessage(err)),
         })
       }}
     >
+      <h2 className="mb-3 text-sm font-semibold text-wa-text dark:text-wa-text-dark">{documentId ? 'Editar documento' : 'Nuevo documento'}</h2>
       <label htmlFor={`${formId}-title`} className={labelClass}>Título</label>
       <Input id={`${formId}-title`} value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Ficha: limpieza facial profunda" required />
 
@@ -168,13 +201,15 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
         rows={14}
         value={content}
         onChange={event => setContent(event.target.value)}
-        maxLength={100_000}
+        maxLength={MAX_CONTENT}
         placeholder={'Qué es, para quién es, cuánto dura, cuidados, objeciones frecuentes y cómo responderlas…'}
         required
       />
       <p className="mt-1.5 text-xs text-wa-muted dark:text-wa-muted-dark">
         Separa los temas con títulos (## Tema) o con una línea en blanco: el asistente busca por sección. Un PDF escaneado no se puede leer: cópialo como texto.
-        {' '}{content.length.toLocaleString('es-PE')} / 100.000 caracteres.
+      </p>
+      <p className={`mt-1 text-xs ${overLimit ? 'font-semibold text-red-600 dark:text-red-300' : 'text-wa-muted dark:text-wa-muted-dark'}`}>
+        {content.length.toLocaleString('es-PE')} / 100.000 caracteres{overLimit ? ' · acorta el texto para poder guardar' : ''}
       </p>
       <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
         {documentId && (
@@ -184,7 +219,7 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
             confirmLabel="Eliminar"
             disabled={remove.isPending}
             onConfirm={() => remove.mutate(documentId, {
-              onSuccess: () => { toast.success('Documento eliminado'); onDone(null) },
+              onSuccess: () => { dirtyRef.current = false; toast.success('Documento eliminado'); onDeleted() },
               onError: err => toast.error(extractErrorMessage(err)),
             })}
           >
@@ -194,8 +229,8 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
             </Button>
           </ConfirmDialog>
         )}
-        <Button variant="secondary" onClick={() => onDone(documentId)}>Cancelar</Button>
-        <Button type="submit" disabled={save.isPending || importPdf.isPending || !title.trim() || !content.trim()}>
+        <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit" disabled={save.isPending || importPdf.isPending || !title.trim() || !content.trim() || overLimit}>
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
           Guardar documento
         </Button>
@@ -230,68 +265,31 @@ function useRevealOnChange(value: string | null) {
   return ref
 }
 
-function DocumentListItem({ document, serviceName, selected, onSelect }: {
-  document: KnowledgeDocumentSummary
-  serviceName: string
-  selected: boolean
-  onSelect: () => void
-}) {
-  const type = typeLabel(document.document_type)
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected}
-        className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${selected ? 'bg-wa-primary/10' : 'hover:bg-wa-hover dark:hover:bg-wa-head-dark'}`}
-      >
-        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-wa-text dark:text-wa-text-dark">{document.title}</span>
-          <span className="block text-xs text-wa-muted dark:text-wa-muted-dark">
-            {serviceName}
-            {type ? ` · ${type}` : ''}
-            {document.template_id != null ? ' · desde plantilla' : ''}
-            {' · '}{document.chunk_count} {document.chunk_count === 1 ? 'fragmento' : 'fragmentos'}
-          </span>
-        </span>
-      </button>
-    </li>
-  )
-}
-
-function DocumentsListStatus({ isLoading, error, empty, filterServiceId }: {
-  isLoading: boolean
-  error: unknown
-  empty: boolean
-  filterServiceId: number | null
-}) {
-  if (isLoading) return <p className="mt-4 text-sm text-wa-muted dark:text-wa-muted-dark">Cargando…</p>
-  if (error) return <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{extractErrorMessage(error)}</p>
-  if (!empty) return null
-  return filterServiceId ? (
-    <EmptyState
-      icon={BookText}
-      title="Este servicio no tiene documentos"
-      description="Sube su ficha (PDF o texto) o importa una plantilla: el asistente la usará cuando un lead se interese en este servicio."
-    />
-  ) : (
-    <EmptyState
-      icon={BookText}
-      title="Sin documentos"
-      description="Carga fichas de servicios, políticas, preguntas frecuentes o guiones de venta, o importa una plantilla de la plataforma."
-    />
-  )
-}
+/** `undefined`: sin cambio pendiente; `null` o un id: a dónde quería ir la usuaria. */
+type Pending = string | null | undefined
 
 export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?: number | null }) {
-  const { data: documents = [], isLoading, error } = useKnowledgeDocuments()
+  const { data: documents = [], isLoading, error, refetch } = useKnowledgeDocuments()
   const services = useServiceNames()
   const [filter, setFilter] = useState<string>(initialServiceId ? String(initialServiceId) : ALL)
   // null = sin editor abierto; 'new' = alta; otro valor = id en edición.
   const [editing, setEditing] = useState<string | null>(null)
+  const [formKey, setFormKey] = useState(0)
+  const [pending, setPending] = useState<Pending>(undefined)
   const [browsingTemplates, setBrowsingTemplates] = useState(false)
+  const dirtyRef = useRef(false)
   const editorRef = useRevealOnChange(editing)
+
+  // Cambiar de documento con cambios sin guardar pide confirmación.
+  function requestEditing(next: string | null) {
+    if (dirtyRef.current) { setPending(next); return }
+    goTo(next)
+  }
+  function goTo(next: string | null) {
+    dirtyRef.current = false
+    if (next === editing) setFormKey(key => key + 1)
+    setEditing(next)
+  }
 
   const visible = documents.filter(document => matchesFilter(document, filter))
   const filterServiceId = filter !== ALL && filter !== GENERAL ? Number(filter) : null
@@ -300,11 +298,13 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
     ...documents.flatMap(document => document.service_ids),
     ...(filterServiceId ? [filterServiceId] : []),
   ])]
-  const serviceNamesOf = (ids: number[]) => (ids.length ? ids.map(id => services.get(id)?.name ?? 'Servicio').join(', ') : 'General')
+  const serviceNamesOf = (ids: number[]) => (ids.length ? ids.map(id => services.get(id)?.name ?? 'Servicio').join(', ') : GENERAL_LABEL)
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-      <div className={panelClass}>
+    // `grid-cols-1`: sin ella la columna tomaba el ancho mínimo de los títulos
+    // (411 px) y en un teléfono de 390 "Nuevo" y los campos quedaban cortados.
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+      <div className={`${panelClass} min-w-0`}>
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Documentos</h2>
           <div className="flex items-center gap-1.5">
@@ -312,7 +312,7 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
               <Library className="h-3.5 w-3.5" aria-hidden="true" />
               Plantillas
             </Button>
-            <Button size="sm" onClick={() => setEditing('new')}>
+            <Button size="sm" onClick={() => requestEditing('new')}>
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               Nuevo
             </Button>
@@ -321,21 +321,22 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
         <div className="mt-3">
           <Select aria-label="Filtrar por servicio" value={filter} onValueChange={setFilter}>
             <option value={ALL}>Todos los documentos</option>
-            <option value={GENERAL}>Generales (sin servicio)</option>
+            <option value={GENERAL}>{GENERAL_LABEL}</option>
             {filterOptions.map(id => (
               <option key={id} value={String(id)}>{services.get(id)?.name ?? `Servicio ${id}`}</option>
             ))}
           </Select>
         </div>
-        <DocumentsListStatus isLoading={isLoading} error={error} empty={visible.length === 0} filterServiceId={filterServiceId} />
+        <DocumentsListStatus isLoading={isLoading} error={error} empty={visible.length === 0} filterServiceId={filterServiceId} onRetry={() => void refetch()} />
         <ul className="mt-3 space-y-1" aria-label="Documentos de conocimiento">
           {visible.map(document => (
             <DocumentListItem
               key={document.id}
               document={document}
               serviceName={serviceNamesOf(document.service_ids)}
+              typeName={typeLabel(document.document_type)}
               selected={editing === document.id}
-              onSelect={() => setEditing(document.id)}
+              onSelect={() => requestEditing(document.id)}
             />
           ))}
         </ul>
@@ -345,23 +346,35 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
           <EmptyState icon={BookText} title="Elige un documento" description="O crea uno nuevo. El asistente consulta estos textos cuando necesita detalles de un servicio o una política." />
         </div>
       ) : (
-        <div ref={editorRef} className="scroll-mt-4">
+        <div ref={editorRef} className="min-w-0 scroll-mt-4">
           <KnowledgeEditor
-            key={editing}
+            key={`${editing}:${formKey}`}
             documentId={editing === 'new' ? null : editing}
             defaultServiceId={editing === 'new' ? filterServiceId : null}
-            onDone={id => setEditing(id)}
+            dirtyRef={dirtyRef}
+            onSaved={id => goTo(id)}
+            onCancel={() => requestEditing(editing === 'new' ? null : editing)}
+            onDeleted={() => goTo(null)}
           />
         </div>
       )}
+      <ConfirmDialog
+        open={pending !== undefined}
+        onOpenChange={open => { if (!open) setPending(undefined) }}
+        title="Tienes cambios sin guardar"
+        description="Si sales ahora, se pierden los cambios de este documento."
+        confirmLabel="Descartar cambios"
+        cancelLabel="Seguir editando"
+        onConfirm={() => { goTo(pending ?? null); setPending(undefined) }}
+      />
       {browsingTemplates && (
         <KnowledgeTemplatesDialog
           preferredServiceId={filterServiceId}
           onClose={() => setBrowsingTemplates(false)}
-          onImported={documentId => {
+          onOpenDocument={documentId => {
             setBrowsingTemplates(false)
             setFilter(ALL)
-            setEditing(documentId)
+            requestEditing(documentId)
           }}
         />
       )}
