@@ -27,4 +27,14 @@ describe('NodeTypeMenu', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'afuera' }))
     expect(onClose).toHaveBeenCalledTimes(2)
   })
+
+  it('si se suelta cerca del borde de abajo, sube lo necesario para verse entero', () => {
+    // Antes se suponía un alto de 360 px; el menú real mide unos 560 y quedaba cortado.
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(560)
+    const viewport = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800)
+    render(<NodeTypeMenu x={100} y={700} onPick={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.getByRole('menu').style.top).toBe(`${800 - 560 - 8}px`)
+    height.mockRestore()
+    viewport.mockRestore()
+  })
 })
