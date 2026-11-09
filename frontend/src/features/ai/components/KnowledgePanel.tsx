@@ -12,11 +12,11 @@ import { useLeadServices } from '../../catalogs/public/useLeadServices'
 import { familyMembers } from '../domain/serviceFamilies'
 import {
   useDeleteKnowledgeDocument,
-  useImportKnowledgePdf,
   useKnowledgeDocument,
   useKnowledgeDocuments,
   useSaveKnowledgeDocument,
 } from '../queries'
+import { MAX_CONTENT, useKnowledgeImport } from '../hooks/useKnowledgeImport'
 import type { KnowledgeDocumentSummary, KnowledgeDocumentType } from '../types'
 import { DocumentListItem, DocumentsListStatus } from './KnowledgeDocumentsList'
 import { KnowledgeTemplatesDialog } from './KnowledgeTemplatesDialog'
@@ -40,18 +40,6 @@ const DOCUMENT_TYPES: readonly { key: KnowledgeDocumentType; label: string }[] =
 const GENERAL = 'general'
 const ALL = 'todos'
 const GENERAL_LABEL = 'Para todos los servicios'
-/** Mismo tope que el servidor (knowledge_service.MAX_CONTENT_LENGTH). */
-const MAX_CONTENT = 100_000
-
-async function fileToBase64(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let binary = ''
-  // Por tramos: String.fromCharCode con un PDF entero desborda la pila.
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
-  }
-  return btoa(binary)
-}
 
 function useServiceNames() {
   const { data: services = [] } = useLeadServices(true)
@@ -59,7 +47,8 @@ function useServiceNames() {
 }
 
 function sameIds(left: number[], right: number[]): boolean {
-  return left.length === right.length && left.every(id => right.includes(id))
+  const rightSet = new Set(right)
+  return left.length === right.length && left.every(id => rightSet.has(id))
 }
 
 interface FormValues { title: string; content: string; documentType: string; serviceIds: number[] }
@@ -100,11 +89,14 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
   const services = useServiceNames()
   const save = useSaveKnowledgeDocument()
   const remove = useDeleteKnowledgeDocument()
-  const importPdf = useImportKnowledgePdf()
   const [title, setTitle] = useState(initial.title)
   const [content, setContent] = useState(initial.content)
   const [documentType, setDocumentType] = useState<string>(initial.documentType)
   const [serviceIds, setServiceIds] = useState<number[]>(initial.serviceIds)
+  const importer = useKnowledgeImport((text, suggestedTitle) => {
+    setContent(text)
+    setTitle(current => (current.trim() ? current : suggestedTitle))
+  })
 
   // Cambios sin guardar: el panel los consulta antes de cambiar de documento
   // y el navegador avisa antes de cerrar la pestaña. Antes se perdían sin más
@@ -123,31 +115,6 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
   }, [dirty])
 
   const overLimit = content.length > MAX_CONTENT
-
-  function applyImportedText(text: string, fallbackTitle: string, notice: string) {
-    const truncated = text.length > MAX_CONTENT
-    setContent(truncated ? text.slice(0, MAX_CONTENT) : text)
-    if (!title.trim()) setTitle(fallbackTitle)
-    toast.success(notice, truncated ? { description: 'El archivo era más largo que el máximo de 100.000 caracteres: se cortó al final.' } : undefined)
-  }
-
-  async function importFile(file: File) {
-    if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
-      importPdf.mutate({ filename: file.name, dataBase64: await fileToBase64(file) }, {
-        onSuccess: result => {
-          setContent(result.content)
-          if (!title.trim()) setTitle(result.title)
-          toast.success(
-            `Texto de ${result.pages} ${result.pages === 1 ? 'página' : 'páginas'} importado. Revísalo antes de guardar.`,
-            result.truncated ? { description: 'El PDF era más largo que el máximo de 100.000 caracteres: se cortó al final.' } : undefined,
-          )
-        },
-        onError: err => toast.error(extractErrorMessage(err)),
-      })
-      return
-    }
-    applyImportedText(await file.text(), file.name.replace(/\.[^.]+$/, ''), 'Texto importado. Revísalo antes de guardar.')
-  }
 
   return (
     <form
@@ -189,12 +156,12 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
         <label htmlFor={`${formId}-content`} className={labelClass}>Contenido</label>
         <input ref={fileInput} type="file" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" className="hidden" data-testid="knowledge-file" onChange={event => {
           const file = event.target.files?.[0]
-          if (file) void importFile(file)
+          if (file) void importer.importFile(file)
           event.target.value = ''
         }} />
-        <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()} disabled={importPdf.isPending}>
-          {importPdf.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
-          {importPdf.isPending ? 'Leyendo PDF…' : 'Importar PDF, .txt o .md'}
+        <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()} disabled={importer.isPending}>
+          {importer.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
+          {importer.isPending ? 'Leyendo PDF…' : 'Importar PDF, .txt o .md'}
         </Button>
       </div>
       <Textarea
@@ -231,7 +198,7 @@ function KnowledgeForm({ documentId, initial, dirtyRef, onSaved, onCancel, onDel
           </ConfirmDialog>
         )}
         <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" disabled={save.isPending || importPdf.isPending || !title.trim() || !content.trim() || overLimit}>
+        <Button type="submit" disabled={save.isPending || importer.isPending || !title.trim() || !content.trim() || overLimit}>
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
           Guardar documento
         </Button>
