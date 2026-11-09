@@ -18,8 +18,8 @@ export function ServiceChecklist({ services, selected, onChange, label = 'Servic
   label?: string
 }) {
   const id = useId()
-  const shown = services.filter(service => service.is_active !== false || selected.includes(service.id))
   const chosen = new Set(selected)
+  const shown = services.filter(service => service.is_active !== false || chosen.has(service.id))
 
   function toggle(serviceId: number, checked: boolean) {
     onChange(checked ? [...selected, serviceId] : selected.filter(item => item !== serviceId))
