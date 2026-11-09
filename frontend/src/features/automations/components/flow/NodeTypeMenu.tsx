@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { AutomationFlowNodeType } from '../../types'
 import { FLOW_PALETTE } from './flowPalette'
 import { FLOW_TONES, flowTone } from '../../domain/flowTones'
 
 const MENU_WIDTH = 256
-const MENU_HEIGHT = 360
+const MARGIN = 8
 
 /**
  * Qué bloque agregar al soltar una conexión en un espacio vacío del lienzo.
@@ -42,9 +42,17 @@ export function NodeTypeMenu({ x, y, onPick, onClose }: {
     items[next]?.focus()
   }
 
-  // Que no se salga de la ventana si se soltó cerca de un borde.
-  const left = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 8))
-  const top = Math.max(8, Math.min(y, window.innerHeight - MENU_HEIGHT - 8))
+  // Que no se salga de la ventana si se soltó cerca de un borde. El alto se
+  // mide ya dibujado y antes de pintarse: se suponía de 360 px y mide unos 560
+  // (las descripciones ocupan dos líneas), así que soltando la conexión en la
+  // mitad de abajo del lienzo el menú quedaba cortado (2026-11-09).
+  const left = Math.max(MARGIN, Math.min(x, window.innerWidth - MENU_WIDTH - MARGIN))
+  useLayoutEffect(() => {
+    const element = menu.current
+    if (!element) return
+    const top = Math.max(MARGIN, Math.min(y, window.innerHeight - element.offsetHeight - MARGIN))
+    element.style.top = `${top}px`
+  }, [y])
 
   return (
     <div
@@ -52,8 +60,8 @@ export function NodeTypeMenu({ x, y, onPick, onClose }: {
       role="menu"
       aria-label="Agregar un bloque conectado"
       onKeyDown={onArrow}
-      style={{ left, top, width: MENU_WIDTH }}
-      className="fixed z-[70] rounded-xl border border-wa-border bg-white p-1.5 shadow-2xl dark:border-flow-border-dark dark:bg-flow-panel-dark"
+      style={{ left, top: y, width: MENU_WIDTH, maxHeight: `calc(100vh - ${MARGIN * 2}px)` }}
+      className="fixed z-[70] overflow-y-auto rounded-xl border border-wa-border bg-white p-1.5 shadow-2xl dark:border-flow-border-dark dark:bg-flow-panel-dark"
     >
       <p className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Agregar bloque conectado</p>
       {FLOW_PALETTE.map(({ type, label, icon: Icon, description }) => (
