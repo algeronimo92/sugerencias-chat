@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -54,10 +54,11 @@ describe('KnowledgePanel', () => {
 
     const list = await screen.findByRole('list', { name: 'Documentos de conocimiento' })
     await waitFor(() => expect(list).toHaveTextContent('Hollywood Peel - Rostro · Ficha del servicio'))
-    expect(list).toHaveTextContent('General · Política del negocio')
+    expect(list).toHaveTextContent('Para todos los servicios · Política del negocio')
+    expect(list).not.toHaveTextContent('fragmento')
 
     await user.click(screen.getByRole('combobox', { name: 'Filtrar por servicio' }))
-    await user.click(screen.getByRole('option', { name: 'Generales (sin servicio)' }))
+    await user.click(screen.getByRole('option', { name: 'Para todos los servicios' }))
     expect(list).not.toHaveTextContent('Ficha Hollywood Peel')
     expect(list).toHaveTextContent('Política de pagos')
   })
@@ -107,6 +108,7 @@ describe('KnowledgePanel: reabrir un documento', () => {
       if (url === '/api/ai/knowledge') return Promise.resolve({ data: DOCUMENTS })
       if (url === '/api/services/all') return Promise.resolve({ data: SERVICES })
       if (url === '/api/ai/knowledge/d1') return Promise.resolve({ data: { ...DOCUMENTS[0], content: 'Usa carbón activado.' } })
+      if (url === '/api/ai/knowledge/d2') return Promise.resolve({ data: { ...DOCUMENTS[1], content: 'Aceptamos Yape.' } })
       return Promise.reject(new Error(`GET inesperado ${url}`))
     })
   })
@@ -120,6 +122,23 @@ describe('KnowledgePanel: reabrir un documento', () => {
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Hollywood Peel - Rostro' })).toBeChecked())
     expect(screen.getByRole('checkbox', { name: 'Botox' })).not.toBeChecked()
     expect(screen.getByRole('combobox', { name: 'Tipo' })).toHaveTextContent('Ficha del servicio')
+  })
+
+  it('con cambios sin guardar, cambiar de documento pide confirmar', async () => {
+    const user = userEvent.setup()
+    wrap(<KnowledgePanel />)
+    await user.click(await screen.findByRole('button', { name: /Ficha Hollywood Peel/ }))
+    await waitFor(() => expect(screen.getByLabelText('Contenido')).toHaveValue('Usa carbón activado.'))
+    await user.type(screen.getByLabelText('Título'), ' (editada)')
+
+    await user.click(screen.getByRole('button', { name: /Política de pagos/ }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Tienes cambios sin guardar' })
+    await user.click(within(dialog).getByRole('button', { name: 'Seguir editando' }))
+    expect(screen.getByLabelText('Título')).toHaveValue('Ficha Hollywood Peel (editada)')
+
+    await user.click(screen.getByRole('button', { name: /Política de pagos/ }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Descartar cambios' }))
+    await waitFor(() => expect(screen.getByLabelText('Título')).toHaveValue('Política de pagos'))
   })
 })
 

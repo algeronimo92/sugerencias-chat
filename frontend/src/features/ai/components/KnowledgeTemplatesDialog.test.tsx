@@ -18,15 +18,18 @@ const SERVICES = [
   { id: 4, name: 'Hollywood Peel - Rostro + Cuello', is_active: true, packages: [] },
   { id: 5, name: 'Botox', is_active: true, packages: [] },
 ]
+const DOCUMENTS = [
+  { id: 'd2', title: 'Pagos y reservas', document_type: 'politica', service_ids: [], template_id: 2, characters: 15, chunk_count: 1, created_at: '', updated_at: '' },
+]
 
 function renderDialog(props: Partial<React.ComponentProps<typeof KnowledgeTemplatesDialog>> = {}) {
-  const onImported = vi.fn()
+  const onOpenDocument = vi.fn()
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <KnowledgeTemplatesDialog preferredServiceId={null} onClose={() => {}} onImported={onImported} {...props} />
+      <KnowledgeTemplatesDialog preferredServiceId={null} onClose={() => {}} onOpenDocument={onOpenDocument} {...props} />
     </QueryClientProvider>,
   )
-  return { onImported }
+  return { onOpenDocument }
 }
 
 describe('KnowledgeTemplatesDialog', () => {
@@ -35,6 +38,7 @@ describe('KnowledgeTemplatesDialog', () => {
     api.get.mockImplementation((url: string) => {
       if (url === '/api/ai/knowledge/templates') return Promise.resolve({ data: TEMPLATES })
       if (url === '/api/services') return Promise.resolve({ data: SERVICES })
+      if (url === '/api/ai/knowledge') return Promise.resolve({ data: DOCUMENTS })
       return Promise.reject(new Error(url))
     })
     api.post.mockResolvedValue({ data: { id: 'doc-7', title: 'Ficha Hollywood Peel', content: 'x', document_type: 'ficha', service_ids: [3], template_id: 1, characters: 1, chunk_count: 1, created_at: '', updated_at: '' } })
@@ -42,22 +46,29 @@ describe('KnowledgeTemplatesDialog', () => {
 
   it('propone el servicio que mejor coincide y crea una copia propia', async () => {
     const user = userEvent.setup()
-    const { onImported } = renderDialog()
+    const { onOpenDocument } = renderDialog()
 
     expect(await screen.findByText('Qué es: peeling con carbón.')).toBeInTheDocument()
+    // Todas las zonas del tratamiento, no solo la de nombre más corto.
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Hollywood Peel - Rostro' })).toBeChecked())
+    expect(screen.getByRole('checkbox', { name: 'Hollywood Peel - Rostro + Cuello' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Botox' })).not.toBeChecked()
     await user.click(screen.getByRole('button', { name: 'Importar y editar' }))
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/1/import', { service_ids: [3] }))
-    expect(onImported).toHaveBeenCalledWith('doc-7')
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/1/import', { service_ids: [3, 4] }))
+    expect(onOpenDocument).toHaveBeenCalledWith('doc-7')
   })
 
-  it('marca las ya importadas y permite otra copia, general si no hay servicio', async () => {
+  it('una plantilla ya importada abre la copia; importar otra vez queda como opción secundaria', async () => {
     const user = userEvent.setup()
-    renderDialog()
+    const { onOpenDocument } = renderDialog()
 
     await user.click(await screen.findByRole('button', { name: /Pagos y reservas/ }))
-    expect(screen.getByRole('list', { name: 'Plantillas disponibles' })).toHaveTextContent('importada')
+    expect(screen.getByRole('list', { name: 'Plantillas disponibles' })).toHaveTextContent('ya la tienes')
+    await user.click(await screen.findByRole('button', { name: 'Abrir mi copia' }))
+    expect(onOpenDocument).toHaveBeenCalledWith('d2')
+    expect(api.post).not.toHaveBeenCalled()
+
     await user.click(screen.getByRole('button', { name: 'Importar otra copia' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge/templates/2/import', { service_ids: [] }))
   })
