@@ -1,5 +1,6 @@
 import { MessageSquareLock, Send, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useActivityHold } from '../../../shared/activity'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { VoiceRecorder } from '../../../shared/ui/VoiceRecorder'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -113,6 +114,12 @@ export function ChatComposer({
   interface PendingMediaItem { file: File; previewUrl: string; kind: 'image' | 'video' | 'document' }
   const [pendingMedia, setPendingMedia] = useState<{ items: PendingMediaItem[]; activeIndex: number } | null>(null)
   const [isSendingMedia, setIsSendingMedia] = useState(false)
+  // Mientras haya algo de esto a medias, la app no se recarga sola para
+  // aplicar una versión nueva (ver app/pwaUpdateGuard.ts). El borrador de
+  // texto no cuenta: vive en localStorage y sobrevive a la recarga.
+  useActivityHold('recording', isRecordingAudio)
+  useActivityHold('pending-media', pendingMedia !== null)
+  useActivityHold('sending-media', isSendingMedia)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)

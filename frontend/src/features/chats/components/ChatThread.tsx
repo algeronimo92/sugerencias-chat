@@ -1,6 +1,7 @@
 import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useActivityHold } from '../../../shared/activity'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
@@ -164,6 +165,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   // descargar varios mensajes a la vez.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const isSelecting = selectedIds.size > 0
+  // Una respuesta citada o una selección a medias frenan la recarga
+  // automática de la app (ver app/pwaUpdateGuard.ts).
+  useActivityHold('reply', replyTo !== null)
+  useActivityHold('selection', isSelecting)
   // Mensajes a reenviar: la selección múltiple, o el mensaje suelto desde el
   // botón de su burbuja. null = el diálogo está cerrado.
   const [messageIdsToForward, setMessageIdsToForward] = useState<number[] | null>(null)

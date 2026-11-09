@@ -6,6 +6,7 @@ EyeOff,ListFilter,Loader2,LocateFixed,MessageSquareText,Play,Plus,Redo2,Save,Und
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useActivityHold } from '../../../shared/activity'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage, extractErrorTarget } from '../../../shared/utils/errors'
@@ -390,6 +391,9 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
   const hasUnsavedChanges = savedDefinition == null
     || name !== savedName
     || !areFlowDefinitionsEqual(flow, savedDefinition)
+  // Con cambios sin guardar la app no se recarga sola para actualizarse
+  // (ver app/pwaUpdateGuard.ts); el beforeunload de abajo cubre el F5 manual.
+  useActivityHold('flow-editor', hasUnsavedChanges)
   const triggerNode = flow.nodes.find(
     (node): node is Extract<AutomationFlowNode, { type: typeof NodeType.Trigger }> => node.type === NodeType.Trigger
   )
