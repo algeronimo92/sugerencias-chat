@@ -5,7 +5,7 @@ service_hint: Limpieza facial
 ---
 
 ## Limpieza facial
-> Hay **una sola limpieza facial** (la segunda variante aún no está implementada). Precios, packs y plan pareja: en el catálogo (herramienta 'precios').
+> Hay **una sola limpieza facial**. Precios, packs y plan pareja: en el catálogo del negocio.
 
 **En qué consiste:** el mismo protocolo del Hollywood Peel pero **sin la mascarilla de carbón ni el picoláser**. Los 7 pasos:
 1. Exfoliación
