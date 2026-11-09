@@ -1,6 +1,6 @@
 import {
-AlertTriangle,Ban,BotOff,CheckCircle2,ChevronDown,Clock3,Loader2,Pause,PauseCircle,Play,
-Workflow,
+AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Loader2,Pause,PauseCircle,Play,
+Workflow,ZapOff,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -16,8 +16,8 @@ import type { AutomationActionResult, AutomationExecution } from '../types'
 
 interface Props {
   chatId: string
-  /** El bot del chat está desactivado (no arrancan automatizaciones nuevas).
-   *  Eso no detiene lo que ya está en marcha, y el panel lo dice. */
+  /** El cliente tiene apagadas las automatizaciones nuevas (interruptor de
+   *  la cabecera). Eso no detiene lo que ya está en marcha, y el panel lo dice. */
   botDisabled?: boolean
 }
 
@@ -89,8 +89,8 @@ function stepDetail(step: AutomationActionResult) {
 /** Pausa o reanuda esta ejecución sola, sin tocar el resto de lo que el
  *  sistema tiene en marcha sobre el lead. No es lo mismo que cancelar: guarda
  *  lo que el flujo ya avanzó y el tiempo que le faltaba para el próximo paso.
- *  Es la única forma de detener algo que ya corre: el bot de la cabecera solo
- *  impide que arranquen automatizaciones nuevas.
+ *  Es la única forma de detener algo que ya corre: el interruptor de la
+ *  cabecera solo impide que arranquen automatizaciones nuevas.
  *
  *  Una ejecución que está enviando un paso en este instante no se puede
  *  pausar; el botón lo explica en vez de fallar. Las que quedaron pausadas
@@ -153,8 +153,9 @@ function StepIcon({ status }: { status?: string }) {
  * escriba al cliente.
  *
  * Sin esto el vendedor solo veía sus propios flujos manuales y no tenía cómo
- * frenar una automatización concreta: el bot de la cabecera solo impide que
- * arranquen nuevas, y eso hay que decirlo acá, donde se ve lo que sigue.
+ * frenar una automatización concreta: el interruptor de la cabecera solo
+ * impide que arranquen nuevas, y eso hay que decirlo acá, donde se ve lo que
+ * sigue.
  */
 export function LeadAutomationPanel({ chatId, botDisabled = false }: Props) {
   const { data: executions = [] } = useAutomationExecutions({ chatId })
@@ -192,13 +193,13 @@ export function LeadAutomationPanel({ chatId, botDisabled = false }: Props) {
         <span className="min-w-0 flex-1 truncate">
           <span className="font-semibold text-wa-text dark:text-wa-text-dark">{summary}</span>
           {pausedNote && <span className="text-amber-700 dark:text-amber-400">{pausedNote}</span>}
-          {/* El único sitio donde conviven los dos estados: el bot desactivado
-              y algo que sigue en marcha. Sin esta frase parece que la pausa
-              del bot falló. */}
+          {/* El único sitio donde conviven los dos estados: automatizaciones
+              nuevas apagadas y algo que sigue en marcha. Sin esta frase parece
+              que el interruptor falló. */}
           {botDisabled && moving > 0 && (
             <span className="text-wa-muted dark:text-wa-muted-dark">
               {' · '}
-              <BotOff className="inline h-3 w-3 align-[-2px]" aria-hidden="true" /> Bot desactivado: {moving === 1 ? 'sigue' : 'siguen'} en marcha
+              <ZapOff className="inline h-3 w-3 align-[-2px]" aria-hidden="true" /> Sin automatizaciones nuevas: {moving === 1 ? 'esta sigue' : 'estas siguen'} en marcha
             </span>
           )}
         </span>

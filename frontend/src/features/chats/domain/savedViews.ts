@@ -20,7 +20,7 @@ export const BUILT_IN_VIEWS: readonly ChatView[] = [
   { id: 'waiting', label: 'Esperando respuesta', filters: { waitingTime: 'any' }, builtIn: true },
   { id: 'urgent', label: 'Más de 1 h sin responder', filters: { waitingTime: 'urgent' }, builtIn: true },
   { id: 'cold', label: 'Sin actividad 7 días', filters: { inactiveDays: 7 }, builtIn: true },
-  { id: 'paused', label: 'Bot desactivado', filters: { automationPaused: true }, builtIn: true },
+  { id: 'paused', label: 'Sin automatizaciones nuevas', filters: { automationPaused: true }, builtIn: true },
 ]
 
 export function viewFilters(view: ChatView): ChatFilters {
