@@ -54,7 +54,7 @@ async def test_vectors_are_filled_lazily_searched_and_kept_in_sync(tenant) -> No
             await session.flush()
             admin_id = user.id
         hifu = await create_lead_service("HIFU 12D", admin_id)
-        ficha = await create_document("Ficha HIFU", "Tensa la piel con flacidez de rostro y papada.", "ficha", service_id=hifu["id"])
+        ficha = await create_document("Ficha HIFU", "Tensa la piel con flacidez de rostro y papada.", "ficha", service_ids=[hifu["id"]])
         await create_document("Ficha Peel", "Aclara manchas y poros.", "ficha")
         await create_document("Pagos", "Aceptamos pagos con Yape y tarjeta.", "politica")
         embedder = TopicEmbedder()
@@ -73,7 +73,7 @@ async def test_vectors_are_filled_lazily_searched_and_kept_in_sync(tenant) -> No
 
         # Editar rehace los fragmentos: quedan sin vector hasta la siguiente
         # pasada, y el índice en memoria se entera.
-        await update_document(ficha["id"], "Ficha HIFU", "Ahora habla de manchas solares.", document_type="ficha", service_id=hifu["id"])
+        await update_document(ficha["id"], "Ficha HIFU", "Ahora habla de manchas solares.", document_type="ficha", service_ids=[hifu["id"]])
         assert ficha_chunk not in await _ids("flacidez", embedder.spec)
         assert await ensure_embeddings(embedder) == 1
         assert len(await _ids("manchas", embedder.spec)) == 3

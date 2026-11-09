@@ -157,14 +157,25 @@ def _validate_type(document_type: str | None) -> str | None:
     return document_type
 
 
+MAX_SERVICES_PER_DOCUMENT = 50
+
+
+def _clean_service_ids(service_ids: list[int] | None) -> list[int]:
+    """Sin repetidos y en el orden en que se eligieron."""
+    cleaned = list(dict.fromkeys(int(service_id) for service_id in service_ids or []))
+    if len(cleaned) > MAX_SERVICES_PER_DOCUMENT:
+        raise ValueError(f"Un documento admite hasta {MAX_SERVICES_PER_DOCUMENT} servicios")
+    return cleaned
+
+
 async def create_document(
-    title: str, content: str, document_type: str | None = None, *, service_id: int | None = None,
+    title: str, content: str, document_type: str | None = None, *, service_ids: list[int] | None = None,
     source: str = "manual", metadata: dict | None = None,
 ) -> dict:
     title, content = _validate(title, content)
     return await knowledge_repository.create_document(
         title, content, _validate_type(document_type), chunk_text(content), MAX_DOCUMENTS,
-        service_id=service_id, source=source, metadata=metadata,
+        service_ids=_clean_service_ids(service_ids), source=source, metadata=metadata,
     )
 
 
@@ -182,25 +193,26 @@ async def list_importable_templates() -> list[dict]:
     ]
 
 
-async def import_template(template_id: int, *, service_id: int | None) -> dict:
+async def import_template(template_id: int, *, service_ids: list[int] | None = None) -> dict:
     """Copia la plantilla como documento propio del negocio, listo para editar."""
     template = await get_active_template(template_id)
     if template is None:
         raise TemplateNotFound(template_id)
     return await create_document(
         template["title"], template["content"], template["document_type"],
-        service_id=service_id, source="plantilla",
+        service_ids=service_ids, source="plantilla",
         metadata={"template_id": template["id"], "template_version": template["version"]},
     )
 
 
 async def update_document(
-    document_id: str, title: str, content: str, *, document_type: str | None = None, service_id: int | None = None,
+    document_id: str, title: str, content: str, *, document_type: str | None = None,
+    service_ids: list[int] | None = None,
 ) -> dict | None:
     title, content = _validate(title, content)
     return await knowledge_repository.update_document(
         document_id, title, content, chunk_text(content),
-        document_type=_validate_type(document_type), service_id=service_id,
+        document_type=_validate_type(document_type), service_ids=_clean_service_ids(service_ids),
     )
 
 

@@ -76,7 +76,7 @@ async def read_knowledge_document(document_id: UUID):
 async def import_knowledge_template(template_id: int, body: KnowledgeTemplateImport):
     """Crea una copia propia del negocio; desde ahí se edita como cualquier documento."""
     try:
-        return await import_template(template_id, service_id=body.service_id)
+        return await import_template(template_id, service_ids=body.service_ids)
     except TemplateNotFound as exc:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada") from exc
     except KnowledgeLimitError as exc:
@@ -97,7 +97,7 @@ async def import_knowledge_pdf(body: KnowledgePdfImportRequest):
 @router.post("/knowledge", response_model=KnowledgeDocumentItem, status_code=201)
 async def create_knowledge_document(body: KnowledgeDocumentBody):
     try:
-        return await create_document(body.title, body.content, body.document_type, service_id=body.service_id)
+        return await create_document(body.title, body.content, body.document_type, service_ids=body.service_ids)
     except KnowledgeLimitError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -108,7 +108,7 @@ async def create_knowledge_document(body: KnowledgeDocumentBody):
 async def update_knowledge_document(document_id: UUID, body: KnowledgeDocumentBody):
     try:
         document = await update_document(
-            str(document_id), body.title, body.content, document_type=body.document_type, service_id=body.service_id,
+            str(document_id), body.title, body.content, document_type=body.document_type, service_ids=body.service_ids,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -67,9 +67,10 @@ class KnowledgeDocument(Base):
     # Texto completo tal como lo cargó el negocio. Los chunks se derivan de acá
     # y se regeneran al editarlo; nunca se editan sueltos.
     content: Mapped[str | None] = mapped_column(Text)
-    # Servicio del catálogo al que pertenece (ficha, protocolo, objeciones de
-    # ese servicio). Sin valor es conocimiento general: políticas, garantías.
-    # El copiloto prioriza los documentos del servicio que le interesa al lead.
+    # Espejo del primer servicio vinculado (``KnowledgeDocumentService``), que
+    # desde 2026-11-09 es la fuente de verdad. Se conserva una versión porque
+    # durante el despliegue blue-green la versión anterior sigue leyéndolo;
+    # la siguiente revisión lo elimina.
     service_id: Mapped[int | None] = mapped_column(ForeignKey("lead_services.id", ondelete="SET NULL"))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict, server_default="{}"
@@ -82,6 +83,28 @@ class KnowledgeDocument(Base):
     )
 
     __table_args__ = (Index("idx_knowledge_documents_service", "service_id"),)
+
+
+class KnowledgeDocumentService(Base):
+    """Servicios del catálogo a los que pertenece un documento.
+
+    Una ficha sirve para varios servicios ("Botox - 1 Zona", "2 Zonas" y
+    "3 Zonas" comparten la misma); antes solo se podía elegir uno y había que
+    duplicar el documento. Sin filas, el documento es conocimiento general
+    (políticas, garantías). El copiloto prioriza los documentos del servicio
+    que le interesa al lead. Borrar el servicio quita el vínculo, no la ficha.
+    """
+
+    __tablename__ = "knowledge_document_services"
+
+    document_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    service_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("lead_services.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    __table_args__ = (Index("idx_knowledge_document_services_service", "service_id"),)
 
 
 class AIProfile(Base):

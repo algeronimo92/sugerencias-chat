@@ -18,8 +18,8 @@ const SERVICES = [
   { id: 5, name: 'Botox', is_active: true, packages: [] },
 ]
 const DOCUMENTS = [
-  { id: 'd1', title: 'Ficha Hollywood Peel', document_type: 'ficha', service_id: 3, characters: 300, chunk_count: 1, created_at: '', updated_at: '' },
-  { id: 'd2', title: 'Política de pagos', document_type: 'politica', service_id: null, characters: 80, chunk_count: 1, created_at: '', updated_at: '' },
+  { id: 'd1', title: 'Ficha Hollywood Peel', document_type: 'ficha', service_ids: [3], characters: 300, chunk_count: 1, created_at: '', updated_at: '' },
+  { id: 'd2', title: 'Política de pagos', document_type: 'politica', service_ids: [], characters: 80, chunk_count: 1, created_at: '', updated_at: '' },
 ]
 
 function wrap(node: React.ReactNode) {
@@ -68,7 +68,9 @@ describe('KnowledgePanel', () => {
 
     expect(await screen.findByText('Este servicio no tiene documentos')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Nuevo' }))
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Servicio' })).toHaveTextContent('Botox'))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Botox' })).toBeChecked())
+    // Una ficha puede ser de varios servicios: se marca otro además del que ya venía.
+    await user.click(screen.getByRole('checkbox', { name: 'Hollywood Peel - Rostro' }))
 
     await user.type(screen.getByLabelText('Título'), 'Ficha Botox')
     await user.type(screen.getByLabelText('Contenido'), 'Dura 4 meses.')
@@ -77,7 +79,7 @@ describe('KnowledgePanel', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar documento' }))
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge', {
-      title: 'Ficha Botox', content: 'Dura 4 meses.', document_type: 'ficha', service_id: 5,
+      title: 'Ficha Botox', content: 'Dura 4 meses.', document_type: 'ficha', service_ids: [5, 3],
     }))
   })
 
@@ -115,7 +117,8 @@ describe('KnowledgePanel: reabrir un documento', () => {
     await user.click(await screen.findByRole('button', { name: /Ficha Hollywood Peel/ }))
 
     await waitFor(() => expect(screen.getByLabelText('Contenido')).toHaveValue('Usa carbón activado.'))
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Servicio' })).toHaveTextContent('Hollywood Peel - Rostro'))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Hollywood Peel - Rostro' })).toBeChecked())
+    expect(screen.getByRole('checkbox', { name: 'Botox' })).not.toBeChecked()
     expect(screen.getByRole('combobox', { name: 'Tipo' })).toHaveTextContent('Ficha del servicio')
   })
 })

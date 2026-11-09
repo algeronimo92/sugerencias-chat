@@ -1,5 +1,6 @@
-"""Conocimiento por servicio contra PostgreSQL real: vínculo, búsqueda
-filtrada, fichas primero y que borrar el servicio no borre el documento."""
+"""Conocimiento por servicio contra PostgreSQL real: vínculo (a uno o a varios
+servicios), búsqueda filtrada, fichas primero y que borrar el servicio no
+borre el documento."""
 
 from __future__ import annotations
 
@@ -29,14 +30,14 @@ async def test_documents_belong_to_a_service_and_search_prioritises_it(tenant) -
         peel = await create_lead_service("Hollywood Peel - Rostro", admin_id)
         botox = await create_lead_service("Botox", admin_id)
 
-        faq = await create_document("Preguntas del peel", "¿Duele? No, se siente calor leve.", "faq", service_id=peel["id"])
-        ficha = await create_document("Hollywood Peel", "Usa carbón activado. Se recomiendan tres sesiones.", "ficha", service_id=peel["id"])
-        await create_document("Ficha Botox", "Toxina para líneas de expresión. Dura cuatro meses; tres sesiones al año.", "ficha", service_id=botox["id"])
+        faq = await create_document("Preguntas del peel", "¿Duele? No, se siente calor leve.", "faq", service_ids=[peel["id"]])
+        ficha = await create_document("Hollywood Peel", "Usa carbón activado. Se recomiendan tres sesiones.", "ficha", service_ids=[peel["id"]])
+        await create_document("Ficha Botox", "Toxina para líneas de expresión. Dura cuatro meses; tres sesiones al año.", "ficha", service_ids=[botox["id"]])
         await create_document("Política de pagos", "Aceptamos Yape y tarjeta.", "politica")
 
         listed = {item["title"]: item for item in await list_documents()}
-        assert listed["Hollywood Peel"]["service_id"] == peel["id"]
-        assert listed["Política de pagos"]["service_id"] is None
+        assert listed["Hollywood Peel"]["service_ids"] == [peel["id"]]
+        assert listed["Política de pagos"]["service_ids"] == []
         assert listed["Hollywood Peel"]["document_type"] == "ficha"
 
         # Filtrada por servicio: "sesiones" está en dos fichas, solo vuelve la del peel.
@@ -51,13 +52,30 @@ async def test_documents_belong_to_a_service_and_search_prioritises_it(tenant) -
         assert [chunk["title"] for chunk in await service_knowledge_chunks(peel["id"], 5)] == ["Hollywood Peel", "Preguntas del peel"]
 
         # Editar puede mover el documento a otro servicio o volverlo general.
-        moved = await update_document(faq["id"], "Preguntas del peel", "¿Duele? No.", document_type="faq", service_id=None)
-        assert moved["service_id"] is None
+        moved = await update_document(faq["id"], "Preguntas del peel", "¿Duele? No.", document_type="faq", service_ids=[])
+        assert moved["service_ids"] == []
 
         with pytest.raises(ValueError):
-            await create_document("Huérfano", "texto", service_id=999_999)
+            await create_document("Huérfano", "texto", service_ids=[999_999])
 
-        # Borrar el servicio deja la ficha como conocimiento general.
+        # Una ficha para varios servicios ("Botox - 1 Zona" y "2 Zonas"): se
+        # encuentra filtrando por cualquiera, sale una sola vez en la lista y
+        # los repetidos no se guardan dos veces.
+        shared = await update_document(
+            ficha["id"], "Hollywood Peel", "Usa carbón activado. Se recomiendan tres sesiones.",
+            document_type="ficha", service_ids=[botox["id"], peel["id"], botox["id"]],
+        )
+        assert shared["service_ids"] == sorted([peel["id"], botox["id"]])
+        assert [chunk["title"] for chunk in await search_knowledge_chunks("carbón", 5, botox["id"])] == ["Hollywood Peel"]
+        assert [chunk["title"] for chunk in await search_knowledge_chunks("carbón", 5, peel["id"])] == ["Hollywood Peel"]
+        assert (await search_knowledge_chunks("carbón", 5, botox["id"]))[0]["service_ids"] == sorted([peel["id"], botox["id"]])
+        assert [item["title"] for item in await list_documents()].count("Hollywood Peel") == 1
+
+        # Borrar un servicio quita solo ese vínculo: la ficha sigue siendo del otro.
         async with session_scope() as session:
             await session.execute(delete(LeadService).where(LeadService.id == peel["id"]))
-        assert (await get_document(ficha["id"]))["service_id"] is None
+        assert (await get_document(ficha["id"]))["service_ids"] == [botox["id"]]
+        # Sin servicios queda como conocimiento general.
+        async with session_scope() as session:
+            await session.execute(delete(LeadService).where(LeadService.id == botox["id"]))
+        assert (await get_document(ficha["id"]))["service_ids"] == []

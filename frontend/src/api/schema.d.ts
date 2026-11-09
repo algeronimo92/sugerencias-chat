@@ -5279,8 +5279,8 @@ export interface components {
             content: string;
             /** Document Type */
             document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
-            /** Service Id */
-            service_id?: number | null;
+            /** Service Ids */
+            service_ids?: number[];
         };
         /** KnowledgeDocumentItem */
         KnowledgeDocumentItem: {
@@ -5290,8 +5290,8 @@ export interface components {
             title: string;
             /** Document Type */
             document_type?: string | null;
-            /** Service Id */
-            service_id?: number | null;
+            /** Service Ids */
+            service_ids?: number[];
             /** Template Id */
             template_id?: number | null;
             /** Characters */
@@ -5313,8 +5313,8 @@ export interface components {
             title: string;
             /** Document Type */
             document_type?: string | null;
-            /** Service Id */
-            service_id?: number | null;
+            /** Service Ids */
+            service_ids?: number[];
             /** Template Id */
             template_id?: number | null;
             /** Characters */
@@ -5370,8 +5370,8 @@ export interface components {
         };
         /** KnowledgeTemplateImport */
         KnowledgeTemplateImport: {
-            /** Service Id */
-            service_id?: number | null;
+            /** Service Ids */
+            service_ids?: number[];
         };
         /** KnowledgeTemplateItem */
         KnowledgeTemplateItem: {

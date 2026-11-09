@@ -66,9 +66,9 @@ async def test_import_is_a_business_copy_independent_of_the_template(tenant, cle
         assert template["id"] in offered and hidden["id"] not in offered
         assert offered[template["id"]]["imported"] is False
 
-        copy = await import_template(template["id"], service_id=peel["id"])
-        assert (copy["title"], copy["document_type"], copy["service_id"], copy["template_id"]) == (
-            "Ficha Hollywood Peel", "ficha", peel["id"], template["id"],
+        copy = await import_template(template["id"], service_ids=[peel["id"]])
+        assert (copy["title"], copy["document_type"], copy["service_ids"], copy["template_id"]) == (
+            "Ficha Hollywood Peel", "ficha", [peel["id"]], template["id"],
         )
         assert copy["chunk_count"] >= 1
         assert {item["id"]: item for item in await list_importable_templates()}[template["id"]]["imported"] is True
@@ -76,17 +76,17 @@ async def test_import_is_a_business_copy_independent_of_the_template(tenant, cle
         # El negocio la edita a su gusto.
         edited = await update_document(
             copy["id"], "Ficha Hollywood Peel (DermicaPro)", FICHA + "\n\nEn DermicaPro: evaluación gratuita.",
-            document_type="ficha", service_id=peel["id"],
+            document_type="ficha", service_ids=[peel["id"]],
         )
         assert edited["template_id"] == template["id"]
 
         # Importar otra vez da una segunda copia, no pisa la editada.
-        second = await import_template(template["id"], service_id=None)
-        assert second["id"] != copy["id"] and second["service_id"] is None
+        second = await import_template(template["id"])
+        assert second["id"] != copy["id"] and second["service_ids"] == []
         assert len([d for d in await list_documents() if d["template_id"] == template["id"]]) == 2
 
         with pytest.raises(TemplateNotFound):
-            await import_template(hidden["id"], service_id=None)
+            await import_template(hidden["id"])
 
     # La plataforma edita la plantilla: sube la versión y la copia del negocio no cambia.
     updated = await update_template(template["id"], {"content": FICHA + "\n\nNuevo párrafo de la plataforma."})

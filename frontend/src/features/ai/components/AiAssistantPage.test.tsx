@@ -89,7 +89,7 @@ describe('AiAssistantPage', () => {
       title: 'Ficha botox',
       content: 'Dura 4 meses.',
       document_type: null,
-      service_id: null,
+      service_ids: [],
     }))
   })
 })

@@ -5,6 +5,7 @@ import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Input, Select, Textarea, labelClass } from '../../../shared/ui/Input'
+import { ServiceChecklist } from './ServiceChecklist'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useLeadServices } from '../../catalogs/public/useLeadServices'
 import {
@@ -70,7 +71,7 @@ function KnowledgeEditor({ documentId, defaultServiceId, onDone }: EditorProps) 
         title: data?.title ?? '',
         content: data?.content ?? '',
         documentType: data?.document_type ?? '',
-        serviceId: data ? (data.service_id ? String(data.service_id) : '') : (defaultServiceId ? String(defaultServiceId) : ''),
+        serviceIds: data ? data.service_ids : (defaultServiceId ? [defaultServiceId] : []),
       }}
       onDone={onDone}
     />
@@ -79,7 +80,7 @@ function KnowledgeEditor({ documentId, defaultServiceId, onDone }: EditorProps) 
 
 interface FormProps {
   documentId: string | null
-  initial: { title: string; content: string; documentType: string; serviceId: string }
+  initial: { title: string; content: string; documentType: string; serviceIds: number[] }
   onDone: (id: string | null) => void
 }
 
@@ -93,7 +94,7 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
   const [title, setTitle] = useState(initial.title)
   const [content, setContent] = useState(initial.content)
   const [documentType, setDocumentType] = useState<string>(initial.documentType)
-  const [serviceId, setServiceId] = useState<string>(initial.serviceId)
+  const [serviceIds, setServiceIds] = useState<number[]>(initial.serviceIds)
 
   async function importFile(file: File) {
     if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
@@ -114,8 +115,6 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
     if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ''))
   }
 
-  const activeServices = [...services.values()].filter(service => service.is_active !== false || String(service.id) === serviceId)
-
   return (
     <form
       className={panelClass}
@@ -126,7 +125,7 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
           title,
           content,
           document_type: (documentType || null) as KnowledgeDocumentType | null,
-          service_id: serviceId ? Number(serviceId) : null,
+          service_ids: serviceIds,
         }, {
           onSuccess: saved => {
             toast.success(documentId ? 'Documento actualizado' : 'Documento creado')
@@ -141,19 +140,15 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
-          <label htmlFor={`${formId}-service`} className={labelClass}>Servicio</label>
-          <Select id={`${formId}-service`} aria-label="Servicio" value={serviceId} onValueChange={setServiceId}>
-            <option value="">General (todos los servicios)</option>
-            {activeServices.map(service => <option key={service.id} value={String(service.id)}>{service.name}</option>)}
-          </Select>
-        </div>
-        <div>
           <label htmlFor={`${formId}-type`} className={labelClass}>Tipo</label>
           <Select id={`${formId}-type`} aria-label="Tipo" value={documentType} onValueChange={setDocumentType}>
             <option value="">Sin tipo</option>
             {DOCUMENT_TYPES.map(type => <option key={type.key} value={type.key}>{type.label}</option>)}
           </Select>
         </div>
+      </div>
+      <div className="mt-4">
+        <ServiceChecklist services={[...services.values()]} selected={serviceIds} onChange={setServiceIds} />
       </div>
 
       <div className="mt-4 flex items-end justify-between gap-2">
@@ -211,8 +206,8 @@ function KnowledgeForm({ documentId, initial, onDone }: FormProps) {
 
 function matchesFilter(document: KnowledgeDocumentSummary, filter: string): boolean {
   if (filter === ALL) return true
-  if (filter === GENERAL) return document.service_id == null
-  return String(document.service_id) === filter
+  if (filter === GENERAL) return document.service_ids.length === 0
+  return document.service_ids.includes(Number(filter))
 }
 
 function typeLabel(key: string | null): string | undefined {
@@ -302,10 +297,10 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
   const filterServiceId = filter !== ALL && filter !== GENERAL ? Number(filter) : null
   // El servicio filtrado aparece aunque todavía no tenga documentos.
   const filterOptions = [...new Set([
-    ...documents.map(document => document.service_id).filter((id): id is number => id != null),
+    ...documents.flatMap(document => document.service_ids),
     ...(filterServiceId ? [filterServiceId] : []),
   ])]
-  const serviceNameOf = (id: number | null) => (id != null ? services.get(id)?.name ?? 'Servicio' : 'General')
+  const serviceNamesOf = (ids: number[]) => (ids.length ? ids.map(id => services.get(id)?.name ?? 'Servicio').join(', ') : 'General')
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
@@ -338,7 +333,7 @@ export function KnowledgePanel({ initialServiceId = null }: { initialServiceId?:
             <DocumentListItem
               key={document.id}
               document={document}
-              serviceName={serviceNameOf(document.service_id)}
+              serviceName={serviceNamesOf(document.service_ids)}
               selected={editing === document.id}
               onSelect={() => setEditing(document.id)}
             />
