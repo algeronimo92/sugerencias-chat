@@ -3,7 +3,7 @@ vendedor, el lead crudo lleva ``compras`` para la IA y el dashboard suma."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -11,7 +11,7 @@ from app.db.models.auth import User
 from app.db.uow import session_scope
 from app.modules.catalogs.service import create_lead_service, create_service_package
 from app.modules.leads.application.sales import SaleInput, record_sale, delete_sale
-from app.modules.leads.dashboard.leads_queries import collect_sales
+from app.modules.leads.dashboard.sales_queries import collect as collect_sales
 from app.modules.leads.dashboard.scope import build_scope
 from app.modules.leads.domain.lead import Actor
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
@@ -55,18 +55,44 @@ async def test_sales_round_trip_and_dashboard(tenant) -> None:
         assert raw["compras"][1]["monto"] == "380.00"
 
         team = await collect_sales(build_scope(30, "team", seller_id))
-        assert (team["count"], team["total"], team["avg_ticket"]) == (2, 560.0, 280.0)
-        assert team["by_seller"] == [{"name": "Lucía", "value": 380}, {"name": "Marco", "value": 180}]
-        assert team["by_package"] == [
-            {"name": "Hollywood Peel - Rostro · Individual", "value": 1},
-            {"name": "Hollywood Peel - Rostro · x3", "value": 1},
+        totals = team["totals"]
+        assert (totals["count"], totals["revenue"], totals["avg_ticket"]) == (2, 560.0, 280.0)
+        # x3 se vendió a 380 sobre una lista de 400; la sesión suelta, a lista.
+        assert (totals["sessions"], totals["discount"], totals["buyers"]) == (4, 20.0, 1)
+        assert totals["discount_rate"] == 3.4
+        assert team["previous"] is None
+        assert [(s["name"], s["revenue"], s["count"]) for s in team["by_seller"]] == [("Lucía", 380.0, 1), ("Marco", 180.0, 1)]
+        assert [(p["package_name"], p["count"], p["revenue"], p["sessions"], p["previous_count"]) for p in team["by_package"]] == [
+            ("x3", 1, 380.0, 3, 0),
+            ("Individual", 1, 180.0, 1, 0),
         ]
+        assert team["by_service"] == [{"service_id": service["id"], "name": "Hollywood Peel - Rostro", "count": 2, "revenue": 560.0}]
+        assert [(r["package_name"], r["seller_name"], r["lead_id"]) for r in team["recent"]] == [
+            ("Individual", "Marco", lead_id), ("x3", "Lucía", lead_id),
+        ]
+        assert sum(point["revenue"] for point in team["trend"]) == 560.0
+        assert len(team["trend"]) == len(team["previous_trend"]) == 30
+
         mine = await collect_sales(build_scope(30, "mine", seller_id))
-        assert (mine["count"], mine["total"]) == (1, 380.0)
+        assert (mine["totals"]["count"], mine["totals"]["revenue"]) == (1, 380.0)
+        # El ranking del equipo llega igual en el scope propio.
+        assert [s["name"] for s in mine["by_seller"]] == ["Lucía", "Marco"]
+
+        # Una venta de hace 40 días cae en la ventana anterior, no en el período.
+        await record_sale(
+            lead_id,
+            SaleInput(service_id=service["id"], package_id=pack["id"], sold_at=datetime.now(timezone.utc) - timedelta(days=40)),
+            actor=Actor.user(seller_id),
+        )
+        team = await collect_sales(build_scope(30, "team", seller_id))
+        assert team["totals"]["count"] == 2
+        assert (team["previous"]["count"], team["previous"]["revenue"]) == (1, 400.0)
+        assert {p["package_name"]: p["previous_count"] for p in team["by_package"]} == {"x3": 1, "Individual": 0}
 
         # Borrar deja rastro en el historial y sale de la lista.
         await delete_sale(lead_id, sale["id"], actor=Actor.user(seller_id), is_admin=False)
-        assert [s["package_name"] for s in await list_lead_sales(lead_id)] == ["Individual"]
+        # Queda la sesión suelta y la compra de hace 40 días.
+        assert [s["package_name"] for s in await list_lead_sales(lead_id)] == ["Individual", "x3"]
         events = [a["event_type"] for a in await list_lead_activity(lead_id)]
         assert events[:3] == ["sale_deleted", "sale_recorded", "sale_recorded"]
 

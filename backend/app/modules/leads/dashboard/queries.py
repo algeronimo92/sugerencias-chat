@@ -2,7 +2,7 @@
 
 Antes era un módulo plano admin-only. Se partió cuando el dashboard se abrió a
 los vendedores: cada bloque (`summary`, `leads`, `automations`, `tags`,
-`appointments`, `activity`) resuelve sus consultas en paralelo y el orquestador
+`appointments`, `activity`, `sales`) resuelve sus consultas en paralelo y el orquestador
 las une en un payload único, porque el panel las muestra todas de una y pedirlas
 por separado multiplicaría los round-trips y el trabajo de caché.
 """
@@ -15,6 +15,7 @@ from app.modules.leads.dashboard import (
     appointments_queries as appointments,
     automations_queries as automations,
     leads_queries as leads,
+    sales_queries as sales,
     summary_queries as summary,
     tags_queries as tags,
 )
@@ -39,7 +40,7 @@ async def _compute(scope: DashboardScope) -> dict:
             tags.collect(scope),
             appointments.collect(scope),
             activity.collect(scope),
-            leads.collect_sales(scope),
+            sales.collect(scope),
         )
     )
     # La cobertura de etiquetado ya se calculó en su bloque; se repite en la

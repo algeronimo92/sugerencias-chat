@@ -42,3 +42,28 @@ export function formatAmount(value: string | number | null): string {
   if (value == null) return 'Sin datos'
   return Number(value).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
+
+/** Importe con la moneda del negocio cuando la hay. El backend solo manda
+ *  códigos ISO, pero si el navegador no conoce alguno se cae al número solo
+ *  en vez de romper el panel. */
+export function formatMoney(value: number | null, currency: string | null): string {
+  if (value == null) return 'Sin datos'
+  if (currency) {
+    try {
+      return value.toLocaleString('es-PE', { style: 'currency', currency, maximumFractionDigits: 0 })
+    } catch {
+      // RangeError por un código que este navegador no tiene: sigue abajo.
+    }
+  }
+  return formatAmount(value)
+}
+
+/** Cambio contra el período anterior, con flecha y signo para que la
+ *  dirección no dependa del color. Sin base (null o 0) no hay porcentaje que
+ *  mostrar: un "+100 %" sobre cero no dice nada. */
+export function formatChange(current: number | null, previous: number | null | undefined): string {
+  if (current == null || !previous) return 'Sin período anterior para comparar'
+  const change = Math.round(((current - previous) / previous) * 100)
+  if (change === 0) return 'Igual que el período anterior'
+  return `${change > 0 ? '▲ +' : '▼ '}${change}% vs. período anterior`
+}
