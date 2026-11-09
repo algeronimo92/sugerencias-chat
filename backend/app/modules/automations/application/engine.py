@@ -310,13 +310,7 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
 
 async def process_due_automation_executions(limit: int = 20, deps: AutomationDeps | None = None) -> int:
     deps = deps or default_deps()
-    # Antes de reclamar nada se congela lo que venció con el lead pausado: la
-    # pausa solo alcanza a lo que ya estaba esperando, y esto atrapa además a
-    # la ejecución que estaba corriendo cuando el vendedor pausó y volvió a la
-    # cola al llegar a su siguiente espera.
-    frozen, ids = await deps.executions.claim_due(deps.now(), limit)
-    if frozen:
-        await deps.publish(AutomationsChanged())
+    ids = await deps.executions.claim_due(deps.now(), limit)
     if not ids:
         return 0
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_EXECUTIONS)

@@ -13,11 +13,10 @@ from sqlalchemy import DateTime, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
-from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationExecutionStatus
 from app.modules.automations.domain.execution import Execution, Rule, initial_flow_state
-from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION, PAUSE_SCOPE_LEAD
+from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION
 from app.modules.automations.queries import get_automation_execution
 
 
@@ -169,23 +168,12 @@ class SqlExecutionStore:
                 AutomationRoundRobinState.node_id == node_id,
             )) or 0
 
-    async def claim_due(self, now: datetime, limit: int) -> tuple[list[int], list[int]]:
+    async def claim_due(self, now: datetime, limit: int) -> list[int]:
+        # La pausa del lead no se mira acá a propósito: solo impide que los
+        # disparadores creen ejecuciones nuevas (ver schedule_in_session). Lo
+        # que ya estaba en marcha sigue; quien quiera detenerlo lo pausa o
+        # cancela desde su tarjeta en el chat.
         async with session_scope() as session:
-            # Las congeladas van en la misma transacción que el SELECT de
-            # abajo, así que ya no se ven como reclamables.
-            frozen = (await session.execute(update(AutomationExecution).where(
-                AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
-                AutomationExecution.scheduled_for <= now,
-                AutomationExecution.start_source != "manual",
-                AutomationExecution.lead_id.in_(
-                    select(Lead.id).where(Lead.automatizacion_pausada.is_(True))
-                ),
-            ).values(
-                status=AutomationExecutionStatus.PAUSED,
-                paused_at=now,
-                pause_scope=PAUSE_SCOPE_LEAD,
-                error=None,
-            ).returning(AutomationExecution.id))).scalars().all()
             ids = (await session.execute(
                 select(AutomationExecution.id).where(
                     AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
@@ -200,7 +188,7 @@ class SqlExecutionStore:
                     started_at=now,
                     error=None,
                 ))
-        return list(frozen), list(ids)
+        return list(ids)
 
     async def find_by_event_key(self, rule_id: int, event_key: str) -> int | None:
         async with session_scope() as session:
@@ -232,23 +220,11 @@ class SqlExecutionStore:
             ))
         return bool(result.rowcount)
 
-    async def pause_lead(self, lead_id: str, now: datetime) -> int:
-        async with session_scope() as session:
-            result = await session.execute(update(AutomationExecution).where(
-                AutomationExecution.lead_id == lead_id,
-                AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
-                AutomationExecution.start_source != "manual",
-            ).values(
-                status=AutomationExecutionStatus.PAUSED,
-                paused_at=now,
-                pause_scope=PAUSE_SCOPE_LEAD,
-                error=None,
-            ))
-        return result.rowcount or 0
-
     async def resume_lead(self, lead_id: str, now: datetime) -> int:
-        # NULL en pause_scope son pausas anteriores a la columna, todas de
-        # alcance lead.
+        # Compatibilidad: hasta el 2026-11-09 pausar el lead congelaba sus
+        # ejecuciones de sistema (pause_scope 'lead'; NULL en las anteriores a
+        # la columna). Ya no se congela nada así, pero lo que quedó congelado
+        # en producción tiene que volver cuando se reactive el bot.
         async with session_scope() as session:
             result = await session.execute(update(AutomationExecution).where(
                 AutomationExecution.lead_id == lead_id,

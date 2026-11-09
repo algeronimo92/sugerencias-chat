@@ -49,9 +49,8 @@ class ExecutionStore(Protocol):
 
     async def round_robin_counter(self, rule_id: int, node_id: str) -> int: ...
 
-    async def claim_due(self, now: datetime, limit: int) -> tuple[list[int], list[int]]:
-        """Congela lo vencido de leads pausados y reclama lo demás para
-        correrlo. Devuelve (congeladas, reclamadas)."""
+    async def claim_due(self, now: datetime, limit: int) -> list[int]:
+        """Reclama lo vencido para correrlo y devuelve sus ids."""
 
     async def find_by_event_key(self, rule_id: int, event_key: str) -> int | None: ...
 
@@ -61,9 +60,9 @@ class ExecutionStore(Protocol):
     async def requeue(self, execution_id: int, now: datetime, *, override_by_user_id: int | None) -> bool:
         """Vuelve a la cola una ejecución failed o skipped."""
 
-    async def pause_lead(self, lead_id: str, now: datetime) -> int: ...
-
-    async def resume_lead(self, lead_id: str, now: datetime) -> int: ...
+    async def resume_lead(self, lead_id: str, now: datetime) -> int:
+        """Descongela lo que la regla anterior dejó pausado con el lead
+        (pause_scope 'lead' o NULL); hoy nada nuevo se congela así."""
 
     async def pause(self, execution_id: int, now: datetime) -> bool: ...
 

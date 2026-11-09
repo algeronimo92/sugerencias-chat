@@ -290,7 +290,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             )}
           </p>
           {chat.automatizacion_pausada && (
-            <span title="Automatización pausada en este chat" className="shrink-0 text-amber-500 dark:text-amber-400">
+            <span title="Bot desactivado: no inicia automatizaciones nuevas" className="shrink-0 text-amber-700 dark:text-amber-400">
               <BotOff className="h-3.5 w-3.5" />
             </span>
           )}

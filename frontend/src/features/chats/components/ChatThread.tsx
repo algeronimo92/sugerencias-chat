@@ -98,10 +98,13 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     updateLead(
       { automatizacion_pausada: next },
       {
+        // El toast dice lo que la gente no espera: desactivar el bot no
+        // detiene lo que ya está en marcha. Antes decía "queda congelado" y
+        // la tarjeta de al lado seguía contando, así que parecía un fallo.
         onSuccess: () => toast.success(
           next
-            ? 'Automatización en pausa: lo pendiente queda congelado'
-            : 'Automatización reanudada desde donde había quedado'
+            ? 'Bot desactivado. Las automatizaciones en curso siguen'
+            : 'Bot activo: ya puede iniciar automatizaciones nuevas'
         ),
         onError: (err) => toast.error(extractErrorMessage(err)),
       }
@@ -392,13 +395,18 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             type="button"
             onClick={toggleAutomation}
             disabled={isUpdatingLead}
-            aria-label={chat.automatizacion_pausada ? 'Reanudar automatización de este chat' : 'Pausar automatización de este chat'}
+            // Es un interruptor del cliente, no una pausa: solo impide que
+            // arranquen automatizaciones nuevas. Por eso no habla de "pausar"
+            // (ese verbo es de las tarjetas del panel) y desactivado se ve
+            // como botón hundido en gris, no en ámbar: el ámbar queda para lo
+            // que está en espera, y sobre wa-head daba 1,9:1 de contraste.
+            aria-label={chat.automatizacion_pausada ? 'Activar el bot para este cliente' : 'Desactivar el bot para este cliente'}
             title={chat.automatizacion_pausada
-              ? 'En pausa — toca para reanudar: lo congelado sigue desde donde quedó'
-              : 'Automatización activa — toca para congelar lo pendiente de este chat'}
+              ? 'Bot desactivado: sin automatizaciones nuevas. Toca para activarlo'
+              : 'Bot activo: toca para que no inicie automatizaciones nuevas'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
               chat.automatizacion_pausada
-                ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                ? 'bg-black/8 text-wa-text hover:bg-black/12 dark:bg-white/10 dark:text-wa-text-dark dark:hover:bg-white/15'
                 : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
             }`}
           >
@@ -595,7 +603,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       </div>
 
       {/* Compose */}
-      <LeadAutomationPanel chatId={chat.chat_id} />
+      <LeadAutomationPanel chatId={chat.chat_id} botDisabled={chat.automatizacion_pausada} />
       {!isNoteMode && <CustomerServiceWindowNotice data={customerWindow} />}
       {isNoteMode ? (
         <InternalNoteComposer

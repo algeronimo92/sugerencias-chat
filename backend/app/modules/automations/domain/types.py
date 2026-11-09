@@ -104,10 +104,10 @@ class AutomationExecutionStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
-    # No terminal: la ejecución quedó congelada porque el vendedor pausó la
-    # automatización del lead. Conserva scheduled_for y paused_at para que al
-    # reanudar se recupere el tiempo que le faltaba (ver pause_lead_executions
-    # / resume_lead_executions en automation_service).
+    # No terminal: la ejecución quedó congelada porque el vendedor la pausó
+    # desde el chat (o, antes del 2026-11-09, porque pausó el lead). Conserva
+    # scheduled_for y paused_at para que al reanudar se recupere el tiempo
+    # que le faltaba (ver pause_automation_execution / resume_lead_executions).
     PAUSED = "paused"
 
 
