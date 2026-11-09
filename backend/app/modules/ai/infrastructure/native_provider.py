@@ -37,13 +37,14 @@ from app.modules.ai.ai_jobs import record_ai_job_metadata, record_ai_job_step, s
 from app.modules.ai.knowledge_search import chunks_by_ids, fuse_rankings, referenced_chunks, search_knowledge_chunks, service_knowledge_chunks
 from app.modules.ai.knowledge_vectors import ensure_embeddings, vector_search
 from app.modules.ai.schemas import SuggestionResponse
+from app.modules.ai.suggestions_repository import get_cached_suggestion
 from app.modules.leads.ports.stages import list_stages_for_ai
 from app.modules.platform.ports.settings_service import get_effective_many
 from app.modules.platform.public import business_timezone
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "copiloto-2026-11-08"
+PROMPT_VERSION = "copiloto-2026-11-09"
 # Dos mitades, con los mismos nombres que el nodo de n8n del que viene:
 # - system prompt (prompts/system_prompt.md): texto fijo de la plataforma,
 #   igual para todos los negocios; dice cómo comportarse y cómo leer cada
@@ -80,25 +81,46 @@ class NativeSuggestionError(Exception):
 
 
 # Mismo JSON que exige el parser del workflow de n8n: el frontend ya lo lee.
+# Cada campo lleva su descripción porque el prompt no los definía y el modelo
+# llenaba `alerta` o `confianza` a su criterio (panel del 2026-11-09). Los dos
+# proveedores reciben el esquema con las descripciones.
 SUGGESTION_SCHEMA: dict = {
     "type": "object",
     "properties": {
-        "analisis": {"type": "string"},
-        "confianza": {"type": "string", "enum": ["alta", "media", "baja"]},
-        "senal_compra": {"type": "boolean"},
-        "alerta": {"type": ["string", "null"]},
+        "analisis": {
+            "type": "string",
+            "description": "Qué quiere el cliente, en qué punto está la venta y qué lo frena, en dos o tres frases para el vendedor.",
+        },
+        "confianza": {
+            "type": "string", "enum": ["alta", "media", "baja"],
+            "description": "alta si el historial y el conocimiento sostienen las jugadas; media si falta algún dato; baja si la conversación es ambigua o hay poca información.",
+        },
+        "senal_compra": {
+            "type": "boolean",
+            "description": "true si el cliente mostró intención de comprar o agendar: pregunta el precio para decidir, pide horario, dice que quiere empezar.",
+        },
+        "alerta": {
+            "type": ["string", "null"],
+            "description": "Solo lo que el vendedor debe saber antes de responder: riesgo de perder al lead, pedido de no contacto, posible menor de edad, dato de salud que requiere al especialista, queja o reclamo. null si no hay nada.",
+        },
         "sugerencias": {
             "type": "array",
             "maxItems": 3,
             "items": {
                 "type": "object",
                 "properties": {
-                    "tactica": {"type": "string"},
-                    "canal": {"type": "string", "enum": ["texto", "audio"]},
-                    "texto": {"type": "string"},
-                    "adjuntos": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
-                    "motivo_adjuntos": {"type": "string"},
-                    "porque": {"type": "string"},
+                    "tactica": {"type": "string", "description": "Nombre corto de la jugada, de dos a cinco palabras (Cotizar el pack, Reagendar sin reproche)."},
+                    "canal": {
+                        "type": "string", "enum": ["texto", "audio"],
+                        "description": "texto para enviarlo escrito; audio cuando conviene la voz (explicación larga, cercanía, cliente que manda audios).",
+                    },
+                    "texto": {"type": "string", "description": "El mensaje listo para enviar por WhatsApp, en el tono del negocio."},
+                    "adjuntos": {
+                        "type": "array", "items": {"type": "string"}, "maxItems": 3,
+                        "description": "URLs exactas de <recursos_disponibles> que acompañan el mensaje; vacío si ninguno encaja.",
+                    },
+                    "motivo_adjuntos": {"type": "string", "description": "Por qué esos adjuntos ayudan en esta jugada; en blanco si no hay adjuntos."},
+                    "porque": {"type": "string", "description": "Por qué esta jugada conviene ahora, para el vendedor, en una o dos frases."},
                 },
                 "required": ["tactica", "canal", "texto", "adjuntos", "motivo_adjuntos", "porque"],
                 "additionalProperties": False,
@@ -260,6 +282,7 @@ def build_user_prompt(
     instruction: str | None,
     now: datetime,
     stages: list[dict] | None = None,
+    previous: dict | None = None,
 ) -> str:
     lead_view = {
         key: lead.get(key)
@@ -293,10 +316,20 @@ def build_user_prompt(
         "<recursos_disponibles>\nArchivos que el negocio autorizó como adjuntos (id, nombre, tipo, url, descripcion):\n" + _json(resources) + "\n</recursos_disponibles>",
         "<conocimiento>\nFragmentos de fichas, políticas y guías del negocio elegidos para esta conversación:\n" + _json(knowledge_view) + "\n</conocimiento>",
         "<historial>\nConversación de WhatsApp (más antiguo arriba, horas en la zona del negocio):\n" + _json(compact_messages(messages, now.tzinfo)) + "\n</historial>",
+        # «Genera otras» mandaba el mismo prompt y volvían las mismas tres
+        # jugadas: ahora el modelo ve cuáles descartó el vendedor.
+        *(["<descartadas>\nJugadas que el vendedor ya vio y descartó al pedir otras (táctica y texto): propone distintas:\n" + _json(_discarded(previous)) + "\n</descartadas>"] if previous else []),
         "<indicacion_vendedor>\nIndicación puntual del vendedor para ESTA generación (vacío si no dio ninguna):\n" + (instruction or "") + "\n</indicacion_vendedor>",
         "Analiza y devuelve el JSON según el esquema de salida.",
     ]
     return "\n\n".join(sections)
+
+
+def _discarded(previous: dict) -> list[dict]:
+    return [
+        {"tactica": item.get("tactica"), "texto": item.get("texto")}
+        for item in previous.get("sugerencias") or [] if isinstance(item, dict)
+    ]
 
 
 def _same(name: str) -> str:
@@ -471,6 +504,7 @@ class NativeAiProvider:
         resources = await list_ai_resources()
         stages = await list_stages_for_ai()
         tz = await business_timezone()
+        previous = await get_cached_suggestion(chat_id) if refresh else None
 
         # Los embeddings, con la clave del modelo principal: el mismo proveedor
         # para todo el conocimiento del negocio (vectores de modelos distintos
@@ -484,7 +518,7 @@ class NativeAiProvider:
             system=load_system_prompt(),
             user=build_user_prompt(
                 tenant_config=tenant_config, lead=lead, messages=messages, resources=resources,
-                catalog=catalog, knowledge=knowledge, instruction=instruction, now=now, stages=stages,
+                catalog=catalog, knowledge=knowledge, instruction=instruction, now=now, stages=stages, previous=previous,
             ),
             schema=SUGGESTION_SCHEMA,
             schema_name="sugerencias_copiloto",
