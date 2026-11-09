@@ -215,8 +215,9 @@ export function PwaUpdatePrompt() {
   if (!applying) return null
   return (
     <div
+      // role="status" ya es una región viva cortés: un aria-live asertivo
+      // pisaría lo que el lector de pantalla estuviera anunciando.
       role="status"
-      aria-live="assertive"
       className="fixed inset-0 z-[100] flex items-center justify-center bg-wa-app/80 backdrop-blur-sm dark:bg-wa-app-dark/80"
     >
       <div className="flex items-center gap-3 rounded-2xl border border-wa-border bg-white px-5 py-4 text-sm font-medium text-wa-text shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark">
