@@ -225,6 +225,10 @@ cmd_deploy() {
   # Migrar con la imagen nueva antes de que exista su API no cambia nada para
   # el color viejo: ya convivía con el esquema nuevo mientras se migraba (por
   # eso las migraciones son aditivas, ver arriba).
+  # El frontend lo lee como `__APP_BUILD__` para el log del service worker.
+  # Sin esto cae a la hora del build y no dice qué commit sirve la pestaña.
+  export VITE_BUILD_ID="${VITE_BUILD_ID:-${GITHUB_SHA:+${GITHUB_SHA:0:7}}}"
+  VITE_BUILD_ID="${VITE_BUILD_ID:-$(git rev-parse --short HEAD 2>/dev/null || true)}"
   $compose_target build
 
   echo "Aplicando migraciones..."
