@@ -5,6 +5,7 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
 import { LeadAutomationPanel } from '../../automations/public/LeadAutomationPanel'
+import { FlowPicker } from '../../automations/public/FlowPicker'
 import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {
@@ -379,6 +380,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           >
             {chat.conversacion_abierta ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
           </button>
+          {/* "Iniciar flujo" va junto al botón del bot y no en la fila de
+              composición: ver FlowPicker. */}
+          <FlowPicker chatId={chat.chat_id} />
           <button
             type="button"
             onClick={toggleAutomation}
