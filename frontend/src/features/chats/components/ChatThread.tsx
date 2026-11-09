@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X, Zap, ZapOff } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useActivityHold } from '../../../shared/activity'
@@ -98,13 +98,16 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     updateLead(
       { automatizacion_pausada: next },
       {
-        // El toast dice lo que la gente no espera: desactivar el bot no
+        // El toast dice lo que la gente no espera: este interruptor no
         // detiene lo que ya está en marcha. Antes decía "queda congelado" y
         // la tarjeta de al lado seguía contando, así que parecía un fallo.
+        // Sin la palabra "bot": para una vendedora un bot ES una
+        // automatización, y "bot desactivado, las automatizaciones siguen"
+        // sonaba a contradicción.
         onSuccess: () => toast.success(
           next
-            ? 'Bot desactivado. Las automatizaciones en curso siguen'
-            : 'Bot activo: ya puede iniciar automatizaciones nuevas'
+            ? 'Sin automatizaciones nuevas para este cliente. Las que están en curso siguen'
+            : 'Este cliente vuelve a recibir automatizaciones nuevas'
         ),
         onError: (err) => toast.error(extractErrorMessage(err)),
       }
@@ -388,8 +391,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           >
             {chat.conversacion_abierta ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
           </button>
-          {/* "Iniciar flujo" va junto al botón del bot y no en la fila de
-              composición: ver FlowPicker. */}
+          {/* "Iniciar flujo" va junto al interruptor de automatizaciones y no
+              en la fila de composición: ver FlowPicker. */}
           <FlowPicker chatId={chat.chat_id} />
           <button
             type="button"
@@ -397,20 +400,24 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             disabled={isUpdatingLead}
             // Es un interruptor del cliente, no una pausa: solo impide que
             // arranquen automatizaciones nuevas. Por eso no habla de "pausar"
-            // (ese verbo es de las tarjetas del panel) y desactivado se ve
-            // como botón hundido en gris, no en ámbar: el ámbar queda para lo
-            // que está en espera, y sobre wa-head daba 1,9:1 de contraste.
-            aria-label={chat.automatizacion_pausada ? 'Activar el bot para este cliente' : 'Desactivar el bot para este cliente'}
+            // (ese verbo es de las tarjetas del panel) ni de "bot" (el icono
+            // de robot hacía pensar que apagaba las automatizaciones en
+            // curso), y apagado se ve como botón hundido en gris, no en
+            // ámbar: el ámbar queda para lo que está en espera, y sobre
+            // wa-head daba 1,9:1 de contraste.
+            aria-label={chat.automatizacion_pausada
+              ? 'Volver a iniciar automatizaciones nuevas con este cliente'
+              : 'No iniciar automatizaciones nuevas con este cliente'}
             title={chat.automatizacion_pausada
-              ? 'Bot desactivado: sin automatizaciones nuevas. Toca para activarlo'
-              : 'Bot activo: toca para que no inicie automatizaciones nuevas'}
+              ? 'Sin automatizaciones nuevas para este cliente. Toca para reactivarlas'
+              : 'Automatizaciones nuevas activas. Toca para que no se inicien más'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
               chat.automatizacion_pausada
                 ? 'bg-black/8 text-wa-text hover:bg-black/12 dark:bg-white/10 dark:text-wa-text-dark dark:hover:bg-white/15'
                 : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
             }`}
           >
-            {chat.automatizacion_pausada ? <BotOff className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+            {chat.automatizacion_pausada ? <ZapOff className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
           </button>
           {onOpenSuggestions && (
             <button

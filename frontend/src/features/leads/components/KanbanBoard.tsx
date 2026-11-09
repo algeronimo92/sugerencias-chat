@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowRight, BotOff, Check, GripVertical, Inbox, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, Check, GripVertical, Inbox, Loader2, MessageCircle, Search, Tag as TagIcon, UserRound, X, ZapOff } from 'lucide-react'
 import { useEffect, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -112,7 +112,7 @@ function KanbanCard({ chat, catalog, isMoving, isSelected, onToggleSelect, onOpe
                 )}
                 {chat.automatizacion_pausada && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                    <BotOff className="h-2.5 w-2.5" /> Bot desactivado
+                    <ZapOff className="h-2.5 w-2.5" /> Sin automatizaciones nuevas
                   </span>
                 )}
               </div>

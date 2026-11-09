@@ -216,16 +216,16 @@ describe('LeadAutomationPanel', () => {
     expect(resumeMutate).toHaveBeenCalledWith(78, expect.anything())
   })
 
-  it('con el bot desactivado dice que lo que está en marcha sigue', () => {
+  it('con las automatizaciones nuevas apagadas dice que lo que está en marcha sigue', () => {
     vi.mocked(useAutomationExecutions).mockReturnValue({
       data: [execution({})],
     } as never)
     render(<LeadAutomationPanel chatId={CHAT_ID} botDisabled />, { wrapper })
 
-    expect(screen.getByText(/Bot desactivado: sigue en marcha/)).toBeInTheDocument()
+    expect(screen.getByText(/Sin automatizaciones nuevas: esta sigue en marcha/)).toBeInTheDocument()
   })
 
-  it('con el bot desactivado y todo en pausa no dice que algo siga', () => {
+  it('con las automatizaciones nuevas apagadas y todo en pausa no dice que algo siga', () => {
     vi.mocked(useAutomationExecutions).mockReturnValue({
       data: [execution({ status: 'paused', pause_scope: 'execution', paused_at: '2026-07-20T15:10:00Z' })],
     } as never)

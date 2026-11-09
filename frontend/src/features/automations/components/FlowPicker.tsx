@@ -14,7 +14,7 @@ interface Props {
  * manual que el admin marcó visibles (o todos, si quien mira es admin) y
  * dispara uno sobre este lead puntual. Mismo patrón que TemplatePicker.
  *
- * Vive en la cabecera del hilo, junto al botón del bot, y no en la fila de
+ * Vive en la cabecera del hilo, junto al interruptor de automatizaciones, y no en la fila de
  * composición: ahí estaba pegado a "Plantillas" con el mismo icono gris, a
  * 36 px y sin nombre accesible (solo `title`, que no existe en táctil). Una
  * admin lanzó un flujo creyendo que mandaba una plantilla. El popover abre

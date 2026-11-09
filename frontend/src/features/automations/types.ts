@@ -262,9 +262,9 @@ export type ContractAutomationExecution = Delivered<ApiSchemas['AutomationExecut
  *
  * - `scheduled_for`: cuándo le toca el paso pendiente. Mientras está `paused`
  *   sigue siendo el vencimiento de antes de congelarse.
- * - `pause_scope`: 'lead' si se pausó el chat entero (botón del bot en la
- *   cabecera), 'execution' si se pausó solo esta. Una de alcance 'lead' la
- *   reanuda el chat.
+ * - `pause_scope`: 'execution' si el vendedor pausó solo esta desde su
+ *   tarjeta; 'lead' (o null) quedó de cuando pausar el chat congelaba sus
+ *   ejecuciones, y esas vuelven al reactivar las automatizaciones del chat.
  * - `start_source`: 'system' para los triggers automáticos, 'manual' para
  *   "Iniciar flujo" del chat, 'flow' para un flujo invocado por otro.
  * - `window_override_at`: un admin autorizó enviar con la ventana de 24 h
