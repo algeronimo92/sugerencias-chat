@@ -8,6 +8,7 @@ import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
 import { FlowsTab } from './FlowsTab'
 import { PipelineTab } from './PipelineTab'
+import { SalesTab } from './SalesTab'
 import { SummaryTab } from './SummaryTab'
 import { TagsTab } from './TagsTab'
 import { formatRelativeTime } from './format'
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'flows', label: 'Flujos' },
   { id: 'tags', label: 'Etiquetas' },
   { id: 'pipeline', label: 'Embudo y citas' },
+  { id: 'sales', label: 'Ventas' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -35,7 +37,7 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
   // cambiarlo, y los rankings comparativos llegan igual en ambos scopes.
   const [scope, setScope] = useState<DashboardScope>(isAdmin ? 'team' : 'mine')
   const [tab, setTab] = useState<TabId>('summary')
-  const { data, isLoading, isFetching, error, refetch } = useDashboard(days, scope)
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useDashboard(days, scope)
   const isMine = scope === 'mine'
 
   return (
@@ -121,7 +123,9 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
         )}
 
         {data && (
-          <div role="tabpanel">
+          // Al cambiar de período se conserva el render anterior atenuado: un
+          // spinner a pantalla completa haría saltar la página en cada cambio.
+          <div role="tabpanel" aria-busy={isFetching} className={`transition-opacity ${isPlaceholderData ? 'opacity-60' : ''}`}>
             {tab === 'summary' && (
               <SummaryTab
                 data={data}
@@ -131,6 +135,7 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
                 onOpenFlows={onOpenFlows}
                 onOpenChat={onOpenChat}
                 onFilterChats={onFilterChats}
+                onOpenSales={() => setTab('sales')}
               />
             )}
             {tab === 'flows' && <FlowsTab data={data} days={days} isMine={isMine} onOpenFlows={onOpenFlows} />}
@@ -138,6 +143,7 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
             {tab === 'pipeline' && (
               <PipelineTab data={data} days={days} isMine={isMine} onFilterChats={onFilterChats} />
             )}
+            {tab === 'sales' && <SalesTab data={data} days={days} isMine={isMine} onOpenChat={onOpenChat} />}
           </div>
         )}
       </div>
