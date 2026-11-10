@@ -6,7 +6,7 @@ import { isNavItemActive, visibleNavItems } from './navigation'
 import type { NavItem } from './navigation'
 
 type Props = {
-  isAdmin: boolean
+  role: string | undefined
   unreadCount: number
 }
 
@@ -21,7 +21,7 @@ const tabClass = (active: boolean) =>
  * Navegación inferior para pantallas chicas. Reemplaza a las pestañas de la
  * barra superior, que con siete vistas y un pulgar no eran usables.
  */
-export function MobileNavBar({ isAdmin, unreadCount }: Props) {
+export function MobileNavBar({ role, unreadCount }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [isMoreOpen, setIsMoreOpen] = useState(false)
@@ -37,7 +37,7 @@ export function MobileNavBar({ isAdmin, unreadCount }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isMoreOpen])
 
-  const items = visibleNavItems(isAdmin)
+  const items = visibleNavItems(role)
   const primaryItems = items.filter((item) => item.primary)
   const secondaryItems = items.filter((item) => !item.primary)
 

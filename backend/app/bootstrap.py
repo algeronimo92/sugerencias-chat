@@ -54,6 +54,7 @@ from app.modules.ai import tts_api as tts
 from app.modules.platform import whatsapp_api as whatsapp
 from app.modules.platform import onboarding_api as onboarding
 from app.modules.auth.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, require_admin, verify_webhook_token, websocket_origin_allowed
+from app.modules.auth.role_policy import realtime_allowed_for
 from app.realtime.ws_manager import manager
 from app.core.request_metrics import begin_request_metrics, finish_request_metrics
 from app.core.request_context import reset_request_id, set_request_id
@@ -225,6 +226,9 @@ async def chats_websocket(websocket: WebSocket):
     user = await get_user_from_token(token)
     if user is None:
         await websocket.close(code=4401)
+        return
+    if not realtime_allowed_for(user.role):
+        await websocket.close(code=4403)
         return
 
     await manager.connect(websocket, user.id)

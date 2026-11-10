@@ -3,7 +3,7 @@ import { isNavItemActive, visibleNavItems } from './navigation'
 import { Tooltip } from '../shared/ui/Tooltip'
 
 type Props = {
-  isAdmin: boolean
+  role: string | undefined
   unreadCount: number
 }
 
@@ -22,11 +22,11 @@ const itemClass = (active: boolean) =>
  * Navegación para tablet y desktop. Reemplaza a la fila horizontal que vivía
  * en la barra superior: con diez vistas ya no entraban cómodas ahí.
  */
-export function Sidebar({ isAdmin, unreadCount }: Props) {
+export function Sidebar({ role, unreadCount }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const items = visibleNavItems(isAdmin)
+  const items = visibleNavItems(role)
 
   return (
     <nav

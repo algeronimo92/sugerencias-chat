@@ -29,5 +29,6 @@ async def dashboard(
         return await get_dashboard_metrics(days, SCOPE_MINE, seller_id)
     if seller_id is not None:
         return await get_dashboard_metrics(days, SCOPE_MINE, user.id)
-    default_scope = SCOPE_TEAM if user.role == "admin" else SCOPE_MINE
+    # El analista no tiene leads propios: "lo mío" sería una pantalla vacía.
+    default_scope = SCOPE_MINE if user.role == "vendedor" else SCOPE_TEAM
     return await get_dashboard_metrics(days, scope or default_scope, user.id)

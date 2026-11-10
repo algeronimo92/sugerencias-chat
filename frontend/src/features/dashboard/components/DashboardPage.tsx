@@ -39,15 +39,22 @@ function parseView(value: string): DashboardView {
 }
 
 interface Props {
-  isAdmin: boolean
+  /** Rol de la sesión, como lo entrega el backend. */
+  role: string | undefined
   onOpenTasks: () => void
   onOpenFlows: () => void
   onOpenChat: (leadId: string) => void
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
-  const { tab, setTab, days, setDays, view, setView } = useDashboardFilters(isAdmin)
+export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
+  const isAdmin = role === 'admin'
+  // El analista no tiene leads propios ni puede pedir la lista del equipo:
+  // mira siempre el total y no elige a quién mirar.
+  const isAnalyst = role === 'analista'
+  const filters = useDashboardFilters(isAdmin || isAnalyst)
+  const { tab, setTab, days, setDays, setView } = filters
+  const view: DashboardView = isAnalyst ? 'team' : filters.view
   // Solo el admin puede mirar a otra persona: la lista se pide solo para él.
   const sellersQuery = useSellers({ enabled: isAdmin })
   const sellers = isAdmin ? sellersQuery.data ?? [] : []
@@ -106,23 +113,25 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
             </Button>
-            <Select
-              value={viewValue(view)}
-              onChange={(event) => setView(parseView(event.target.value))}
-              aria-label="De quién son las métricas"
-              className={SELECT_CLASS}
-            >
-              <option value="mine">Solo lo mío</option>
-              <option value="team">Todo el equipo</option>
-              {sellers.map((seller) => (
-                <option key={seller.id} value={`vendedora:${seller.id}`}>{seller.name}</option>
-              ))}
-              {/* Un enlace compartido con alguien que ya no está en la lista
-                  igual tiene que mostrar a quién se mira. */}
-              {sellerId && !sellers.some((seller) => seller.id === sellerId) && (
-                <option value={`vendedora:${sellerId}`}>{sellerName}</option>
-              )}
-            </Select>
+            {!isAnalyst && (
+              <Select
+                value={viewValue(view)}
+                onChange={(event) => setView(parseView(event.target.value))}
+                aria-label="De quién son las métricas"
+                className={SELECT_CLASS}
+              >
+                <option value="mine">Solo lo mío</option>
+                <option value="team">Todo el equipo</option>
+                {sellers.map((seller) => (
+                  <option key={seller.id} value={`vendedora:${seller.id}`}>{seller.name}</option>
+                ))}
+                {/* Un enlace compartido con alguien que ya no está en la lista
+                    igual tiene que mostrar a quién se mira. */}
+                {sellerId && !sellers.some((seller) => seller.id === sellerId) && (
+                  <option value={`vendedora:${sellerId}`}>{sellerName}</option>
+                )}
+              </Select>
+            )}
             <Select
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}

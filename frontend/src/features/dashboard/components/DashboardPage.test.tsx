@@ -139,7 +139,7 @@ function CurrentQuery() {
   return <output data-testid="query">{useLocation().search}</output>
 }
 
-function renderDashboard(isAdmin = false, url = '/dashboard') {
+function renderDashboard(role = 'vendedor', url = '/dashboard') {
   requestedScopes.length = 0
   requests.length = 0
   const onOpenFlows = vi.fn()
@@ -148,7 +148,7 @@ function renderDashboard(isAdmin = false, url = '/dashboard') {
   const view = render(
     <MemoryRouter initialEntries={[url]}>
       <DashboardPage
-        isAdmin={isAdmin}
+        role={role}
         onOpenTasks={vi.fn()}
         onOpenFlows={onOpenFlows}
         onOpenChat={onOpenChat}
@@ -164,8 +164,16 @@ describe('DashboardPage', () => {
   // La última vista se guarda en el navegador: cada test arranca sin ella.
   beforeEach(() => localStorage.removeItem('dashboard-filtros'))
 
+  it('un analista ve siempre al equipo y no elige a quién mirar', () => {
+    renderDashboard('analista', '/dashboard?alcance=mio')
+
+    expect(requests.at(-1)).toEqual({ days: 30, scope: 'team', sellerId: null })
+    expect(screen.queryByLabelText('De quién son las métricas')).toBeNull()
+    expect(screen.getByLabelText('Período')).toBeInTheDocument()
+  })
+
   it('abre la pestaña, el período y la vendedora que trae el enlace', () => {
-    renderDashboard(true, '/dashboard?pestana=ventas&dias=7&vendedora=2')
+    renderDashboard('admin', '/dashboard?pestana=ventas&dias=7&vendedora=2')
 
     expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
     expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 2 })
@@ -175,7 +183,7 @@ describe('DashboardPage', () => {
 
   it('lleva cada cambio de filtro a la dirección y lo recuerda al volver sin parámetros', async () => {
     const user = userEvent.setup()
-    const { unmount } = renderDashboard(true)
+    const { unmount } = renderDashboard('admin')
 
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
     await user.click(screen.getByLabelText('Período'))
@@ -186,7 +194,7 @@ describe('DashboardPage', () => {
     unmount()
 
     // Entrar desde el menú (sin parámetros) vuelve a la última vista.
-    renderDashboard(true)
+    renderDashboard('admin')
     expect(screen.getByTestId('query')).toHaveTextContent('vendedora=3')
     expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 3 })
   })
@@ -198,7 +206,7 @@ describe('DashboardPage', () => {
     // En la app el router y la barra de direcciones coinciden; acá hay que
     // fijar la dirección de la ventana, que es la que se copia.
     window.history.replaceState({}, '', '/dashboard?pestana=ventas&dias=7&vendedora=2')
-    renderDashboard(true, '/dashboard?pestana=ventas&dias=7&vendedora=2')
+    renderDashboard('admin', '/dashboard?pestana=ventas&dias=7&vendedora=2')
 
     // Ya no hay un "Copiar enlace" general: la barra de direcciones cumple esa función.
     expect(screen.queryByRole('button', { name: 'Copiar enlace' })).toBeNull()
@@ -209,7 +217,7 @@ describe('DashboardPage', () => {
   it('al abrir el enlace de una sección baja hasta ella', () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
-    renderDashboard(true, '/dashboard?pestana=ventas&dias=30&alcance=equipo#por-tratamiento')
+    renderDashboard('admin', '/dashboard?pestana=ventas&dias=30&alcance=equipo#por-tratamiento')
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
     expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('seccion-por-tratamiento'))
@@ -217,17 +225,17 @@ describe('DashboardPage', () => {
 
   it('al vendedor no le ofrece mirar a otras personas', async () => {
     const user = userEvent.setup()
-    renderDashboard(false)
+    renderDashboard('vendedor')
     await user.click(screen.getByLabelText('De quién son las métricas'))
     expect(screen.getByRole('option', { name: 'Todo el equipo' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Lucía Ramos' })).toBeNull()
   })
 
   it('abre en lo propio para un vendedor y en el equipo para un admin', () => {
-    renderDashboard(false)
+    renderDashboard('vendedor')
     expect(requestedScopes.at(-1)).toBe('mine')
 
-    renderDashboard(true)
+    renderDashboard('admin')
     expect(requestedScopes.at(-1)).toBe('team')
   })
 
@@ -273,7 +281,7 @@ describe('DashboardPage', () => {
   })
 
   it('resume las separaciones en la moneda del negocio y contra el período anterior', () => {
-    renderDashboard(true)
+    renderDashboard('admin')
 
     // La venta del negocio es la separación de cita: el monto es la suma de
     // adelantos, con la moneda del perfil y el cambio con flecha y signo.
@@ -287,7 +295,7 @@ describe('DashboardPage', () => {
 
   it('lleva de Resumen a la pestaña de ventas', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
 
     await user.click(screen.getByRole('button', { name: 'Ver ventas' }))
     expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
@@ -296,7 +304,7 @@ describe('DashboardPage', () => {
 
   it('compara las separaciones con el período anterior y ya no muestra compras registradas', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     expect(screen.getByText('3 clientas')).toBeInTheDocument()
@@ -328,7 +336,7 @@ describe('DashboardPage', () => {
 
   it('abre el chat de una separación ligada a un lead y lista sin enlace la que no lo está', async () => {
     const user = userEvent.setup()
-    const { onOpenChat } = renderDashboard(true)
+    const { onOpenChat } = renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     await user.click(screen.getByRole('button', { name: /Ana Torres/ }))
@@ -340,7 +348,7 @@ describe('DashboardPage', () => {
 
   it('desglosa las separaciones por tratamiento, en cantidad o en monto', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     expect(screen.getByRole('heading', { name: 'Por tratamiento' })).toBeInTheDocument()

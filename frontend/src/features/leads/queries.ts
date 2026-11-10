@@ -134,12 +134,15 @@ export function useMergeLead(chatId: string) {
   })
 }
 
-export function useUnreadCount() {
+export function useUnreadCount(enabled = true) {
   const connected = useChatSocketConnected()
   return useQuery({
     queryKey: leadKeys.unreadCount,
     queryFn: fetchUnreadCount,
     staleTime: 10_000,
     refetchInterval: connected ? false : 60_000,
+    // Un rol sin chats (el analista) no tiene nada que contar y el backend
+    // le negaría el pedido.
+    enabled,
   })
 }
