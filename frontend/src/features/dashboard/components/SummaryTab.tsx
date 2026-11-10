@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import type { ChatFilters } from '../../leads/types'
 import type { DashboardMetrics } from '../types'
+import { isPersonal, who, type DashboardSubject } from './subject'
 import { formatChange, formatDuration, formatMoney, formatNumber } from './format'
 import { fromAppointments } from './serviceBreakdown'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
@@ -11,7 +12,7 @@ import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './prim
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onOpenTasks: () => void
   onOpenFlows: () => void
   onOpenChat: (leadId: string) => void
@@ -30,10 +31,10 @@ function formatAppointmentDate(date: string, time: string): string {
   return `${label} · ${time}`
 }
 
-export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats, onOpenSales }: Props) {
+export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats, onOpenSales }: Props) {
   const { summary, pipeline, activity, appointments } = data
   const period = `Últimos ${days} días`
-  const leadScope = isMine ? 'Asignados a mí' : 'Base del equipo'
+  const leadScope = who(subject, { me: 'Asignados a mí', team: 'Base del equipo', seller: (name) => `Asignados a ${name}` })
   // La venta del negocio es la separación de cita con su adelanto.
   const { separations } = data.appointments
   const currency = data.sales.currency
@@ -43,7 +44,7 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Citas registradas" value={summary.appointments_created} hint={period} icon={CalendarCheck} />
-        <MetricCard label="Flujos que activé" value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} siguen activos`} icon={Send} onClick={onOpenFlows} />
+        <MetricCard label={who(subject, { me: 'Flujos que activé', team: 'Flujos activados', seller: (name) => `Flujos que activó ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} siguen activos`} icon={Send} onClick={onOpenFlows} />
         <MetricCard
           label="Mensajes enviados"
           value={summary.messages_sent}
@@ -87,8 +88,8 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
         </Panel>
 
         <Panel
-          title="Mi actividad"
-          subtitle={isMine ? 'Acciones que registré en el período' : 'Acciones del equipo en el período'}
+          title={who(subject, { me: 'Mi actividad', team: 'Actividad del equipo', seller: (name) => `Actividad de ${name}` })}
+          subtitle={who(subject, { me: 'Acciones que registré en el período', team: 'Acciones del equipo en el período', seller: (name) => `Acciones de ${name} en el período` })}
         >
           <BarList items={activity.by_type} emptyLabel="Sin actividad registrada" />
         </Panel>
@@ -99,7 +100,7 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
 
         <Panel
           title="Ventas"
-          subtitle={isMine ? `Lo que separé · ${period}` : `Lo que separó el equipo · ${period}`}
+          subtitle={`${who(subject, { me: 'Lo que separé', team: 'Lo que separó el equipo', seller: (name) => `Lo que separó ${name}` })} · ${period}`}
           action={
             <button
               type="button"
@@ -129,7 +130,7 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
               },
             ]}
           />
-          {!isMine && (
+          {!isPersonal(subject) && (
             <>
               <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Por responsable (monto)</p>
               <BarList items={sellerAmounts} emptyLabel="Nadie registró separaciones en el período" />

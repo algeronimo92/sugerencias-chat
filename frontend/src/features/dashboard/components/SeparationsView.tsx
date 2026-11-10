@@ -1,4 +1,5 @@
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { formatMoney, formatNumber, formatShortDateTime } from './format'
 import { NoData, Panel } from './primitives'
 import { SalesTrendChart, StatTile } from './SalesCharts'
@@ -8,7 +9,7 @@ import { percentChange, sparkSeries } from './salesFormat'
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onOpenChat: (leadId: string) => void
 }
 
@@ -18,7 +19,7 @@ const TREND_LABELS = { revenue: 'Monto', count: 'Separaciones' }
  *  cuánto dejaron de adelanto, de qué tratamiento y quién las cerró, contra la
  *  ventana anterior. Se cuentan solo las citas agendadas de verdad (sin
  *  duplicadas, fallidas ni de prueba) por la fecha en que se registraron. */
-export function SeparationsView({ data, days, isMine, onOpenChat }: Props) {
+export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
   const separations = data.appointments.separations
   const { totals, previous } = separations
   const currency = data.sales.currency
@@ -62,7 +63,7 @@ export function SeparationsView({ data, days, isMine, onOpenChat }: Props) {
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Panel
           title={days >= 90 ? 'Separaciones por semana' : 'Separaciones por día'}
-          subtitle={`${isMine ? 'Lo que separé' : 'Lo que separó el equipo'} · comparado con los ${days} días anteriores`}
+          subtitle={`${who(subject, { me: 'Lo que separé', team: 'Lo que separó el equipo', seller: (name) => `Lo que separó ${name}` })} · comparado con los ${days} días anteriores`}
           className="lg:col-span-2"
         >
           {totals.count === 0 && !previous ? (

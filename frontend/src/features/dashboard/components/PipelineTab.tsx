@@ -1,20 +1,21 @@
 import type { ChatFilters } from '../../leads/types'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { formatNumber } from './format'
 import { BarList, FunnelList, Panel, StatGrid, TrendChart } from './primitives'
 
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function PipelineTab({ data, days, isMine, onFilterChats }: Props) {
+export function PipelineTab({ data, days, subject, onFilterChats }: Props) {
   const { appointments } = data
   const period = `Últimos ${days} días`
-  const scopeLabel = isMine ? 'Mis leads' : 'Todo el equipo'
+  const scopeLabel = who(subject, { me: 'Mis leads', team: 'Todo el equipo', seller: (name) => `Leads de ${name}` })
   // Las etapas son las que define cada negocio: el backend manda la clave y el
   // nombre y el color salen del catálogo.
   const stageCatalog = useLeadStageCatalog()
