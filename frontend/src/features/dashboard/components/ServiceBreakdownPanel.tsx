@@ -3,11 +3,11 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer,
   Tooltip as ChartTooltip, XAxis, YAxis,
 } from 'recharts'
-import type { DashboardSales } from '../types'
+import type { DashboardMetrics } from '../types'
 import { formatDayLabel, formatMoney, formatNumber } from './format'
 import { NoData } from './primitives'
 import type { ServiceBucket, ServiceMetric } from './serviceBreakdown'
-import { bucketDays, buildBuckets, headline, pickSeries, shares } from './serviceBreakdown'
+import { bucketDays, buildBuckets, fromAppointments, fromSales, headline, pickSeries, shares } from './serviceBreakdown'
 
 const AXIS = '#8696a0'
 const TOOLTIP_STYLE = {
@@ -59,32 +59,57 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   )
 }
 
-/** Cuánto se vendió de cada tratamiento en cada día o semana del período, y
- *  qué parte del total fue cada uno. Barras apiladas para ver el volumen y la
- *  mezcla a la vez, líneas para comparar la tendencia de cada tratamiento sin
- *  que se tapen, y la torta para el reparto del período. */
-export function ServiceBreakdownPanel({ sales, days }: { sales: DashboardSales; days: number }) {
-  const [metric, setMetric] = useState<ServiceMetric>('count')
+type SourceId = 'appointments' | 'sales'
+
+/** Cuánto se agendó o se vendió de cada tratamiento en cada día o semana del
+ *  período, y qué parte del total fue cada uno. Barras apiladas para ver el
+ *  volumen y la mezcla a la vez, líneas para comparar la tendencia de cada
+ *  tratamiento sin que se tapen, y la torta para el reparto del período.
+ *
+ *  Hay negocios que registran la venta como cita (con adelanto) y nunca usan
+ *  "Registrar compra": por eso el panel abre en citas cuando no hay ventas,
+ *  en vez de mostrarse vacío. */
+export function ServiceBreakdownPanel({ data, days }: { data: DashboardMetrics; days: number }) {
+  const hasSales = data.sales.by_service.length > 0
+  const [sourceId, setSourceId] = useState<SourceId>(hasSales ? 'sales' : 'appointments')
+  const [chosenMetric, setMetric] = useState<ServiceMetric>('count')
   const [view, setView] = useState<'bars' | 'lines'>('bars')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
 
-  if (sales.by_service.length === 0) return <NoData label="Sin compras registradas en el período" />
+  const source = sourceId === 'sales' ? fromSales(data.sales) : fromAppointments(data)
+  // Las citas no tienen monto: con ellas la medida es siempre la cantidad.
+  const metric: ServiceMetric = source.hasRevenue ? chosenMetric : 'count'
+  const sourcePicker = (
+    <Segmented label="Qué se cuenta" value={sourceId} onChange={(value) => { setSourceId(value); setHidden(new Set()) }}
+      options={[{ value: 'appointments', label: 'Citas agendadas' }, { value: 'sales', label: 'Ventas' }]} />
+  )
 
-  const allSeries = pickSeries(sales)
+  if (source.ranking.length === 0) {
+    return (
+      <div>
+        <div className="mb-3">{sourcePicker}</div>
+        <NoData label={sourceId === 'sales'
+          ? 'Sin compras registradas en el período. Se registran al mover un lead a una etapa ganada o con "Registrar compra" en su ficha.'
+          : 'Sin citas agendadas en el período'} />
+      </div>
+    )
+  }
+
+  const allSeries = pickSeries(source)
   const series = allSeries.filter((item) => !hidden.has(item.key))
   const size = bucketDays(days)
-  const buckets = buildBuckets(sales, allSeries, metric, size)
+  const buckets = buildBuckets(source, allSeries, metric, size)
   const visibleBuckets = buckets.map((bucket) => ({
     ...bucket,
     total: series.reduce((sum, item) => sum + (bucket.values[item.key] ?? 0), 0),
   }))
   const chartData = visibleBuckets.map((bucket) => ({ ...bucket.values, label: `${shortDay(bucket.start)}${bucket.partialDays ? '*' : ''}`, bucket }))
   const pie = shares(visibleBuckets, series)
-  const format = (value: number) => (metric === 'revenue' ? formatMoney(value, sales.currency) : formatNumber(value))
+  const format = (value: number) => (metric === 'revenue' ? formatMoney(value, data.sales.currency) : formatNumber(value))
   const tick = (value: number) =>
     metric === 'revenue' && value >= 1000 ? `${(value / 1000).toLocaleString('es-PE', { maximumFractionDigits: 1 })} mil` : formatNumber(value)
   const unit = size === 1 ? 'día' : 'semana'
-  const summary = headline(pie, format)
+  const summary = headline(pie, format, source.verb)
   const partial = visibleBuckets.find((bucket) => bucket.partialDays)
 
   function toggle(key: string) {
@@ -115,8 +140,11 @@ export function ServiceBreakdownPanel({ sales, days }: { sales: DashboardSales; 
     <div>
       {summary && <p className="mb-3 text-sm font-medium text-gray-800 dark:text-wa-text-dark">{summary}</p>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Segmented label="Medida" value={metric} onChange={setMetric}
-          options={[{ value: 'count', label: 'Cantidad' }, { value: 'revenue', label: 'Ingresos' }]} />
+        {sourcePicker}
+        {source.hasRevenue && (
+          <Segmented label="Medida" value={metric} onChange={setMetric}
+            options={[{ value: 'count', label: 'Cantidad' }, { value: 'revenue', label: 'Ingresos' }]} />
+        )}
         <Segmented label="Tipo de gráfico" value={view} onChange={setView}
           options={[{ value: 'bars', label: 'Barras apiladas' }, { value: 'lines', label: 'Líneas' }]} />
       </div>

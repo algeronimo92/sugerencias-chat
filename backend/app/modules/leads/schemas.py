@@ -439,11 +439,23 @@ class DashboardLinkage(BaseModel):
     rate: float | None = None
 
 
+class DashboardAppointmentTreatmentDay(BaseModel):
+    """Citas agendadas de un tratamiento en un día (solo días con citas).
+    ``key`` agrupa las variantes de escritura del formulario."""
+    date: str
+    key: str
+    name: str
+    count: int
+
+
 class DashboardAppointments(BaseModel):
     by_status: list[DashboardMetricItem]
     by_user: list[DashboardMetricItem]
     by_owner: list[DashboardMetricItem]
     by_treatment: list[DashboardMetricItem]
+    # Citas agendadas por tratamiento y día: el panel "Por tratamiento" las
+    # usa en los negocios que registran la venta como cita.
+    by_treatment_daily: list[DashboardAppointmentTreatmentDay]
     trend: list[DashboardPoint]
     lost_reasons: list[DashboardMetricItem]
     upcoming: list[DashboardUpcomingAppointment]

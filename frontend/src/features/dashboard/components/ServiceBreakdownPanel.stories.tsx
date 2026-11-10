@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import type { DashboardSales } from '../types'
+import type { DashboardMetrics, DashboardSales } from '../types'
 import { ServiceBreakdownPanel } from './ServiceBreakdownPanel'
 
 // Ventas de ejemplo de una clínica: seis tratamientos, así el sexto cae en
@@ -49,6 +49,18 @@ function sales(days: number): DashboardSales {
   }
 }
 
+// El panel recibe el payload completo; acá solo importan ventas y citas.
+function metrics(days: number, withSales = true): DashboardMetrics {
+  const data = sales(days)
+  const appointments = data.by_service_daily.map((row) => ({
+    date: row.date, key: row.name.toLowerCase().replace(/\s+/g, ''), name: row.name, count: row.count + 1,
+  }))
+  return {
+    sales: withSales ? data : { ...data, by_service: [], by_service_daily: [] },
+    appointments: { trend: data.trend.map(({ date }) => ({ date, value: 0 })), by_treatment_daily: appointments },
+  } as unknown as DashboardMetrics
+}
+
 const meta = {
   title: 'Dashboard/Ventas por tratamiento',
   component: ServiceBreakdownPanel,
@@ -65,6 +77,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const UltimosTreintaDias: Story = { args: { sales: sales(30), days: 30 } }
-export const UltimaSemana: Story = { args: { sales: sales(7), days: 7 } }
-export const SinVentas: Story = { args: { sales: { ...sales(30), by_service: [], by_service_daily: [] }, days: 30 } }
+export const UltimosTreintaDias: Story = { args: { data: metrics(30), days: 30 } }
+export const UltimaSemana: Story = { args: { data: metrics(7), days: 7 } }
+// Un negocio que registra la venta como cita: el panel abre en citas.
+export const SoloCitas: Story = { args: { data: metrics(30, false), days: 30 } }
