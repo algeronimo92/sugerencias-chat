@@ -248,9 +248,13 @@ async def test_currency_only_passes_iso_codes(monkeypatch):
 async def test_payload_carries_the_business_currency(compiled_sql):
     data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
     assert data["currency"] == "PEN"
-    # La versión anterior de la app lee `sales.currency`: sin esto su pestaña
-    # Ventas se rompía hasta que se actualizara.
-    assert data["sales"] == {"currency": "PEN"}
+    # Las versiones anteriores de la app leen el bloque de ventas: va vacío y
+    # completo, o su dashboard se rompe hasta que se actualizan.
+    legacy = data["sales"]
+    assert legacy["currency"] == "PEN"
+    assert legacy["totals"]["count"] == 0 and legacy["previous"] is None
+    for key in ("trend", "previous_trend", "by_package", "by_service", "by_service_daily", "by_seller", "recent"):
+        assert legacy[key] == [], key
 
 
 

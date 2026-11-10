@@ -4634,11 +4634,76 @@ export interface components {
         };
         /**
          * DashboardLegacySales
-         * @description Lo único que la versión anterior de la app lee del bloque de ventas.
+         * @description El bloque de ventas como lo leen las versiones anteriores de la app,
+         *     vacío: sin compras, con la moneda. Las versiones de antes de quitar
+         *     "Registrar compra" leen `totals.count`, `previous` y las listas; con solo
+         *     la moneda su dashboard fallaba (2026-11-10, Safari con la PWA vieja).
          */
         DashboardLegacySales: {
             /** Currency */
             currency?: string | null;
+            totals?: components["schemas"]["DashboardLegacySalesTotals"];
+            previous?: components["schemas"]["DashboardLegacySalesTotals"] | null;
+            /** Trend */
+            trend?: {
+                [key: string]: unknown;
+            }[];
+            /** Previous Trend */
+            previous_trend?: {
+                [key: string]: unknown;
+            }[];
+            /** By Package */
+            by_package?: {
+                [key: string]: unknown;
+            }[];
+            /** By Service */
+            by_service?: {
+                [key: string]: unknown;
+            }[];
+            /** By Service Daily */
+            by_service_daily?: {
+                [key: string]: unknown;
+            }[];
+            /** By Seller */
+            by_seller?: {
+                [key: string]: unknown;
+            }[];
+            /** Recent */
+            recent?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** DashboardLegacySalesTotals */
+        DashboardLegacySalesTotals: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Revenue
+             * @default 0
+             */
+            revenue: number;
+            /** Avg Ticket */
+            avg_ticket?: number | null;
+            /**
+             * Sessions
+             * @default 0
+             */
+            sessions: number;
+            /**
+             * Discount
+             * @default 0
+             */
+            discount: number;
+            /** Discount Rate */
+            discount_rate?: number | null;
+            /**
+             * Buyers
+             * @default 0
+             */
+            buyers: number;
         };
         /** DashboardLinkage */
         DashboardLinkage: {

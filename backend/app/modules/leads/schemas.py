@@ -403,9 +403,31 @@ class DashboardActivity(BaseModel):
     messages: DashboardMessages
 
 
+class DashboardLegacySalesTotals(BaseModel):
+    count: int = 0
+    revenue: float = 0
+    avg_ticket: float | None = None
+    sessions: int = 0
+    discount: float = 0
+    discount_rate: float | None = None
+    buyers: int = 0
+
+
 class DashboardLegacySales(BaseModel):
-    """Lo único que la versión anterior de la app lee del bloque de ventas."""
+    """El bloque de ventas como lo leen las versiones anteriores de la app,
+    vacío: sin compras, con la moneda. Las versiones de antes de quitar
+    "Registrar compra" leen `totals.count`, `previous` y las listas; con solo
+    la moneda su dashboard fallaba (2026-11-10, Safari con la PWA vieja)."""
     currency: str | None = None
+    totals: DashboardLegacySalesTotals = Field(default_factory=DashboardLegacySalesTotals)
+    previous: DashboardLegacySalesTotals | None = None
+    trend: list[dict] = Field(default_factory=list)
+    previous_trend: list[dict] = Field(default_factory=list)
+    by_package: list[dict] = Field(default_factory=list)
+    by_service: list[dict] = Field(default_factory=list)
+    by_service_daily: list[dict] = Field(default_factory=list)
+    by_seller: list[dict] = Field(default_factory=list)
+    recent: list[dict] = Field(default_factory=list)
 
 
 class DashboardMetrics(BaseModel):
