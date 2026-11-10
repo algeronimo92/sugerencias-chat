@@ -74,7 +74,7 @@ function PanelFooter({ flow }: { flow: LeadAppointmentState }) {
   const { state } = flow
   const editing = flow.corrections === null
   return (
-    <footer className="space-y-3 border-t border-wa-border bg-wa-panel px-4 pt-4 pb-safe-3dark:border-wa-border-dark dark:bg-wa-panel-dark">
+    <footer className="space-y-3 border-t border-wa-border bg-wa-panel px-4 pt-4 pb-safe-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
       {editing && flow.needsConfirmation && flow.ready && (
         <label className="flex items-start gap-2.5 text-sm">
           <Checkbox className="mt-0.5" checked={flow.confirmed} onCheckedChange={flow.setConfirmed} disabled={state.busy} />

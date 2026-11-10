@@ -4572,6 +4572,8 @@ export interface components {
             name: string;
             /** Count */
             count: number;
+            /** Amount */
+            amount: number;
         };
         /** DashboardAppointments */
         DashboardAppointments: {
@@ -4585,6 +4587,7 @@ export interface components {
             by_treatment: components["schemas"]["DashboardMetricItem"][];
             /** By Treatment Daily */
             by_treatment_daily: components["schemas"]["DashboardAppointmentTreatmentDay"][];
+            separations: components["schemas"]["DashboardSeparations"];
             /** Trend */
             trend: components["schemas"]["DashboardPoint"][];
             /** Lost Reasons */
@@ -4873,6 +4876,76 @@ export interface components {
             discount_rate?: number | null;
             /** Buyers */
             buyers: number;
+        };
+        /** DashboardSeparationPoint */
+        DashboardSeparationPoint: {
+            /** Date */
+            date: string;
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+        };
+        /** DashboardSeparationRow */
+        DashboardSeparationRow: {
+            /** Id */
+            id: number;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name: string;
+            /** Treatment */
+            treatment: string;
+            /** Amount */
+            amount: number;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Created At */
+            created_at: string;
+            /** Seller Name */
+            seller_name: string;
+        };
+        /** DashboardSeparationSeller */
+        DashboardSeparationSeller: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+            /** With Deposit */
+            with_deposit: number;
+        };
+        /** DashboardSeparationTotals */
+        DashboardSeparationTotals: {
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+            /** With Deposit */
+            with_deposit: number;
+            /** Avg Deposit */
+            avg_deposit?: number | null;
+            /** Clients */
+            clients: number;
+        };
+        /**
+         * DashboardSeparations
+         * @description La venta del negocio medida como separación de cita con adelanto.
+         */
+        DashboardSeparations: {
+            totals: components["schemas"]["DashboardSeparationTotals"];
+            previous?: components["schemas"]["DashboardSeparationTotals"] | null;
+            /** Trend */
+            trend: components["schemas"]["DashboardSeparationPoint"][];
+            /** Previous Trend */
+            previous_trend: components["schemas"]["DashboardSeparationPoint"][];
+            /** By Seller */
+            by_seller: components["schemas"]["DashboardSeparationSeller"][];
+            /** Recent */
+            recent: components["schemas"]["DashboardSeparationRow"][];
         };
         /** DashboardSummary */
         DashboardSummary: {

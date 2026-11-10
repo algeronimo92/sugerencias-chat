@@ -5,6 +5,7 @@ import {
 import type { ChatFilters } from '../../leads/types'
 import type { DashboardMetrics } from '../types'
 import { formatChange, formatDuration, formatMoney, formatNumber } from './format'
+import { fromAppointments } from './serviceBreakdown'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
 
 interface Props {
@@ -33,14 +34,11 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
   const { summary, pipeline, activity, appointments } = data
   const period = `Últimos ${days} días`
   const leadScope = isMine ? 'Asignados a mí' : 'Base del equipo'
-  const { sales } = data
-  // El backend ordena los paquetes por ingresos; este panel cuenta compras.
-  const topPackages = [...sales.by_package]
-    .sort((a, b) => b.count - a.count || b.revenue - a.revenue)
-    .slice(0, 8)
-    .map((item) => ({ name: `${item.service_name} · ${item.package_name}`, value: item.count }))
-  const sellerRevenue = sales.by_seller.slice(0, 8).map((item) => ({ name: item.name, value: Math.round(item.revenue) }))
-
+  // La venta del negocio es la separación de cita con su adelanto.
+  const { separations } = data.appointments
+  const currency = data.sales.currency
+  const topTreatments = fromAppointments(data).ranking.slice(0, 8).map((item) => ({ name: item.name, value: item.count ?? 0 }))
+  const sellerAmounts = separations.by_seller.slice(0, 8).map((item) => ({ name: item.name, value: Math.round(item.amount) }))
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -101,7 +99,7 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
 
         <Panel
           title="Ventas"
-          subtitle={isMine ? `Lo que cerré · ${period}` : `Lo que cerró el equipo · ${period}`}
+          subtitle={isMine ? `Lo que separé · ${period}` : `Lo que separó el equipo · ${period}`}
           action={
             <button
               type="button"
@@ -115,30 +113,30 @@ export function SummaryTab({ data, days, isMine, onOpenTasks, onOpenFlows, onOpe
           <StatGrid
             stats={[
               {
-                label: 'Compras',
-                value: formatNumber(sales.totals.count),
-                hint: formatChange(sales.totals.count, sales.previous?.count),
+                label: 'Separaciones',
+                value: formatNumber(separations.totals.count),
+                hint: formatChange(separations.totals.count, separations.previous?.count),
               },
               {
-                label: 'Total cobrado',
-                value: formatMoney(sales.totals.revenue, sales.currency),
-                hint: formatChange(sales.totals.revenue, sales.previous?.revenue),
+                label: 'Monto de separación',
+                value: formatMoney(separations.totals.amount, currency),
+                hint: formatChange(separations.totals.amount, separations.previous?.amount),
               },
               {
-                label: 'Ticket promedio',
-                value: formatMoney(sales.totals.avg_ticket, sales.currency),
-                hint: formatChange(sales.totals.avg_ticket, sales.previous?.avg_ticket),
+                label: 'Adelanto promedio',
+                value: formatMoney(separations.totals.avg_deposit, currency),
+                hint: formatChange(separations.totals.avg_deposit, separations.previous?.avg_deposit),
               },
             ]}
           />
           {!isMine && (
             <>
-              <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Por vendedor (monto)</p>
-              <BarList items={sellerRevenue} emptyLabel="Nadie registró compras en el período" />
+              <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Por responsable (monto)</p>
+              <BarList items={sellerAmounts} emptyLabel="Nadie registró separaciones en el período" />
             </>
           )}
-          <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Paquetes más vendidos</p>
-          <BarList items={topPackages} emptyLabel="Sin compras registradas en el período" />
+          <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Tratamientos más separados</p>
+          <BarList items={topTreatments} emptyLabel="Sin separaciones en el período" />
         </Panel>
 
         <Panel title="Ritmo de atención" subtitle="Conversaciones y leads que se están enfriando">

@@ -86,9 +86,13 @@ interface TrendProps {
   previous: DashboardSalesPoint[]
   days: number
   currency: string | null
+  /** Cómo se llaman las dos medidas: "Monto" y "Separaciones" para citas. */
+  labels?: { revenue: string; count: string }
 }
 
-export function SalesTrendChart({ current, previous, days, currency }: TrendProps) {
+const DEFAULT_LABELS = { revenue: 'Ingresos', count: 'Compras' }
+
+export function SalesTrendChart({ current, previous, days, currency, labels = DEFAULT_LABELS }: TrendProps) {
   const [metric, setMetric] = useState<'revenue' | 'count'>('revenue')
   const weekly = days >= 90
   const points = compareSeries(current, previous, metric, weekly ? 7 : 1)
@@ -99,7 +103,7 @@ export function SalesTrendChart({ current, previous, days, currency }: TrendProp
       : formatNumber(value)
   const rangeLabel = (start: string, end?: string) =>
     end && end !== start ? `${formatDayLabel(start)} – ${formatDayLabel(end)}` : formatDayLabel(start)
-  const metricLabel = metric === 'revenue' ? 'Ingresos' : 'Compras'
+  const metricLabel = labels[metric]
 
   return (
     <div>
@@ -127,7 +131,7 @@ export function SalesTrendChart({ current, previous, days, currency }: TrendProp
                   : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
               }`}
             >
-              {option === 'revenue' ? 'Ingresos' : 'Compras'}
+              {labels[option]}
             </button>
           ))}
         </div>
@@ -148,7 +152,12 @@ export function SalesTrendChart({ current, previous, days, currency }: TrendProp
             />
             <ChartTooltip
               cursor={{ stroke: PREVIOUS_STROKE }}
-              contentStyle={{ borderRadius: 10, borderColor: '#e9edef', boxShadow: '0 8px 24px rgb(0 0 0 / 0.12)', fontSize: 12 }}
+              // Colores del tema (index.css): con un fondo blanco fijo el
+              // tooltip se veía claro en modo oscuro y el texto, del color
+              // de la serie, no se leía.
+              contentStyle={{ borderRadius: 10, borderColor: 'var(--viz-border)', background: 'var(--viz-surface)', color: 'var(--viz-text)', boxShadow: '0 8px 24px rgb(0 0 0 / 0.18)', fontSize: 12 }}
+              itemStyle={{ color: 'var(--viz-text)' }}
+              labelStyle={{ color: 'var(--viz-muted)' }}
               labelFormatter={(_, payload) => {
                 const point = payload?.[0]?.payload as (typeof points)[number] | undefined
                 return point ? rangeLabel(point.date, point.endDate) : ''

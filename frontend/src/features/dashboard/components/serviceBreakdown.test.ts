@@ -95,9 +95,9 @@ describe('fromAppointments', () => {
     appointments: {
       trend: days(3).map(({ date }) => ({ date, value: 0 })),
       by_treatment_daily: [
-        { date: '2026-10-01', key: 'hifu12d', name: 'Hifu12D', count: 3 },
-        { date: '2026-10-02', key: 'hifu12d', name: 'HIFU 12D', count: 1 },
-        { date: '2026-10-02', key: 'hollywoodpeelx3', name: 'Hollywood Peel x3', count: 2 },
+        { date: '2026-10-01', key: 'hifu12d', name: 'Hifu12D', count: 3, amount: 300 },
+        { date: '2026-10-02', key: 'hifu12d', name: 'HIFU 12D', count: 1, amount: 50 },
+        { date: '2026-10-02', key: 'hollywoodpeelx3', name: 'Hollywood Peel x3', count: 2, amount: 100 },
       ],
     },
   } as unknown as DashboardMetrics
@@ -108,13 +108,19 @@ describe('fromAppointments', () => {
       { key: 'hifu12d', name: 'Hifu12D', count: 4 },
       { key: 'hollywoodpeelx3', name: 'Hollywood Peel x3', count: 2 },
     ])
-    expect(source.hasRevenue).toBe(false)
+    // El monto de una separación es su adelanto.
+    expect(source.revenueLabel).toBe('Monto')
+  })
+
+  it('suma los adelantos como monto', () => {
+    const source = fromAppointments(metrics)
+    expect(buildBuckets(source, pickSeries(source), 'revenue', 1).map((bucket) => bucket.total)).toEqual([300, 150, 0])
   })
 
   it('cuenta citas por día con la clave unificada', () => {
     const source = fromAppointments(metrics)
     const buckets = buildBuckets(source, pickSeries(source), 'count', 1)
     expect(buckets.map((bucket) => bucket.total)).toEqual([3, 3, 0])
-    expect(headline(shares(buckets, pickSeries(source)), String, source.verb)).toBe('Hifu12D fue el más agendado: 4, el 67% del período.')
+    expect(headline(shares(buckets, pickSeries(source)), String, source.verb)).toBe('Hifu12D fue el más separado: 4, el 67% del período.')
   })
 })

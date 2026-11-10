@@ -118,10 +118,27 @@ function metrics(): DashboardMetrics {
       by_status: [{ name: 'Registrada', value: 5 }],
       by_treatment: [{ name: 'Limpieza facial', value: 3 }],
       by_treatment_daily: [
-        { date: '2026-09-20', key: 'hifu12d', name: 'Hifu12D', count: 3 },
-        { date: '2026-09-21', key: 'hifu12d', name: 'HIFU 12D', count: 1 },
-        { date: '2026-09-21', key: 'limpiezafacial', name: 'Limpieza Facial', count: 4 },
+        { date: '2026-09-20', key: 'hifu12d', name: 'Hifu12D', count: 3, amount: 300 },
+        { date: '2026-09-21', key: 'hifu12d', name: 'HIFU 12D', count: 1, amount: 100 },
+        { date: '2026-09-21', key: 'limpiezafacial', name: 'Limpieza Facial', count: 4, amount: 200 },
       ],
+      separations: {
+        totals: { count: 3, amount: 250, with_deposit: 2, avg_deposit: 125, clients: 3 },
+        previous: { count: 2, amount: 200, with_deposit: 2, avg_deposit: 100, clients: 2 },
+        trend: [{ date: '2026-09-20', count: 1, amount: 100 }, { date: '2026-09-21', count: 2, amount: 150 }],
+        previous_trend: [{ date: '2026-08-21', count: 1, amount: 100 }, { date: '2026-08-22', count: 1, amount: 100 }],
+        by_seller: [{ name: 'Grecia', count: 3, amount: 250, with_deposit: 2 }],
+        recent: [
+          {
+            id: 9, lead_id: 'lead-9', name: 'Ana Torres', treatment: 'Hifu12D', amount: 150, date: '2026-10-01',
+            time: '10:00', created_at: '2026-09-21T15:00:00Z', seller_name: 'Grecia',
+          },
+          {
+            id: 10, lead_id: null, name: 'Sin Ficha', treatment: 'Consulta', amount: 0, date: '2026-10-02',
+            time: '11:00', created_at: '2026-09-21T16:00:00Z', seller_name: 'Grecia',
+          },
+        ],
+      },
       by_user: [{ name: 'Grecia', value: 5 }],
       by_owner: [{ name: 'Antonella', value: 4 }, { name: 'Sin lead vinculado', value: 1 }],
       trend: [{ date: '2026-09-20', value: 5 }, { date: '2026-09-21', value: 3 }],
@@ -214,18 +231,17 @@ describe('DashboardPage', () => {
     expect(screen.getByText('1 ejecuciones no llegaron a enviarse')).toBeInTheDocument()
   })
 
-  it('muestra las ventas en la moneda del negocio y contra el período anterior', () => {
+  it('resume las separaciones en la moneda del negocio y contra el período anterior', () => {
     renderDashboard(true)
 
-    // El total y el ticket llevan la moneda del perfil; el cambio dice la
-    // dirección con flecha y signo, no solo con color.
-    expect(screen.getByText(/S\/\s?1,250/)).toBeInTheDocument()
-    expect(screen.getByText('▲ +25% vs. período anterior')).toBeInTheDocument()
+    // La venta del negocio es la separación de cita: el monto es la suma de
+    // adelantos, con la moneda del perfil y el cambio con flecha y signo.
+    expect(screen.getByText(/S\/\s?250/)).toBeInTheDocument()
     expect(screen.getByText('▲ +50% vs. período anterior')).toBeInTheDocument()
-    expect(screen.getByText('▼ -17% vs. período anterior')).toBeInTheDocument()
-    // Los paquetes se cuentan por compras aunque el backend los ordene por ingresos.
-    expect(screen.getByText('Hollywood Peel - Rostro · x3')).toBeInTheDocument()
-    expect(screen.getByText('Láser · x10')).toBeInTheDocument()
+    expect(screen.getAllByText('▲ +25% vs. período anterior')).toHaveLength(2)
+    // Las variantes de escritura del tratamiento cuentan juntas.
+    expect(screen.getByText('Tratamientos más separados')).toBeInTheDocument()
+    expect(screen.getByText('Hifu12D')).toBeInTheDocument()
   })
 
   it('lleva de Resumen a la pestaña de ventas', async () => {
@@ -234,16 +250,19 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Ver ventas' }))
     expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Monto vendido')).toBeInTheDocument()
+    expect(screen.getByText('Monto de separación')).toBeInTheDocument()
   })
 
-  it('compara cada cifra de ventas con el período anterior', async () => {
+  it('compara separaciones y compras registradas con el período anterior', async () => {
     const user = userEvent.setup()
     renderDashboard(true)
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
+    expect(screen.getByText('3 clientas')).toBeInTheDocument()
+    expect(screen.getByText('2 de 3 separaciones')).toBeInTheDocument()
+    // Las compras registradas aparecen debajo porque este negocio tiene alguna.
+    expect(screen.getByRole('heading', { name: 'Compras registradas' })).toBeInTheDocument()
     expect(screen.getByText('3 clientes')).toBeInTheDocument()
-    // Compras +50 %, ingresos +25 %, ticket -17 %, sesiones +75 %.
     for (const label of ['▲ +50%', '▲ +25%', '▼ -17%', '▲ +75%']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0)
     }
@@ -256,7 +275,7 @@ describe('DashboardPage', () => {
     renderDashboard(true)
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
-    const table = screen.getAllByRole('table')[0]
+    const table = screen.getByRole('columnheader', { name: 'Paquete' }).closest('table')!
     const firstPackage = () => within(table).getAllByRole('row')[1]
     expect(within(firstPackage()).getByText('Hollywood Peel - Rostro')).toBeInTheDocument()
     expect(within(table).getByText('Nuevo')).toBeInTheDocument()
@@ -278,34 +297,46 @@ describe('DashboardPage', () => {
     expect(onOpenChat).toHaveBeenCalledWith('lead-7')
   })
 
-  it('desglosa las ventas por tratamiento con su participación y una tabla', async () => {
+  it('abre el chat de una separación ligada a un lead y lista sin enlace la que no lo está', async () => {
+    const user = userEvent.setup()
+    const { onOpenChat } = renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    await user.click(screen.getByRole('button', { name: /Ana Torres/ }))
+    expect(onOpenChat).toHaveBeenCalledWith('lead-9')
+    expect(screen.getByText('Sin Ficha')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sin Ficha/ })).toBeNull()
+    expect(screen.getByText('Sin adelanto')).toBeInTheDocument()
+  })
+
+  it('desglosa las separaciones por tratamiento, en cantidad o en monto', async () => {
     const user = userEvent.setup()
     renderDashboard(true)
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     expect(screen.getByRole('heading', { name: 'Por tratamiento' })).toBeInTheDocument()
-    expect(screen.getByText('Hollywood Peel - Rostro fue el más vendido: 2, el 67% del período.')).toBeInTheDocument()
-    // La participación se lee en texto, no solo en la torta.
-    const shareList = screen.getByText('Participación del período').parentElement!
-    expect(within(shareList).getByText('67%')).toBeInTheDocument()
-    expect(within(shareList).getByText('33%')).toBeInTheDocument()
-
-    // Ocultar un tratamiento lo saca de la tabla y del reparto.
-    await user.click(screen.getByRole('button', { name: 'Láser' }))
-    expect(screen.getByRole('button', { name: 'Láser' })).toHaveAttribute('aria-pressed', 'false')
-    expect(within(shareList).getByText('100%')).toBeInTheDocument()
+    expect(screen.getByText('Hifu12D fue el más separado: 4, el 50% del período.')).toBeInTheDocument()
+    const panel = screen.getByRole('heading', { name: 'Por tratamiento' }).closest('section')!
+    await user.click(within(panel).getByRole('button', { name: 'Monto' }))
+    expect(within(panel).getByText(/Hifu12D fue el más separado: S\/\s?400, el 67% del período\./)).toBeInTheDocument()
   })
 
-  it('cuenta las citas agendadas por tratamiento cuando se elige esa fuente', async () => {
+  it('ofrece las compras registradas como otra fuente del panel por tratamiento', async () => {
     const user = userEvent.setup()
     renderDashboard(true)
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
-    await user.click(screen.getByRole('button', { name: 'Citas agendadas' }))
-    // Las variantes de escritura cuentan juntas; con citas no hay medida en plata.
-    expect(screen.getByText('Hifu12D fue el más agendado: 4, el 50% del período.')).toBeInTheDocument()
     const panel = screen.getByRole('heading', { name: 'Por tratamiento' }).closest('section')!
-    expect(within(panel).queryByRole('button', { name: 'Ingresos' })).toBeNull()
+    await user.click(within(panel).getByRole('button', { name: 'Compras registradas' }))
+    expect(within(panel).getByText('Hollywood Peel - Rostro fue el más vendido: 2, el 67% del período.')).toBeInTheDocument()
+    // La participación se lee en texto, no solo en la torta.
+    const shareList = within(panel).getByText('Participación del período').parentElement!
+    expect(within(shareList).getByText('67%')).toBeInTheDocument()
+
+    // Ocultar un tratamiento lo saca de la tabla y del reparto.
+    await user.click(within(panel).getByRole('button', { name: 'Láser' }))
+    expect(within(panel).getByRole('button', { name: 'Láser' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(shareList).getByText('100%')).toBeInTheDocument()
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {

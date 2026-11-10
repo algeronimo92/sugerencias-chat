@@ -71,26 +71,27 @@ type SourceId = 'appointments' | 'sales'
  *  en vez de mostrarse vacío. */
 export function ServiceBreakdownPanel({ data, days }: { data: DashboardMetrics; days: number }) {
   const hasSales = data.sales.by_service.length > 0
-  const [sourceId, setSourceId] = useState<SourceId>(hasSales ? 'sales' : 'appointments')
+  // El negocio mide sus ventas por las separaciones de cita; las compras
+  // registradas son la otra fuente y solo se ofrecen si existen.
+  const [sourceId, setSourceId] = useState<SourceId>('appointments')
   const [chosenMetric, setMetric] = useState<ServiceMetric>('count')
   const [view, setView] = useState<'bars' | 'lines'>('bars')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
 
   const source = sourceId === 'sales' ? fromSales(data.sales) : fromAppointments(data)
-  // Las citas no tienen monto: con ellas la medida es siempre la cantidad.
   const metric: ServiceMetric = source.hasRevenue ? chosenMetric : 'count'
-  const sourcePicker = (
+  const sourcePicker = hasSales && (
     <Segmented label="Qué se cuenta" value={sourceId} onChange={(value) => { setSourceId(value); setHidden(new Set()) }}
-      options={[{ value: 'appointments', label: 'Citas agendadas' }, { value: 'sales', label: 'Ventas' }]} />
+      options={[{ value: 'appointments', label: 'Separaciones' }, { value: 'sales', label: 'Compras registradas' }]} />
   )
 
   if (source.ranking.length === 0) {
     return (
       <div>
-        <div className="mb-3">{sourcePicker}</div>
+        {sourcePicker && <div className="mb-3">{sourcePicker}</div>}
         <NoData label={sourceId === 'sales'
           ? 'Sin compras registradas en el período. Se registran al mover un lead a una etapa ganada o con "Registrar compra" en su ficha.'
-          : 'Sin citas agendadas en el período'} />
+          : 'Sin separaciones en el período'} />
       </div>
     )
   }
@@ -143,7 +144,7 @@ export function ServiceBreakdownPanel({ data, days }: { data: DashboardMetrics; 
         {sourcePicker}
         {source.hasRevenue && (
           <Segmented label="Medida" value={metric} onChange={setMetric}
-            options={[{ value: 'count', label: 'Cantidad' }, { value: 'revenue', label: 'Ingresos' }]} />
+            options={[{ value: 'count', label: 'Cantidad' }, { value: 'revenue', label: source.revenueLabel }]} />
         )}
         <Segmented label="Tipo de gráfico" value={view} onChange={setView}
           options={[{ value: 'bars', label: 'Barras apiladas' }, { value: 'lines', label: 'Líneas' }]} />

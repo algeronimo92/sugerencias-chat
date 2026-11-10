@@ -6,6 +6,8 @@ import { NewAppointmentPage } from './NewAppointmentPage'
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }))
 
+// El formulario muestra el símbolo de la moneda junto al adelanto.
+vi.mock('../hooks/useBusinessCurrency', () => ({ useBusinessCurrency: () => 'PEN' }))
 vi.mock('../../../shared/auth', () => ({ useMe: () => ({ data: { role: 'admin' } }) }))
 vi.mock('../../platform/hooks/useUsers', () => ({ useSellers: () => ({ data: [{ id: 1, name: 'Asesor' }] }) }))
 vi.mock('../../catalogs/public/useCustomFields', () => ({ useCustomFields: () => ({

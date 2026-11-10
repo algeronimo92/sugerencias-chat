@@ -6,6 +6,8 @@ import { LeadAppointmentPanel } from './LeadAppointmentPanel'
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }))
 
+// El formulario muestra el símbolo de la moneda junto al adelanto.
+vi.mock('../hooks/useBusinessCurrency', () => ({ useBusinessCurrency: () => 'PEN' }))
 vi.mock('../../../shared/auth', () => ({ useMe: () => ({ data: { role: 'vendedor', name: 'Marta' } }) }))
 vi.mock('../../platform/public/useUsers', () => ({ useSellers: () => ({ data: [{ id: 1, name: 'Luis' }, { id: 2, name: 'Marta' }], isLoading: false }) }))
 vi.mock('../../catalogs/public/useCustomFields', () => ({

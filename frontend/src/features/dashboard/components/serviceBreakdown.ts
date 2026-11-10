@@ -8,12 +8,14 @@ export type ServiceMetric = 'count' | 'revenue'
 /** Lo que el panel necesita de cualquier fuente: el ranking del período (ya
  *  ordenado) y las cifras por día, con la misma clave. */
 export interface BreakdownSource {
-  ranking: { key: string; name: string }[]
+  /** `count` viene en las separaciones; en ventas el orden es por ingresos. */
+  ranking: { key: string; name: string; count?: number }[]
   daily: { date: string; key: string; count: number; revenue: number }[]
   /** Todos los días del período, en orden: define los tramos. */
   dates: string[]
-  /** Las citas no tienen monto: el panel solo ofrece cantidad. */
   hasRevenue: boolean
+  /** Cómo se llama el monto: "Ingresos" en ventas, "Monto" en separaciones. */
+  revenueLabel: string
   /** "vendido" o "agendado", para la frase-titular. */
   verb: string
 }
@@ -53,11 +55,12 @@ export function fromSales(sales: DashboardSales): BreakdownSource {
     daily: sales.by_service_daily.map((row) => ({ date: row.date, key: serviceKey(row), count: row.count, revenue: row.revenue })),
     dates: sales.trend.map((point) => point.date),
     hasRevenue: true,
+    revenueLabel: 'Ingresos',
     verb: 'vendido',
   }
 }
 
-/** Citas agendadas: el backend ya agrupa las variantes de escritura en `key`.
+/** Separaciones (citas agendadas): el backend ya agrupa las variantes de escritura en `key`.
  *  El ranking es por cantidad y el nombre, el que más se usó en el período. */
 export function fromAppointments(data: DashboardMetrics): BreakdownSource {
   const totals = new Map<string, { count: number; names: Map<string, number> }>()
@@ -76,10 +79,12 @@ export function fromAppointments(data: DashboardMetrics): BreakdownSource {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
   return {
     ranking,
-    daily: data.appointments.by_treatment_daily.map((row) => ({ date: row.date, key: row.key, count: row.count, revenue: 0 })),
+    daily: data.appointments.by_treatment_daily.map((row) => ({ date: row.date, key: row.key, count: row.count, revenue: row.amount })),
     dates: data.appointments.trend.map((point) => point.date),
-    hasRevenue: false,
-    verb: 'agendado',
+    // El monto de una separación es su adelanto.
+    hasRevenue: true,
+    revenueLabel: 'Monto',
+    verb: 'separado',
   }
 }
 

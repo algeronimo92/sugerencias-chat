@@ -2,7 +2,7 @@ import type { DashboardMetrics } from '../types'
 import { formatMoney, formatNumber, formatShortDateTime } from './format'
 import { NoData, Panel } from './primitives'
 import { SalesPackagesTable } from './SalesPackagesTable'
-import { ServiceBreakdownPanel } from './ServiceBreakdownPanel'
+import { SeparationsView } from './SeparationsView'
 import { SalesTrendChart, StatTile } from './SalesCharts'
 import { percentChange, pointsChange, sparkSeries } from './salesFormat'
 
@@ -18,9 +18,29 @@ interface Props {
 const DISCOUNT_WARNING_RATE = 8
 
 /** Qué se vende, cuánto deja y quién lo cierra, contra la ventana anterior.
- *  Todo responde al período y al alcance de la cabecera, salvo el ranking de
- *  vendedores, que siempre es del equipo. */
+ *  Todo responde al período y al alcance de la cabecera, salvo los rankings,
+ *  que siempre son del equipo. */
 export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
+  // La venta se mide por las separaciones de cita. Las compras registradas
+  // ("Registrar compra") se muestran debajo solo si el negocio las usa: un
+  // bloque entero en cero confunde más de lo que informa.
+  const { sales } = data
+  const hasPurchases = sales.totals.count > 0 || sales.previous != null
+  return (
+    <>
+      <SeparationsView data={data} days={days} isMine={isMine} onOpenChat={onOpenChat} />
+      {hasPurchases && (
+        <section className="mt-8" aria-labelledby="compras-registradas">
+          <h2 id="compras-registradas" className="mb-3 text-sm font-semibold text-wa-text dark:text-wa-text-dark">Compras registradas</h2>
+          <PurchasesView data={data} days={days} isMine={isMine} onOpenChat={onOpenChat} />
+        </section>
+      )}
+    </>
+  )
+}
+
+/** Compras registradas con paquete y precio, para los negocios que las usan. */
+function PurchasesView({ data, days, isMine, onOpenChat }: Props) {
   const { sales } = data
   const { totals, previous, currency } = sales
   const period = `Últimos ${days} días`
@@ -67,7 +87,7 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Panel
-          title={days >= 90 ? 'Ventas por semana' : 'Ventas por día'}
+          title={days >= 90 ? 'Compras por semana' : 'Compras por día'}
           subtitle={`${isMine ? 'Lo que cerré' : 'Lo que cerró el equipo'} · comparado con los ${days} días anteriores`}
           className="lg:col-span-2"
         >
@@ -80,14 +100,6 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
           className="lg:col-span-2"
         >
           <SalesPackagesTable packages={sales.by_package} currency={currency} />
-        </Panel>
-
-        <Panel
-          title="Por tratamiento"
-          subtitle={`Cuánto se agendó o se vendió de cada tratamiento por ${days <= 14 ? 'día' : 'semana'} y qué parte del total fue cada uno`}
-          className="lg:col-span-2"
-        >
-          <ServiceBreakdownPanel data={data} days={days} />
         </Panel>
 
         <Panel title="Ingresos por servicio" subtitle="El tratamiento que buscaba el cliente, sumando todos sus paquetes">
