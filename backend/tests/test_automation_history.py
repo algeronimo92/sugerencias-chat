@@ -108,3 +108,12 @@ async def test_history_filters_by_started_by_user_id(monkeypatch):
     sql = await _history_sql(monkeypatch, started_by_user_id=42)
 
     assert "automation_executions.started_by_user_id = 42" in sql
+
+
+@pytest.mark.asyncio
+async def test_history_can_scope_to_anything_started_by_a_person(monkeypatch):
+    # "Todo el equipo" en "Flujos enviados": lo iniciado a mano por cualquiera,
+    # sin mezclar los disparos automáticos del sistema.
+    sql = await _history_sql(monkeypatch, started_by_anyone=True)
+
+    assert "automation_executions.started_by_user_id IS NOT NULL" in sql
