@@ -156,6 +156,7 @@ async def list_automation_executions(
     active: bool | None = None,
     started_by_user_id: int | None = None,
     started_by_anyone: bool = False,
+    automatic_only: bool = False,
 ) -> list[dict]:
     # Alias propio: `User` ya está tomado por started_by_user_id y la fila
     # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
@@ -222,6 +223,14 @@ async def list_automation_executions(
         # "Todo el equipo" es la unión de los "mis envíos" de cada persona:
         # lo que alguien inició a mano, sin los disparos del sistema.
         stmt = stmt.where(AutomationExecution.started_by_user_id.is_not(None))
+    elif automatic_only:
+        # Lo que arrancó un disparador y lo que esos flujos llamaron. El
+        # `!= 'manual'` deja fuera los envíos a mano de un usuario ya borrado,
+        # cuyo started_by_user_id quedó en NULL por el ON DELETE SET NULL.
+        stmt = stmt.where(
+            AutomationExecution.started_by_user_id.is_(None),
+            AutomationExecution.start_source != "manual",
+        )
     if date_from is not None and date_to is not None:
         range_start, range_end = local_day_range_utc(date_from, date_to)
         stmt = stmt.where(AutomationExecution.created_at >= range_start, AutomationExecution.created_at < range_end)
