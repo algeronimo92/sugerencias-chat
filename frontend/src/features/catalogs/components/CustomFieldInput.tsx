@@ -10,6 +10,10 @@ interface Props {
   /** Si el campo es un monto: la moneda del negocio (código ISO). Muestra su
    *  símbolo, no acepta negativos y pide como mucho dos decimales. */
   currency?: string | null
+  /** Ayuda y error del formulario que lo contiene. */
+  describedBy?: string
+  invalid?: boolean
+  placeholder?: string
 }
 
 /** "S/" para PEN, "$" para USD... Con un código que el navegador no conoce se
@@ -24,9 +28,9 @@ function currencySymbol(currency: string | null | undefined): string | null {
   }
 }
 
-export function CustomFieldInput({ field, value, onChange, disabled, className, currency }: Props) {
+export function CustomFieldInput({ field, value, onChange, disabled, className, currency, describedBy, invalid, placeholder }: Props) {
   const id = `custom-field-${field.entity_type}-${field.key}`
-  const common = { id, disabled, required: field.required, className }
+  const common = { id, disabled, required: field.required, className, 'aria-describedby': describedBy, 'aria-invalid': invalid || undefined }
   if (field.field_type === 'textarea') {
     return <Textarea {...common} rows={3} value={String(value ?? '')} onChange={event => onChange(event.target.value)} />
   }
@@ -57,6 +61,7 @@ export function CustomFieldInput({ field, value, onChange, disabled, className, 
         inputMode="decimal"
         step={isMoney ? '0.01' : 'any'}
         min={isMoney ? 0 : undefined}
+        placeholder={placeholder}
         value={String(value ?? '')}
         onChange={event => onChange(event.target.value)}
         className={`${className ?? ''} ${symbol ? 'pl-11' : ''}`}

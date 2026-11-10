@@ -53,7 +53,7 @@ describe('LeadAppointmentPanel', () => {
     expect(screen.getAllByText('Del lead').length).toBeGreaterThanOrEqual(4)
 
     await fillSchedule(user)
-    const save = screen.getByRole('button', { name: 'Guardar cita' })
+    const save = screen.getByRole('button', { name: /^Separar/ })
     expect(save).toBeDisabled()
 
     await user.click(screen.getByRole('checkbox', { name: /Confirmo que los datos/ }))
@@ -110,13 +110,13 @@ describe('LeadAppointmentPanel', () => {
     fireEvent.change(screen.getByLabelText(/^DNI/), { target: { value: '12345678' } })
     await fillSchedule(user)
     await user.click(screen.getByRole('checkbox', { name: /Confirmo que los datos/ }))
-    await user.click(screen.getByRole('button', { name: 'Guardar cita' }))
+    await user.click(screen.getByRole('button', { name: /^Separar/ }))
 
     expect(mocks.mutate).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Actualizar el lead' })).toBeInTheDocument()
     // Por defecto van todas; el vendedor desmarca el DNI.
     await user.click(screen.getByRole('checkbox', { name: /DNI/ }))
-    await user.click(screen.getByRole('button', { name: 'Guardar cita' }))
+    await user.click(screen.getByRole('button', { name: /^Separar/ }))
 
     const [input] = mocks.mutate.mock.calls[0]
     expect(input.leadUpdates).toEqual({ nombre: 'Ana Pérez', custom_fields: {} })

@@ -3,6 +3,9 @@ import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { DialogPrimitive, dialogOverlayClassOverPanel } from '../../../shared/ui/Dialog'
 import type { LeadCorrection, LeadSnapshot } from '../domain/leadPrefill'
+import { submitLabel } from '../domain/submitLabel'
+import { DEPOSIT_FIELD_KEY } from '../hooks/useAppointmentForm'
+import { useBusinessCurrency } from '../hooks/useBusinessCurrency'
 import { useLeadAppointment, type LeadAppointmentState } from '../hooks/useLeadAppointment'
 import { AppointmentFormFields } from './AppointmentFormFields'
 
@@ -72,6 +75,7 @@ function PanelBody({ lead, flow }: { lead: LeadSnapshot; flow: LeadAppointmentSt
 
 function PanelFooter({ flow }: { flow: LeadAppointmentState }) {
   const { state } = flow
+  const currency = useBusinessCurrency()
   const editing = flow.corrections === null
   return (
     <footer className="space-y-3 border-t border-wa-border bg-wa-panel px-4 pt-4 pb-safe-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
@@ -85,7 +89,7 @@ function PanelFooter({ flow }: { flow: LeadAppointmentState }) {
         {editing && state.hasDraft && <DraftStatus disabled={state.busy} onDiscard={flow.discardDraft} />}
         <Button type="submit" disabled={!flow.canSave}>
           {state.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-          {state.busy ? 'Guardando…' : 'Guardar cita'}
+          {state.busy ? 'Guardando…' : submitLabel(state.customFields[DEPOSIT_FIELD_KEY], currency, state.definitions.some(field => field.key === DEPOSIT_FIELD_KEY))}
         </Button>
       </div>
     </footer>

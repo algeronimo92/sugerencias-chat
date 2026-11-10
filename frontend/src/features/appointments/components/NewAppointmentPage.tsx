@@ -2,7 +2,9 @@ import { CalendarDays, CalendarPlus, Check, CheckCircle2, FlaskConical, History,
 import { useEffect, useState, type FormEvent } from 'react'
 import { useMe } from '../../../shared/auth'
 import { Button } from '../../../shared/ui/Button'
-import { appointmentResultMessage, loadAppointmentDraft, useAppointmentForm } from '../hooks/useAppointmentForm'
+import { submitLabel } from '../domain/submitLabel'
+import { DEPOSIT_FIELD_KEY, appointmentResultMessage, loadAppointmentDraft, useAppointmentForm } from '../hooks/useAppointmentForm'
+import { useBusinessCurrency } from '../hooks/useBusinessCurrency'
 import { AppointmentCalendar } from './AppointmentCalendar'
 import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
 import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
@@ -19,6 +21,7 @@ export function NewAppointmentPage() {
   const isAdmin = me?.role === 'admin'
   const { data: calendar } = useGoogleCalendarStatus()
   const state = useAppointmentForm(DRAFT_KEY)
+  const currency = useBusinessCurrency()
   const { load } = state
   const [testMode, setTestMode] = useState(false)
   const [tab, setTab] = useState<Tab>('form')
@@ -68,7 +71,7 @@ export function NewAppointmentPage() {
 
               <AppointmentFormFields state={state} />
 
-              <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:items-center sm:justify-end">{state.hasDraft && <p className="flex items-center justify-center gap-1.5 text-xs text-wa-muted sm:mr-auto"><Check className="h-3.5 w-3.5" aria-hidden="true" />Borrador guardado automáticamente<button type="button" className="font-semibold underline" onClick={state.reset} disabled={busy}>Descartar</button></p>}<Button type="submit" disabled={busy || state.customFieldsLoading || state.customFieldsError}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : 'Guardar cita'}</Button></div>
+              <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:items-center sm:justify-end">{state.hasDraft && <p className="flex items-center justify-center gap-1.5 text-xs text-wa-muted sm:mr-auto"><Check className="h-3.5 w-3.5" aria-hidden="true" />Borrador guardado automáticamente<button type="button" className="font-semibold underline" onClick={state.reset} disabled={busy}>Descartar</button></p>}<Button type="submit" disabled={busy || state.customFieldsLoading || state.customFieldsError}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : submitLabel(state.customFields[DEPOSIT_FIELD_KEY], currency, state.definitions.some(field => field.key === DEPOSIT_FIELD_KEY))}</Button></div>
             </form>
           )}
         </div>
