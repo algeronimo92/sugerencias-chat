@@ -773,6 +773,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{user_id}/invitation-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Invitation Link
+         * @description Para cuando el correo no llega: el admin copia el enlace y lo pasa por
+         *     otro canal. Cada pedido reemplaza al enlace anterior.
+         */
+        post: operations["create_invitation_link_api_users__user_id__invitation_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats": {
         parameters: {
             query?: never;
@@ -5386,6 +5407,16 @@ export interface components {
             /** Mentioned User Ids */
             mentioned_user_ids?: number[];
         };
+        /** InvitationLinkOut */
+        InvitationLinkOut: {
+            /** Url */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** IssueReportAttachmentCreate */
         IssueReportAttachmentCreate: {
             /** Content Type */
@@ -7490,6 +7521,8 @@ export interface components {
         };
         /** UpdateUserRequest */
         UpdateUserRequest: {
+            /** Email */
+            email?: string | null;
             /** Role */
             role?: string | null;
             /** Is Active */
@@ -7506,6 +7539,8 @@ export interface components {
             role: components["schemas"]["UserRole"];
             /** Is Active */
             is_active: boolean;
+            /** Invitation Pending */
+            invitation_pending: boolean;
         };
         /** UserOut */
         UserOut: {
@@ -9154,6 +9189,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invitation_link_api_users__user_id__invitation_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationLinkOut"];
                 };
             };
             /** @description Validation Error */
