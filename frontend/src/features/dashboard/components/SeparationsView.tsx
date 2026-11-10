@@ -2,6 +2,7 @@ import type { DashboardMetrics } from '../types'
 import { who, type DashboardSubject } from './subject'
 import { formatMoney, formatNumber, formatShortDateTime } from './format'
 import { NoData, Panel } from './primitives'
+import { SeparationRanking } from './SeparationRanking'
 import { SalesTrendChart, StatTile } from './SalesCharts'
 import { ServiceBreakdownPanel } from './ServiceBreakdownPanel'
 import { percentChange, sparkSeries } from './salesFormat'
@@ -81,38 +82,22 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
           <ServiceBreakdownPanel data={data} days={days} />
         </Panel>
 
-        <Panel anchor="por-responsable" title="Por responsable" subtitle={`Ranking del equipo · últimos ${days} días`}>
-          {separations.by_seller.length === 0 ? (
-            <NoData label="Nadie registró separaciones en el período" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-wa-border text-[11px] text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">
-                    <th scope="col" className="py-2 pr-2 text-left font-medium">Responsable</th>
-                    <th scope="col" className="px-2 py-2 text-right font-medium">Separaciones</th>
-                    <th scope="col" className="px-2 py-2 text-right font-medium">Monto</th>
-                    <th scope="col" className="py-2 pl-2 text-right font-medium">Con adelanto</th>
-                  </tr>
-                </thead>
-                <tbody className="tabular-nums text-gray-800 dark:text-wa-text-dark">
-                  {separations.by_seller.map((seller) => (
-                    <tr key={seller.name} className="border-b border-wa-border last:border-0 dark:border-wa-border-dark">
-                      <td className="py-2 pr-2">{seller.name}</td>
-                      <td className="px-2 py-2 text-right">{formatNumber(seller.count)}</td>
-                      <td className="px-2 py-2 text-right">{money(seller.amount)}</td>
-                      <td className="py-2 pl-2 text-right">
-                        {seller.count ? `${Math.round((seller.with_deposit / seller.count) * 100)}%` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        {/* El ancla "por-responsable" se conserva: hay enlaces ya compartidos. */}
+        <Panel anchor="por-responsable"
+          title="Quién registró la separación"
+          subtitle={`La persona que llenó "Separar cita" · todo el equipo · últimos ${days} días`}
+        >
+          <SeparationRanking rows={separations.by_seller} who="Registró" currency={currency} emptyLabel="Nadie registró separaciones en el período" />
         </Panel>
 
-        <Panel anchor="ultimas-separaciones" title="Últimas separaciones" subtitle="Abre el chat de la clienta cuando la cita quedó ligada a su ficha">
+        <Panel anchor="por-vendedora"
+          title="Por vendedora de la clienta"
+          subtitle={`La vendedora asignada a la clienta en el CRM, aunque la cita la haya registrado otra persona · todo el equipo · últimos ${days} días`}
+        >
+          <SeparationRanking rows={separations.by_owner} who="Vendedora" currency={currency} emptyLabel="Sin separaciones en el período" />
+        </Panel>
+
+        <Panel anchor="ultimas-separaciones" title="Últimas separaciones" subtitle="Abre el chat de la clienta cuando la cita quedó ligada a su ficha" className="lg:col-span-2">
           {separations.recent.length === 0 ? (
             <NoData label="Sin separaciones en el período" />
           ) : (
@@ -122,7 +107,7 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
                   <>
                     <span className="min-w-0">
                       <span className="block truncate font-medium text-gray-800 group-hover:text-wa-primary-strong dark:text-wa-text-dark">{row.name}</span>
-                      <span className="block truncate text-[11px] text-wa-muted">{row.treatment} · {row.seller_name}</span>
+                      <span className="block truncate text-[11px] text-wa-muted">{row.treatment} · registró {row.seller_name}</span>
                     </span>
                     <span className="shrink-0 text-right">
                       <span className="block font-semibold tabular-nums text-gray-800 dark:text-wa-text-dark">

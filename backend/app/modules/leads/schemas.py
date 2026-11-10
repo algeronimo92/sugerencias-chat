@@ -370,8 +370,11 @@ class DashboardSeparations(BaseModel):
     previous: DashboardSeparationTotals | None = None
     trend: list[DashboardSeparationPoint]
     previous_trend: list[DashboardSeparationPoint]
-    # Ranking del equipo: no depende del scope.
+    # Rankings del equipo, no dependen del scope. by_seller: quién registró la
+    # separación; by_owner: la vendedora asignada al lead. by_owner tiene
+    # default porque las versiones guardadas de la app (PWA) no lo conocen.
     by_seller: list[DashboardSeparationSeller]
+    by_owner: list[DashboardSeparationSeller] = []
     recent: list[DashboardSeparationRow]
 
 

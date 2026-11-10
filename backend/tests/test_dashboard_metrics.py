@@ -148,6 +148,7 @@ async def test_team_rankings_are_shared_in_both_scopes(compiled_sql):
     assert data["tags"]["by_user"]
     assert data["appointments"]["by_user"]
     assert data["appointments"]["separations"]["by_seller"]
+    assert data["appointments"]["separations"]["by_owner"]
 
 
 @pytest.mark.asyncio
@@ -280,14 +281,15 @@ async def test_separations_read_the_deposit_from_either_field_and_compare_window
     data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
 
     separations = data["appointments"]["separations"]
-    for key in ("totals", "previous", "trend", "previous_trend", "by_seller", "recent"):
+    for key in ("totals", "previous", "trend", "previous_trend", "by_seller", "by_owner", "recent"):
         assert key in separations, f"falta {key} en separaciones"
     assert len(separations["trend"]) == len(separations["previous_trend"]) == 30
 
     deposit_sql = [sql for sql in compiled_sql if "jsonb_typeof(appointments.custom_fields" in sql]
     assert deposit_sql, "el monto debe leer el campo personalizado adelanto"
     assert any("appointments.created_at < " in sql for sql in deposit_sql), "falta el tope de la ventana anterior"
-    scoped = [sql for sql in deposit_sql if "GROUP BY coalesce(users.name" not in sql]
+    # Los dos rankings del equipo (quién registró, de quién es el lead) no se acotan.
+    scoped = [sql for sql in deposit_sql if "GROUP BY coalesce(users.name" not in sql and "users AS users_1" not in sql]
     assert all("appointments.created_by_user_id = " in sql for sql in scoped)
 
 

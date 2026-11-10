@@ -132,7 +132,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           />
           {!isPersonal(subject) && (
             <>
-              <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Por responsable (monto)</p>
+              <p className="mt-4 mb-2 text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark">Quién registró (monto)</p>
               <BarList items={sellerAmounts} emptyLabel="Nadie registró separaciones en el período" />
             </>
           )}
