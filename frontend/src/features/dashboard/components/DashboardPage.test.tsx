@@ -190,6 +190,30 @@ describe('DashboardPage', () => {
     expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 3 })
   })
 
+  it('cada sección copia su propio enlace, con la vista actual y su nombre al final', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    // En la app el router y la barra de direcciones coinciden; acá hay que
+    // fijar la dirección de la ventana, que es la que se copia.
+    window.history.replaceState({}, '', '/dashboard?pestana=ventas&dias=7&vendedora=2')
+    renderDashboard(true, '/dashboard?pestana=ventas&dias=7&vendedora=2')
+
+    // Ya no hay un "Copiar enlace" general: la barra de direcciones cumple esa función.
+    expect(screen.queryByRole('button', { name: 'Copiar enlace' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Copiar enlace a la sección Por tratamiento' }))
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/dashboard\?pestana=ventas&dias=7&vendedora=2#por-tratamiento$/))
+  })
+
+  it('al abrir el enlace de una sección baja hasta ella', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderDashboard(true, '/dashboard?pestana=ventas&dias=30&alcance=equipo#por-tratamiento')
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('seccion-por-tratamiento'))
+  })
+
   it('al vendedor no le ofrece mirar a otras personas', async () => {
     const user = userEvent.setup()
     renderDashboard(false)

@@ -17,7 +17,7 @@ export function TagsTab({ data, days, subject, onFilterChats }: Props) {
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Panel title="Cobertura de etiquetado" subtitle={scopeLabel} className="lg:col-span-2">
+      <Panel anchor="cobertura-etiquetas" title="Cobertura de etiquetado" subtitle={scopeLabel} className="lg:col-span-2">
         <StatGrid
           stats={[
             {
@@ -55,15 +55,15 @@ export function TagsTab({ data, days, subject, onFilterChats }: Props) {
         )}
       </Panel>
 
-      <Panel title="Etiquetas más usadas" subtitle="Cuántos leads tiene cada una">
+      <Panel anchor="etiquetas-mas-usadas" title="Etiquetas más usadas" subtitle="Cuántos leads tiene cada una">
         <TagBarList items={top} onSelect={(tagId) => onFilterChats({ tagIds: [tagId] })} />
       </Panel>
 
-      <Panel title="Quién etiqueta" subtitle={`Ranking del equipo · Últimos ${days} días`}>
+      <Panel anchor="quien-etiqueta" title="Quién etiqueta" subtitle={`Ranking del equipo · Últimos ${days} días`}>
         <BarList items={by_user} emptyLabel="Nadie etiquetó en el período" />
       </Panel>
 
-      <Panel title="Etiquetas aplicadas por día" className="lg:col-span-2">
+      <Panel anchor="etiquetas-por-dia" title="Etiquetas aplicadas por día" className="lg:col-span-2">
         <TrendChart points={trend} label="Etiquetas" />
       </Panel>
     </div>

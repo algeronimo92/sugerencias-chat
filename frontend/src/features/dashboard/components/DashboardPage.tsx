@@ -1,10 +1,12 @@
-import { AlertCircle, Link2, Loader2, RefreshCw } from 'lucide-react'
-import { toast } from 'sonner'
+import { AlertCircle, Loader2, RefreshCw } from 'lucide-react'
+import { useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import type { ChatFilters } from '../../leads/types'
 import type { DashboardScope } from '../types'
 import { useDashboard } from '../hooks/useDashboard'
 import { useDashboardFilters, type DashboardView, type TabId } from '../hooks/useDashboardFilters'
 import { useSellers } from '../../platform/public/useUsers'
+import { sectionElementId } from './sectionLink'
 import { who, type DashboardSubject } from './subject'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { Button } from '../../../shared/ui/Button'
@@ -36,15 +38,6 @@ function parseView(value: string): DashboardView {
   return value === 'mine' ? 'mine' : 'team'
 }
 
-async function copyLink() {
-  try {
-    await navigator.clipboard.writeText(window.location.href)
-    toast.success('Enlace copiado', { description: 'Quien lo abra verá esta misma pestaña, período y persona.' })
-  } catch {
-    toast.error('No se pudo copiar el enlace', { description: 'Cópialo desde la barra de direcciones.' })
-  }
-}
-
 interface Props {
   isAdmin: boolean
   onOpenTasks: () => void
@@ -63,6 +56,22 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useDashboard(days, sellerId ? null : scope, sellerId)
   const sellerName = sellerId ? sellers.find((seller) => seller.id === sellerId)?.name ?? 'esta persona' : null
   const subject: DashboardSubject = sellerName ? { kind: 'seller', name: sellerName } : view === 'mine' ? { kind: 'me' } : { kind: 'team' }
+
+  // Un enlace de sección trae su nombre en el fragmento (#por-tratamiento):
+  // al tener los datos se baja hasta ella y se resalta un momento, para que
+  // quien lo abrió vea de qué gráfico le hablaban.
+  const { hash } = useLocation()
+  const hasData = Boolean(data)
+  useEffect(() => {
+    const anchor = decodeURIComponent(hash.replace(/^#/, ''))
+    if (!anchor || !hasData) return
+    const section = document.getElementById(sectionElementId(anchor))
+    if (!section) return
+    section.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    section.style.boxShadow = '0 0 0 2px var(--color-wa-primary)'
+    const timer = window.setTimeout(() => { section.style.boxShadow = '' }, 2500)
+    return () => window.clearTimeout(timer)
+  }, [hash, hasData, tab])
 
   return (
     <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
@@ -87,10 +96,6 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
                 Actualizado {formatRelativeTime(data.generated_at)}
               </span>
             )}
-            <Button variant="secondary" size="sm" onClick={() => void copyLink()} title="Copiar el enlace de esta vista">
-              <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
-              Copiar enlace
-            </Button>
             <Button
               variant="secondary"
               size="icon"

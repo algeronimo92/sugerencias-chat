@@ -41,7 +41,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Panel
+      <Panel anchor="flujos-por-tipo"
         title="Flujos activados por tipo"
         subtitle={`${who(subject, { me: 'Los que yo disparé', team: 'Todo el equipo', seller: (name) => `Los que disparó ${name}` })} · ${period}`}
         className="lg:col-span-2"
@@ -73,19 +73,19 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
         />
       </Panel>
 
-      <Panel title="Quién activó flujos a mano" subtitle={`Ranking del equipo · ${period}`}>
+      <Panel anchor="quien-activa-flujos" title="Quién activó flujos a mano" subtitle={`Ranking del equipo · ${period}`}>
         <BarList items={automations.by_actor} emptyLabel="Nadie disparó flujos a mano" />
       </Panel>
 
-      <Panel title="Cómo arrancaron" subtitle="A mano, por piloto automático o desde otro flujo">
+      <Panel anchor="como-arrancaron" title="Cómo arrancaron" subtitle="A mano, por piloto automático o desde otro flujo">
         <BarList items={automations.by_source} emptyLabel="Sin ejecuciones en el período" />
       </Panel>
 
-      <Panel title="Flujos por día" className="lg:col-span-2">
+      <Panel anchor="flujos-por-dia" title="Flujos por día" className="lg:col-span-2">
         <TrendChart points={automations.trend} label="Ejecuciones" />
       </Panel>
 
-      <Panel title="Pendientes ahora mismo" subtitle="Sin ventana de tiempo: una espera larga puede venir de antes">
+      <Panel anchor="pendientes-ahora" title="Pendientes ahora mismo" subtitle="Sin ventana de tiempo: una espera larga puede venir de antes">
         <StatGrid
           stats={[
             { label: 'Programados', value: formatNumber(active.scheduled ?? 0), hint: 'Esperando su turno' },
@@ -96,7 +96,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
         {activeTotal === 0 && <p className="mt-3 text-[11px] text-wa-muted">No hay nada en cola.</p>}
       </Panel>
 
-      <Panel
+      <Panel anchor="fallos"
         title="Fallos"
         subtitle={
           automations.failures.rate != null
@@ -117,7 +117,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
         )}
       </Panel>
 
-      <Panel title="Qué los dispara" subtitle="Evento que originó cada ejecución" className="lg:col-span-2">
+      <Panel anchor="que-los-dispara" title="Qué los dispara" subtitle="Evento que originó cada ejecución" className="lg:col-span-2">
         <BarList items={automations.by_trigger} labels={TRIGGER_LABELS} emptyLabel="Sin ejecuciones en el período" />
       </Panel>
     </div>
