@@ -311,3 +311,33 @@ class WebhookInbox(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class KnowledgeTemplate(Base):
+    """Documento modelo que la plataforma ofrece a todos los negocios (ficha de
+    un tratamiento, preguntas frecuentes, guion). Un negocio lo importa como
+    copia propia en su ``knowledge_documents`` y la edita a su gusto: cambiar
+    la plantilla después no toca las copias ya importadas. ``version`` sube con
+    cada edición para poder avisar, más adelante, que hay una más nueva."""
+
+    __tablename__ = "knowledge_templates"
+    __table_args__ = (
+        CheckConstraint(
+            "document_type IS NULL OR document_type IN ('ficha', 'politica', 'faq', 'guion', 'otro')",
+            name="knowledge_templates_type_check",
+        ),
+        CheckConstraint("version >= 1", name="knowledge_templates_version_check"),
+        {"schema": "public"},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    document_type: Mapped[str | None] = mapped_column(Text)
+    # Servicio al que suele corresponder ("Hollywood Peel"): sirve para
+    # proponer el servicio del negocio al importar; no es una referencia.
+    service_hint: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

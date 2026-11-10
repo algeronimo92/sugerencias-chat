@@ -125,7 +125,7 @@ describe('LeadAutomationPanel', () => {
 
     await user.click(screen.getByRole('button', { expanded: false }))
 
-    expect(screen.getByText(/1\. Enviar mensaje directo/)).toBeInTheDocument()
+    expect(screen.getByText(/1\. Enviar mensaje de texto/)).toBeInTheDocument()
     expect(screen.getByText(/2\. Pausa/)).toBeInTheDocument()
     expect(screen.getByText(/espera 30 min 0 s/)).toBeInTheDocument()
   })
@@ -192,20 +192,6 @@ describe('LeadAutomationPanel', () => {
     expect(resumeMutate).toHaveBeenCalledWith(77, expect.anything())
   })
 
-  it('no deja reanudar sola a una congelada junto con el chat entero', async () => {
-    // La reanuda el botón del bot de la cabecera: hacerlo desde acá la
-    // devolvería a la cola para que el scheduler la congele otra vez.
-    vi.mocked(useAutomationExecutions).mockReturnValue({
-      data: [execution({ status: 'paused', pause_scope: 'lead', paused_at: '2026-07-20T15:10:00Z' })],
-    } as never)
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
-
-    await user.click(screen.getByRole('button', { expanded: false }))
-
-    expect(screen.getByRole('button', { name: 'Reanudar Cliente sin responder' })).toBeDisabled()
-  })
-
   it('no deja pausar mientras está ejecutando un paso', async () => {
     vi.mocked(useAutomationExecutions).mockReturnValue({
       data: [execution({ status: 'running' })],
@@ -216,5 +202,46 @@ describe('LeadAutomationPanel', () => {
     await user.click(screen.getByRole('button', { expanded: false }))
 
     expect(screen.getByRole('button', { name: 'Pausar Cliente sin responder' })).toBeDisabled()
+  })
+  it('reanuda también lo que la regla anterior dejó pausado junto con el chat', async () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ id: 78, status: 'paused', pause_scope: 'lead', paused_at: '2026-07-20T15:10:00Z' })],
+    } as never)
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
+
+    await user.click(screen.getByRole('button', { expanded: false }))
+    await user.click(screen.getByRole('button', { name: 'Reanudar Cliente sin responder' }))
+
+    expect(resumeMutate).toHaveBeenCalledWith(78, expect.anything())
+  })
+
+  it('con las automatizaciones nuevas apagadas dice que lo que está en marcha sigue', () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({})],
+    } as never)
+    render(<LeadAutomationPanel chatId={CHAT_ID} botDisabled />, { wrapper })
+
+    expect(screen.getByText(/Sin automatizaciones nuevas: esta sigue en marcha/)).toBeInTheDocument()
+  })
+
+  it('con las automatizaciones nuevas apagadas y todo en pausa no dice que algo siga', () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ status: 'paused', pause_scope: 'execution', paused_at: '2026-07-20T15:10:00Z' })],
+    } as never)
+    render(<LeadAutomationPanel chatId={CHAT_ID} botDisabled />, { wrapper })
+
+    expect(screen.queryByText(/sigue en marcha/)).toBeNull()
+    expect(screen.getByText('· en pausa')).toBeInTheDocument()
+  })
+
+  it('resume varias automatizaciones sin contradecirse', () => {
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [execution({ id: 1 }), execution({ id: 2, status: 'paused', pause_scope: 'execution', paused_at: '2026-07-20T15:10:00Z' })],
+    } as never)
+    render(<LeadAutomationPanel chatId={CHAT_ID} />, { wrapper })
+
+    expect(screen.getByText('2 automatizaciones')).toBeInTheDocument()
+    expect(screen.getByText('· 1 en pausa')).toBeInTheDocument()
   })
 })

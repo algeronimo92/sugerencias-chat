@@ -24,6 +24,7 @@ export const leadKeys = {
   unreadCount: ['unread-count'] as const,
   /** Los valores de los campos personalizados de un lead. */
   customFieldValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
+  /** Las compras del lead (con qué paquete cerró). */
 }
 
 export const kanbanKeys = {

@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
 import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
-import type { AutomationExecutionFilters } from './types'
+import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
 
 export type { AutomationRuleInput } from './types'
@@ -13,6 +13,36 @@ export function useAutomationRules() {
     queryKey: automationKeys.all,
     queryFn: fetchAutomationRules,
     refetchInterval: connected ? false : 60_000,
+  })
+}
+
+export interface AutomationRuleSummary {
+  id: number
+  name: string
+  builder_mode: AutomationRule['builder_mode']
+  is_active: boolean
+  published: boolean
+}
+
+function summarize(rules: AutomationRule[]): AutomationRuleSummary[] {
+  return rules.map(rule => ({ id: rule.id, name: rule.name, builder_mode: rule.builder_mode, is_active: rule.is_active, published: rule.published_flow_definition !== null }))
+}
+
+/**
+ * Lo mínimo que el constructor de flujos necesita de las demás reglas: qué
+ * flujos se pueden invocar y cómo se llaman. Cada paso del motor emite
+ * `automations_updated` y vuelve a traer todas las reglas; con la lista
+ * completa (contadores de ejecución, definiciones) cada refresco cambiaba la
+ * referencia y el lienzo redibujaba sus 50 bloques por cada mensaje de
+ * WhatsApp. `select` devuelve la misma referencia mientras esto no cambie.
+ */
+export function useAutomationRuleSummaries() {
+  const connected = useChatSocketConnected()
+  return useQuery({
+    queryKey: automationKeys.all,
+    queryFn: fetchAutomationRules,
+    refetchInterval: connected ? false : 60_000,
+    select: summarize,
   })
 }
 
@@ -33,9 +63,9 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
         const hasActiveExecution = query.state.data?.some(
           (execution) => execution.status === 'scheduled'
             || execution.status === 'running'
-            // Una congelada no cambia sola, pero sí cuando el vendedor reanuda
-            // el lead: sin el poll, el panel se quedaría mostrando "en pausa"
-            // hasta el próximo evento si el WebSocket está caído.
+            // Una pausada no cambia sola, pero otra persona puede reanudarla
+            // desde su pestaña: sin el poll, el panel se quedaría mostrando
+            // "en pausa" hasta el próximo evento si el WebSocket está caído.
             || execution.status === 'paused'
         )
         if (hasActiveExecution) return ACTIVE_EXECUTION_POLL_MS

@@ -16,6 +16,9 @@ interface ServiceComboboxProps {
   onChange: (name: string) => void
   disabled?: boolean
   className?: string
+  /** Ayuda y error del formulario que lo contiene. */
+  'aria-describedby'?: string
+  invalid?: boolean
 }
 
 const optionClass = 'flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm'
@@ -25,7 +28,7 @@ const optionClass = 'flex min-h-10 cursor-pointer select-none items-center gap-2
  * solo filtra: el valor cambia al elegir un servicio o al crearlo desde aquí,
  * con el mismo endpoint y permisos que la pantalla de Catálogos.
  */
-export function ServiceCombobox({ id, value, onChange, disabled, className }: ServiceComboboxProps) {
+export function ServiceCombobox({ id, value, onChange, disabled, className, 'aria-describedby': describedBy, invalid }: ServiceComboboxProps) {
   const { data: services = [], isLoading } = useLeadServices()
   const createService = useCreateLeadService()
   const listId = useId()
@@ -101,7 +104,8 @@ export function ServiceCombobox({ id, value, onChange, disabled, className }: Se
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? `${optionId}-${active}` : undefined}
-          aria-invalid={error ? true : undefined}
+          aria-invalid={error || invalid ? true : undefined}
+          aria-describedby={describedBy}
           autoComplete="off"
           value={query}
           placeholder="Busca o crea un servicio"

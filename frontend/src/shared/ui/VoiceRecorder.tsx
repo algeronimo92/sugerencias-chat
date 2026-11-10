@@ -37,20 +37,20 @@ function describeMicError(err: unknown): string {
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
     return (
       'El navegador tiene bloqueado el acceso al micrófono para este sitio. ' +
-      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
-      'izquierda de la URL → "Permisos del sitio" → Micrófono → Permitir, y volvé a cargar la página.'
+      'Para habilitarlo: haz clic en el ícono de candado (o de información) a la ' +
+      'izquierda de la URL → "Permisos del sitio" → Micrófono → Permitir, y vuelve a cargar la página.'
     )
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return 'No se encontró ningún micrófono conectado a esta computadora.'
   }
   if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return 'El micrófono está siendo usado por otra aplicación. Cerrala e intentá de nuevo.'
+    return 'El micrófono está siendo usado por otra aplicación. Ciérrala e intenta de nuevo.'
   }
   if (name === 'SecurityError') {
     return 'Grabar audio requiere una conexión segura (HTTPS) para este sitio.'
   }
-  return 'No se pudo acceder al micrófono. Revisá los permisos del navegador para este sitio y volvé a cargar la página.'
+  return 'No se pudo acceder al micrófono. Revisa los permisos del navegador para este sitio y vuelve a cargar la página.'
 }
 
 export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange }: Props) {
@@ -284,7 +284,7 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
       await audio.play()
     } catch {
       setIsReviewPlaying(false)
-      onError('No se pudo reproducir la grabación. Intentá pausarla nuevamente.')
+      onError('No se pudo reproducir la grabación. Intenta pausarla nuevamente.')
     }
   }
 
@@ -351,7 +351,7 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
           </div>
           <span className="shrink-0 text-sm font-medium tabular-nums text-wa-text dark:text-wa-text-dark">{formatElapsed(elapsedMs)}</span>
           <span className="sr-only" aria-live="polite">
-            {paused ? 'Grabación pausada; podés escucharla, continuarla o enviarla' : hasSignal ? 'El micrófono detecta audio' : 'Esperando señal de voz'}
+            {paused ? 'Grabación pausada; puedes escucharla, continuarla o enviarla' : hasSignal ? 'El micrófono detecta audio' : 'Esperando señal de voz'}
           </span>
         </div>
 

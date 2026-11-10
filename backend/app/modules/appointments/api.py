@@ -6,7 +6,7 @@ import base64
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.appointments.application import calendar_template, commands
-from app.modules.appointments.domain.appointment import AppointmentRequest, LeadLink
+from app.modules.appointments.domain.appointment import CUSTOM_ADELANTO_KEY, AppointmentRequest, LeadLink
 from app.modules.appointments.queries import list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
 from app.modules.auth.public import User
@@ -80,13 +80,19 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
     except PhoneValidationError as exc:
         raise HTTPException(400, str(exc)) from exc
     if body.vendedor.strip() not in await _active_seller_names():
-        raise HTTPException(400, "Vendedor inválido: elegí un usuario activo del equipo")
+        raise HTTPException(400, "Vendedor inválido: elige un usuario activo del equipo")
     if body.test_mode and user.role != "admin":
         raise HTTPException(403, "Solo un administrador puede enviar en modo prueba")
     try:
         custom_fields = await normalize_values("appointment", body.custom_fields, require_required=True)
     except CustomFieldError as exc:
         raise HTTPException(422, str(exc)) from exc
+    # El campo personalizado "adelanto" es un número libre, pero es plata que
+    # dejó la clienta: un negativo es un error de tipeo que después restaría en
+    # los montos del dashboard. El campo fijo ya lo impide en el esquema.
+    deposit = custom_fields.get(CUSTOM_ADELANTO_KEY)
+    if isinstance(deposit, (int, float)) and not isinstance(deposit, bool) and deposit < 0:
+        raise HTTPException(422, "Adelanto: no puede ser negativo")
 
     lead = await _lead_link(body)
     files = _attachment(body)

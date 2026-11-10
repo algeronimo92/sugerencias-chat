@@ -128,6 +128,21 @@ async def record_ai_job_step(job_id: str, step: str) -> bool:
     return True
 
 
+async def record_ai_job_metadata(job_id: str, **values) -> bool:
+    """Anota en el job qué modelo respondió, cuántos tokens costó y qué
+    conocimiento entró al prompt: es lo que permite auditar una sugerencia y
+    medir el costo por negocio."""
+
+    async with session_scope() as session:
+        job = await session.get(AIJob, job_id, with_for_update=True)
+        if job is None:
+            return False
+        metadata = dict(job.request_metadata or {})
+        metadata.update({key: value for key, value in values.items() if value is not None})
+        job.request_metadata = metadata
+    return True
+
+
 async def finish_ai_job(
     job_id: str,
     *,

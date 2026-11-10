@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from app.core.events import Phase, subscribe
-from app.modules.catalogs.public import ServiceRenamed
+from app.modules.catalogs.public import USAGE_ITEMS, ServiceDeletionRequested, ServiceRenamed, describe_usage
 from app.modules.conversations.public import InternalNoteWritten
 from app.modules.leads.application.commands import record_note_activity, rename_service
 from app.modules.leads.domain.events import (
@@ -25,6 +25,7 @@ from app.modules.leads.domain.events import (
     LeadsMerged,
 )
 from app.modules.leads.domain.lead import BOOKKEEPING_FIELDS, Actor
+from app.modules.leads.queries import service_usage
 from app.realtime.ws_manager import manager
 
 @subscribe(LeadCreated, phase=Phase.AFTER_COMMIT)
@@ -78,6 +79,13 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
         event.old_name, event.new_name,
         actor=Actor.of(event.actor_user_id), service_id=event.service_id,
     )
+
+
+@subscribe(ServiceDeletionRequested, phase=Phase.TRANSACTION)
+async def report_service_usage(event: ServiceDeletionRequested) -> None:
+    usage = await service_usage(event.service_id, event.name, USAGE_ITEMS)
+    if usage["leads"]:
+        event.usages.append(describe_usage("leads", usage["leads"], "lead", "leads", usage["lead_items"]))
 
 
 @subscribe(InternalNoteWritten, phase=Phase.TRANSACTION)

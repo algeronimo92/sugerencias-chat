@@ -1,5 +1,5 @@
 import { AlertTriangle, BadgePercent, Clock3, LockKeyhole, Megaphone, MessageCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { CustomerServiceWindow } from '../types'
 
 function useRemainingSeconds(expiresAt: string | null | undefined) {
@@ -34,6 +34,18 @@ function formatExpiry(expiresAt: string) {
   })
 }
 
+/** En el celular la cabecera del chat no da para la frase entera: se ve la
+ *  versión corta y la larga queda para el lector de pantalla. Desde sm se ve
+ *  la larga. */
+function Compact({ short, full }: { short: ReactNode; full: ReactNode }) {
+  return (
+    <>
+      <span className="sm:hidden" aria-hidden="true">{short}</span>
+      <span className="max-sm:sr-only">{full}</span>
+    </>
+  )
+}
+
 export function CustomerServiceWindowBadge({ data, isLoading }: { data?: CustomerServiceWindow; isLoading: boolean }) {
   const remaining = useRemainingSeconds(data?.expires_at)
   const freeEntryRemaining = useRemainingSeconds(data?.free_entry_point_expires_at)
@@ -49,30 +61,31 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
         title="Este lead todavía no escribió por WhatsApp. La ventana de 24 h arranca con su primer mensaje."
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-wa-field px-2 py-1 text-[10px] font-medium text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark"
       >
-        <MessageCircle className="h-3 w-3 shrink-0" /> Todavía no te escribió
+        <MessageCircle className="h-3 w-3 shrink-0" /> <Compact short="Sin mensajes" full="Todavía no te escribió" />
       </span>
     )
   }
   if (!isOpen && freeEntryRemaining > 0) {
     return (
       <span
-        title={`Venció la ventana de 24 h: para escribirle usá una plantilla aprobada. Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data?.free_entry_point_expires_at as string)}, ni siquiera los de marketing.`}
+        title={`Venció la ventana de 24 h: para escribirle usa una plantilla aprobada. Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data?.free_entry_point_expires_at as string)}, ni siquiera los de marketing.`}
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
       >
         <BadgePercent className="h-3 w-3 shrink-0" />
-        <span>
-          Plantillas gratis · <span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span>
-        </span>
+        <Compact
+          short={<span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span>}
+          full={<>Plantillas gratis · <span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span></>}
+        />
       </span>
     )
   }
   if (!isOpen) {
     return (
       <span
-        title="Pasaron más de 24 h desde el último mensaje del cliente. Para escribirle, usá una plantilla aprobada de WhatsApp."
+        title="Pasaron más de 24 h desde el último mensaje del cliente. Para escribirle, usa una plantilla aprobada de WhatsApp."
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
       >
-        <LockKeyhole className="h-3 w-3 shrink-0" /> Venció el plazo para responder
+        <LockKeyhole className="h-3 w-3 shrink-0" /> <Compact short="Vencido" full="Venció el plazo para responder" />
       </span>
     )
   }
@@ -80,13 +93,14 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const warning = remaining <= 6 * 3600
   return (
     <span
-      title={`Ventana de 24 h de WhatsApp: podés responder con mensajes libres hasta el ${formatExpiry(data.expires_at as string)}. Después, solo con plantillas aprobadas.${freeEntryRemaining > 0 ? ` Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data.free_entry_point_expires_at as string)}.` : ''}`}
+      title={`Ventana de 24 h de WhatsApp: puedes responder con mensajes libres hasta el ${formatExpiry(data.expires_at as string)}. Después, solo con plantillas aprobadas.${freeEntryRemaining > 0 ? ` Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data.free_entry_point_expires_at as string)}.` : ''}`}
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-medium ${urgent ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400' : warning ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-green-50 text-wa-primary-strong dark:bg-green-950/40 dark:text-wa-primary'}`}
     >
       {urgent ? <AlertTriangle className="h-3 w-3 shrink-0" /> : <Clock3 className="h-3 w-3 shrink-0" />}
-      <span>
-        Quedan <span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span> para responder
-      </span>
+      <Compact
+        short={<span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span>}
+        full={<>Quedan <span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span> para responder</>}
+      />
     </span>
   )
 }
@@ -103,7 +117,7 @@ export function CustomerServiceWindowNotice({ data }: { data?: CustomerServiceWi
       <div className="flex gap-2 border-t border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
         <Megaphone className="mt-0.5 h-4 w-4 shrink-0" />
         <p>
-          <span className="font-semibold">Llegó por un anuncio.</span> Si le respondés en los próximos{' '}
+          <span className="font-semibold">Llegó por un anuncio.</span> Si le respondes en los próximos{' '}
           <span className="font-semibold tabular-nums">{formatRemaining(adReplyRemaining)}</span>, Meta no cobra ningún
           mensaje a este cliente durante hasta 7 días (solo si tocó el anuncio desde el celular).
         </p>
@@ -133,7 +147,7 @@ export function CustomerServiceWindowNotice({ data }: { data?: CustomerServiceWi
         <div>
           <p className="font-semibold text-wa-text dark:text-wa-text-dark">Todavía no te escribió</p>
           <p className="mt-0.5 text-[11px] opacity-80">
-            Iniciá vos la conversación. Si el mensaje no llega, usá una plantilla aprobada de WhatsApp.
+            Inicia tú la conversación. Si el mensaje no llega, usa una plantilla aprobada de WhatsApp.
           </p>
         </div>
       </div>
@@ -146,8 +160,8 @@ export function CustomerServiceWindowNotice({ data }: { data?: CustomerServiceWi
         <div>
           <p className="font-semibold">Venció el plazo de 24 h para responder</p>
           <p className="mt-0.5 text-[11px] opacity-80">
-            Pasó más de un día desde el último mensaje del cliente. Podés intentar enviar igual, pero WhatsApp podría
-            limitarlo o rechazarlo. Para que llegue seguro, usá una plantilla oficial aprobada.
+            Pasó más de un día desde el último mensaje del cliente. Puedes intentar enviar igual, pero WhatsApp podría
+            limitarlo o rechazarlo. Para que llegue seguro, usa una plantilla oficial aprobada.
           </p>
         </div>
       </div>
@@ -157,7 +171,7 @@ export function CustomerServiceWindowNotice({ data }: { data?: CustomerServiceWi
     <div className="flex gap-2 border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
       <AlertTriangle className="h-4 w-4 shrink-0" />
       <p>
-        <span className="font-semibold">Quedan {formatRemaining(remaining)} para responder.</span> Enviá el seguimiento
+        <span className="font-semibold">Quedan {formatRemaining(remaining)} para responder.</span> Envía el seguimiento
         antes de que venza el plazo de 24 h.
       </p>
     </div>

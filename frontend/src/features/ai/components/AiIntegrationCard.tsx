@@ -1,0 +1,229 @@
+import { Check, Loader2, PlugZap, Sparkles, Trash2 } from 'lucide-react'
+import { useState, type ComponentType } from 'react'
+import { toast } from 'sonner'
+import { Button } from '../../../shared/ui/Button'
+import { GeminiMark, OpenAIMark } from '../../../shared/ui/BrandMarks'
+import { Input } from '../../../shared/ui/Input'
+import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
+import { extractErrorMessage } from '../../../shared/utils/errors'
+import { useSaveSettings } from '../../platform/public/useSettings'
+import { AdvancedModelSettings, ModelParamsEditor } from './ModelParamsEditor'
+import { ModelOrder } from './ModelOrder'
+import { useAiProviders, useRefreshAiProviders, useTestAiProvider } from '../hooks/useAiProviders'
+import type { AiProvidersStatus, AiProviderTestResult } from '../types'
+
+const MARKS: Record<string, ComponentType<{ className?: string }>> = { gemini: GeminiMark, openai: OpenAIMark }
+const KEY_SETTING: Record<string, string> = { gemini: 'ai_gemini_api_key', openai: 'ai_openai_api_key' }
+
+type Provider = AiProvidersStatus['providers'][number]
+
+/**
+ * "Probar y guardar" valida la clave tipeada contra el proveedor (pidiendo su
+ * lista de modelos, sin generar nada) y solo la guarda si la acepta. No se
+ * prueba contra el modelo elegido: cuando Google retiró gemini-2.0-flash, una
+ * clave buena se rechazaba por culpa del modelo y no de la clave.
+ */
+function useProviderKey(provider: Provider, onSaved: () => void) {
+  const [apiKey, setApiKey] = useState('')
+  const [result, setResult] = useState<AiProviderTestResult | null>(null)
+  const test = useTestAiProvider()
+  const save = useSaveSettings()
+  const typed = apiKey.trim()
+  const setting = KEY_SETTING[provider.provider]
+
+  function saveTyped() {
+    save.mutate({ [setting]: typed }, {
+      onSuccess: () => { setApiKey(''); onSaved(); toast.success(`Clave de ${provider.label} guardada`) },
+      onError: err => toast.error(extractErrorMessage(err)),
+    })
+  }
+
+  function testKey() {
+    setResult(null)
+    test.mutate({ provider: provider.provider, apiKey: typed || null, model: null }, {
+      onSuccess: outcome => {
+        setResult(outcome)
+        if (outcome.ok && typed) saveTyped()
+      },
+      onError: err => setResult({ ok: false, provider: provider.provider, error: extractErrorMessage(err) }),
+    })
+  }
+
+  function removeKey() {
+    save.mutate({ [setting]: '' }, {
+      onSuccess: () => { setResult(null); onSaved(); toast.success(`Clave de ${provider.label} quitada`) },
+      onError: err => toast.error(extractErrorMessage(err)),
+    })
+  }
+
+  function type(value: string) {
+    setApiKey(value)
+    setResult(null)
+  }
+
+  return { apiKey, typed, result, type, testKey, removeKey, testing: test.isPending, busy: test.isPending || save.isPending }
+}
+
+function KeyStatusChip({ configured }: { configured: boolean }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${configured ? 'bg-wa-primary/15 text-wa-primary-strong dark:text-wa-primary' : 'bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark'}`}>
+      {configured ? 'Clave guardada' : 'Sin clave'}
+    </span>
+  )
+}
+
+function KeyTestResult({ result, typed }: { result: AiProviderTestResult; typed: boolean }) {
+  if (!result.ok) {
+    return <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{result.error}. La clave no se guardó.</p>
+  }
+  const latency = result.latency_ms != null ? ` · ${result.latency_ms} ms` : ''
+  return (
+    <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
+      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      {typed ? 'Clave válida' : 'La clave guardada sigue siendo válida'}{latency}
+    </p>
+  )
+}
+
+/** Una fila por proveedor: su clave, la prueba y el resultado. */
+type ProviderRole = 'primary' | 'fallback' | null
+
+/** Qué papel cumple cada proveedor en el orden elegido (o el que tomó por defecto). */
+function providerRole(provider: string, status: AiProvidersStatus): ProviderRole {
+  if (status.primary_model.startsWith(`${provider}:`)) return 'primary'
+  if (status.fallback_model.startsWith(`${provider}:`)) return 'fallback'
+  return null
+}
+
+function RoleChip({ role }: { role: ProviderRole }) {
+  if (!role) return null
+  return role === 'primary'
+    ? <span className="rounded bg-wa-primary px-1.5 py-0.5 text-[11px] font-semibold text-white">1 · Procesa</span>
+    : <span className="rounded border border-wa-border px-1.5 py-0.5 text-[11px] font-medium text-wa-muted dark:border-wa-border-dark dark:text-wa-muted-dark">2 · Respaldo</span>
+}
+
+function ProviderKeyRow({ provider, role, onSaved }: { provider: Provider; role: ProviderRole; onSaved: () => void }) {
+  const Mark = MARKS[provider.provider] ?? Sparkles
+  const key = useProviderKey(provider, onSaved)
+  const inputId = `ai-key-${provider.provider}`
+  const configured = provider.key_configured
+
+  return (
+    <div className="rounded-lg border border-wa-border/70 p-3 dark:border-wa-border-dark/70">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={inputId} className="flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">
+          <Mark className="h-5 w-5 text-wa-text dark:text-wa-text-dark" />
+          {provider.label}
+        </label>
+        <span className="flex items-center gap-1.5">
+          <RoleChip role={role} />
+          <KeyStatusChip configured={configured} />
+        </span>
+      </div>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <Input
+          id={inputId}
+          type="password"
+          autoComplete="off"
+          value={key.apiKey}
+          onChange={event => key.type(event.target.value)}
+          placeholder={configured ? '•••• guardada (escribe otra para reemplazarla)' : 'Pega aquí la API key'}
+          className="min-w-0 flex-1"
+        />
+        <div className="flex gap-2">
+          <Button variant="secondary" className="h-11 flex-1 sm:h-9 sm:flex-none" onClick={key.testKey} disabled={key.busy || (!key.typed && !configured)} aria-busy={key.testing}>
+            {key.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <PlugZap className="h-4 w-4" aria-hidden="true" />}
+            {key.typed ? 'Probar y guardar' : 'Probar'}
+          </Button>
+          {configured && (
+            <Button variant="ghost" size="icon" className="h-11 w-11 text-red-600 sm:h-9 sm:w-9 dark:text-red-400" onClick={key.removeKey} disabled={key.busy} aria-label={`Quitar clave de ${provider.label}`}>
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+      </div>
+      {key.result && <KeyTestResult result={key.result} typed={Boolean(key.typed)} />}
+    </div>
+  )
+}
+
+
+/**
+ * Configuración de IA de las sugerencias de respuesta (el copiloto del chat),
+ * no de toda la IA del CRM: el análisis del lead y la voz tienen la suya.
+ * Las sugerencias se generan en el CRM con las claves del negocio: sin una
+ * clave que funcione, el chat no las ofrece. Las claves son por proveedor y
+ * del negocio: si otra función de IA llega a usarlas, se comparten.
+ */
+export function AiIntegrationCard() {
+  const { data: status, isLoading, isError } = useAiProviders()
+  const refresh = useRefreshAiProviders()
+  const save = useSaveSettings()
+
+  if (isLoading || !status) {
+    return (
+      <IntegrationCard id="ia-sugerencias" icon={Sparkles} title="Sugerencias con IA" description="Cargando…" state={isError ? 'error' : 'unconfigured'} />
+    )
+  }
+
+  const state: IntegrationState = status.ready ? 'connected' : 'unconfigured'
+  const stateLabel = status.ready ? 'Conectado · tus claves' : undefined
+
+  function saveValues(values: Record<string, string>, message: string) {
+    save.mutate(values, {
+      onSuccess: () => { refresh(); toast.success(message) },
+      onError: err => toast.error(extractErrorMessage(err)),
+    })
+  }
+
+
+  return (
+    <IntegrationCard
+      id="ia-sugerencias"
+      icon={Sparkles}
+      title="Sugerencias con IA"
+      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo que procesa falla, responde el de respaldo. Otras funciones de IA se configuran aparte."
+      state={state}
+      stateLabel={stateLabel}
+    >
+      <div className="space-y-4">
+        <div className="grid gap-3 lg:grid-cols-2">
+          {/* El que procesa va primero: el orden de las filas es el de la cadena. */}
+          {[...status.providers]
+            .sort((a, b) => Number(providerRole(b.provider, status) === 'primary') - Number(providerRole(a.provider, status) === 'primary'))
+            .map(provider => (
+            <ProviderKeyRow key={provider.provider} provider={provider} role={providerRole(provider.provider, status)} onSaved={refresh} />
+          ))}
+        </div>
+
+        <ModelOrder status={status} disabled={save.isPending} onSave={saveValues} />
+
+        <AdvancedModelSettings customized={Object.keys(status.primary_params ?? {}).length + Object.keys(status.fallback_params ?? {}).length}>
+          <ModelParamsEditor
+            key={`${status.primary_model}|${JSON.stringify(status.primary_params)}`}
+            title="Modelo principal"
+            schema={status.model_params?.[status.primary_model]}
+            overrides={status.primary_params ?? {}}
+            disabled={save.isPending}
+            onSave={overrides => saveValues({ ai_suggestions_primary_params: JSON.stringify(overrides) }, 'Ajustes del modelo principal guardados')}
+          />
+          <ModelParamsEditor
+            key={`${status.fallback_model}|${JSON.stringify(status.fallback_params)}`}
+            title="Modelo secundario"
+            schema={status.model_params?.[status.fallback_model]}
+            overrides={status.fallback_params ?? {}}
+            disabled={save.isPending}
+            onSave={overrides => saveValues({ ai_suggestions_fallback_params: JSON.stringify(overrides) }, 'Ajustes del modelo secundario guardados')}
+          />
+        </AdvancedModelSettings>
+
+        <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
+          {status.ready
+            ? 'Lo consume tu cuenta del proveedor.'
+            : 'Guarda al menos una clave que pase la prueba: mientras tanto el chat no ofrece sugerencias.'}
+          {' '}El análisis automático del lead sigue en el servicio de la plataforma.
+        </p>
+      </div>
+    </IntegrationCard>
+  )
+}

@@ -1,12 +1,15 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { StrictMode } from 'react'
+import { toast } from 'sonner'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Chat } from '../../leads/types'
 import { ContactSendDialog } from './ContactSendDialog'
 
 const mocks = vi.hoisted(() => ({
   sendContacts: vi.fn(),
+  contacts: null as unknown[] | null,
 }))
 
 const CONTACTS = [
@@ -16,7 +19,7 @@ const CONTACTS = [
 
 vi.mock('../../leads/public/queries', () => ({
   useInfiniteChats: () => ({
-    data: { pages: [{ items: CONTACTS, has_more: false }] },
+    data: { pages: [{ items: mocks.contacts ?? CONTACTS, has_more: false }] },
     isLoading: false,
     hasNextPage: false,
     isFetchingNextPage: false,
@@ -30,6 +33,26 @@ vi.mock('../hooks/useOutboundMessage', () => ({
 
 describe('ContactSendDialog', () => {
   beforeEach(() => mocks.sendContacts.mockReset())
+  afterEach(() => { mocks.contacts = null })
+
+  it('al llegar al límite avisa una sola vez y no agrega el contacto', async () => {
+    // React puede ejecutar un updater dos veces: el aviso vivía ahí y salía repetido.
+    mocks.contacts = Array.from({ length: 21 }, (_, index) => ({ chat_id: `lead-${index}`, name: `Contacto ${index}`, phone: `5190000${String(index).padStart(4, '0')}` }))
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => 'toast')
+    const user = userEvent.setup()
+    // StrictMode ejecuta cada updater dos veces, como puede hacerlo React en producción.
+    render(<StrictMode><ContactSendDialog chatId="lead-destino" targetName="Dermicapro" replyTo={null} onSent={vi.fn()} onClose={vi.fn()} /></StrictMode>)
+
+    for (let index = 0; index < 20; index++) {
+      await user.click(screen.getByRole('button', { name: new RegExp(`Contacto ${index}5190000`) }))
+    }
+    await user.click(screen.getByRole('button', { name: /Contacto 205190000/ }))
+
+    expect(error).toHaveBeenCalledOnce()
+    expect(error.mock.calls[0][0]).toContain('hasta 20 contactos')
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeInTheDocument()
+    error.mockRestore()
+  })
 
   it('selecciona varios contactos, los confirma y los envía juntos', async () => {
     const user = userEvent.setup()

@@ -9,8 +9,13 @@ export function extractErrorMessage(err: unknown): string {
     if (apiError.detail) return apiError.detail
     if (apiError.isNetwork) return apiError.message
     return apiError.status !== null && apiError.status >= 500
-      ? 'El servidor tuvo un problema. Intentá de nuevo en unos minutos.'
+      ? 'El servidor tuvo un problema. Intenta de nuevo en unos minutos.'
       : 'No se pudo completar la operación.'
   }
   return err instanceof Error ? err.message : 'Error desconocido'
+}
+
+/** A qué elemento se refiere el error del servidor (`target`), si lo dijo. */
+export function extractErrorTarget(err: unknown): string | null {
+  return asApiError(err)?.target ?? null
 }

@@ -14,7 +14,7 @@ Bell,ChevronRight,CirclePlay,
 Eye,EyeOff,
 FileText,
 Image as ImageIcon,MessageSquareText,Paperclip,
-SmilePlus,Tag,Trash2,UserRound,Video,
+Play,SmilePlus,Tag,Trash2,UserRound,Video,
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveMediaUrl } from '../../../whatsapp/public/message'
@@ -30,9 +30,16 @@ QuestionHandle,
 WAIT_ANY_CONDITION_LABELS,
 WaitAnyConditionKind,
 } from '../../domain/automationCatalog'
+import { TASK_PRIORITY_LABELS } from '../../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
-import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
-import { fromCanvasEdge, toCanvasEdges } from './flowCanvasEdges'
+import { FLOW_TONES, flowTone, isMessageAction, MESSAGE_ICON, minimapFill } from '../../domain/flowTones'
+import { ZoomScale } from './ZoomScale'
+import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
+import { BUTTON_COLORS, CONDITION_GROUP_COLOR, fromCanvasEdge, HANDLE_COLORS, handleColor, ROUND_ROBIN_OUTPUT_COLOR, toCanvasEdges } from './flowCanvasEdges'
+import { useReconciled } from './useReconciled'
+import { NodeTypeMenu } from './NodeTypeMenu'
+import { useConnectDrop } from './useConnectDrop'
+import { useFocusNodes } from './useFocusNodes'
 
 /** Datos del bloque tal como los guarda el backend, más lo que el lienzo
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
@@ -64,18 +71,26 @@ interface CanvasNodeData {
   previewTemplate?: MessageTemplate
   previewAsset?: MediaAsset
   previewTagName?: string
+  previewUserName?: string
   connectionRole?: 'source' | 'target' | 'both'
-  connectionDimmed?: boolean
+  flagged?: boolean
+  number?: number
+  loose?: boolean
 }
 
 type CanvasNode = Node<CanvasNodeData>
+const MINIMAP_SIZE = { width: 160, height: 110 }
 
 const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
 const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
 const EMPTY_TEMPLATES: MessageTemplate[] = []
 const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
-const EMPTY_FLOW_RULES: AutomationRule[] = []
+const EMPTY_FLOW_RULES: ReadonlyArray<{ id: number; name: string }> = []
 const EMPTY_TAGS: TagRecord[] = []
+const EMPTY_USERS: ReadonlyArray<{ id: number; name: string }> = []
+const NO_FLAGGED: ReadonlySet<string> = new Set()
+/** Bloques del recorrido resaltado: los demás se atenúan por CSS (`.flow-spotlight`). */
+const CONNECTED_NODE_CLASS = 'flow-connected'
 
 /** El tema de la app es un toggle manual (ver hooks/useTheme.ts: clase `dark`
  *  en <html>, guardada en localStorage) y no sigue las preferencias del
@@ -105,53 +120,14 @@ function storedConnectionHighlightPreference(): boolean {
 }
 
 function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): string {
-  if (type === FlowNodeType.Question) return 'Mensaje interactivo'
+  if (type === FlowNodeType.Question) return 'Pregunta (botones)'
   if (type === FlowNodeType.RoundRobin) return 'Reparto por turnos'
-  if (type === FlowNodeType.InvokeFlow) return 'Flujo hijo'
+  if (type === FlowNodeType.InvokeFlow) return 'Iniciar otro flujo'
   if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Pausa'
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
   const action = data.action
   if (action?.type === AutomationActionType.ReactToLastCustomerMessage) return 'Reacción'
-  return action?.type === AutomationActionType.SendMessage
-    || action?.type === AutomationActionType.SendTemplate
-    || action?.type === AutomationActionType.SendAudio
-    || action?.type === AutomationActionType.SendAttachment
-    || action?.type === AutomationActionType.SendMedia
-    ? 'Mensaje'
-    : 'Acción'
-}
-
-// Antes cada tipo pintaba toda la tarjeta con un fondo pastel + borde grueso
-// del mismo color (look "arcoíris"). Ahora la tarjeta es blanca/neutra
-// siempre (ver NodeShell) y el tipo se identifica solo con una franja de
-// acento delgada en el borde izquierdo, igual que la referencia de diseño
-// ("Hollywood Peel"): tarjetas planas, acento discreto en vez de bloques de
-// color.
-const ACCENT_BORDER: Record<AutomationFlowNodeType, string> = {
-  [FlowNodeType.Trigger]: 'border-l-wa-primary dark:border-l-slate-300',
-  [FlowNodeType.Condition]: 'border-l-amber-400 dark:border-l-amber-500',
-  [FlowNodeType.Action]: 'border-l-violet-400 dark:border-l-blue-500',
-  [FlowNodeType.InvokeFlow]: 'border-l-indigo-400 dark:border-l-violet-500',
-  [FlowNodeType.Wait]: 'border-l-cyan-400 dark:border-l-slate-500',
-  [FlowNodeType.WaitAny]: 'border-l-cyan-400 dark:border-l-slate-500',
-  [FlowNodeType.Question]: 'border-l-pink-400 dark:border-l-amber-500',
-  [FlowNodeType.RoundRobin]: 'border-l-teal-400 dark:border-l-slate-400',
-  [FlowNodeType.End]: 'border-l-gray-400 dark:border-l-blue-500',
-}
-
-// Icono y "kicker" (label superior) del tipo, en el mismo acento que el
-// borde de ACCENT_BORDER — solo dark:, en claro el icono se queda gris neutro
-// como hasta ahora.
-const DARK_ACCENT_TEXT: Record<AutomationFlowNodeType, string> = {
-  [FlowNodeType.Trigger]: 'dark:text-slate-300',
-  [FlowNodeType.Condition]: 'dark:text-amber-400',
-  [FlowNodeType.Action]: 'dark:text-blue-400',
-  [FlowNodeType.InvokeFlow]: 'dark:text-violet-400',
-  [FlowNodeType.Wait]: 'dark:text-slate-400',
-  [FlowNodeType.WaitAny]: 'dark:text-slate-400',
-  [FlowNodeType.Question]: 'dark:text-amber-400',
-  [FlowNodeType.RoundRobin]: 'dark:text-slate-300',
-  [FlowNodeType.End]: 'dark:text-blue-400',
+  return isMessageAction(action?.type) ? 'Mensaje' : 'Acción'
 }
 
 interface ShellProps {
@@ -162,8 +138,21 @@ interface ShellProps {
   children?: React.ReactNode
 }
 
+/** El objeto anterior si el candidato es igual campo a campo (y `data`, campo a campo). */
+function reuseIfSame(previous: CanvasNode | undefined, candidate: CanvasNode): CanvasNode {
+  if (!previous || previous.type !== candidate.type || previous.selected !== candidate.selected
+    || previous.position.x !== candidate.position.x || previous.position.y !== candidate.position.y) return candidate
+  const before = previous.data as Record<string, unknown>
+  const after = candidate.data as Record<string, unknown>
+  const keys = Object.keys(after)
+  if (keys.length !== Object.keys(before).length) return candidate
+  return keys.every(key => Object.is(before[key], after[key])) ? previous : candidate
+}
+
 function NodeShell({ id, type, data, selected, children }: ShellProps) {
-  const Icon = FLOW_NODE_VIEW[type].icon
+  // Tarjetas neutras con una franja del color del tipo (domain/flowTones).
+  const tone = flowTone(type, data.action?.type)
+  const Icon = tone === 'message' ? MESSAGE_ICON : FLOW_NODE_VIEW[type].icon
   const widthClass = type === FlowNodeType.Condition ? 'w-[26rem]' : 'w-72'
   const connectionClass = data.connectionRole === 'source'
     ? 'ring-2 ring-cyan-400 ring-offset-2 shadow-[0_0_24px_rgba(34,211,238,0.45)] dark:ring-offset-gray-950'
@@ -171,9 +160,11 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       ? 'ring-2 ring-violet-500 ring-offset-2 shadow-[0_0_24px_rgba(139,92,246,0.5)] dark:ring-offset-gray-950'
       : data.connectionRole === 'both'
         ? 'ring-2 ring-fuchsia-500 ring-offset-2 shadow-[0_0_24px_rgba(217,70,239,0.45)] dark:ring-offset-gray-950'
-        : selected
-          ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950'
-          : ''
+        : data.flagged
+          ? 'ring-[3px] ring-amber-400 ring-offset-2 shadow-[0_0_24px_rgba(251,191,36,0.5)] dark:ring-offset-gray-950'
+          : selected
+            ? 'ring-2 ring-wa-primary ring-offset-2 dark:ring-offset-gray-950'
+            : ''
   const connectionLabel = data.connectionRole === 'source'
     ? 'Origen'
     : data.connectionRole === 'target'
@@ -183,15 +174,18 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         : null
   return (
     <div
-      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm transition-[opacity,filter,box-shadow] duration-200 dark:border-flow-border-dark dark:bg-flow-panel-dark ${ACCENT_BORDER[type]} ${connectionClass} ${
-        data.connectionDimmed ? 'opacity-40 saturate-50' : ''
-      }`}
+      // El atenuado de los bloques no conectados va por CSS en el contenedor
+      // (`.flow-spotlight`, index.css), no acá: así pasar el mouse no vuelve
+      // a crear los 50 bloques, solo los 3 o 4 conectados.
+      className={`relative ${widthClass} rounded-xl border border-l-4 border-wa-border bg-white px-3 py-2.5 shadow-sm dark:border-flow-node-border-dark dark:bg-flow-panel-dark ${FLOW_TONES[tone].border} ${connectionClass}`}
     >
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
+      {data.loose && type !== FlowNodeType.Trigger && <span title="Ninguna ruta desde el inicio del flujo llega a este bloque: nunca se ejecutará y no deja publicar. Conéctalo o bórralo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Desconectado</span>}
+      {data.number != null && <span aria-label={`Bloque ${data.number}`} className="flow-number absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
-        <Icon className={`mt-0.5 h-4 w-4 shrink-0 text-gray-600 ${DARK_ACCENT_TEXT[type]}`} />
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${FLOW_TONES[tone].icon}`} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-bold uppercase tracking-wide text-wa-muted dark:text-slate-400">{nodeKindLabel(type, data)}</p>
           <p className="truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{flowNodeSummary(type, data)}</p>
@@ -201,7 +195,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
             type="button"
             title="Eliminar bloque"
             onClick={event => { event.stopPropagation(); data.onDelete?.(id) }}
-            className="nodrag text-wa-muted hover:text-red-500"
+            className="nodrag text-wa-muted hover:text-red-500 dark:text-wa-muted-dark"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -243,7 +237,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-300">
         <CirclePlay className="h-3.5 w-3.5 text-violet-600 dark:text-blue-400" /><span className="truncate">{asset?.filename ?? 'Audio sin seleccionar'}</span>
       </div>
-      {url ? <audio src={url} controls preload="metadata" className="h-8 w-full" /> : <EmptyPreview label="Elige un audio en las propiedades" />}
+      {url ? <audio src={url} controls preload="none" className="h-8 w-full" /> : <EmptyPreview label="Elige un audio en las propiedades" />}
     </div>
   }
 
@@ -256,7 +250,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
   if (action.type === AutomationActionType.SendMedia) {
     return <div className="nodrag nowheel mt-2 overflow-hidden rounded-lg border border-violet-200 bg-white/80 dark:border-blue-900 dark:bg-flow-row-dark" onClick={event => event.stopPropagation()}>
       {data.previewAsset ? <AttachmentMedia attachment={data.previewAsset} interactive /> : <EmptyPreview label="Elige un archivo para previsualizarlo" />}
-      <p className={`whitespace-pre-wrap px-2 py-1.5 text-[10px] leading-relaxed ${action.caption ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{action.caption || 'Sin caption'}</p>
+      <p className={`whitespace-pre-wrap px-2 py-1.5 text-[10px] leading-relaxed ${action.caption ? 'text-gray-700 dark:text-gray-200' : 'italic text-gray-400'}`}>{action.caption || 'Sin texto'}</p>
     </div>
   }
 
@@ -281,14 +275,14 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
     return <div className="mt-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[9px] dark:border-blue-900 dark:bg-flow-row-dark">
       <p className="font-semibold text-gray-800 dark:text-white">{action.title || 'Nueva tarea'}</p>
       {action.description && <p className="mt-0.5 line-clamp-2 text-gray-500 dark:text-gray-400">{action.description}</p>}
-      <div className="mt-1.5 flex items-center justify-between text-gray-500 dark:text-gray-400"><span>Vence en {formatWaitDuration(action.due_minutes * 60)}</span><span className="capitalize">{action.priority}</span></div>
+      <div className="mt-1.5 flex items-center justify-between text-gray-500 dark:text-gray-400"><span>Vence en {formatWaitDuration(action.due_minutes * 60)}</span><span>{TASK_PRIORITY_LABELS[action.priority]}</span></div>
     </div>
   }
 
   const detail = action.type === AutomationActionType.ChangeStage ? stageCatalog.label(action.stage)
     : action.type === AutomationActionType.ChangeService ? (action.service || 'Quitar servicio')
-    : action.type === AutomationActionType.AssignSeller ? (action.user_id ? `Usuario #${action.user_id}` : 'Vendedor del lead')
-    : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? (data.previewTagName ?? `Etiqueta #${action.tag_id}`) : 'Sin etiqueta')
+    : action.type === AutomationActionType.AssignSeller ? (action.user_id ? (data.previewUserName ?? `Usuario #${action.user_id}`) : 'Vendedor sin seleccionar')
+    : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? (action.tag_id ? (data.previewTagName ?? `Etiqueta #${action.tag_id}`) : 'Etiqueta sin seleccionar')
     : null
   const DetailIcon = action.type === AutomationActionType.AssignSeller ? UserRound
     : action.type === AutomationActionType.AddTag || action.type === AutomationActionType.RemoveTag ? Tag
@@ -317,14 +311,34 @@ function AttachmentMedia({ attachment, interactive = false }: { attachment: Prev
     return interactive ? <a href={url} target="_blank" rel="noreferrer" title="Abrir imagen" className="block overflow-hidden rounded-lg border border-violet-200 dark:border-blue-900">{image}<AttachmentCaption icon={ImageIcon} filename={attachment.filename} /></a> : image
   }
   if (attachment.content_type.startsWith('video/')) {
-    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><video src={url} controls={interactive} preload="metadata" className="h-32 w-full object-contain" />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
+    return <div className="overflow-hidden rounded-lg border border-violet-200 bg-black dark:border-blue-900"><LazyVideo url={url} filename={attachment.filename} />{interactive && <AttachmentCaption icon={Video} filename={attachment.filename} />}</div>
   }
   if (attachment.content_type.startsWith('audio/')) {
-    return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="metadata" className="mt-1 h-8 w-full" />}</div>
+    return <div className="rounded-lg border border-violet-200 bg-white/80 p-2 dark:border-blue-900 dark:bg-flow-row-dark"><AttachmentCaption icon={CirclePlay} filename={attachment.filename} />{interactive && <audio src={url} controls preload="none" className="mt-1 h-8 w-full" />}</div>
   }
   return <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/80 p-2 text-[10px] text-gray-700 dark:border-blue-900 dark:bg-flow-row-dark dark:text-gray-200">
     <FileText className="h-5 w-5 shrink-0 text-violet-600 dark:text-blue-400" /><span className="min-w-0 flex-1 truncate">{attachment.filename || 'Documento'}</span><Paperclip className="h-3 w-3" />
   </a>
+}
+
+/**
+ * El reproductor se monta recién al tocar "reproducir". Un `<video controls>`
+ * por bloque pedía los metadatos de todos al abrir el editor (Safari baja
+ * buena parte de cada archivo) y mantiene un reproductor con su decodificador
+ * y controles vivos aunque nadie lo mire; con diez videos en el lienzo la
+ * pantalla se arrastraba (2026-11-08).
+ */
+function LazyVideo({ url, filename }: { url: string; filename: string }) {
+  const [playing, setPlaying] = useState(false)
+  // Arranca desde el clic (gesto del usuario), no con autoPlay: los
+  // navegadores bloquean el autoplay con sonido y el lint lo marca.
+  if (playing) return <video src={url} controls playsInline preload="auto" ref={node => { void node?.play().catch(() => undefined) }} className="h-32 w-full object-contain" />
+  return (
+    <button type="button" onClick={() => setPlaying(true)} aria-label={`Reproducir ${filename || 'video'}`} className="flex h-32 w-full flex-col items-center justify-center gap-1 bg-black/90 text-white hover:bg-black">
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15"><Play className="ml-0.5 h-5 w-5" aria-hidden="true" /></span>
+      <span className="text-[9px] text-white/70">Video · toca para reproducir</span>
+    </button>
+  )
 }
 
 function AttachmentCaption({ icon: Icon, filename }: { icon: typeof ImageIcon; filename: string }) {
@@ -383,24 +397,17 @@ const ConditionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
             <span className="font-semibold">{FLOW_CONDITION_LABELS[condition.condition_type]}</span>
             {typeof condition.value === 'string' || typeof condition.value === 'number' ? <span>: {String(condition.value)}</span> : null}
           </div>)}
-          <Handle type="source" position={Position.Right} id={group.id} style={{ ...HANDLE_STYLE, background: '#00a884', right: -18, top: '50%' }} />
+          <Handle type="source" position={Position.Right} id={group.id} style={{ ...HANDLE_STYLE, background: CONDITION_GROUP_COLOR, right: -18, top: '50%' }} />
         </div>
       </div>)}
       <div className="relative rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[9px] font-bold text-red-500 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
         Ninguna de las condiciones
-        <Handle type="source" position={Position.Right} id={FlowHandle.No} style={{ ...HANDLE_STYLE, background: '#ef4444', right: -18, top: '50%' }} />
+        <Handle type="source" position={Position.Right} id={FlowHandle.No} style={{ ...HANDLE_STYLE, background: HANDLE_COLORS[FlowHandle.No], right: -18, top: '50%' }} />
       </div>
     </div>
   </NodeShell>
 })
 
-const WAIT_ANY_HANDLE_COLORS: Record<string, string> = {
-  [WaitAnyConditionKind.Timer]: '#0891b2',
-  [WaitAnyConditionKind.Message]: '#7c3aed',
-  [WaitAnyConditionKind.BusinessHours]: '#f59e0b',
-  [WaitAnyConditionKind.MediaPlayed]: '#db2777',
-  [WaitAnyConditionKind.MediaReceived]: '#059669',
-}
 
 /** Una fila por condición, cada una con su propia salida — el "id" de cada
  *  condición (== su "kind": "timer"/"message"/"business_hours"/
@@ -416,10 +423,10 @@ function PauseNodeView({ id, data, selected, legacy = false }: NodeProps<CanvasN
       <div className="mt-2 space-y-1.5">
         {conditions.map(condition => (
           <div key={condition.id} className="relative flex items-center rounded-md border border-cyan-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
-            <span>{condition.kind === WaitAnyConditionKind.Timer ? `Timer: ${formatWaitDuration(condition.seconds)}` : WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
+            <span>{condition.kind === WaitAnyConditionKind.Timer ? `Temporizador: ${formatWaitDuration(condition.seconds)}` : WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
             <Handle
               type="source" position={Position.Right} id={condition.id}
-              style={{ ...HANDLE_STYLE, background: WAIT_ANY_HANDLE_COLORS[condition.kind], right: -18, top: '50%' }}
+              style={{ ...HANDLE_STYLE, background: HANDLE_COLORS[condition.kind], right: -18, top: '50%' }}
             />
           </div>
         ))}
@@ -442,9 +449,9 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
     // "Mandó una foto" va antes que "Otra respuesta" porque es justamente lo
     // que le ganaba: sin esta salida, una foto sin caption no matchea ningún
     // botón y termina en la rama del que no mandó nada.
-    { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: '#059669' },
-    { handle: QuestionHandle.Other, label: 'Otra respuesta', color: '#6b7280' },
-    { handle: QuestionHandle.Timeout, label: 'Sin respuesta', color: '#ef4444' },
+    { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: HANDLE_COLORS[QuestionHandle.Media] },
+    { handle: QuestionHandle.Other, label: 'Otra respuesta', color: HANDLE_COLORS[QuestionHandle.Other] },
+    { handle: QuestionHandle.Timeout, label: 'Sin respuesta', color: HANDLE_COLORS[QuestionHandle.Timeout] },
   ]
   return (
     <NodeShell id={id} type={FlowNodeType.Question} data={data} selected={selected}>
@@ -453,7 +460,7 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
       <div className="mt-2 space-y-1">
         {rows.map(row => (
           <div key={row.handle} className="relative flex items-center gap-1.5 rounded-md border border-pink-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="truncate">{row.label || 'Opción sin texto'}</span>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="truncate">{row.label || 'Botón sin texto'}</span>
             <Handle type="source" position={Position.Right} id={row.handle} style={{ ...HANDLE_STYLE, background: row.color, right: -18, top: '50%' }} />
           </div>
         ))}
@@ -477,7 +484,7 @@ const RoundRobinNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
             <span className="truncate">{output.label || `Salida ${index + 1}`}</span>
             <Handle
               type="source" position={Position.Right} id={output.id}
-              style={{ ...HANDLE_STYLE, background: '#0d9488', right: -18, top: '50%' }}
+              style={{ ...HANDLE_STYLE, background: ROUND_ROBIN_OUTPUT_COLOR, right: -18, top: '50%' }}
             />
           </div>
         ))}
@@ -551,29 +558,93 @@ function DeletableConnection({
 
 const EDGE_TYPES: EdgeTypes = { deletable: DeletableConnection }
 
-const BUTTON_COLORS = ['#00a884', '#0891b2', '#7c3aed']
 
 interface FlowCanvasProps {
   flow: AutomationFlowDefinition
   templates?: MessageTemplate[]
   mediaAssets?: MediaAsset[]
-  flowRules?: AutomationRule[]
+  /** Solo id y nombre: lo que hace falta para titular "Iniciar otro flujo". */
+  flowRules?: ReadonlyArray<{ id: number; name: string }>
   tags?: TagRecord[]
+  /** Para nombrar al vendedor de "Asignar vendedor" en vez de su id. */
+  users?: ReadonlyArray<{ id: number; name: string }>
   selectedId: string | null
+  /** Bloques marcados en ámbar (los que usan el servicio que se quiere eliminar). */
+  flaggedIds?: ReadonlySet<string>
+  /** Número de cada bloque (#1 es el disparador), para nombrarlo y encontrarlo. */
+  numbers?: ReadonlyMap<string, number>
+  /** Bloques sin camino desde el disparador: se marcan como sueltos. */
+  looseIds?: ReadonlySet<string>
+  /** Bloques a los que acercar la vista; cada pedido nuevo (otro `key`) vuelve a acercarla. */
+  focus?: { ids: string[]; key: number } | null
   onSelect: (id: string | null) => void
   onMoveNodes: (moves: Array<{ id: string; position: { x: number; y: number } }>) => void
   onDeleteNodes: (ids: string[]) => void
   onConnect: (edge: AutomationFlowEdge) => void
   onDeleteEdge: (id: string) => void
-  onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }) => void
+  /** `from`: la salida desde la que se soltó una conexión en el vacío; el bloque nuevo queda conectado a ella. */
+  onDropNewNode: (type: AutomationFlowNodeType, position: { x: number; y: number }, from?: { source: string; handle: string }) => void
+}
+
+
+interface DeriveInputs {
+  templates: MessageTemplate[]
+  mediaAssets: MediaAsset[]
+  flowRules: ReadonlyArray<{ id: number; name: string }>
+  tags: TagRecord[]
+  users: ReadonlyArray<{ id: number; name: string }>
+  selectedId: string | null
+  flaggedIds: ReadonlySet<string>
+  numbers: ReadonlyMap<string, number> | undefined
+  looseIds: ReadonlySet<string>
+  onDelete: (id: string) => void
+}
+
+/** Los bloques del lienzo a partir del flujo, reutilizando el objeto anterior
+ *  de cada uno si nada suyo cambió (ver useReconciled). */
+function deriveCanvasNodes(flowNodes: AutomationFlowNode[], inputs: DeriveInputs, previous: ReadonlyMap<string, CanvasNode>) {
+  const { templates, mediaAssets, flowRules, tags, users, selectedId, flaggedIds, numbers, looseIds, onDelete } = inputs
+  const index = new Map<string, CanvasNode>()
+  const list = flowNodes.map(node => {
+    const action = node.type === FlowNodeType.Action ? node.data.action : null
+    const previewTemplate = action?.type === AutomationActionType.SendTemplate
+      ? templates.find(template => template.id === action.template_id)
+      : undefined
+    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
+      ? mediaAssets.find(asset => asset.id === action.media_asset_id)
+      : undefined
+    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
+      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
+      : undefined
+    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
+      ? tags.find(tag => tag.id === action.tag_id)?.name
+      : undefined
+    const previewUserName = action?.type === AutomationActionType.AssignSeller && action.user_id
+      ? users.find(user => user.id === action.user_id)?.name
+      : undefined
+    const candidate: CanvasNode = {
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      selected: node.id === selectedId,
+      data: { ...node.data, previewTemplate, previewAsset, invokedFlowName, previewTagName, previewUserName, flagged: flaggedIds.has(node.id), number: numbers?.get(node.id), loose: looseIds.has(node.id), onDelete },
+    }
+    const reused = reuseIfSame(previous.get(node.id), candidate)
+    index.set(node.id, reused)
+    return reused
+  })
+  return { list, index }
 }
 
 function Canvas({
-  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, selectedId, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
+  flow, templates = EMPTY_TEMPLATES, mediaAssets = EMPTY_MEDIA_ASSETS, flowRules = EMPTY_FLOW_RULES, tags = EMPTY_TAGS, users = EMPTY_USERS, selectedId, flaggedIds = NO_FLAGGED, numbers, looseIds = NO_FLAGGED, focus = null, onSelect, onMoveNodes, onDeleteNodes, onConnect, onDeleteEdge, onDropNewNode,
 }: FlowCanvasProps) {
   const wrapper = useRef<HTMLDivElement>(null)
   const isDarkMode = useIsDarkMode()
-  const { screenToFlowPosition } = useReactFlow()
+  // El minimapa con el color de cada tipo (antes, gris sobre gris: 1,2:1) y
+  // el marcado en ámbar, para ubicarlo de lejos.
+  const minimapColor = useCallback((node: CanvasNode) => minimapFill(node.type, node.data.action?.type, Boolean(node.data.flagged), isDarkMode), [isDarkMode])
+  const { screenToFlowPosition, fitView } = useReactFlow()
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
@@ -607,35 +678,17 @@ function Canvas({
     return roles
   }, [flow.edges, highlightedEdgeIds])
 
-  const derivedNodes = useMemo<CanvasNode[]>(() => flow.nodes.map(node => {
-    const action = node.type === FlowNodeType.Action ? node.data.action : null
-    const previewTemplate = action?.type === AutomationActionType.SendTemplate
-      ? templates.find(template => template.id === action.template_id)
-      : undefined
-    const previewAsset = action?.type === AutomationActionType.SendAudio || action?.type === AutomationActionType.SendAttachment || action?.type === AutomationActionType.SendMedia
-      ? mediaAssets.find(asset => asset.id === action.media_asset_id)
-      : undefined
-    const invokedFlowName = node.type === FlowNodeType.InvokeFlow
-      ? flowRules.find(rule => rule.id === node.data.flow_rule_id)?.name
-      : undefined
-    const previewTagName = (action?.type === AutomationActionType.AddTag || action?.type === AutomationActionType.RemoveTag) && action.tag_id
-      ? tags.find(tag => tag.id === action.tag_id)?.name
-      : undefined
-    return {
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      selected: node.id === selectedId,
-      data: {
-        ...node.data,
-        previewTemplate,
-        previewAsset,
-        invokedFlowName,
-        previewTagName,
-        onDelete: id => onDeleteNodes([id]),
-      },
-    }
-  }), [flow.nodes, templates, mediaAssets, flowRules, tags, selectedId, onDeleteNodes])
+  // Cada bloque conserva su objeto mientras nada suyo cambie. Antes cada
+  // cambio (elegir un bloque, soltar un arrastre, un refresco de reglas)
+  // creaba 50 objetos `data` nuevos y React redibujaba los 50 bloques, con
+  // sus imágenes y videos: eso era lo que se sentía lento en flujos grandes.
+  const handleDeleteNode = useCallback((id: string) => onDeleteNodes([id]), [onDeleteNodes])
+  const derivedNodes = useReconciled<CanvasNode, CanvasNode>(
+    previous => deriveCanvasNodes(flow.nodes, { templates, mediaAssets, flowRules, tags, users, selectedId, flaggedIds, numbers, looseIds, onDelete: handleDeleteNode }, previous),
+    [flow.nodes, templates, mediaAssets, flowRules, tags, users, selectedId, flaggedIds, numbers, looseIds, handleDeleteNode],
+  )
+
+  const initialFit = useFocusNodes(wrapper, focus, fitView)
 
   // Estado local para que el arrastre se vea moverse en vivo: `flow.nodes`
   // (la prop) solo se actualiza al soltar (ver más abajo), así que si
@@ -647,12 +700,12 @@ function Canvas({
   useEffect(() => {
     setNodes(current => {
       const selectedById = new Map(current.map(node => [node.id, node.selected]))
-      return derivedNodes.map(node => ({
-        ...node,
+      return derivedNodes.map(node => {
         // Mover el grupo actualiza `flow` en el padre; conservar esta marca
         // evita perder la selección múltiple al sincronizar las posiciones.
-        selected: selectedById.get(node.id) ?? node.selected,
-      }))
+        const selected = selectedById.get(node.id) ?? node.selected
+        return selected === node.selected ? node : { ...node, selected }
+      })
     })
   }, [derivedNodes])
 
@@ -660,14 +713,25 @@ function Canvas({
   // reinyecta en `nodes`. Resincronizar el estado base en cada mouseenter podía
   // reemplazar el elemento bajo el cursor y disparar mouseleave/mouseenter en
   // bucle, produciendo el parpadeo continuo.
-  const displayNodes = useMemo<CanvasNode[]>(() => nodes.map(node => ({
-    ...node,
-    data: {
-      ...node.data,
-      connectionRole: connectionRoles.get(node.id),
-      connectionDimmed: highlightedEdgeIds.size > 0 && !connectionRoles.has(node.id),
-    },
-  })), [nodes, connectionRoles, highlightedEdgeIds])
+  //
+  // Y solo cambian de objeto los bloques conectados al recorrido resaltado
+  // (anillo y etiqueta); los demás se atenúan por CSS. Al pasar el mouse por
+  // un bloque se redibujan 3 o 4, no 50.
+  const displayNodes = useReconciled<CanvasNode, { base: CanvasNode; shown: CanvasNode }>(previous => {
+    const index = new Map<string, { base: CanvasNode; shown: CanvasNode }>()
+    const list = nodes.map(node => {
+      const connectionRole = connectionRoles.get(node.id)
+      const entry = previous.get(node.id)
+      const shown = entry && entry.base === node && entry.shown.data.connectionRole === connectionRole
+        ? entry.shown
+        : connectionRole
+          ? { ...node, className: CONNECTED_NODE_CLASS, data: { ...node.data, connectionRole } }
+          : node
+      index.set(node.id, { base: node, shown })
+      return shown
+    })
+    return { list, index }
+  }, [nodes, connectionRoles])
 
   const scheduleEdgeLeave = useCallback((edgeId: string) => {
     if (edgeLeaveTimer.current !== null) window.clearTimeout(edgeLeaveTimer.current)
@@ -685,19 +749,29 @@ function Canvas({
     setHoveredEdgeId(edgeId)
   }, [])
 
-  const edges = useMemo<DeletableEdge[]>(
-    () => toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId).map(edge => ({
-      ...edge,
-      type: 'deletable' as const,
-      data: {
-        showDelete: edge.id === hoveredEdgeId || edge.id === selectedEdgeId,
-        onDelete: onDeleteEdge,
-        onToolbarEnter: keepEdgeHovered,
-        onToolbarLeave: scheduleEdgeLeave,
-      },
-    })),
-    [flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId],
-  )
+  // Cada conexión con el color de su salida; depende del bloque de origen
+  // (botones, grupos, salidas del Reparto).
+  const edgeColorOf = useMemo(() => {
+    const byId = new Map(flow.nodes.map(node => [node.id, node]))
+    return (edge: AutomationFlowEdge) => handleColor(byId.get(edge.source), edge.source_handle)
+  }, [flow.nodes])
+
+  // Misma idea que con los bloques: una conexión conserva su objeto mientras
+  // no cambie, así React no vuelve a crear las 49 por cada hover.
+  const edges = useReconciled<DeletableEdge, { base: Edge; showDelete: boolean; shown: DeletableEdge }>(previous => {
+    const index = new Map<string, { base: Edge; showDelete: boolean; shown: DeletableEdge }>()
+    const list = toCanvasEdges(flow.edges, highlightedEdgeIds, selectedEdgeId, hoveredEdgeId, edgeColorOf).map(edge => {
+      const showDelete = edge.id === hoveredEdgeId || edge.id === selectedEdgeId
+      const entry = previous.get(edge.id)
+      const shown = entry && entry.base === edge && entry.showDelete === showDelete
+        && entry.shown.data?.onDelete === onDeleteEdge && entry.shown.data?.onToolbarEnter === keepEdgeHovered && entry.shown.data?.onToolbarLeave === scheduleEdgeLeave
+        ? entry.shown
+        : { ...edge, type: 'deletable' as const, data: { showDelete, onDelete: onDeleteEdge, onToolbarEnter: keepEdgeHovered, onToolbarLeave: scheduleEdgeLeave } }
+      index.set(edge.id, { base: edge, showDelete, shown })
+      return shown
+    })
+    return { list, index }
+  }, [edgeColorOf, flow.edges, highlightedEdgeIds, hoveredEdgeId, keepEdgeHovered, onDeleteEdge, scheduleEdgeLeave, selectedEdgeId])
 
   useEffect(() => {
     if (selectedEdgeId && !flow.edges.some(edge => edge.id === selectedEdgeId)) setSelectedEdgeId(null)
@@ -789,10 +863,13 @@ function Canvas({
     })
   }, [screenToFlowPosition, onDropNewNode])
 
+  // Soltar una conexión en el vacío ofrece qué bloque crear ahí, ya conectado.
+  const connectDrop = useConnectDrop(screenToFlowPosition, onDropNewNode)
+
   return (
     <div ref={wrapper} className="h-full w-full">
       <ReactFlow
-        className="bg-wa-field dark:bg-flow-canvas-dark"
+        className={`bg-wa-field dark:bg-flow-canvas-dark ${highlightedEdgeIds.size > 0 ? 'flow-spotlight' : ''}`}
         nodes={displayNodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
@@ -803,6 +880,7 @@ function Canvas({
           if (change.type === 'select') setSelectedEdgeId(change.selected ? change.id : null)
         })}
         onConnect={handleConnect}
+        onConnectEnd={connectDrop.onConnectEnd}
         isValidConnection={isValidConnection}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
@@ -820,9 +898,10 @@ function Canvas({
         onDrop={handleDrop}
         colorMode={isDarkMode ? 'dark' : 'light'}
         fitView
+        fitViewOptions={initialFit}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={['Backspace', 'Delete']}
-        defaultEdgeOptions={{ animated: true, type: 'smoothstep' }}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
         selectionOnDrag
         selectionMode={SelectionMode.Full}
         multiSelectionKeyCode={['Control', 'Meta']}
@@ -846,8 +925,11 @@ function Canvas({
             {connectionHighlightEnabled ? <Eye className="h-4 w-4 text-violet-600" /> : <EyeOff className="h-4 w-4" />}
           </ControlButton>
         </Controls>
-        <MiniMap pannable zoomable className="!bg-white dark:!bg-flow-panel-dark" />
+        {/* Más chico que el de fábrica (200×150): tapaba salidas de los bloques de abajo. */}
+        <MiniMap pannable zoomable nodeColor={minimapColor} nodeBorderRadius={6} style={MINIMAP_SIZE} className="!bg-white dark:!bg-flow-panel-dark" />
+        <ZoomScale />
       </ReactFlow>
+      {connectDrop.drop && <NodeTypeMenu x={connectDrop.drop.x} y={connectDrop.drop.y} onPick={connectDrop.pick} onClose={connectDrop.close} />}
     </div>
   )
 }

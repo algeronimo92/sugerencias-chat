@@ -11,6 +11,8 @@ from tests.conftest import open_service_window, patch_chats
 
 USER = SimpleNamespace(id=7)
 CHAT_ID = "7b08f4d9-855f-4718-b95f-9c021da52f77"
+# La respuesta de un envío sale firmada por quien lo hizo, sin volver a la base.
+SIGNED_BY_USER = {"kind": "user", "user_id": 7, "user_name": None, "execution_id": None}
 
 
 @pytest.mark.asyncio
@@ -36,7 +38,7 @@ async def test_text_send_returns_queued_message_without_waiting_for_meta(monkeyp
         USER,
     )
 
-    assert result == queued
+    assert result == {**queued, "origin": SIGNED_BY_USER}
     require_lead.assert_awaited_once_with(CHAT_ID)
     enqueue.assert_awaited_once_with(
         CHAT_ID,
@@ -65,7 +67,7 @@ async def test_audio_send_stores_then_queues_without_waiting_for_meta(monkeypatc
         USER,
     )
 
-    assert result == queued
+    assert result == {**queued, "origin": SIGNED_BY_USER}
     [item] = enqueue.await_args.args[1]
     assert item["message"] == {"type": "audio", "audio": {"voice": True}}
     assert item["media"]["media_url"] == "/api/media/audio/voice.ogg"
@@ -170,6 +172,8 @@ async def test_retry_reuses_failed_message_instead_of_creating_a_duplicate(monke
     }
     retry = AsyncMock(return_value=retried)
     patch_chats(monkeypatch, "retry_failed_message", retry)
+    # Un reintento firma su respuesta mirando la base; acá no hay base.
+    patch_chats(monkeypatch, "attach_origin", AsyncMock(side_effect=lambda item: {**item, "origin": None}))
 
     result = await chats.retry_message(CHAT_ID, 80)
 

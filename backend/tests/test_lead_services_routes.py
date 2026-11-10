@@ -3,9 +3,14 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.modules.catalogs.schemas import LeadServiceCreate, LeadServiceUpdate
+from app.modules.catalogs.schemas import (
+    LeadServiceCreate,
+    LeadServiceUpdate,
+    ServicePackageCreate,
+    ServicePackageUpdate,
+)
 from app.modules.catalogs import services_api as lead_services
-from app.modules.catalogs.errors import LeadServiceAlreadyExistsError
+from app.modules.catalogs.errors import LeadServiceAlreadyExistsError, ServicePackageAlreadyExistsError
 from app.modules.catalogs.public import rename_service_references as _rename_service_references
 
 
@@ -115,3 +120,184 @@ def test_rename_service_updates_only_structured_automation_references():
     assert renamed["conditions"]["service_contains"] == "Botox premium"
     assert renamed["nodes"][0]["data"]["action"]["service"] == "Botox premium"
     assert renamed["nodes"][1]["data"]["action"]["text"] == "Consulta por Botox"
+
+
+ADMIN = SimpleNamespace(id=1, role="admin")
+
+
+@pytest.mark.asyncio
+async def test_create_package_normalizes_name_and_keeps_price(monkeypatch):
+    received = None
+
+    async def fake_create(service_id, values):
+        nonlocal received
+        received = (service_id, values)
+        return {"id": 9, "service_id": service_id, "position": 0, "is_active": True, **values}
+
+    monkeypatch.setattr(lead_services, "create_service_package", fake_create)
+
+    result = await lead_services.post_service_package(
+        4,
+        ServicePackageCreate(name="  Pack   x3 ", sessions=3, price="400", notes="  "),
+        ADMIN,
+    )
+
+    assert received == (4, {"name": "Pack x3", "sessions": 3, "price": 400, "notes": None, "position": None})
+    assert result["name"] == "Pack x3"
+
+
+@pytest.mark.asyncio
+async def test_create_package_for_missing_service_is_404(monkeypatch):
+    async def fake_create(_service_id, _values):
+        return None
+
+    monkeypatch.setattr(lead_services, "create_service_package", fake_create)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.post_service_package(99, ServicePackageCreate(name="x1", price="100"), ADMIN)
+
+    assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_package_reports_duplicate_name_within_service(monkeypatch):
+    async def fake_create(_service_id, _values):
+        raise ServicePackageAlreadyExistsError
+
+    monkeypatch.setattr(lead_services, "create_service_package", fake_create)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.post_service_package(4, ServicePackageCreate(name="Pack x3", price="400"), ADMIN)
+
+    assert error.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_update_package_sends_only_changed_fields(monkeypatch):
+    received = None
+
+    async def fake_update(service_id, package_id, values):
+        nonlocal received
+        received = (service_id, package_id, values)
+        return {"id": package_id, "service_id": service_id, "name": "Pack x3", "sessions": 3,
+                "price": values["price"], "position": 1, "is_active": True}
+
+    monkeypatch.setattr(lead_services, "update_service_package", fake_update)
+
+    await lead_services.patch_service_package(4, 9, ServicePackageUpdate(price="380"), ADMIN)
+
+    assert received == (4, 9, {"price": 380})
+
+
+@pytest.mark.asyncio
+async def test_update_package_cannot_drop_price(monkeypatch):
+    called = False
+
+    async def fake_update(*_args):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(lead_services, "update_service_package", fake_update)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.patch_service_package(4, 9, ServicePackageUpdate(price=None), ADMIN)
+
+    assert error.value.status_code == 400
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_update_package_of_other_service_is_404(monkeypatch):
+    async def fake_update(_service_id, _package_id, _values):
+        return None
+
+    monkeypatch.setattr(lead_services, "update_service_package", fake_update)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.patch_service_package(4, 9, ServicePackageUpdate(is_active=False), ADMIN)
+
+    assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_service_in_use_explains_what_uses_it(monkeypatch):
+    from app.modules.catalogs.errors import ServiceInUseError
+
+    async def fake_delete(_service_id):
+        from app.modules.catalogs.public import ServiceUsage
+        raise ServiceInUseError([ServiceUsage("leads", "12 leads"), ServiceUsage("plantillas", "1 plantilla"),
+                                 ServiceUsage("automatizaciones", "2 automatizaciones")])
+
+    monkeypatch.setattr(lead_services, "delete_lead_service", fake_delete)
+
+    with pytest.raises(HTTPException) as error:
+        await lead_services.remove_service(4, SimpleNamespace(id=1))
+
+    assert error.value.status_code == 409
+    assert error.value.detail == (
+        "No se puede eliminar porque está en uso: 12 leads, 1 plantilla y 2 automatizaciones. "
+        "Desactívalo: deja de ofrecerse y el historial se conserva."
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_missing_service_is_404_and_erp_service_is_409(monkeypatch):
+    from app.modules.catalogs.errors import ErpManagedError
+
+    async def missing(_service_id):
+        return False
+
+    monkeypatch.setattr(lead_services, "delete_lead_service", missing)
+    with pytest.raises(HTTPException) as error:
+        await lead_services.remove_service(4, SimpleNamespace(id=1))
+    assert error.value.status_code == 404
+
+    async def erp(service_id):
+        raise ErpManagedError(service_id)
+
+    monkeypatch.setattr(lead_services, "delete_lead_service", erp)
+    with pytest.raises(HTTPException) as error:
+        await lead_services.remove_service(4, SimpleNamespace(id=1))
+    assert error.value.status_code == 409
+
+
+def test_rules_set_or_filter_by_service_only_in_structured_parts():
+    from app.modules.catalogs.public import filters_by_service, sets_service
+
+    # Poner el servicio (impide borrarlo) y filtrar por su nombre (solo se avisa) son cosas distintas.
+    assert sets_service([{"nodes": [{"type": "change_service", "service": "botox"}]}], "Botox")
+    assert not sets_service({"service_contains": "BOTOX"}, "Botox")
+    assert filters_by_service({"service_contains": "BOTOX"}, "Botox")
+    assert filters_by_service({"conditions": {"service_contains": "botox"}}, "Botox")
+    assert not filters_by_service({"type": "change_service", "service": "Botox"}, "Botox")
+    assert not filters_by_service({"service_contains": "Botox capilar"}, "Botox")
+    assert not sets_service({"type": "send_text", "text": "Hola, ¿te interesa Botox?"}, "Botox")
+
+
+
+@pytest.mark.asyncio
+async def test_service_usage_lists_what_uses_it_with_links(monkeypatch):
+    from app.modules.catalogs.public import ServiceUsage
+    from app.modules.catalogs.service import ServiceUsageReport
+
+    async def fake_usage(service_id):
+        return ServiceUsageReport(
+            usages=[ServiceUsage("leads", "1 lead", (("lead-uuid", "Lucía Paredes"),), 1)],
+            notices=[ServiceUsage("filtros", "1 automatización filtra por este nombre", (("7", "Bienvenida"),), 1, "Dejarán de aplicarse.")],
+        )
+
+    monkeypatch.setattr(lead_services, "service_usage", fake_usage)
+
+    assert await lead_services.get_service_usage(4, SimpleNamespace(id=1)) == {
+        "usages": [{"kind": "leads", "label": "1 lead", "count": 1, "detail": None, "items": [{"id": "lead-uuid", "name": "Lucía Paredes"}]}],
+        "notices": [{"kind": "filtros", "label": "1 automatización filtra por este nombre", "count": 1, "detail": "Dejarán de aplicarse.",
+                     "items": [{"id": "7", "name": "Bienvenida"}]}],
+    }
+
+    async def missing(_service_id):
+        return None
+
+    monkeypatch.setattr(lead_services, "service_usage", missing)
+    with pytest.raises(HTTPException) as error:
+        await lead_services.get_service_usage(4, SimpleNamespace(id=1))
+    assert error.value.status_code == 404

@@ -7,7 +7,7 @@ import { CommandPalette } from './CommandPalette'
 describe('CommandPalette', () => {
   it('Ctrl+K abre la búsqueda y filtra las pantallas por nombre sin tildes', async () => {
     const user = userEvent.setup()
-    render(<CommandPalette isAdmin={false} />, { wrapper: queryWrapper(createTestQueryClient()) })
+    render(<CommandPalette role="vendedor" />, { wrapper: queryWrapper(createTestQueryClient()) })
 
     expect(screen.queryByRole('combobox')).toBeNull()
     await user.keyboard('{Control>}k{/Control}')
@@ -23,7 +23,7 @@ describe('CommandPalette', () => {
   it('Enter ejecuta la opción activa y cierra', async () => {
     const user = userEvent.setup()
     const onOpenSettings = vi.fn()
-    render(<CommandPalette isAdmin onOpenSettings={onOpenSettings} />, { wrapper: queryWrapper(createTestQueryClient()) })
+    render(<CommandPalette role="admin" onOpenSettings={onOpenSettings} />, { wrapper: queryWrapper(createTestQueryClient()) })
 
     await user.keyboard('{Control>}k{/Control}')
     await user.type(await screen.findByRole('combobox'), 'configuracion{Enter}')

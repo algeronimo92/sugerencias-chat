@@ -44,6 +44,21 @@ export function triggerMediaDownload(src: string, filename: string): void {
   anchor.remove()
 }
 
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+/** Los videos se aceptan mucho más pesados que el resto porque el backend los
+ * recomprime al límite de WhatsApp (16 MB) con la mejor calidad que entra; el
+ * techo existe porque viajan en base64 dentro del JSON y se decodifican
+ * enteros en memoria. */
+export const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024
+
+/** Motivo por el que un archivo no se puede subir por su tamaño, o null. */
+export function uploadSizeError(file: File): string | null {
+  if (file.type.startsWith('video/')) {
+    return file.size > MAX_VIDEO_UPLOAD_BYTES ? 'supera el máximo de 100 MB para videos' : null
+  }
+  return file.size > MAX_UPLOAD_BYTES ? 'supera el máximo de 25 MB' : null
+}
+
 /** Comprime una imagen en el navegador antes de subirla, como hace WhatsApp:
  * la reescala a un lado máximo y la re-encoda como JPEG. Evita el error de
  * "archivo demasiado grande" con fotos de celular (3-12 MB → <1 MB) sin pérdida

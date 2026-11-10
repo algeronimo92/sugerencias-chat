@@ -101,7 +101,7 @@ class TestSendMediaValidation:
         }]
 
     async def test_rule_rejects_caption_over_limit(self, in_memory_automations):
-        with pytest.raises(ValueError, match="caption admite máximo 1024"):
+        with pytest.raises(ValueError, match="puede tener hasta 1024"):
             await validate_automation_rule({
                 "name": "Video largo",
                 "trigger_type": AutomationTrigger.MANUAL,
@@ -241,7 +241,7 @@ class TestConversationState:
         }]
 
     async def test_rule_rejects_unknown_state(self, in_memory_automations):
-        with pytest.raises(ValueError, match="estado de conversación inválido"):
+        with pytest.raises(ValueError, match="se abre o se cierra"):
             await validate_automation_rule({
                 "name": "Estado inválido",
                 "trigger_type": AutomationTrigger.MANUAL,

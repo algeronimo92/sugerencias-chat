@@ -1,22 +1,23 @@
 import type { ChatFilters } from '../../leads/types'
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { formatNumber } from './format'
 import { BarList, Panel, StatGrid, TagBarList, TrendChart } from './primitives'
 
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function TagsTab({ data, days, isMine, onFilterChats }: Props) {
+export function TagsTab({ data, days, subject, onFilterChats }: Props) {
   const { coverage, top, by_user, trend } = data.tags
-  const scopeLabel = isMine ? 'Entre mis leads' : 'Entre todos los leads'
+  const scopeLabel = who(subject, { me: 'Entre mis leads', team: 'Entre todos los leads', seller: (name) => `Entre los leads de ${name}` })
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Panel title="Cobertura de etiquetado" subtitle={scopeLabel} className="lg:col-span-2">
+      <Panel anchor="cobertura-etiquetas" title="Cobertura de etiquetado" subtitle={scopeLabel} className="lg:col-span-2">
         <StatGrid
           stats={[
             {
@@ -54,15 +55,15 @@ export function TagsTab({ data, days, isMine, onFilterChats }: Props) {
         )}
       </Panel>
 
-      <Panel title="Etiquetas más usadas" subtitle="Cuántos leads tiene cada una">
+      <Panel anchor="etiquetas-mas-usadas" title="Etiquetas más usadas" subtitle="Cuántos leads tiene cada una">
         <TagBarList items={top} onSelect={(tagId) => onFilterChats({ tagIds: [tagId] })} />
       </Panel>
 
-      <Panel title="Quién etiqueta" subtitle={`Ranking del equipo · Últimos ${days} días`}>
+      <Panel anchor="quien-etiqueta" title="Quién etiqueta" subtitle={`Ranking del equipo · Últimos ${days} días`}>
         <BarList items={by_user} emptyLabel="Nadie etiquetó en el período" />
       </Panel>
 
-      <Panel title="Etiquetas aplicadas por día" className="lg:col-span-2">
+      <Panel anchor="etiquetas-por-dia" title="Etiquetas aplicadas por día" className="lg:col-span-2">
         <TrendChart points={trend} label="Etiquetas" />
       </Panel>
     </div>

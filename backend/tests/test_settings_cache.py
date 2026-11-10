@@ -217,8 +217,10 @@ async def test_platform_managed_integrations_are_hidden_from_the_tenant(monkeypa
 def test_ai_workflow_settings_belong_to_the_platform():
     from app.modules.platform.platform_settings import PLATFORM_KEYS
 
-    ai_keys = {"n8n_webhook_url", "n8n_analyst_webhook_url", "n8n_webhook_token"}
+    ai_keys = {"n8n_analyst_webhook_url", "n8n_webhook_token"}
     assert ai_keys <= PLATFORM_KEYS
+    # El workflow de sugerencias ya no existe: no se configura en ningún lado.
+    assert "n8n_webhook_url" not in PLATFORM_KEYS
     assert ai_keys.isdisjoint(definition.key for definition in settings_service.SETTING_DEFS)
 
 

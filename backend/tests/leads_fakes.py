@@ -7,6 +7,8 @@ trabajo: los comandos corren tal cual, con sus eventos, pero sin base.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -49,6 +51,8 @@ class InMemoryLeadRepository:
         self.open_conversations: set[str] = set()
         self.merged: list[tuple[str, str]] = []
         self.renamed: list[tuple[str, str]] = []
+        # Servicios activos del catálogo, para pasar leads de uno a otro.
+        self.active_services: set[str] = {"Botox", "Toxina", "Limpieza"}
         self.on_appointment: str | None = None
 
     def seed(self, lead_id: str = "lead-1", *, stage: str = "nuevo", **columns: Any) -> str:
@@ -144,6 +148,9 @@ class InMemoryLeadRepository:
     async def merge(self, source_id, target_id):
         self.merged.append((source_id, target_id))
         self.leads.pop(source_id, None)
+
+    async def active_service_name(self, name):
+        return next((service for service in self.active_services if service.lower() == name.strip().lower()), None)
 
     async def rename_service(self, old_name, new_name):
         touched = [

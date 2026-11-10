@@ -43,11 +43,18 @@ def _rule_dict(row) -> dict:
 
 
 def _execution_dict(row) -> dict:
+    # Una ejecución que arrancó otro flujo guarda a su padre en event_payload
+    # (domain/execution.py::child_flow_payload). Se expone para que el chat
+    # pueda decir "Hollywood peel › Ubicacion" en vez de solo el nombre hijo.
+    payload = row["event_payload"] or {}
     return {
         "id": row["id"],
         "rule_id": row["rule_id"],
         "rule_name": row["rule_name"],
         "rule_deleted": bool(row["rule_deleted"]),
+        "parent_execution_id": payload.get("parent_execution_id"),
+        "parent_rule_id": payload.get("parent_rule_id"),
+        "parent_rule_name": row["parent_rule_name"],
         "lead_id": row["lead_id"],
         "lead_name": row["lead_name"],
         "trigger_type": row["trigger_type"],
@@ -153,11 +160,14 @@ async def list_automation_executions(
     # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
     # saltarse la ventana).
     override_user = aliased(User)
+    parent_rule = aliased(AutomationRule)
     stmt = select(
         AutomationExecution.id,
         AutomationExecution.rule_id,
         AutomationRule.name.label("rule_name"),
         AutomationRule.deleted_at.is_not(None).label("rule_deleted"),
+        AutomationExecution.event_payload,
+        parent_rule.name.label("parent_rule_name"),
         AutomationExecution.lead_id,
         Lead.nombre.label("lead_name"),
         AutomationExecution.trigger_type,
@@ -183,6 +193,10 @@ async def list_automation_executions(
         User, User.id == AutomationExecution.started_by_user_id
     ).outerjoin(
         override_user, override_user.id == AutomationExecution.window_override_by_user_id
+    ).outerjoin(
+        # El padre viaja como entero dentro del JSON; sin padre el join no
+        # aporta fila y el nombre queda en NULL.
+        parent_rule, parent_rule.id == AutomationExecution.event_payload["parent_rule_id"].as_integer(),
     )
     if rule_id is not None:
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)

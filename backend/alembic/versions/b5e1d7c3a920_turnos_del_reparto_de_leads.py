@@ -30,6 +30,12 @@ TABLE = "lead_assignment_turns"
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # Plano tenant. migrate.py también corre la cadena sobre public, que en
+    # producción conserva tablas viejas del negocio pero ya no ``users`` ni
+    # ``leads``: ahí no hay turnos que llevar. Sin esta guarda el deploy del
+    # 2026-11-05 falló con 'relation "users" does not exist'.
+    if not (_table_exists(bind, "users") and _table_exists(bind, "leads")):
+        return
     if not _table_exists(bind, TABLE):
         op.create_table(
             TABLE,
@@ -57,4 +63,4 @@ def _table_exists(bind, table: str) -> bool:
 
 
 def downgrade() -> None:
-    op.drop_table(TABLE)
+    op.execute(f"DROP TABLE IF EXISTS {TABLE}")

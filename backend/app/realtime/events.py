@@ -39,3 +39,4 @@ class ChatsUpdateReason(StrEnum):
     TAG_CHANGED = "tag_changed"
     CONVERSATION_OPENED = "conversation_opened"
     CONVERSATION_CLOSED = "conversation_closed"
+    # Se registró o se eliminó una compra del lead.

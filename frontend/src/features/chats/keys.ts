@@ -13,6 +13,9 @@ export const messageKeys = {
   /** Clave de mutación de los envíos de un chat: mientras haya uno en vuelo, el
    * tiempo real no refetchea el hilo (lo resuelve el envío). */
   sending: (chatId: string | null) => ['send-message', chatId] as const,
+  /** Prefijo de todos los envíos, de cualquier chat. `sending(null)` no sirve
+   * de prefijo: la clave lleva el null literal. */
+  sendingAny: ['send-message'] as const,
   pinned: (chatId: string | null) => ['pinned-messages', chatId] as const,
   serviceWindowAll: ['customer-service-window'] as const,
   serviceWindow: (chatId: string | null) => ['customer-service-window', chatId] as const,

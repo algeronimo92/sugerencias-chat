@@ -76,27 +76,26 @@ async def _row(execution_id: int) -> AutomationExecution:
         return await session.get(AutomationExecution, execution_id)
 
 
-async def test_claiming_runs_what_is_due_and_freezes_what_a_paused_lead_had(tenant):
+async def test_claiming_runs_what_is_due_even_if_the_lead_has_the_bot_off(tenant):
     with tenant_context(tenant):
         rule_id = await _rule()
         due = await _execution(rule_id, await _lead(), attempts=2)
+        # El bot desactivado solo impide lanzamientos nuevos (schedule_in_session):
+        # lo que ya estaba en marcha sigue, sea de sistema o manual.
         paused_lead = await _lead(paused=True)
-        frozen = await _execution(rule_id, paused_lead)
-        # Un flujo manual del vendedor nunca lo congela la pausa del lead.
+        system = await _execution(rule_id, paused_lead)
         manual = await _execution(rule_id, paused_lead, start_source="manual")
         future = await _execution(rule_id, await _lead(), scheduled_for=NOW + timedelta(hours=1))
 
-        frozen_ids, claimed = await SqlExecutionStore().claim_due(NOW, limit=50)
+        claimed = await SqlExecutionStore().claim_due(NOW, limit=50)
 
-        assert frozen_ids == [frozen]
-        assert set(claimed) == {due, manual}
+        assert set(claimed) == {due, system, manual}
         assert future not in claimed
+        assert (await _row(system)).status == AutomationExecutionStatus.RUNNING
         claimed_row = await _row(due)
         assert claimed_row.status == AutomationExecutionStatus.RUNNING
         # Reclamar no es recuperar: el contador de intentos no se toca.
         assert claimed_row.attempts == 2
-        frozen_row = await _row(frozen)
-        assert (frozen_row.status, frozen_row.pause_scope) == (AutomationExecutionStatus.PAUSED, "lead")
 
 
 async def test_a_cancelled_execution_is_never_overwritten_by_the_engine(tenant):
@@ -127,13 +126,16 @@ async def test_retrying_resets_attempts_and_records_the_window_override(tenant):
 
 
 async def test_resuming_a_lead_gives_back_the_time_the_wait_had_left(tenant):
+    """Lo que la regla anterior dejó congelado con el lead vuelve con el
+    tiempo que le faltaba cuando se reactiva el bot."""
     with tenant_context(tenant):
         lead_id = await _lead()
-        execution_id = await _execution(await _rule(), lead_id, scheduled_for=NOW + timedelta(minutes=20))
-        store = SqlExecutionStore()
+        execution_id = await _execution(
+            await _rule(), lead_id, scheduled_for=NOW + timedelta(minutes=20),
+            status=AutomationExecutionStatus.PAUSED, paused_at=NOW - timedelta(hours=2), pause_scope="lead",
+        )
 
-        assert await store.pause_lead(lead_id, NOW - timedelta(hours=2)) == 1
-        assert await store.resume_lead(lead_id, NOW) == 1
+        assert await SqlExecutionStore().resume_lead(lead_id, NOW) == 1
 
         row = await _row(execution_id)
         assert row.status == AutomationExecutionStatus.SCHEDULED
@@ -227,23 +229,20 @@ async def test_deleting_a_rule_keeps_history_and_skips_what_was_pending(tenant):
             assert (await session.scalar(select(AutomationRule.deleted_at).where(AutomationRule.id == rule_id))) is not None
 
 
-async def test_the_lead_pause_and_the_execution_pause_do_not_step_on_each_other(tenant):
+async def test_reactivating_the_lead_does_not_step_on_what_the_seller_paused_by_hand(tenant):
     with tenant_context(tenant):
         rule_id = await _rule()
         lead_id = await _lead()
-        system = await _execution(rule_id, lead_id)
-        manual = await _execution(rule_id, lead_id, start_source="manual")
         by_hand = await _execution(rule_id, lead_id)
+        old_rule = await _execution(rule_id, lead_id, status=AutomationExecutionStatus.PAUSED, paused_at=NOW, pause_scope="lead")
         legacy = await _execution(rule_id, lead_id, status=AutomationExecutionStatus.PAUSED, paused_at=NOW)
         store = SqlExecutionStore()
 
         assert await store.pause(by_hand, NOW) is True
-        assert await store.pause_lead(lead_id, NOW) == 1
-        assert (await _row(manual)).status == AutomationExecutionStatus.SCHEDULED
-        assert (await _row(system)).pause_scope == "lead"
 
         # Las pausas anteriores a la columna (NULL) son de alcance lead.
         assert await store.resume_lead(lead_id, NOW) == 2
+        assert (await _row(old_rule)).status == AutomationExecutionStatus.SCHEDULED
         assert (await _row(legacy)).status == AutomationExecutionStatus.SCHEDULED
         assert ((await _row(by_hand)).status, (await _row(by_hand)).pause_scope) == (
             AutomationExecutionStatus.PAUSED, "execution",

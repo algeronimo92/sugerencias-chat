@@ -48,3 +48,9 @@ export async function saveCalendarEventTemplate(values: { title: string; descrip
     })
   ).data
 }
+
+/** Moneda del negocio (código ISO, p. ej. PEN), que vive en su perfil. El
+ *  formulario la usa para mostrar el símbolo junto al adelanto. */
+export async function fetchBusinessCurrency(): Promise<string | null> {
+  return (await client.get<ApiResponse<'/api/ai/profile', 'get'>>('/api/ai/profile')).data.currency ?? null
+}

@@ -9,8 +9,14 @@ export const INSTRUCTION_MAX_LENGTH = 200
 /**
  * Indicaciones frecuentes: un toque y listo, sin abrir el teclado — clave
  * para usar con una mano en móvil. Tocar de nuevo el chip la quita.
+ *
+ * Las tres últimas son situaciones, no órdenes: el analista corre solo a
+ * pedido y la etapa del lead puede estar vieja, así que la vendedora dice en
+ * qué momento está. Sus palabras («seguimiento», «no vino», «objeción») son
+ * las que usan los guiones y el playbook del conocimiento: la búsqueda por
+ * palabras las recupera (ver `or_query` en el backend).
  */
-const QUICK_CHIPS = ['Dar precio', 'No dar precio', 'Proponer una cita']
+const QUICK_CHIPS = ['Dar precio', 'No dar precio', 'Proponer una cita', 'Retomar seguimiento', 'No vino a la cita', 'Responder objeción']
 
 const CHIP_ACTIVE_CLASS =
   'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary'
@@ -49,7 +55,7 @@ export function SuggestionInstructionBox({ value, onChange, disabled = false, cl
           disabled={disabled}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
-          Orientá a la IA (opcional)
+          Orienta a la IA (opcional)
         </Button>
       </div>
     )

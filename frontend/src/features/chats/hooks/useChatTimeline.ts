@@ -1,19 +1,36 @@
 import { useMemo } from 'react'
 import type { MediaLightboxItem } from '../../../shared/ui/MediaLightbox'
+import { useAutomationExecutions } from '../../automations/public/queries'
+import type { AutomationExecution } from '../../automations/types'
 import { useLeadActivity } from '../../leads/public/useLeadMeta'
 import type { InternalNote } from '../types'
 import type { LeadActivity } from '../../leads/types'
 import type { Message } from '../../whatsapp/types'
 import { groupByDay, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
+import type { FlowNamesByExecution } from '../domain/messageOrigin'
 import { messageMediaFilename } from '../utils/messageMedia'
 import { useInternalNotes } from './useInternalNotes'
 import { useMessages } from './useMessages'
+
+/** Lo que del historial del lead se muestra como evento del hilo: los cambios
+ *  de etapa. Las compras registradas salían acá también hasta que se quitó
+ *  "Registrar compra": la venta del negocio es la separación de cita. */
+const TIMELINE_ACTIVITY_TYPES: ReadonlySet<string> = new Set(['stage_changed'])
+
+/** Qué ejecuciones de flujo se ven como evento del hilo: las que alguien
+ *  lanzó a propósito sobre este lead (a mano o desde otro flujo). Las de
+ *  sistema (bienvenida, seguimiento) ya se explican por sus mensajes, y una
+ *  omitida no hizo nada que valga la pena contar. */
+function isFlowEvent(execution: AutomationExecution): boolean {
+  return execution.start_source !== 'system' && execution.status !== 'skipped'
+}
 
 /** Todo lo que puede aparecer en el hilo. */
 export type TimelineItem =
   | { kind: 'message'; key: string; sentAt: string | null; message: Message }
   | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
   | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
+  | { kind: 'flow'; key: string; sentAt: string; execution: AutomationExecution }
 
 /** Cuántos mensajes enviados se ofrecen para reenviar o guardar como plantilla. */
 const SENT_HISTORY_LIMIT = 10
@@ -45,6 +62,15 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
 
   const { data: notes = [] } = useInternalNotes(chatId)
   const { data: leadActivity = [] } = useLeadActivity(chatId)
+  // Misma clave de caché que el panel de automatizaciones del chat: una sola
+  // consulta alimenta el panel (activas), los eventos del hilo y el nombre
+  // del flujo en las burbujas que mandó.
+  const { data: executions = [] } = useAutomationExecutions({ chatId })
+
+  const flowNames = useMemo<FlowNamesByExecution>(
+    () => new Map(executions.map(execution => [execution.id, execution.rule_name])),
+    [executions],
+  )
 
   const timeline = useMemo<TimelineItem[]>(() => [
     ...messages.map(message => ({
@@ -63,12 +89,23 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
     // cronológica en que ocurrieron: los mensajes de arriba son el contexto
     // de por qué se movió.
     ...leadActivity
-      .filter(item => item.event_type === 'stage_changed')
+      .filter(item => TIMELINE_ACTIVITY_TYPES.has(item.event_type))
       .map(item => ({
         kind: 'activity' as const,
         key: `activity-${item.id}`,
         sentAt: item.created_at,
         activity: item,
+      })),
+    // Flujos lanzados sobre este lead, donde se lanzaron: así se ve si el
+    // flujo arrancó aunque haya terminado en segundos y el panel ya no lo
+    // muestre.
+    ...executions
+      .filter(isFlowEvent)
+      .map(execution => ({
+        kind: 'flow' as const,
+        key: `flow-${execution.id}`,
+        sentAt: execution.created_at,
+        execution,
       })),
   ].sort((a, b) => {
     const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
@@ -81,7 +118,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
       return a.message.id - b.message.id
     }
     return a.key.localeCompare(b.key)
-  }), [messages, notes, leadActivity])
+  }), [messages, notes, leadActivity, executions])
 
   // Una sección por día: es lo que permite fijar el chip de fecha arriba
   // mientras se navega ese día y que el del día siguiente lo empuje al llegar.
@@ -118,6 +155,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
   return {
     messages,
     timeline,
+    flowNames,
     daySections,
     sentMessageHistory,
     chatMediaItems,

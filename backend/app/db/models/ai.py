@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -66,6 +67,11 @@ class KnowledgeDocument(Base):
     # Texto completo tal como lo cargó el negocio. Los chunks se derivan de acá
     # y se regeneran al editarlo; nunca se editan sueltos.
     content: Mapped[str | None] = mapped_column(Text)
+    # Espejo del primer servicio vinculado (``KnowledgeDocumentService``), que
+    # desde 2026-11-09 es la fuente de verdad. Se conserva una versión porque
+    # durante el despliegue blue-green la versión anterior sigue leyéndolo;
+    # la siguiente revisión lo elimina.
+    service_id: Mapped[int | None] = mapped_column(ForeignKey("lead_services.id", ondelete="SET NULL"))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict, server_default="{}"
     )
@@ -75,6 +81,30 @@ class KnowledgeDocument(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    __table_args__ = (Index("idx_knowledge_documents_service", "service_id"),)
+
+
+class KnowledgeDocumentService(Base):
+    """Servicios del catálogo a los que pertenece un documento.
+
+    Una ficha sirve para varios servicios ("Botox - 1 Zona", "2 Zonas" y
+    "3 Zonas" comparten la misma); antes solo se podía elegir uno y había que
+    duplicar el documento. Sin filas, el documento es conocimiento general
+    (políticas, garantías). El copiloto prioriza los documentos del servicio
+    que le interesa al lead. Borrar el servicio quita el vínculo, no la ficha.
+    """
+
+    __tablename__ = "knowledge_document_services"
+
+    document_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    service_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("lead_services.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    __table_args__ = (Index("idx_knowledge_document_services_service", "service_id"),)
 
 
 class AIProfile(Base):
@@ -129,6 +159,12 @@ class KnowledgeChunk(Base):
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict, server_default="{}"
     )
+    # Vector para la búsqueda por significado (pgvector) y qué lo generó
+    # (``proveedor:modelo@dimensiones``). Vacío hasta que la primera sugerencia
+    # después de guardar el documento lo calcula (ver ``knowledge_vectors``).
+    # Las dimensiones son las de ``app.integrations.llm.embeddings.DIMENSIONS``.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
+    embedding_model: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -17,7 +17,7 @@ export function resolveApiBaseUrl(raw: string | undefined, production: boolean):
   if (raw !== undefined) return raw.trim().replace(/\/+$/, '')
   if (production) {
     throw new Error(
-      'VITE_API_BASE_URL no está definida en el build de producción. Usá "" si el backend '
+      'VITE_API_BASE_URL no está definida en el build de producción. Usa "" si el backend '
       + 'vive en el mismo origen que la app, o su URL absoluta.',
     )
   }

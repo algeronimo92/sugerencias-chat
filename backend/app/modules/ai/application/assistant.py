@@ -54,6 +54,13 @@ async def _require_ai(operation: str) -> None:
         raise AssistantError(exc.status_code, exc.code, exc.message) from exc
 
 
+async def _require_ai_configured(operation: str) -> None:
+    try:
+        await assistant_ports().access.ensure_configured(operation)
+    except AiUnavailable as exc:
+        raise AssistantError(exc.status_code, exc.code, exc.message) from exc
+
+
 async def _start_job(operation: str, chat_id: str, context_revision: str, metadata: dict):
     """Crea el job y su token. Si la firma falla pese a la revisión previa (el
     secreto se quitó entre medio), el job se cierra en vez de quedar colgado."""
@@ -120,15 +127,18 @@ async def analyze_lead(chat_id: str) -> dict:
 
 async def suggest_reply(chat_id: str, phone: str | None, *, force: bool, instruction: str | None):
     # Con indicación del asesor la sugerencia guardada no sirve: se generó sin
-    # tenerla en cuenta, así que siempre se pide una nueva al workflow.
+    # tenerla en cuenta, así que siempre se pide una nueva.
+    # Sin IA configurada tampoco se sirve la guardada: el vendedor tiene que
+    # ver que falta conectarla, no una sugerencia vieja que parece nueva.
+    await _require_ai_configured("rag")
     if not force and instruction is None:
         cached = await assistant_ports().context.cached_suggestion(chat_id)
         if cached is not None:
             return cached
 
     context_revision = await _context_revision(chat_id)
-    # Sin tenant no hay job firmado, y el workflow rechaza todo pedido que no
-    # traiga uno.
+    # Sin tenant no hay job firmado: el job es el que ata la generación a los
+    # datos de este negocio.
     await _require_ai("rag")
     job, tenant_context_token = await _start_job(
         "rag", chat_id, context_revision, {"refresh": force, "has_instruction": instruction is not None},
@@ -144,8 +154,8 @@ async def suggest_reply(chat_id: str, phone: str | None, *, force: bool, instruc
             tenant_context_token=tenant_context_token,
         )
     except Exception as exc:
-        await assistant_ports().jobs.finish(job.id, status="failed", error="n8n_call_failed")
-        logger.exception("Error llamando a n8n para el chat %s", chat_id)
+        await assistant_ports().jobs.finish(job.id, status="failed", error="provider_call_failed")
+        logger.exception("Error generando sugerencias para el chat %s", chat_id)
         raise _workflow_error(exc) from exc
 
     persisted_job = await assistant_ports().jobs.get(job.id)
@@ -156,8 +166,8 @@ async def suggest_reply(chat_id: str, phone: str | None, *, force: bool, instruc
     )
     if "context_loaded" not in completed_steps:
         await assistant_ports().jobs.finish(job.id, status="failed", error="scoped_context_not_loaded")
-        # El workflow respondió sin pasar por /rag-context: la respuesta no
-        # está atada a los datos de este negocio y se descarta.
+        # El proveedor respondió sin cargar el contexto del job: la respuesta
+        # no está atada a los datos de este negocio y se descarta.
         raise AssistantError(
             502,
             "ai_workflow_misconfigured",

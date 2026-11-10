@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Send, Sparkles, Workflow } from 'lucide-react'
+import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Plug, Send, Sparkles, Workflow } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export type NavItem = {
@@ -26,6 +26,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false },
   { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, primary: false },
   { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, primary: false },
+  { path: '/integraciones', label: 'Integraciones', icon: Plug, adminOnly: true, primary: false },
   { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, adminOnly: true, primary: false },
 ]
 
@@ -35,6 +36,21 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return pathname === item.path
 }
 
-export function visibleNavItems(isAdmin: boolean): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin)
+/** `role` es el de la sesión tal como llega del backend (texto). */
+export function visibleNavItems(role: string | undefined): NavItem[] {
+  // El analista existe para mirar el dashboard: ninguna otra vista le sirve y
+  // el backend se las niega (app/modules/auth/role_policy.py).
+  if (role === 'analista') return NAV_ITEMS.filter((item) => item.path === '/dashboard')
+  return NAV_ITEMS.filter((item) => !item.adminOnly || role === 'admin')
+}
+
+/** A dónde va "/" y cualquier ruta que el rol no puede ver. */
+export function homePathFor(role: string | undefined): string {
+  return role === 'analista' ? '/dashboard' : '/'
+}
+
+export function roleLabel(role: string | undefined): string {
+  if (role === 'admin') return 'Administrador'
+  if (role === 'analista') return 'Analista'
+  return 'Vendedor'
 }

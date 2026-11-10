@@ -18,6 +18,8 @@ from app.modules.leads.dashboard import (
     summary_queries as summary,
     tags_queries as tags,
 )
+from app.modules.leads.dashboard.currency import business_currency
+from app.modules.leads.schemas import DashboardLegacySales
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, DashboardScope, build_scope
 from app.tenancy.context import get_current_tenant
 
@@ -31,7 +33,7 @@ _cache_lock = asyncio.Lock()
 
 
 async def _compute(scope: DashboardScope) -> dict:
-    summary_block, leads_block, automations_block, tags_block, appointments_block, activity_block = (
+    summary_block, leads_block, automations_block, tags_block, appointments_block, activity_block, currency = (
         await asyncio.gather(
             summary.collect(scope),
             leads.collect(scope),
@@ -39,6 +41,7 @@ async def _compute(scope: DashboardScope) -> dict:
             tags.collect(scope),
             appointments.collect(scope),
             activity.collect(scope),
+            business_currency(),
         )
     )
     # La cobertura de etiquetado ya se calculó en su bloque; se repite en la
@@ -53,6 +56,10 @@ async def _compute(scope: DashboardScope) -> dict:
         "tags": tags_block,
         "appointments": appointments_block,
         "activity": activity_block,
+        "currency": currency,
+        # Para las versiones anteriores de la app: el bloque de ventas vacío,
+        # con la forma que leen. Ver DashboardLegacySales.
+        "sales": DashboardLegacySales(currency=currency).model_dump(),
         "generated_at": scope.now.isoformat(),
     }
 

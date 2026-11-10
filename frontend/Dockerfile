@@ -16,6 +16,10 @@ RUN npm ci
 COPY . .
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# Identificador del build que la app escribe en consola (ver vite.config.ts).
+# Vacío, cae a la hora del build; el deploy puede pasar el SHA del commit.
+ARG VITE_BUILD_ID=""
+ENV VITE_BUILD_ID=$VITE_BUILD_ID
 RUN npm run build
 
 # ---- prod ----

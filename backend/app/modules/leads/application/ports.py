@@ -58,9 +58,14 @@ class LeadRepository(Protocol):
 
     async def merge(self, source_id: str, target_id: str) -> None: ...
 
-    async def rename_service(self, old_name: str, new_name: str) -> list[str]:
+    async def rename_service(self, old_name: str, new_name: str | None) -> list[str]:
         """Reemplaza el servicio de interés en los leads que lo tenían
-        (comparando sin mayúsculas ni espacios). Devuelve los leads tocados."""
+        (comparando sin mayúsculas ni espacios); None lo deja vacío. Devuelve
+        los leads tocados."""
+
+    async def active_service_name(self, name: str) -> str | None:
+        """El nombre tal como está en el catálogo, si hay un servicio activo
+        con ese nombre (sin mayúsculas ni espacios de los bordes)."""
 
 
 _repository: LeadRepository | None = None

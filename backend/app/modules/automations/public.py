@@ -11,7 +11,6 @@ from app.modules.automations.application.management import (
     delete_automation_rule,
     duplicate_automation_rule,
     pause_automation_execution,
-    pause_lead_executions,
     publish_visual_flow,
     restore_flow_version,
     resume_automation_execution,

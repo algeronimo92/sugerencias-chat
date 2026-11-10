@@ -14,7 +14,6 @@ from app.integrations.n8n.webhook_schemas import (
     LeadAnalysisPatch,
     LeadAnalysisResultWebhookBody,
     LeadAnalysisWebhookBody,
-    RagSearchWebhookBody,
 )
 from app.modules.ai import suggestions_api as suggestions
 from app.modules.ai.application import ports as ai_ports
@@ -28,7 +27,6 @@ from app.modules.ai import ai_jobs as ai_jobs_module
 from app.integrations.n8n import client as n8n_service
 from app.modules.ai.ai_job_tokens import AIJobClaims, decode_ai_job_token, issue_ai_job_token
 from app.modules.ai.ai_jobs import AIContextStale, AIJobConflict
-from app.modules.ai.knowledge_search import _escape_like
 from tests.conftest import patch_webhooks
 
 
@@ -131,27 +129,6 @@ async def test_analysis_job_maps_stale_result_to_conflict(monkeypatch):
     assert exc.value.detail["current_revision"] == "v1:new"
 
 
-async def test_rag_search_is_scoped_by_job_and_revision(monkeypatch):
-    patch_webhooks(
-        monkeypatch,
-        "start_ai_job",
-        AsyncMock(return_value=SimpleNamespace(chat_id="lead-1", resource_id="lead-1")),
-    )
-    patch_webhooks(monkeypatch, "fetch_context_revision", AsyncMock(return_value="v1:ok"))
-    search = AsyncMock(return_value=[{"id": "chunk-1", "content": "Botox"}])
-    patch_webhooks(monkeypatch, "search_knowledge_chunks", search)
-    patch_webhooks(monkeypatch, "record_ai_job_step", AsyncMock(return_value=True))
-
-    result = await webhooks.rag_search_webhook(
-        RagSearchWebhookBody(query="precio botox", context_revision="v1:ok", top_k=4),
-        JOB_ID,
-        _claims("rag"),
-    )
-
-    assert result["count"] == 1
-    search.assert_awaited_once_with("precio botox", 4)
-
-
 def test_ai_job_token_binds_org_job_operation_and_expiry(monkeypatch):
     monkeypatch.setattr(settings, "ai_job_signing_secret", "unit-test-signing-secret")
     expires = datetime.now(timezone.utc) + timedelta(minutes=2)
@@ -177,6 +154,7 @@ def _provide(monkeypatch, *, suggest=None, analyze=None):
 def _stub_rag_job(monkeypatch) -> AsyncMock:
     """Job RAG ya autorizado: el workflow cargó el contexto por el endpoint scoped."""
 
+    monkeypatch.setattr(ai_access, "ensure_ai_configured", AsyncMock(return_value=None))
     monkeypatch.setattr(ai_access, "ensure_ai_available", AsyncMock(return_value=None))
     job = SimpleNamespace(id=JOB_ID, expires_at=datetime.now(timezone.utc) + timedelta(minutes=5))
     monkeypatch.setattr(
@@ -296,16 +274,19 @@ async def test_unconfigured_platform_explains_instead_of_crashing(monkeypatch):
 
 
 async def test_platform_needs_signing_secret_and_workflow_url(monkeypatch):
+    # El analista necesita su workflow de n8n; las sugerencias, una clave del
+    # negocio (sin workflow): se prueba en test_native_copilot.
     monkeypatch.setattr(ai_access, "signing_key_configured", lambda: False)
-    monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value="https://n8n.test/rag"))
+    monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value="https://n8n.test/analista"))
+    assert await ai_access.platform_ready("analyst") is False
     assert await ai_access.platform_ready("rag") is False
 
     monkeypatch.setattr(ai_access, "signing_key_configured", lambda: True)
     monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value=""))
     assert await ai_access.platform_ready("analyst") is False
 
-    monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value="https://n8n.test/rag"))
-    assert await ai_access.platform_ready("rag") is True
+    monkeypatch.setattr(ai_access, "platform_setting", AsyncMock(return_value="https://n8n.test/analista"))
+    assert await ai_access.platform_ready("analyst") is True
 
 
 async def test_signing_failure_closes_the_job_instead_of_leaving_it_pending(monkeypatch):
@@ -364,14 +345,13 @@ async def test_workflow_rejecting_the_backend_is_a_configuration_problem(monkeyp
 async def test_the_n8n_provider_tells_a_rejection_from_a_failure(monkeypatch, status, rejected):
     import httpx
 
-    request = httpx.Request("GET", "https://n8n.test/webhook/sugerencias")
+    request = httpx.Request("GET", "https://n8n.test/webhook/analista")
     failure = httpx.HTTPStatusError("n8n", request=request, response=httpx.Response(status, request=request))
-    monkeypatch.setattr(n8n_provider, "call_n8n", AsyncMock(side_effect=failure))
+    monkeypatch.setattr(n8n_provider, "call_n8n_analyst", AsyncMock(side_effect=failure))
 
     with pytest.raises(AiWorkflowRejected if rejected else httpx.HTTPStatusError):
-        await n8n_provider.N8nAiProvider().suggest(
-            "lead-1", None, refresh=False, instruction=None, job_id=JOB_ID,
-            context_revision="v1:ok", tenant_context_token="signed",
+        await n8n_provider.N8nAiProvider().analyze(
+            "lead-1", job_id=JOB_ID, context_revision="v1:ok", tenant_context_token="signed",
         )
 
 
@@ -408,91 +388,57 @@ def test_quota_month_starts_at_utc_midnight_of_day_one():
     assert ai_access.month_start(now) == datetime(2026, 9, 1, tzinfo=timezone.utc)
 
 
-async def test_rag_context_carries_the_business_profile_and_resources(monkeypatch):
-    patch_webhooks(monkeypatch, "start_ai_job", AsyncMock(
-        return_value=SimpleNamespace(context_revision="v1:ok")
-    ))
-    patch_webhooks(monkeypatch, "fetch_analysis_context", AsyncMock(return_value={
-        "context_revision": "v1:ok",
-        "lead": {"id": "lead-1"},
-        "messages": [],
-        "message_cursor": None,
-    }))
-    patch_webhooks(monkeypatch, "record_ai_job_step", AsyncMock(return_value=True))
-    patch_webhooks(monkeypatch, "fetch_tenant_config", AsyncMock(
-        return_value={"negocio": {"nombre": "Clinica Norte"}, "moneda": "PEN"}
-    ))
-    patch_webhooks(monkeypatch, "list_ai_resources", AsyncMock(
-        return_value=[{"id": 7, "nombre": "flyer.png", "descripcion": "Promo de octubre"}]
-    ))
-
-    result = await webhooks.rag_context_webhook("lead-1", 500, JOB_ID, _claims("rag"))
-
-    assert result["tenant_config"]["negocio"]["nombre"] == "Clinica Norte"
-    assert result["resources"][0]["descripcion"] == "Promo de octubre"
-
-
 async def test_catalog_tool_returns_prices_with_the_business_currency(monkeypatch):
     patch_webhooks(monkeypatch, "start_ai_job", AsyncMock(return_value=SimpleNamespace()))
     patch_webhooks(monkeypatch, "fetch_tenant_config", AsyncMock(return_value={"moneda": "PEN"}))
     patch_webhooks(monkeypatch, "list_ai_catalog", AsyncMock(return_value=[
-        {"id": 1, "name": "Limpieza facial", "description": None, "price": "150.00", "price_notes": None}
+        {"id": 1, "name": "Limpieza facial", "price": "150.00"}
     ]))
 
-    result = await webhooks.ai_catalog_webhook(JOB_ID, _claims("rag"))
+    result = await webhooks.ai_catalog_webhook(JOB_ID, _claims("analyst"))
 
     assert result == {
         "currency": "PEN",
         "services": [
-            {"id": 1, "name": "Limpieza facial", "description": None, "price": "150.00", "price_notes": None}
+            {"id": 1, "name": "Limpieza facial", "price": "150.00"}
         ],
     }
 
 
-def test_knowledge_fallback_escapes_like_wildcards():
-    assert _escape_like(r"50%_promo\\hoy") == r"50\%\_promo\\\\hoy"
+async def test_catalog_tool_only_serves_the_analyst():
+    # Las sugerencias ya no pasan por n8n: un job "rag" no tiene nada que pedir acá.
+    with pytest.raises(HTTPException) as exc:
+        await webhooks.ai_catalog_webhook(JOB_ID, _claims("rag"))
+    assert exc.value.status_code == 403
 
 
-async def test_rag_dispatch_sends_operation_job_revision_and_tenant_token(monkeypatch):
-    response = SimpleNamespace(
-        raise_for_status=lambda: None,
-        json=lambda: [{
-            "output": {
-                "confianza": "alta",
-                "analisis": "Contexto vigente",
-                "sugerencias": [],
-            }
-        }],
-    )
+async def test_analyst_dispatch_sends_operation_job_revision_and_tenant_token(monkeypatch):
+    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"ok": True})
     client = SimpleNamespace(get=AsyncMock(return_value=response))
     monkeypatch.setattr(n8n_service, "_client", lambda: client)
     monkeypatch.setattr(
         n8n_service,
         "platform_settings_many",
         AsyncMock(return_value={
-            "n8n_webhook_url": "https://n8n.test/rag",
+            "n8n_analyst_webhook_url": "https://n8n.test/analista",
             "n8n_webhook_token": "outbound-secret",
         }),
     )
 
-    await n8n_service.call_n8n(
-        "lead-1",
-        None,
-        operation="rag",
-        job_id=JOB_ID,
-        context_revision="v1:abc",
-        tenant_context_token="signed-context",
+    await n8n_service.call_n8n_analyst(
+        "lead-1", job_id=JOB_ID, context_revision="v1:abc", tenant_context_token="signed-context",
     )
 
     kwargs = client.get.await_args.kwargs
     assert kwargs["params"] == {
+        "operation": "analyst",
         "chat_id": "lead-1",
-        "operation": "rag",
         "job_id": JOB_ID,
         "context_revision": "v1:abc",
     }
     assert kwargs["headers"]["X-Job-Id"] == JOB_ID
     assert kwargs["headers"]["X-Tenant-Context"] == "signed-context"
+    assert kwargs["headers"]["Authorization"] == "Bearer outbound-secret"
 
 
 async def test_retrying_an_old_n8n_execution_says_the_job_already_finished(monkeypatch):
@@ -505,3 +451,54 @@ async def test_retrying_an_old_n8n_execution_says_the_job_already_finished(monke
 
     assert exc.value.status_code == 409
     assert "ya finalizado (estado failed)" in exc.value.detail
+
+
+_SAVED = {"analisis": "Generada por n8n antes del corte", "confianza": "alta", "senal_compra": False, "alerta": None, "sugerencias": []}
+
+
+def _key_missing():
+    return AsyncMock(side_effect=ai_access.AIUnavailableError(
+        "ai_key_missing", "Las sugerencias con IA no están conectadas: carga la clave de tu proveedor de IA en Integraciones.", 503,
+    ))
+
+
+async def test_saved_suggestion_is_not_served_without_a_business_key(monkeypatch):
+    # Tras el corte de n8n, un negocio sin clave seguía viendo la última
+    # sugerencia guardada como si el copiloto funcionara.
+    _enabled_tenant(monkeypatch)
+    cached = AsyncMock(return_value=_SAVED)
+    monkeypatch.setattr(suggestions_service, "get_cached_suggestion", cached)
+    monkeypatch.setattr(ai_access, "platform_ready", _key_missing())
+
+    with pytest.raises(AssistantError) as exc:
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"))
+
+    assert exc.value.detail["code"] == "ai_key_missing"
+    cached.assert_not_awaited()
+
+
+async def test_saved_suggestion_still_shows_with_the_monthly_quota_used_up(monkeypatch):
+    # Mostrar lo ya generado no consume: la cuota solo frena generaciones nuevas.
+    _enabled_tenant(monkeypatch, quota=10, used=10)
+    monkeypatch.setattr(suggestions_service, "get_cached_suggestion", AsyncMock(return_value=_SAVED))
+
+    result = await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"))
+
+    assert result.analisis == "Generada por n8n antes del corte"
+
+
+async def test_suggestion_status_explains_what_is_missing_instead_of_the_saved_one(monkeypatch):
+    _enabled_tenant(monkeypatch)
+    saved = {"suggestion": _SAVED, "generated_at": datetime.now(timezone.utc), "stale": False}
+    monkeypatch.setattr(suggestions, "get_suggestion_status", AsyncMock(return_value=saved))
+    monkeypatch.setattr(ai_access, "platform_ready", _key_missing())
+
+    status = await suggestions.read_suggestion_status("lead-1")
+
+    assert status.suggestion is None
+    assert status.unavailable.code == "ai_key_missing"
+    assert "Integraciones" in status.unavailable.message
+
+    monkeypatch.setattr(ai_access, "platform_ready", AsyncMock(return_value=True))
+    status = await suggestions.read_suggestion_status("lead-1")
+    assert status.unavailable is None and status.suggestion.analisis == "Generada por n8n antes del corte"

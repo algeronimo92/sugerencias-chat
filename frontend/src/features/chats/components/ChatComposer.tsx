@@ -1,10 +1,10 @@
 import { MessageSquareLock, Send, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useActivityHold } from '../../../shared/activity'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { VoiceRecorder } from '../../../shared/ui/VoiceRecorder'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { compressImage } from '../../../shared/utils/media'
-import { FlowPicker } from '../../automations/public/FlowPicker'
+import { compressImage, uploadSizeError } from '../../../shared/utils/media'
 import { availableNativeInteractives } from '../domain/nativeInteractive'
 import type { OutboundOf } from '../domain/outbound'
 import { useChatDraft } from '../draftStore'
@@ -47,15 +47,15 @@ function describeGeolocationError(err: GeolocationPositionError): string {
   if (err.code === err.PERMISSION_DENIED) {
     return (
       'El navegador tiene bloqueado el acceso a la ubicación para este sitio. ' +
-      'Para habilitarlo: hacé click en el ícono de candado (o de información) a la ' +
-      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y volvé a cargar la página.'
+      'Para habilitarlo: haz clic en el ícono de candado (o de información) a la ' +
+      'izquierda de la URL → "Permisos del sitio" → Ubicación → Permitir, y vuelve a cargar la página.'
     )
   }
   if (err.code === err.POSITION_UNAVAILABLE) {
     return 'No se pudo determinar tu ubicación actual.'
   }
   if (err.code === err.TIMEOUT) {
-    return 'Se agotó el tiempo esperando la ubicación. Intentá de nuevo.'
+    return 'Se agotó el tiempo esperando la ubicación. Intenta de nuevo.'
   }
   return 'No se pudo obtener la ubicación.'
 }
@@ -114,6 +114,12 @@ export function ChatComposer({
   interface PendingMediaItem { file: File; previewUrl: string; kind: 'image' | 'video' | 'document' }
   const [pendingMedia, setPendingMedia] = useState<{ items: PendingMediaItem[]; activeIndex: number } | null>(null)
   const [isSendingMedia, setIsSendingMedia] = useState(false)
+  // Mientras haya algo de esto a medias, la app no se recarga sola para
+  // aplicar una versión nueva (ver app/pwaUpdateGuard.ts). El borrador de
+  // texto no cuenta: vive en localStorage y sobrevive a la recarga.
+  useActivityHold('recording', isRecordingAudio)
+  useActivityHold('pending-media', pendingMedia !== null)
+  useActivityHold('sending-media', isSendingMedia)
   const [isLocating, setIsLocating] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
@@ -372,6 +378,13 @@ export function ChatComposer({
       setMediaError('No se pudo determinar el tipo de archivo')
       return
     }
+    // Un video pesado se recomprime en el servidor al límite de WhatsApp; el
+    // tope evita leer en memoria uno que de todos modos no va a entrar.
+    const oversized = files.find((file) => uploadSizeError(file) != null)
+    if (oversized) {
+      setMediaError(`${oversized.name} ${uploadSizeError(oversized)}`)
+      return
+    }
 
     if (files.length > 1) {
       openMediaPreviewMulti(files)
@@ -557,8 +570,6 @@ export function ChatComposer({
               onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
             />
           )}
-
-          {!isRecordingAudio && <FlowPicker chatId={chat.chat_id} />}
 
           {!isRecordingAudio && (
             <div ref={slashPopoverRef} className="relative flex-1">

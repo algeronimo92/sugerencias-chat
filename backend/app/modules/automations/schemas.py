@@ -59,6 +59,11 @@ class AutomationExecutionItem(BaseModel):
     rule_id: int
     rule_name: str
     rule_deleted: bool = False
+    # Solo en ejecuciones que arrancó otro flujo (start_source='flow'): la
+    # ejecución y el flujo que la llamaron.
+    parent_execution_id: int | None = None
+    parent_rule_id: int | None = None
+    parent_rule_name: str | None = None
     lead_id: str | None = None
     lead_name: str | None = None
     trigger_type: AutomationTrigger

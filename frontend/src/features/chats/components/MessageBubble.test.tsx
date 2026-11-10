@@ -42,6 +42,8 @@ interface Options {
   onUnpin?: () => void
   selectionMode?: boolean
   isSelected?: boolean
+  isFirstOfGroup?: boolean
+  originLabel?: string | null
 }
 
 function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
@@ -57,7 +59,8 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
     <MessageBubble
       chat={CHAT}
       message={message(overrides)}
-      isFirstOfGroup
+      isFirstOfGroup={options.isFirstOfGroup ?? true}
+      originLabel={options.originLabel ?? null}
       isFlashing={false}
       threadWidth={600}
       hasFailedMedia={false}
@@ -83,6 +86,18 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
 }
 
 describe('MessageBubble', () => {
+  it('firma la primera burbuja de un grupo con quién o qué la mandó', () => {
+    renderBubble({}, { originLabel: 'Flujo Hollywood peel' })
+
+    expect(screen.getByTestId('message-origin')).toHaveTextContent('Flujo Hollywood peel')
+  })
+
+  it('no repite la firma dentro del mismo grupo', () => {
+    renderBubble({}, { originLabel: 'Grecia Geronimo', isFirstOfGroup: false })
+
+    expect(screen.queryByTestId('message-origin')).not.toBeInTheDocument()
+  })
+
   it('muestra un pedido de catálogo con sus productos y el total por moneda', () => {
     renderBubble({
       sender: 'cliente',

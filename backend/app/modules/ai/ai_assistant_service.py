@@ -121,15 +121,32 @@ def _price(value: Decimal | None) -> str | None:
     return None if value is None else f"{value:.2f}"
 
 
+def _single_session_price(packages: list[dict]) -> str | None:
+    """Precio de la sesión suelta, si el negocio la vende. Se conserva como
+    ``price`` porque el prompt del asistente en n8n ya lo lee así."""
+    for package in packages:
+        if package["sessions"] == 1:
+            return _price(package["price"])
+    return None
+
+
 async def list_ai_catalog() -> list[dict]:
+    """Un servicio sin paquetes no tiene precio: el asistente no lo cotiza."""
     rows = await list_ai_catalog_rows()
     return [
         {
             "id": row["id"],
             "name": row["name"],
-            "description": row["description"],
-            "price": _price(row["price"]),
-            "price_notes": row["price_notes"],
+            "price": _single_session_price(row["packages"]),
+            "packages": [
+                {
+                    "name": package["name"],
+                    "sessions": package["sessions"],
+                    "price": _price(package["price"]),
+                    "notes": package["notes"],
+                }
+                for package in row["packages"]
+            ],
         }
         for row in rows
     ]

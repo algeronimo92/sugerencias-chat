@@ -8,7 +8,7 @@ import { displayName, displayPhone } from '../features/leads/public/chat'
 import { visibleNavItems } from './navigation'
 
 interface Props {
-  isAdmin: boolean
+  role: string | undefined
   onOpenSettings?: () => void
 }
 
@@ -39,7 +39,7 @@ function normalize(text: string) {
  * saltar a cualquier pantalla, sin pasar por el menú. Llegar a un lead que no
  * está en la lista visible pedía volver a Chats, limpiar filtros y buscar.
  */
-export function CommandPalette({ isAdmin, onOpenSettings }: Props) {
+export function CommandPalette({ role, onOpenSettings }: Props) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -62,7 +62,8 @@ export function CommandPalette({ isAdmin, onOpenSettings }: Props) {
     return () => clearTimeout(timeout)
   }, [query])
 
-  const { data: leads = [], isFetching } = useLeadSearch(open ? debounced : '')
+  // El analista no abre chats: buscar leads solo le devolvería un 403.
+  const { data: leads = [], isFetching } = useLeadSearch(open && role !== 'analista' ? debounced : '')
 
   function close() {
     setOpen(false)
@@ -73,7 +74,7 @@ export function CommandPalette({ isAdmin, onOpenSettings }: Props) {
 
   const items = useMemo<PaletteItem[]>(() => {
     const term = normalize(query.trim())
-    const screens: PaletteItem[] = visibleNavItems(isAdmin).map((item) => ({
+    const screens: PaletteItem[] = visibleNavItems(role).map((item) => ({
       id: `nav:${item.path}`,
       label: item.label,
       hint: 'Ir a',
@@ -92,7 +93,7 @@ export function CommandPalette({ isAdmin, onOpenSettings }: Props) {
         }))
       : []
     return [...leadItems, ...matchingScreens]
-  }, [query, debounced, leads, isAdmin, navigate, onOpenSettings])
+  }, [query, debounced, leads, role, navigate, onOpenSettings])
 
   const active = Math.min(activeIndex, Math.max(items.length - 1, 0))
 

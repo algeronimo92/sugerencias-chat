@@ -1,6 +1,7 @@
 """Contratos HTTP de ai."""
-
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, field_validator
 
 
@@ -11,6 +12,10 @@ class TtsRequest(BaseModel):
 class TtsResponse(BaseModel):
     content_type: str
     data_base64: str
+
+
+class TtsStatus(BaseModel):
+    configured: bool
 
 
 # Tope de la indicación del asesor. Alineado con el maxLength del input del
@@ -69,14 +74,24 @@ class SuggestionResponse(BaseModel):
     sugerencias: list[Sugerencia]
 
 
+class SuggestionUnavailable(BaseModel):
+    """Por qué el negocio no tiene sugerencias (``ai_key_missing``, ``ai_disabled``,
+    ``ai_not_configured``…), con el texto para el vendedor."""
+
+    code: str
+    message: str
+
+
 class SuggestionStatus(BaseModel):
     """Estado de la sugerencia guardada de un lead: lectura barata que nunca
     dispara la generación. `stale` indica que el cliente escribió después de
-    generarse — la UI la muestra igual pero avisa que quedó desactualizada."""
+    generarse — la UI la muestra igual pero avisa que quedó desactualizada.
+    Con `unavailable` no hay sugerencia que mostrar: el panel explica qué falta."""
 
     suggestion: SuggestionResponse | None = None
     generated_at: datetime | None = None
     stale: bool = False
+    unavailable: SuggestionUnavailable | None = None
 
 from pydantic import BaseModel, Field
 from app.modules.ai.knowledge_service import MAX_CONTENT_LENGTH, MAX_TITLE_LENGTH
@@ -94,14 +109,23 @@ class AIProfileBody(BaseModel):
 class AIProfileItem(AIProfileBody):
     updated_at: str | None = None
 
+KnowledgeDocumentType = Literal["ficha", "politica", "faq", "guion", "otro"]
+
+
 class KnowledgeDocumentBody(BaseModel):
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     content: str = Field(min_length=1, max_length=MAX_CONTENT_LENGTH)
+    document_type: KnowledgeDocumentType | None = None
+    # Servicios del catálogo a los que pertenece (una ficha puede servir a
+    # "Botox - 1 Zona" y "2 Zonas"); vacío es conocimiento general.
+    service_ids: list[int] = Field(default_factory=list, max_length=50)
 
 class KnowledgeDocumentSummary(BaseModel):
     id: str
     title: str
     document_type: str | None = None
+    service_ids: list[int] = Field(default_factory=list)
+    template_id: int | None = None
     characters: int
     chunk_count: int
     created_at: str
@@ -129,3 +153,100 @@ class LeadAnalysisResult(BaseModel):
     # los traen.
     changed: bool | None = None
     stage: str | None = None
+
+
+class AiProviderModels(BaseModel):
+    provider: str
+    label: str
+    models: list[str]
+    key_configured: bool
+
+
+class AiModelParam(BaseModel):
+    """Un parámetro que el modelo acepta (registro de app.integrations.llm.catalog)."""
+
+    name: str
+    kind: Literal["choice", "float", "int", "text_list"]
+    label: str
+    help: str = ""
+    choices: list[str] = []
+    min: float | None = None
+    max: float | None = None
+    default: str | float | int | None = None
+    # Solo aplica si otro parámetro tiene uno de estos valores.
+    requires: dict[str, list[str]] = {}
+
+
+class AiModelParams(BaseModel):
+    label: str
+    note: str = ""
+    context_window: int
+    max_output_tokens: int
+    params: list[AiModelParam]
+
+
+class AiProvidersStatus(BaseModel):
+    """Lo que la tarjeta "Asistente IA" de Integraciones necesita."""
+
+    providers: list[AiProviderModels]
+    primary_model: str
+    fallback_model: str
+    # Hay clave para el modelo principal o el secundario.
+    ready: bool
+    # Qué parámetros acepta cada modelo ("proveedor:modelo" → esquema) y lo que
+    # el negocio sobrescribió en cada posición; el resto toma el default.
+    model_params: dict[str, AiModelParams] = {}
+    primary_params: dict[str, str | float | int | list[str]] = {}
+    fallback_params: dict[str, str | float | int | list[str]] = {}
+
+
+class AiProviderTestRequest(BaseModel):
+    provider: str
+    # En blanco, se prueba la clave guardada.
+    api_key: str | None = Field(default=None, max_length=500)
+    model: str | None = Field(default=None, max_length=80)
+
+
+class AiProviderTestResult(BaseModel):
+    ok: bool
+    provider: str
+    # Vacío en la prueba de clave (no se genera con ningún modelo).
+    model: str | None = None
+    error: str | None = None
+    latency_ms: int | None = None
+    # Prueba de clave: cuántos modelos ve la clave en el proveedor.
+    models_available: int | None = None
+
+
+class KnowledgePdfImportRequest(BaseModel):
+    filename: str = Field(default="", max_length=255)
+    # El PDF en base64 (sin el prefijo ``data:``); hasta 10 MB.
+    data_base64: str = Field(min_length=1, max_length=14_500_000)
+
+
+class KnowledgePdfImport(BaseModel):
+    """Texto extraído para revisar antes de guardarlo como documento."""
+
+    title: str
+    content: str
+    pages: int
+    characters: int
+    truncated: bool
+
+
+class KnowledgeTemplateSummary(BaseModel):
+    """Plantilla de la plataforma que el negocio puede importar."""
+
+    id: int
+    title: str
+    document_type: str | None = None
+    service_hint: str | None = None
+    content: str
+    version: int
+    characters: int
+    imported: bool
+
+
+class KnowledgeTemplateImport(BaseModel):
+    # Servicios del negocio a los que queda vinculada la copia; vacío, general.
+    service_ids: list[int] = Field(default_factory=list, max_length=50)

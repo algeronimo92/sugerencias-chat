@@ -1,6 +1,7 @@
 """Contratos HTTP de leads."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 from app.modules.leads.domain.types import INITIAL_LEAD_STAGE, LEAD_STAGE_KEY_PATTERN
@@ -147,6 +148,18 @@ class LeadStagePatch(BaseModel):
 
 class LeadStageOrder(BaseModel):
     keys: list[LeadStageKey] = Field(min_length=1, max_length=100)
+
+
+class ServiceInterestReassign(BaseModel):
+    """Pasar a todos los leads de un servicio de interés a otro, o a ninguno."""
+
+    from_service: str = Field(min_length=1, max_length=120)
+    # None: los deja sin servicio.
+    to_service: str | None = Field(default=None, max_length=120)
+
+
+class ServiceInterestReassignResult(BaseModel):
+    updated: int
 
 
 class LeadMergeRequest(BaseModel):
@@ -303,11 +316,77 @@ class DashboardLinkage(BaseModel):
     rate: float | None = None
 
 
+class DashboardAppointmentTreatmentDay(BaseModel):
+    """Citas agendadas de un tratamiento en un día (solo días con citas).
+    ``key`` agrupa las variantes de escritura del formulario."""
+    date: str
+    key: str
+    name: str
+    count: int
+    # Suma de adelantos de esas citas.
+    amount: float
+
+
+class DashboardSeparationTotals(BaseModel):
+    count: int
+    # Suma de adelantos (campo fijo o personalizado "adelanto").
+    amount: float
+    with_deposit: int
+    # Promedio entre las separaciones que dejaron adelanto.
+    avg_deposit: float | None = None
+    clients: int
+
+
+class DashboardSeparationPoint(BaseModel):
+    date: str
+    count: int
+    amount: float
+
+
+class DashboardSeparationSeller(BaseModel):
+    name: str
+    count: int
+    amount: float
+    with_deposit: int
+
+
+class DashboardSeparationRow(BaseModel):
+    id: int
+    # None cuando el teléfono de la cita no identificó a un único lead.
+    lead_id: str | None = None
+    name: str
+    treatment: str
+    amount: float
+    # Día y hora de la cita, tal como se registraron.
+    date: str
+    time: str
+    created_at: str
+    seller_name: str
+
+
+class DashboardSeparations(BaseModel):
+    """La venta del negocio medida como separación de cita con adelanto."""
+    totals: DashboardSeparationTotals
+    previous: DashboardSeparationTotals | None = None
+    trend: list[DashboardSeparationPoint]
+    previous_trend: list[DashboardSeparationPoint]
+    # Rankings del equipo, no dependen del scope. by_seller: quién registró la
+    # separación; by_owner: la vendedora asignada al lead. by_owner tiene
+    # default porque las versiones guardadas de la app (PWA) no lo conocen.
+    by_seller: list[DashboardSeparationSeller]
+    by_owner: list[DashboardSeparationSeller] = []
+    recent: list[DashboardSeparationRow]
+
+
 class DashboardAppointments(BaseModel):
     by_status: list[DashboardMetricItem]
     by_user: list[DashboardMetricItem]
     by_owner: list[DashboardMetricItem]
     by_treatment: list[DashboardMetricItem]
+    # Citas agendadas por tratamiento y día: el panel "Por tratamiento" las
+    # usa en los negocios que registran la venta como cita.
+    by_treatment_daily: list[DashboardAppointmentTreatmentDay]
+    separations: DashboardSeparations
     trend: list[DashboardPoint]
     lost_reasons: list[DashboardMetricItem]
     upcoming: list[DashboardUpcomingAppointment]
@@ -327,6 +406,33 @@ class DashboardActivity(BaseModel):
     messages: DashboardMessages
 
 
+class DashboardLegacySalesTotals(BaseModel):
+    count: int = 0
+    revenue: float = 0
+    avg_ticket: float | None = None
+    sessions: int = 0
+    discount: float = 0
+    discount_rate: float | None = None
+    buyers: int = 0
+
+
+class DashboardLegacySales(BaseModel):
+    """El bloque de ventas como lo leen las versiones anteriores de la app,
+    vacío: sin compras, con la moneda. Las versiones de antes de quitar
+    "Registrar compra" leen `totals.count`, `previous` y las listas; con solo
+    la moneda su dashboard fallaba (2026-11-10, Safari con la PWA vieja)."""
+    currency: str | None = None
+    totals: DashboardLegacySalesTotals = Field(default_factory=DashboardLegacySalesTotals)
+    previous: DashboardLegacySalesTotals | None = None
+    trend: list[dict] = Field(default_factory=list)
+    previous_trend: list[dict] = Field(default_factory=list)
+    by_package: list[dict] = Field(default_factory=list)
+    by_service: list[dict] = Field(default_factory=list)
+    by_service_daily: list[dict] = Field(default_factory=list)
+    by_seller: list[dict] = Field(default_factory=list)
+    recent: list[dict] = Field(default_factory=list)
+
+
 class DashboardMetrics(BaseModel):
     period_days: int
     scope: Literal["mine", "team"]
@@ -338,6 +444,14 @@ class DashboardMetrics(BaseModel):
     new_leads_trend: list[DashboardPoint]
     funnel: list[DashboardFunnelStep]
     pipeline: DashboardPipeline
+    # Código ISO 4217 del perfil del negocio, o None si no lo configuró o no
+    # es un código válido: los importes van entonces sin moneda.
+    currency: str | None = None
+    # Compatibilidad con la versión anterior de la app, que leía la moneda de
+    # `sales.currency`. Al borrar el bloque de ventas, quien tenía esa versión
+    # guardada veía romperse la pestaña Ventas (2026-11-10). Solo trae la
+    # moneda; se puede quitar cuando no quede nadie con esa versión.
+    sales: "DashboardLegacySales"
     automations: DashboardAutomations
     tags: DashboardTags
     appointments: DashboardAppointments

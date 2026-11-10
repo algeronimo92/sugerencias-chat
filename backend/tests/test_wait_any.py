@@ -138,21 +138,21 @@ class TestNormalizeWaitAnyConditions:
         ]
 
     def test_timer_is_mandatory(self):
-        with pytest.raises(ValueError, match="agrega un temporizador"):
+        with pytest.raises(ValueError, match="Agrega un temporizador"):
             normalize_wait_any_conditions({"conditions": [{"kind": "message"}]}, 1)
 
     def test_rejects_empty_conditions(self):
-        with pytest.raises(ValueError, match="al menos una condición"):
+        with pytest.raises(ValueError, match="al menos el temporizador"):
             normalize_wait_any_conditions({"conditions": []}, 1)
 
     def test_rejects_duplicate_kind(self):
-        with pytest.raises(ValueError, match="no repitas"):
+        with pytest.raises(ValueError, match="condición repetida"):
             normalize_wait_any_conditions(
                 {"conditions": [{"kind": "timer", "seconds": 30}, {"kind": "timer", "seconds": 60}]}, 1,
             )
 
     def test_rejects_unknown_kind(self):
-        with pytest.raises(ValueError, match="condición inválida"):
+        with pytest.raises(ValueError, match="no existe"):
             normalize_wait_any_conditions({"conditions": [{"kind": "video_opened"}]}, 1)
 
     @pytest.mark.parametrize("seconds", [0, -5, 604801])
@@ -326,15 +326,15 @@ class TestNormalizeQuestion:
         }
 
     def test_requires_text(self):
-        with pytest.raises(ValueError, match="escribe el mensaje"):
+        with pytest.raises(ValueError, match="Escribe la pregunta"):
             normalize_question({"text": "", "buttons": ["Si"], "timeout_seconds": 60}, 1)
 
     def test_requires_at_least_one_button(self):
-        with pytest.raises(ValueError, match="entre 1 y 3 botones"):
+        with pytest.raises(ValueError, match="al menos un botón"):
             normalize_question({"text": "Hola", "buttons": [], "timeout_seconds": 60}, 1)
 
     def test_rejects_more_than_three_buttons(self):
-        with pytest.raises(ValueError, match="entre 1 y 3 botones"):
+        with pytest.raises(ValueError, match="al menos un botón"):
             normalize_question({"text": "Hola", "buttons": ["A", "B", "C", "D"], "timeout_seconds": 60}, 1)
 
     def test_ignores_blank_button_labels(self):

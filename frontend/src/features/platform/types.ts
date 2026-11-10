@@ -98,3 +98,7 @@ export type OnboardingStatus = Delivered<ApiSchemas['OnboardingStatus']>;
 export type OnboardingStep = Delivered<ApiSchemas['OnboardingStep']>;
 export type OnboardingStepKey = OnboardingStep['key'];
 export type StarterPackResult = Delivered<ApiSchemas['StarterPackResult']>;
+
+/** Plantilla de conocimiento de la biblioteca de la plataforma. */
+export type KnowledgeTemplate = Delivered<ApiSchemas['KnowledgeTemplateItem']>
+export type KnowledgeTemplateInput = ApiSchemas['KnowledgeTemplateBody']

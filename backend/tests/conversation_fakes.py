@@ -18,8 +18,10 @@ from app.core import events
 from app.db import uow
 from app.integrations.meta.outbound import OutboundRejected, reaction_message, text_item
 from app.integrations.whatsapp.channel import SendReceipt
+from app.modules.conversations import message_origin
 from app.modules.conversations.application import ports
 from app.modules.conversations.application.ports import ConversationPorts
+from app.modules.conversations.message_origin import OriginFacts
 from app.modules.conversations.ports.types import ScheduledMessageStatus
 
 
@@ -28,6 +30,9 @@ class FakeOutbox:
         self._ids = count(1)
         self.queued: list[dict] = []
         self.by_key: dict[str, dict] = {}
+        # Clave de dedupe con la que se encoló cada mensaje: es lo que el
+        # origen del mensaje lee para distinguir flujo, programado y persona.
+        self.dedupe_key_by_id: dict[int, str | None] = {}
         self.failed: dict[int, dict] = {}
         self.sent: list[tuple[dict, SendReceipt]] = []
         self.failures: list[dict] = []
@@ -57,6 +62,7 @@ class FakeOutbox:
             },
         }
         self.queued.append(message)
+        self.dedupe_key_by_id[message["id"]] = item.get("dedupe_key")
         if item.get("dedupe_key"):
             self.by_key[item["dedupe_key"]] = message
         return message
@@ -263,6 +269,8 @@ class ConversationWorld:
     sender: FakeChannelSender
     windows: dict[str, bool]
     published: list[events.DomainEvent]
+    # Directorio de nombres para firmar mensajes (id -> nombre).
+    user_names: dict[int, str] = field(default_factory=dict)
 
     def of(self, event_type) -> list:
         return [event for event in self.published if isinstance(event, event_type)]
@@ -303,6 +311,28 @@ def in_memory_conversations(monkeypatch) -> ConversationWorld:
 
     monkeypatch.setattr(uow, "dispatch_in_transaction", record)
     monkeypatch.setattr(uow, "dispatch_after_commit", nothing)
+
+    # El origen de un mensaje devuelto por una ruta se deriva de lo que quedó
+    # en el outbox falso, y los nombres salen de `world.user_names` en vez de
+    # la tabla de usuarios: así ninguna ruta toca la base al firmar su respuesta.
+    async def origin_facts(message_ids):
+        wanted = set(message_ids)
+        return {
+            queued["id"]: OriginFacts(
+                sender=queued["sender"],
+                sent_by_user_id=queued["sent_by_user_id"],
+                has_outbox=True,
+                dedupe_key=world.outbox.dedupe_key_by_id.get(queued["id"]),
+            )
+            for queued in world.outbox.queued
+            if queued["id"] in wanted
+        }
+
+    async def names(user_ids):
+        return {user_id: world.user_names[user_id] for user_id in set(user_ids) if user_id in world.user_names}
+
+    monkeypatch.setattr(message_origin, "load_origin_facts", origin_facts)
+    monkeypatch.setattr(message_origin, "user_names", names)
     return world
 
 

@@ -729,7 +729,6 @@ FOREIGN_TABLES = {
     "app/modules/appointments/infrastructure/repository.py": {"leads"},
     # El motor y el inbox miran el estado del lead (pausa, existencia,
     # columnas de bandeja) en la misma transacción que sus propias filas.
-    "app/modules/automations/infrastructure/sql_executions.py": {"leads"},
     "app/modules/automations/infrastructure/sql_scheduling.py": {"conversations", "leads"},
     "app/modules/automations/infrastructure/worker.py": {"conversations", "leads", "tasks"},
     "app/modules/conversations/infrastructure/sql_inbox.py": {"leads"},

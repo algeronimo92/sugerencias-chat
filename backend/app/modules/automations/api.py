@@ -67,7 +67,7 @@ async def patch_flow(
 ):
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
-        raise HTTPException(404, "Flujo visual no encontrado")
+        raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
     item = await save_visual_flow(
         rule_id, body.name if body.name is not None else current["name"], body.flow_definition
     )
@@ -78,7 +78,7 @@ async def patch_flow(
 async def publish_flow(rule_id: int, _admin: User = Depends(require_admin)):
     item = await publish_visual_flow(rule_id)
     if item is None:
-        raise HTTPException(404, "Flujo visual no encontrado")
+        raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
     return item
 
 
@@ -86,7 +86,7 @@ async def publish_flow(rule_id: int, _admin: User = Depends(require_admin)):
 async def get_flow_versions(rule_id: int, _admin: User = Depends(require_admin)):
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
-        raise HTTPException(404, "Flujo visual no encontrado")
+        raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
     return await list_flow_versions(rule_id)
 
 
@@ -130,7 +130,7 @@ async def patch_rule(
         if "name" in requested:
             name = str(requested["name"] or "").strip()
             if not name or len(name) > 120:
-                raise HTTPException(400, "El nombre debe tener entre 1 y 120 caracteres")
+                raise HTTPException(400, "Escribe un nombre para el flujo (hasta 120 caracteres).")
             values["name"] = name
         if "max_executions_per_hour" in requested:
             values["max_executions_per_hour"] = requested["max_executions_per_hour"]
@@ -270,7 +270,7 @@ async def _require_execution_access(execution_id: int, user: User, action: str) 
         return
     execution = await get_automation_execution(execution_id)
     if execution is None or execution["lead_id"] is None:
-        raise HTTPException(403, f"No podés {action} esta ejecución")
+        raise HTTPException(403, f"No puedes {action} este flujo porque no está ligado a ningún lead.")
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=AutomationExecutionItem)
@@ -289,8 +289,7 @@ async def post_pause_execution(execution_id: int, user: User = Depends(get_curre
     if item is None:
         raise HTTPException(
             409,
-            "Solo se puede pausar una ejecución programada: si está ejecutando un paso, "
-            "esperá a que llegue a su próxima espera.",
+            "Solo se puede pausar un flujo que está esperando. Si está haciendo un paso, espera a que llegue a su próxima pausa.",
         )
     return item
 

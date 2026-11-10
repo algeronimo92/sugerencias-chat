@@ -80,7 +80,6 @@ const MAX_COMPONENT_LINES = 400
 
 /** Componentes que hoy superan MAX_COMPONENT_LINES. La fase 8 los parte. */
 const KNOWN_LARGE_COMPONENTS = [
-  'features/ai/components/AiAssistantPage.tsx',
   'features/auth/components/LoginPage.tsx',
   'features/automations/components/AutomationsPage.tsx',
   'features/automations/components/MyAutomationExecutionsPage.tsx',

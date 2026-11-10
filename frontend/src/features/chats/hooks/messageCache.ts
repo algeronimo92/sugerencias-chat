@@ -13,12 +13,15 @@ import type { MessagePage, OptimisticContext, OptimisticMessageDraft } from '../
 let nextOptimisticMessageId = -1
 let lastOptimisticTimestamp = 0
 
-function optimisticMessage(draft: OptimisticMessageDraft): Message {
+function optimisticMessage(draft: OptimisticMessageDraft, origin: Message['origin']): Message {
   const timestamp = Math.max(Date.now(), lastOptimisticTimestamp + 1)
   lastOptimisticTimestamp = timestamp
   return {
     id: nextOptimisticMessageId--,
     sender: 'vendedor',
+    // Quien está enviando: así la burbuja optimista ya se agrupa y se firma
+    // igual que cuando el servidor la confirme.
+    origin,
     content: draft.content,
     sent_at: new Date(timestamp).toISOString(),
     media_url: draft.media_url ?? null,
@@ -65,17 +68,22 @@ export function mutateMessageCache(
   })
 }
 
-/** Pone un mensaje confirmado por el servidor en lugar del que había. */
+/** Pone un mensaje confirmado por el servidor en lugar del que había. Si la
+ * respuesta no trae origen, se conserva el que ya tenía la burbuja: una
+ * respuesta parcial no debe borrarle la firma. */
 export function replaceCachedMessage(queryClient: QueryClient, chatId: string, message: Message) {
-  mutateMessageCache(queryClient, chatId, current => current.id === message.id ? message : current)
+  mutateMessageCache(queryClient, chatId, current => current.id === message.id
+    ? { ...message, origin: message.origin ?? current.origin ?? null }
+    : current)
 }
 
 export function appendOptimisticMessages(
   queryClient: QueryClient,
   chatId: string,
   drafts: OptimisticMessageDraft[],
+  origin: Message['origin'] = null,
 ): OptimisticContext {
-  const messages = drafts.map(optimisticMessage)
+  const messages = drafts.map(draft => optimisticMessage(draft, origin))
   queryClient.setQueryData<InfiniteData<MessagePage>>(messageKeys.thread(chatId), current => {
     if (!current) return { pages: [{ items: messages, has_more: false }], pageParams: [null] }
     const pages = [...current.pages]

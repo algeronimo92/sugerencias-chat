@@ -7,11 +7,12 @@ compila contra el dialecto real de PostgreSQL y las filas las devuelve un doble
 que inventa valores del tipo correcto según las columnas pedidas.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
 from app.modules.leads.dashboard import api as dashboard_router
@@ -24,6 +25,7 @@ from app.modules.leads.dashboard import (
     summary_queries as summary,
     tags_queries as tags,
 )
+from app.modules.leads.dashboard import currency
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, build_scope
 
 
@@ -63,8 +65,13 @@ def compiled_sql(monkeypatch):
         statements.append(str(stmt.compile(dialect=postgresql.dialect())))
         return [{name: _sample_value(column) for name, column in stmt.selected_columns.items()}]
 
+    async def fake_currency():
+        return "PEN"
+
     for block in BLOCKS:
         monkeypatch.setattr(block, "execute_mapping", fake_execute_mapping)
+    # La moneda sale del perfil IA, que abriría una sesión real.
+    monkeypatch.setattr(currency, "_profile_currency", fake_currency)
     return statements
 
 
@@ -95,7 +102,7 @@ async def test_payload_carries_every_panel(compiled_sql):
     assert data["scope"] == SCOPE_MINE
     assert data["period_days"] == 30
     for key in ("summary", "stages", "origins", "services", "sellers", "new_leads_trend",
-                "funnel", "pipeline", "automations", "tags", "appointments", "activity"):
+                "funnel", "pipeline", "automations", "tags", "appointments", "activity", "currency"):
         assert key in data, f"falta el bloque {key}"
     for key in ("total_leads", "new_leads", "awaiting_reply", "overdue_tasks", "completed_tasks",
                 "avg_response_minutes", "appointments_created", "flows_started", "flows_active",
@@ -105,8 +112,8 @@ async def test_payload_carries_every_panel(compiled_sql):
         assert key in data["automations"], f"falta el panel de flujos {key}"
     for key in ("coverage", "top", "by_user", "trend"):
         assert key in data["tags"], f"falta el panel de etiquetas {key}"
-    for key in ("by_status", "by_treatment", "by_user", "by_owner", "trend", "lost_reasons",
-                "upcoming", "no_shows", "linkage"):
+    for key in ("by_status", "by_treatment", "by_treatment_daily", "by_user", "by_owner", "trend",
+                "lost_reasons", "upcoming", "no_shows", "linkage", "separations"):
         assert key in data["appointments"], f"falta el panel de citas {key}"
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
@@ -140,6 +147,8 @@ async def test_team_rankings_are_shared_in_both_scopes(compiled_sql):
     assert data["automations"]["by_actor"]
     assert data["tags"]["by_user"]
     assert data["appointments"]["by_user"]
+    assert data["appointments"]["separations"]["by_seller"]
+    assert data["appointments"]["separations"]["by_owner"]
 
 
 @pytest.mark.asyncio
@@ -153,6 +162,8 @@ async def test_series_covers_every_day_of_the_period(compiled_sql):
         ("citas", data["appointments"]["trend"]),
         ("actividad", data["activity"]["trend"]),
         ("mensajes", data["activity"]["messages"]["trend"]),
+        ("separaciones", data["appointments"]["separations"]["trend"]),
+        ("separaciones del período anterior", data["appointments"]["separations"]["previous_trend"]),
     ):
         assert len(points) == 7, f"la serie de {name} debe traer un punto por día"
         assert [point["date"] for point in points] == sorted(point["date"] for point in points)
@@ -181,11 +192,11 @@ async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
 
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
-    await dashboard_router.dashboard(days=30, scope=None, user=SimpleNamespace(id=3, role="vendedor"))
-    await dashboard_router.dashboard(days=30, scope=None, user=SimpleNamespace(id=1, role="admin"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
     # Un vendedor sí puede pedir el total del equipo: ya ve todos los chats, así
     # que no es información nueva y le da contexto a sus propios números.
-    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
 
     assert received == [(30, SCOPE_MINE, 3), (30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 3)]
 
@@ -222,3 +233,82 @@ def test_funnel_rates_are_relative_to_the_cohort():
     assert scope.days == 30
     assert scope.start <= scope.now
     assert scope.is_mine
+
+
+@pytest.mark.asyncio
+async def test_currency_only_passes_iso_codes(monkeypatch):
+    """El perfil acepta texto libre; el navegador solo formatea códigos ISO."""
+    for stored, expected in (("PEN", "PEN"), ("S/", None), ("SOLES", None), (None, None)):
+        async def fake(value=stored):
+            return value
+        monkeypatch.setattr(currency, "_profile_currency", fake)
+        assert await currency.business_currency() == expected
+
+
+@pytest.mark.asyncio
+async def test_payload_carries_the_business_currency(compiled_sql):
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+    assert data["currency"] == "PEN"
+    # Las versiones anteriores de la app leen el bloque de ventas: va vacío y
+    # completo, o su dashboard se rompe hasta que se actualizan.
+    legacy = data["sales"]
+    assert legacy["currency"] == "PEN"
+    assert legacy["totals"]["count"] == 0 and legacy["previous"] is None
+    for key in ("trend", "previous_trend", "by_package", "by_service", "by_service_daily", "by_seller", "recent"):
+        assert legacy[key] == [], key
+
+
+
+@pytest.mark.asyncio
+async def test_booked_appointments_by_treatment_skip_duplicates_and_tests(compiled_sql):
+    """Solo cuentan las citas agendadas de verdad, del período y del scope, con
+    las variantes de escritura del tratamiento juntas."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    daily_sql = [sql for sql in compiled_sql if "regexp_replace(appointments.tratamiento" in sql]
+    assert len(daily_sql) == 1
+    sql = daily_sql[0]
+    assert "appointments.status IN" in sql and "appointments.test_mode IS false" in sql
+    assert "appointments.created_by_user_id = " in sql
+    assert "mode() WITHIN GROUP (ORDER BY appointments.tratamiento)" in sql
+    assert set(data["appointments"]["by_treatment_daily"][0]) == {"date", "key", "name", "count", "amount"}
+
+
+@pytest.mark.asyncio
+async def test_separations_read_the_deposit_from_either_field_and_compare_windows(compiled_sql):
+    """La venta es la separación de cita: el monto sale del adelanto fijo o del
+    campo personalizado, y la comparación usa la ventana anterior sin solaparse."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    separations = data["appointments"]["separations"]
+    for key in ("totals", "previous", "trend", "previous_trend", "by_seller", "by_owner", "recent"):
+        assert key in separations, f"falta {key} en separaciones"
+    assert len(separations["trend"]) == len(separations["previous_trend"]) == 30
+
+    deposit_sql = [sql for sql in compiled_sql if "jsonb_typeof(appointments.custom_fields" in sql]
+    assert deposit_sql, "el monto debe leer el campo personalizado adelanto"
+    assert any("appointments.created_at < " in sql for sql in deposit_sql), "falta el tope de la ventana anterior"
+    # Los dos rankings del equipo (quién registró, de quién es el lead) no se acotan.
+    scoped = [sql for sql in deposit_sql if "GROUP BY coalesce(users.name" not in sql and "users AS users_1" not in sql]
+    assert all("appointments.created_by_user_id = " in sql for sql in scoped)
+
+
+@pytest.mark.asyncio
+async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(monkeypatch):
+    """Filtrar por vendedora es mirar "lo suyo" de otra persona: el admin
+    puede, un vendedor no (ya ve los rankings del equipo)."""
+    received = []
+
+    async def fake_metrics(days, scope, user_id):
+        received.append((days, scope, user_id))
+        return {}
+
+    monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
+
+    await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=1, role="admin"))
+    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=3, user=SimpleNamespace(id=3, role="vendedor"))
+    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 3)]
+
+    with pytest.raises(HTTPException) as exc:
+        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=3, role="vendedor"))
+    assert exc.value.status_code == 403

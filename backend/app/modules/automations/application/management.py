@@ -22,7 +22,6 @@ from app.modules.automations.application.triggers import (
 from app.modules.automations.application.validation import validate_visual_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import normalize_visual_draft
-from app.modules.leads.public import fetch_lead_raw
 from app.modules.automations.domain.errors import AutomationConflict, InvalidAutomation
 
 _DEADLINE_FIELDS = {"is_active", "trigger_type", "trigger_config", "delay_minutes"}
@@ -162,7 +161,7 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
         current["name"], current["flow_definition"], current_rule_id=rule_id,
     )
     if validated["flow_definition"] == current["published_flow_definition"]:
-        raise InvalidAutomation("No hay cambios pendientes para publicar")
+        raise InvalidAutomation("No hay cambios para publicar: esta versión ya está publicada.")
     rules = automation_ports().rules
     async with unit_of_work():
         await rules.publish(rule_id, validated, version=current["flow_version"] + 1, now=_now())
@@ -226,25 +225,14 @@ async def retry_automation_execution(
     return await executions.view(execution_id)
 
 
-async def pause_lead_executions(lead_id: str) -> int:
-    """Al pausar la automatización de un lead, congela lo que tiene programado
-    de disparadores de sistema en vez de cancelarlo: `paused`, con
-    `scheduled_for` intacto y `paused_at` marcando desde cuándo, para que
-    `resume_lead_executions` le devuelva el tiempo que le faltaba.
-
-    No toca lo que está corriendo en este instante (el motor la congela al
-    llegar a su siguiente espera) ni los flujos manuales del vendedor, que
-    pidió a propósito y puede pausar o cancelar uno por uno desde el chat."""
-    async with unit_of_work():
-        paused = await automation_ports().executions.pause_lead(lead_id, _now())
-        if paused:
-            await _changed()
-    return paused
-
-
 async def resume_lead_executions(lead_id: str) -> int:
     """Devuelve a la cola lo que quedó congelado por la pausa del lead, con el
     tiempo que le faltaba.
+
+    Pausar el lead ya no congela nada: desde el 2026-11-09 el botón del bot
+    solo impide que los disparadores creen ejecuciones nuevas, y lo que está
+    en curso se pausa una por una desde el chat. Esto queda para descongelar
+    lo que la regla anterior dejó pausado en producción.
 
     `waiting_since` de los bloques Pausa/Pregunta no se corre a propósito: si
     el cliente escribió mientras el vendedor atendía a mano, esa respuesta es
@@ -262,8 +250,8 @@ async def resume_lead_executions(lead_id: str) -> int:
 
 async def pause_automation_execution(execution_id: int) -> dict | None:
     """Congela una sola ejecución: el botón de pausa del panel de
-    automatizaciones del chat. A diferencia de la pausa del lead, acá sí
-    entran los flujos manuales.
+    automatizaciones del chat. Es la única forma de detener algo que ya está
+    en marcha: el botón del bot del chat solo frena lanzamientos nuevos.
 
     Solo aplica a una ejecución `scheduled`; una `running` está enviando un
     paso en este instante y no se interrumpe. Devuelve None para que el
@@ -278,24 +266,11 @@ async def pause_automation_execution(execution_id: int) -> dict | None:
 
 async def resume_automation_execution(execution_id: int) -> dict | None:
     """Devuelve a la cola una ejecución congelada, con el tiempo que le
-    faltaba. Sirve para las dos pausas: la puntual del vendedor y la que dejó
-    la pausa del lead.
-
-    Con el lead todavía pausado no tiene sentido: el motor la volvería a
-    congelar al vencer. Eso se corta acá con un error claro — salvo en los
-    flujos manuales, que la pausa del lead nunca frena."""
+    faltaba. Sirve para la pausa puntual del vendedor y para lo que la regla
+    anterior congeló con el lead. El bot del chat en pausa no lo impide: ya
+    no congela nada, así que el motor no la volverá a detener al vencer."""
     executions = automation_ports().executions
     async with unit_of_work():
-        execution, _rule = await executions.load(execution_id)
-        if execution is None or execution.status != AutomationExecutionStatus.PAUSED:
-            return None
-        if execution.start_source != "manual" and execution.lead_id:
-            lead = await fetch_lead_raw(execution.lead_id)
-            if lead is not None and lead.get("automatizacion_pausada"):
-                raise AutomationConflict(
-                    "Este chat tiene la automatización pausada: reanudala con el botón "
-                    "del bot en la cabecera para que el flujo siga."
-                )
         if not await executions.resume(execution_id, _now()):
             return None
         await _changed(wake=True)
@@ -327,13 +302,13 @@ async def start_manual_flow_execution(
     """
     rule = await automation_ports().rules.get(rule_id)
     if rule is None:
-        raise InvalidAutomation("Flujo no encontrado")
+        raise InvalidAutomation("Este flujo ya no existe.")
     if rule["builder_mode"] != AutomationBuilderMode.VISUAL or rule["trigger_type"] != AutomationTrigger.MANUAL:
-        raise InvalidAutomation("La regla no es un flujo de inicio manual")
+        raise InvalidAutomation("Este flujo no se puede iniciar desde el chat: su disparador no es «Inicio manual (vendedor)».")
     if not rule["is_active"]:
-        raise InvalidAutomation("Publica y activa el flujo antes de iniciarlo")
+        raise InvalidAutomation("Este flujo está pausado o todavía no se publicó, así que no se puede iniciar.")
     if not is_admin and not rule["visible_to_sellers"]:
-        raise InvalidAutomation("Este flujo no está disponible para vendedores")
+        raise InvalidAutomation("Este flujo no está disponible para vendedores. Un administrador puede activarlo con «Visible para vendedores».")
 
     event_key = f"manual:{uuid4()}"
     try:
@@ -348,15 +323,14 @@ async def start_manual_flow_execution(
         )
     except ExecutionAlreadyRunning as exc:
         raise InvalidAutomation(
-            "Ya hay una ejecución de este flujo en curso para este lead. "
-            "Esperá a que termine o cancelala antes de iniciar otra."
+            "Este flujo ya está en curso con este lead. Espera a que termine o cancélalo antes de iniciarlo otra vez."
         ) from exc
     if not created:
-        raise InvalidAutomation("No se pudo iniciar el flujo: verifica que el lead exista")
+        raise InvalidAutomation("No se pudo iniciar el flujo. Puede que este lead ya no exista; recarga la página.")
 
     executions = automation_ports().executions
     execution_id = await executions.find_by_event_key(rule_id, event_key)
     execution = await executions.view(execution_id) if execution_id else None
     if execution is None:
-        raise InvalidAutomation("No se pudo recuperar la ejecución iniciada")
+        raise InvalidAutomation("El flujo se inició, pero no se pudo mostrar. Recarga la página para verlo.")
     return execution

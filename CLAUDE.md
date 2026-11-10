@@ -5,7 +5,7 @@
 CRM conversacional de WhatsApp para clínicas estéticas, vendido como SaaS multi-tenant
 (**CliniVentas**; un schema de PostgreSQL por negocio). **DermicaPro** es el primer tenant.
 Backend FastAPI hexagonal + React 19 por features; Meta Cloud API nativa (recepción y envío);
-n8n solo para la IA (sugerencias y analista) y callbacks; MinIO para media; Traefik blue-green.
+n8n solo para el analista de leads y callbacks (las sugerencias las genera el backend con las claves de IA de cada negocio); MinIO para media; Traefik blue-green.
 
 Nombres que conviven y son lo mismo: repo `sugerencias-chat`, red y volúmenes `dermicapro-*`,
 dominio `*.cliniventas.com`. "Sugerencias" es hoy una función del CRM, no el producto.
@@ -35,7 +35,7 @@ Para agregar una funcionalidad: [docs/guia-nueva-funcionalidad.md](docs/guia-nue
 
 ## Comandos
 
-Son los que corre CI ([.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml)); si uno diverge, manda CI.
+Son los que corre CI ([.github/workflows/checks.yml](.github/workflows/checks.yml), en cada PR y antes de cada deploy desde [deploy.yml](.github/workflows/deploy.yml)); si uno diverge, manda CI.
 
 ```bash
 # Desarrollo: frontend :5173, backend :8000, postgres 127.0.0.1:5432 (compose.yml).
@@ -101,7 +101,7 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
   (`alembic check`, `migrate --check`) no lo pide. El resto (pytest, uvicorn, scripts) no tiene guarda.
 - **Nunca `docker compose -f compose.prod.yml up` a secas**: publica 8000 y 80 en todas las interfaces y se salta
   Traefik. Producción se despliega con `scripts/deploy-bluegreen.sh` (CI lo hace en cada push a `main`).
-- **Push a `main` despliega a producción** (job `deploy`, serializado). Merges con cuidado.
+- **Push a `main` despliega a producción** (workflow `Deploy a producción`, serializado; se ve en la pestaña Deployments). Merges con cuidado.
 - Los exports de workflows de n8n (`rag*.json`, `analista*.json`, `webhook*.json`) están gitignoreados porque traen
   credenciales: no commitearlos. La versión saneada vive en `backend/tests/fixtures/n8n/`. Tampoco `db/tls/`,
   `.env*`, `monitoring/secrets/`.
@@ -116,3 +116,7 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
 
 - `.claude/agents/app-expert.md`: reglas de negocio y dónde vive cada funcionalidad.
 - `.claude/agents/ui-ux-expert.md`: diseño, tokens (`frontend/src/index.css`), accesibilidad.
+- Panel de debate (solo lectura): `investigador-ux`, `disenador-ui`, `experto-usabilidad`,
+  `experto-negocio-clinicas`, `experto-anuncios-meta`, `analista-datos` y `moderador-producto`, que sintetiza.
+  Se corren juntos con `Workflow({ name: 'debate-expertos', args: { tema, contexto } })`
+  (`.claude/workflows/debate-expertos.js`). Ejemplo de resultado: `docs/analisis/16-debate-dashboard-analitica.md`.

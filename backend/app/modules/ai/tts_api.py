@@ -1,10 +1,15 @@
 import base64
 
 from fastapi import APIRouter, HTTPException
-from app.modules.ai.schemas import TtsRequest, TtsResponse
-from app.integrations.tts_service import TtsError, synthesize_speech
+from app.modules.ai.schemas import TtsRequest, TtsResponse, TtsStatus
+from app.integrations.tts_service import TtsError, is_configured, synthesize_speech
 
 router = APIRouter(prefix="/api/tts", tags=["tts"])
+
+
+@router.get("/status", response_model=TtsStatus)
+async def tts_status():
+    return TtsStatus(configured=await is_configured())
 
 
 @router.post("", response_model=TtsResponse)

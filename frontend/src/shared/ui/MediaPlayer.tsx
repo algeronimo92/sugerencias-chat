@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Download, Expand, Loader2, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import { mediaDownloadUrl } from '../utils/media'
 
@@ -39,15 +39,49 @@ function progressValue(currentTime: number, duration: number): number {
   return Math.min(duration, Math.max(0, currentTime))
 }
 
+function progressText(currentTime: number, duration: number): string {
+  return duration ? `${formatTime(currentTime)} de ${formatTime(duration)}` : formatTime(currentTime)
+}
+
+/**
+ * Al desmontar, pausa y suelta el archivo. Quitar un <video> o <audio> de la
+ * página no basta: Safari y iOS siguen cargándolo y, si tenía autoplay,
+ * arrancan al terminar la descarga aunque el elemento ya no exista, y ese
+ * sonido se mezcla con el siguiente. Incidente: visor de Adjuntos, 2026-11-06.
+ */
+function useReleaseOnUnmount(ref: RefObject<HTMLMediaElement | null>, src: string) {
+  useEffect(() => {
+    const media = ref.current
+    if (!media) return
+    // En desarrollo StrictMode desmonta y vuelve a montar: la limpieza de
+    // abajo quitó el src y React no lo repone porque la prop no cambió.
+    if (media.getAttribute('src') !== src) media.setAttribute('src', src)
+    return () => {
+      media.pause()
+      media.removeAttribute('src')
+      media.load()
+    }
+  }, [ref, src])
+}
+
+/** Una sola fuente sonando a la vez, como en WhatsApp: al reproducir, lo demás se pausa. */
+function pauseOtherMedia(current: HTMLMediaElement) {
+  for (const media of document.querySelectorAll<HTMLMediaElement>('audio, video')) {
+    if (media !== current && !media.paused && !media.muted) media.pause()
+  }
+}
+
 function AudioPlayButton({ isPlaying, isLoading, onClick, label }: { isPlaying: boolean; isLoading: boolean; onClick: () => void; label: string }) {
+  // Se puede pulsar aunque aún no haya metadatos: en Safari iOS no se
+  // precarga nada hasta que el usuario pide reproducir, y un botón
+  // deshabilitado mientras tanto dejaba el audio inservible.
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={isLoading}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary text-white shadow-sm transition-colors hover:bg-wa-primary-strong disabled:cursor-wait disabled:opacity-65"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wa-primary text-white shadow-sm transition-colors hover:bg-wa-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60 focus-visible:ring-offset-2"
     >
       {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
     </button>
@@ -61,6 +95,7 @@ export function AudioPlayer({ src, className = '', onError, autoPlay = false, ar
   const [isMuted, setIsMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  useReleaseOnUnmount(audioRef, src)
 
   useEffect(() => {
     setIsPlaying(false)
@@ -122,7 +157,7 @@ export function AudioPlayer({ src, className = '', onError, autoPlay = false, ar
         onDurationChange={syncMetadata}
         onCanPlay={() => setIsLoading(false)}
         onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime)}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={event => { pauseOtherMedia(event.currentTarget); setIsPlaying(true) }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => { setIsPlaying(false); setCurrentTime(duration) }}
         onError={() => { setIsLoading(false); onError?.() }}
@@ -137,6 +172,7 @@ export function AudioPlayer({ src, className = '', onError, autoPlay = false, ar
           value={progressValue(currentTime, duration)}
           disabled={!duration}
           aria-label="Progreso del audio"
+          aria-valuetext={progressText(currentTime, duration)}
           onChange={event => seek(Number(event.target.value))}
           className="block h-1.5 w-full cursor-pointer accent-emerald-500 disabled:cursor-default disabled:opacity-45"
         />
@@ -178,6 +214,7 @@ export function VideoPlayer({ src, className = '', videoClassName = '', style, o
   const [isMuted, setIsMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  useReleaseOnUnmount(videoRef, src)
 
   useEffect(() => {
     setIsPlaying(false)
@@ -246,7 +283,7 @@ export function VideoPlayer({ src, className = '', videoClassName = '', style, o
         onDurationChange={syncMetadata}
         onCanPlay={() => setIsLoading(false)}
         onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime)}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={event => { pauseOtherMedia(event.currentTarget); setIsPlaying(true) }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => { setIsPlaying(false); setCurrentTime(duration) }}
         onError={() => { setIsLoading(false); onError?.() }}
@@ -276,6 +313,7 @@ export function VideoPlayer({ src, className = '', videoClassName = '', style, o
           value={progressValue(currentTime, duration)}
           disabled={!duration}
           aria-label="Progreso del video"
+          aria-valuetext={progressText(currentTime, duration)}
           onClick={event => event.stopPropagation()}
           onChange={event => seek(Number(event.target.value))}
           className="h-1 min-w-0 flex-1 cursor-pointer accent-emerald-400 disabled:cursor-default disabled:opacity-45"

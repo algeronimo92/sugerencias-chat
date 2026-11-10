@@ -34,6 +34,12 @@ def test_media_without_session_is_rejected(client: TestClient, method: str) -> N
     assert response.status_code == 401
 
 
+def test_media_thumbnail_without_session_is_rejected(client: TestClient) -> None:
+    """La miniatura es la misma foto de la paciente en chico: pide sesión igual."""
+    response = client.get("/media/cualquier-archivo.jpg/thumbnail")
+    assert response.status_code == 401
+
+
 def test_media_with_invalid_token_is_rejected(client: TestClient) -> None:
     response = client.get(
         "/media/cualquier-archivo.jpg",

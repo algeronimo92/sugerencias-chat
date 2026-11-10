@@ -36,4 +36,14 @@ describe('useDismissiblePopover', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onDismiss).toHaveBeenCalledOnce()
   })
+
+  it('usa siempre el onDismiss más reciente', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender } = render(<Fixture onDismiss={first} />)
+    rerender(<Fixture onDismiss={second} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledOnce()
+  })
 })

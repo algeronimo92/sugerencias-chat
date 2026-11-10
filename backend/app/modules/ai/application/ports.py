@@ -72,6 +72,10 @@ class AiJobNotStarted(Exception):
 
 
 class AiAccess(Protocol):
+    async def ensure_configured(self, operation: str) -> None:
+        """Levanta ``AiUnavailable`` si el negocio no tiene la operación
+        habilitada y configurada (sin mirar la cuota)."""
+
     async def ensure_available(self, operation: str) -> None:
         """Levanta ``AiUnavailable`` si el negocio no puede generar."""
 

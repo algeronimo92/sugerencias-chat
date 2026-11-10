@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.core.events import DomainEvent
 
@@ -16,6 +16,42 @@ class ServiceRenamed(DomainEvent):
     old_name: str
     new_name: str
     actor_user_id: int | None
+
+
+@dataclass(frozen=True)
+class ServiceUsage:
+    """Algo que nombra a un servicio: qué es (``kind``: leads, ventas,
+    plantillas, automatizaciones, documentos), cuántos (``label``: "12
+    leads") y algunos de ellos para poder ir a cada uno (``items``: hasta 10
+    pares id, nombre)."""
+
+    kind: str
+    label: str
+    items: tuple[tuple[str, str], ...] = ()
+    count: int = 0
+    # Qué le pasa al borrar el servicio, en los avisos (``notices``).
+    detail: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ServiceDeletionRequested(DomainEvent):
+    """Se pidió borrar un servicio manual. Se despacha antes de borrarlo y
+    dentro de la misma transacción: cada módulo que lo referencia anota en
+    ``usages`` qué tiene (``ServiceUsage``). Con algo anotado no se borra.
+    En ``notices`` va lo que no impide borrarlo pero cambia al hacerlo (una
+    regla que filtra por el nombre del servicio): el cuadro de eliminar lo
+    muestra para decidir con eso a la vista.
+
+    Va antes del borrado porque ventas y documentos de la IA lo referencian
+    con ``ON DELETE SET NULL``: después del DELETE ya no se sabría que eran
+    de este servicio. Y va como evento porque catálogos no conoce a quienes
+    lo usan, igual que con ``ServiceRenamed``.
+    """
+
+    service_id: int
+    name: str
+    usages: list[ServiceUsage] = field(default_factory=list)
+    notices: list[ServiceUsage] = field(default_factory=list)
 
 
 @dataclass(frozen=True, kw_only=True)

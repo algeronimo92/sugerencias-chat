@@ -7,7 +7,7 @@
 
 import axios from 'axios'
 
-const NETWORK_MESSAGE = 'Sin conexión con el servidor. Revisá tu internet e intentá de nuevo.'
+const NETWORK_MESSAGE = 'Sin conexión con el servidor. Revisa tu internet e intenta de nuevo.'
 
 export class ApiError extends Error {
   /** Status HTTP; null si el pedido no llegó al servidor. */
@@ -17,13 +17,17 @@ export class ApiError extends Error {
   readonly code: string | null
   /** Mensaje del servidor listo para mostrar, si mandó uno. */
   readonly detail: string | null
+  /** A qué elemento se refiere el error, si el backend lo dice (`target`):
+   *  por ejemplo, el bloque de un flujo que no se puede publicar. */
+  readonly target: string | null
 
-  constructor({ status, code = null, detail = null }: { status: number | null; code?: string | null; detail?: string | null }) {
+  constructor({ status, code = null, detail = null, target = null }: { status: number | null; code?: string | null; detail?: string | null; target?: string | null }) {
     super(detail ?? (status === null ? NETWORK_MESSAGE : `Error HTTP ${status}`))
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.detail = detail
+    this.target = target
   }
 
   /** El pedido no llegó al servidor (sin internet, servidor caído, CORS). */
@@ -39,14 +43,14 @@ function textOf(value: unknown): string | null {
 /** `detail` llega como texto o, cuando la UI necesita distinguir el caso,
  *  como `{ code, message }`. Los errores de validación (422 de FastAPI) traen
  *  una lista: no es un mensaje para el usuario. */
-function readBody(body: unknown): { detail: string | null; code: string | null } {
-  if (!body || typeof body !== 'object') return { detail: null, code: null }
-  const { detail, code } = body as { detail?: unknown; code?: unknown }
+function readBody(body: unknown): { detail: string | null; code: string | null; target: string | null } {
+  if (!body || typeof body !== 'object') return { detail: null, code: null, target: null }
+  const { detail, code, target } = body as { detail?: unknown; code?: unknown; target?: unknown }
   if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
     const nested = detail as { message?: unknown; code?: unknown }
-    return { detail: textOf(nested.message), code: textOf(nested.code) ?? textOf(code) }
+    return { detail: textOf(nested.message), code: textOf(nested.code) ?? textOf(code), target: textOf(target) }
   }
-  return { detail: textOf(detail), code: textOf(code) }
+  return { detail: textOf(detail), code: textOf(code), target: textOf(target) }
 }
 
 /** El ApiError de un fallo HTTP; null si `error` no vino de un pedido. */

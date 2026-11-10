@@ -21,7 +21,8 @@ isServiceWindowFailure,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
-import { executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
+import { followedBranchText } from '../domain/flowBranches'
+import { executionStatusLabel, executionTriggerLabel, formatExecutionDate, isManuallyCancelled } from '../utils/automationExecutions'
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 
 /* ---------------------------------------------------------------------------
@@ -149,6 +150,7 @@ function rowSummary(execution: AutomationExecution) {
     if (isServiceWindowFailure(execution)) return 'No salió: la ventana de 24 h estaba cerrada'
     return execution.error ?? 'El flujo se cortó antes de terminar'
   }
+  if (isManuallyCancelled(execution)) return 'Se canceló antes de terminar'
   if (execution.status === AutomationExecutionStatus.Skipped) return 'El flujo no aplicaba a este lead'
   const steps = execution.action_results?.length ?? 0
   const finished = execution.finished_at ? ` · terminó ${timeLabel(execution.finished_at)}` : ''
@@ -156,7 +158,7 @@ function rowSummary(execution: AutomationExecution) {
 }
 
 function stepDetail(step: AutomationActionResult) {
-  if (step.branch) return `siguió por "${step.branch}"`
+  if (step.branch) return followedBranchText(step.branch)
   if (step.error) return step.error
   if (step.seconds) return 'espera programada'
   if (step.conditions?.length) return 'espera un mensaje o el temporizador'
@@ -223,7 +225,7 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
         <span className="hidden min-w-0 flex-1 truncate text-sm text-wa-text dark:text-wa-text-dark lg:block">{leadLabel}</span>
 
         <span className="shrink-0 lg:w-28">
-          <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(execution.status)}</Badge>
+          <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(execution.status, execution.error)}</Badge>
         </span>
 
         <span

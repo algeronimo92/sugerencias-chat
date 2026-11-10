@@ -8,6 +8,7 @@ from app.modules.auth.auth_service import invalidate_user_cache, require_admin
 from app.modules.auth.users_service import EmailAlreadyExistsError, LastAdminError, get_user_by_id, list_users, update_user
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
 from app.modules.auth.session_service import revoke_all_for_user
+from app.modules.auth.types import UserRole
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
@@ -19,7 +20,7 @@ async def get_users():
 
 @router.post("", response_model=UserItem, status_code=201)
 async def add_user(body: CreateUserRequest):
-    if body.role not in ("admin", "vendedor"):
+    if body.role not in UserRole:
         raise HTTPException(status_code=400, detail="Rol inválido")
     if not body.email.strip() or not body.name.strip():
         raise HTTPException(status_code=400, detail="Nombre y correo son obligatorios")
@@ -43,17 +44,17 @@ async def add_user(body: CreateUserRequest):
 
 @router.patch("/{user_id}", response_model=UserItem)
 async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depends(require_admin)):
-    if body.role is not None and body.role not in ("admin", "vendedor"):
+    if body.role is not None and body.role not in UserRole:
         raise HTTPException(status_code=400, detail="Rol inválido")
 
-    if user_id == current.id and (body.role == "vendedor" or body.is_active is False):
-        raise HTTPException(status_code=400, detail="No podés quitarte a vos mismo el acceso de administrador")
+    if user_id == current.id and (body.role not in (None, UserRole.ADMIN) or body.is_active is False):
+        raise HTTPException(status_code=400, detail="No puedes quitarte a ti mismo el acceso de administrador")
 
     values = body.model_dump(exclude_unset=True)
     try:
         user = await update_user(user_id, values)
     except LastAdminError:
-        raise HTTPException(status_code=400, detail="No podés dejar la cuenta sin ningún administrador activo")
+        raise HTTPException(status_code=400, detail="No puedes dejar la cuenta sin ningún administrador activo")
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
