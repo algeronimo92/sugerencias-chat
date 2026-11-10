@@ -135,14 +135,14 @@ function metrics(): DashboardMetrics {
   }
 }
 
-function renderDashboard(isAdmin = false) {
+function renderDashboard(role = 'vendedor') {
   requestedScopes.length = 0
   const onOpenFlows = vi.fn()
   const onOpenChat = vi.fn()
   const onFilterChats = vi.fn()
   render(
     <DashboardPage
-      isAdmin={isAdmin}
+      role={role}
       onOpenTasks={vi.fn()}
       onOpenFlows={onOpenFlows}
       onOpenChat={onOpenChat}
@@ -153,11 +153,18 @@ function renderDashboard(isAdmin = false) {
 }
 
 describe('DashboardPage', () => {
+  it('un analista ve el equipo y no puede cambiar de alcance', () => {
+    renderDashboard('analista')
+    expect(requestedScopes.at(-1)).toBe('team')
+    expect(screen.queryByLabelText('Alcance de las métricas')).toBeNull()
+    expect(screen.getByLabelText('Período')).toBeInTheDocument()
+  })
+
   it('abre en lo propio para un vendedor y en el equipo para un admin', () => {
-    renderDashboard(false)
+    renderDashboard('vendedor')
     expect(requestedScopes.at(-1)).toBe('mine')
 
-    renderDashboard(true)
+    renderDashboard('admin')
     expect(requestedScopes.at(-1)).toBe('team')
   })
 
@@ -203,7 +210,7 @@ describe('DashboardPage', () => {
   })
 
   it('muestra las ventas en la moneda del negocio y contra el período anterior', () => {
-    renderDashboard(true)
+    renderDashboard('admin')
 
     // El total y el ticket llevan la moneda del perfil; el cambio dice la
     // dirección con flecha y signo, no solo con color.
@@ -218,7 +225,7 @@ describe('DashboardPage', () => {
 
   it('lleva de Resumen a la pestaña de ventas', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
 
     await user.click(screen.getByRole('button', { name: 'Ver ventas' }))
     expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
@@ -227,7 +234,7 @@ describe('DashboardPage', () => {
 
   it('compara cada cifra de ventas con el período anterior', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     expect(screen.getByText('3 clientes')).toBeInTheDocument()
@@ -241,7 +248,7 @@ describe('DashboardPage', () => {
 
   it('ordena los paquetes por la columna elegida y marca los que antes no se vendían', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     const table = screen.getAllByRole('table')[0]
@@ -257,7 +264,7 @@ describe('DashboardPage', () => {
 
   it('marca al vendedor con descuento alto y abre el chat de una compra reciente', async () => {
     const user = userEvent.setup()
-    const { onOpenChat } = renderDashboard(true)
+    const { onOpenChat } = renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     expect(screen.getByTitle('Descuento promedio por encima del 8%')).toHaveTextContent('11.1%')

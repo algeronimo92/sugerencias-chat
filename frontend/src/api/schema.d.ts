@@ -7309,7 +7309,7 @@ export interface components {
          * UserRole
          * @enum {string}
          */
-        UserRole: "admin" | "vendedor";
+        UserRole: "admin" | "vendedor" | "analista";
         /** ValidationError */
         ValidationError: {
             /** Location */

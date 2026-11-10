@@ -24,18 +24,22 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id']
 
 interface Props {
-  isAdmin: boolean
+  /** Rol de la sesión, como lo entrega el backend. */
+  role: string | undefined
   onOpenTasks: () => void
   onOpenFlows: () => void
   onOpenChat: (leadId: string) => void
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
+export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
   const [days, setDays] = useState(30)
-  // El admin entra viendo el total y el vendedor lo suyo; los dos pueden
-  // cambiarlo, y los rankings comparativos llegan igual en ambos scopes.
-  const [scope, setScope] = useState<DashboardScope>(isAdmin ? 'team' : 'mine')
+  // El vendedor entra viendo lo suyo y el resto el total; los dos pueden
+  // cambiarlo, y los rankings comparativos llegan igual en ambos scopes. El
+  // analista no tiene leads propios: "lo mío" sería una pantalla vacía, así
+  // que no se le ofrece.
+  const [scope, setScope] = useState<DashboardScope>(role === 'vendedor' ? 'mine' : 'team')
+  const canChooseScope = role !== 'analista'
   const [tab, setTab] = useState<TabId>('summary')
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useDashboard(days, scope)
   const isMine = scope === 'mine'
@@ -69,15 +73,17 @@ export function DashboardPage({ isAdmin, onOpenTasks, onOpenFlows, onOpenChat, o
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
             </Button>
-            <Select
-              value={scope}
-              onChange={(event) => setScope(event.target.value as DashboardScope)}
-              aria-label="Alcance de las métricas"
-              className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
-            >
-              <option value="mine">Solo lo mío</option>
-              <option value="team">Todo el equipo</option>
-            </Select>
+            {canChooseScope && (
+              <Select
+                value={scope}
+                onChange={(event) => setScope(event.target.value as DashboardScope)}
+                aria-label="Alcance de las métricas"
+                className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+              >
+                <option value="mine">Solo lo mío</option>
+                <option value="team">Todo el equipo</option>
+              </Select>
+            )}
             <Select
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}

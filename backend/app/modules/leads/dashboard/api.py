@@ -18,5 +18,6 @@ async def dashboard(
     scope: str | None = Query(default=None, pattern=f"^({SCOPE_MINE}|{SCOPE_TEAM})$"),
     user: User = Depends(get_current_user),
 ):
-    default_scope = SCOPE_TEAM if user.role == "admin" else SCOPE_MINE
+    # El analista no tiene leads propios: "lo mío" sería una pantalla vacía.
+    default_scope = SCOPE_MINE if user.role == "vendedor" else SCOPE_TEAM
     return await get_dashboard_metrics(days, scope or default_scope, user.id)

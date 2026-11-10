@@ -11,6 +11,7 @@ import { useMe } from '../features/auth/public/queries';
 import { asApiError } from "../shared/http/errors";
 import { extractErrorMessage } from "../shared/utils/errors";
 import { MainLayout } from "./layout";
+import { homePathFor } from "./navigation";
 import { AccountActionProviders, CrmProviders, DataProviders } from "./providers";
 import { RouteError } from "./RouteError";
 // Fuera del bundle del CRM: con sesión activa el login no se usa (y arrastra
@@ -90,16 +91,33 @@ const IssueReportsPage = lazy(() =>
     default: module.IssueReportsPage,
   })),
 );
-function useIsAdmin() {
-  return useMe().data?.role === "admin";
+function useRole() {
+  return useMe().data?.role;
+}
+
+/** La "bandeja" de cada rol: los chats, salvo para el analista, que vive en
+ *  el dashboard. */
+function HomeRedirect() {
+  return <Navigate to={homePathFor(useRole())} replace />;
 }
 
 function RequireAdmin() {
   const layoutContext = useLayoutContext();
-  return useIsAdmin() ? (
+  return useRole() === "admin" ? (
     <Outlet context={layoutContext} />
   ) : (
-    <Navigate to="/" replace />
+    <HomeRedirect />
+  );
+}
+
+/** Lo que opera el CRM (chats, kanban, tareas, citas…). El analista solo mira
+ *  el dashboard, y el backend le niega estas rutas (role_policy.py). */
+function RequireOperator() {
+  const layoutContext = useLayoutContext();
+  return useRole() === "analista" ? (
+    <HomeRedirect />
+  ) : (
+    <Outlet context={layoutContext} />
   );
 }
 
@@ -119,12 +137,12 @@ function IssueReportsRoute() {
 }
 
 function DashboardRoute() {
-  const isAdmin = useIsAdmin();
+  const role = useRole();
   const navigate = useNavigate();
   const { chatFilters } = useLayoutContext();
   return (
     <DashboardPage
-      isAdmin={isAdmin}
+      role={role}
       onOpenTasks={() => navigate("/tasks")}
       onOpenFlows={() => navigate("/mis-flujos")}
       onOpenChat={(leadId) => navigate(`/chat/${leadId}`)}
@@ -180,25 +198,27 @@ function AuthGate() {
 const crmRoutes = createRoutesFromElements(
   <Route element={<MainLayout />} errorElement={<RouteError />}>
     <Route errorElement={<RouteError />}>
-      <Route element={<ChatWorkspace />}>
-        <Route index element={null} />
-        <Route path="chat/:chatId" element={null} />
-      </Route>
-      <Route path="kanban" element={<KanbanRoute />} />
-      <Route path="tasks" element={<TasksRoute />} />
-      <Route path="reports" element={<IssueReportsRoute />} />
-      <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
-      <Route path="citas/nueva" element={<NewAppointmentPage />} />
       <Route path="dashboard" element={<DashboardRoute />} />
-      <Route element={<RequireAdmin />}>
-        <Route path="templates" element={<TemplatesPage />} />
-        <Route path="media-library" element={<MediaLibraryPage />} />
-        <Route path="automations" element={<AutomationsPage />} />
-        <Route path="catalogs" element={<CatalogsPage />} />
-        <Route path="integraciones" element={<IntegrationsPage />} />
-        <Route path="ai-assistant" element={<AiAssistantPage />} />
+      <Route element={<RequireOperator />}>
+        <Route element={<ChatWorkspace />}>
+          <Route index element={null} />
+          <Route path="chat/:chatId" element={null} />
+        </Route>
+        <Route path="kanban" element={<KanbanRoute />} />
+        <Route path="tasks" element={<TasksRoute />} />
+        <Route path="reports" element={<IssueReportsRoute />} />
+        <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
+        <Route path="citas/nueva" element={<NewAppointmentPage />} />
+        <Route element={<RequireAdmin />}>
+          <Route path="templates" element={<TemplatesPage />} />
+          <Route path="media-library" element={<MediaLibraryPage />} />
+          <Route path="automations" element={<AutomationsPage />} />
+          <Route path="catalogs" element={<CatalogsPage />} />
+          <Route path="integraciones" element={<IntegrationsPage />} />
+          <Route path="ai-assistant" element={<AiAssistantPage />} />
+        </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<HomeRedirect />} />
     </Route>
   </Route>,
 );

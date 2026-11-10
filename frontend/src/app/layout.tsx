@@ -10,6 +10,7 @@ import { PageLoader } from "../shared/ui/PageLoader";
 import { type IntegrationAnchor, type LayoutContext, type SettingsTab } from '../features/chats/public/layoutContext';
 import { useChatFiltersState } from '../features/chats/public/useChatFiltersState';
 import { MobileNavBar } from "./MobileNavBar";
+import { roleLabel } from "./navigation";
 import { PwaUpdateChip } from "./PwaUpdateChip";
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
@@ -37,6 +38,10 @@ const IssueReportDialog = lazy(() =>
 export function MainLayout() {
   const brand = useBrand();
   const { data: me } = useMe();
+  const isAdmin = me?.role === "admin";
+  // El analista solo mira el dashboard: sin chats no hay no leídos, tiempo
+  // real, notificaciones ni reportes que mostrarle (ver navigation.ts).
+  const isAnalyst = me?.role === "analista";
   const { mutate: logout } = useLogout();
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
   const navigate = useNavigate();
@@ -102,7 +107,7 @@ export function MainLayout() {
     navigate({ pathname: "/integraciones", search: "", hash: "#calendario" }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
-  const { data: unreadCount = 0 } = useUnreadCount();
+  const { data: unreadCount = 0 } = useUnreadCount(!isAnalyst);
   const {
     permission: notificationPermission,
     requestPermission: requestNotificationPermission,
@@ -119,7 +124,7 @@ export function MainLayout() {
   }
 
   const realtimeBus = useMemo(createAppRealtimeBus, []);
-  useRealtimeConnection(realtimeBus, notify, showInternalMention);
+  useRealtimeConnection(realtimeBus, notify, showInternalMention, { enabled: !isAnalyst });
 
   useEffect(() => {
     if (!internalMention) return;
@@ -166,16 +171,16 @@ export function MainLayout() {
                 {me.name}
               </span>
               <span className="block text-[9px] font-medium capitalize text-wa-muted dark:text-wa-muted-dark">
-                {me.role === "admin" ? "Administrador" : "Vendedor"}
+                {roleLabel(me.role)}
               </span>
             </span>
           </button>
         )}
         <OnboardingReopenButton
-          enabled={me?.role === "admin"}
+          enabled={isAdmin}
           className={headerIconButtonClass}
         />
-        {me?.role === "admin" && (
+        {isAdmin && (
           <Tooltip content="Configuración">
             <button
               type="button"
@@ -187,16 +192,18 @@ export function MainLayout() {
             </button>
           </Tooltip>
         )}
-        <Tooltip content="Reportar un problema">
-          <button
-            type="button"
-            onClick={() => setIsIssueReportOpen(true)}
-            aria-label="Reportar un problema"
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-wa-muted outline-none transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-300/70 dark:text-wa-muted-dark dark:hover:bg-red-950/35 dark:hover:text-red-400"
-          >
-            <Bug className="h-4 w-4" />
-          </button>
-        </Tooltip>
+        {!isAnalyst && (
+          <Tooltip content="Reportar un problema">
+            <button
+              type="button"
+              onClick={() => setIsIssueReportOpen(true)}
+              aria-label="Reportar un problema"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-wa-muted outline-none transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-300/70 dark:text-wa-muted-dark dark:hover:bg-red-950/35 dark:hover:text-red-400"
+            >
+              <Bug className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip content="Acceso y seguridad">
           <button
             type="button"
@@ -207,11 +214,13 @@ export function MainLayout() {
             <ShieldCheck className="h-4 w-4" />
           </button>
         </Tooltip>
-        <NotificationCenter
-          browserPermission={notificationPermission}
-          onRequestBrowserPermission={requestNotificationPermission}
-          onNewNotification={showInternalMention}
-        />
+        {!isAnalyst && (
+          <NotificationCenter
+            browserPermission={notificationPermission}
+            onRequestBrowserPermission={requestNotificationPermission}
+            onNewNotification={showInternalMention}
+          />
+        )}
         <Tooltip
           content={
             theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"
@@ -249,7 +258,7 @@ export function MainLayout() {
       {/* Primeros pasos del negocio: solo admins y, en móvil, fuera de un
           chat, donde el espacio vertical es del composer. */}
       <OnboardingChecklist
-        enabled={me?.role === "admin" && !(isMobile && chatId)}
+        enabled={isAdmin && !(isMobile && chatId)}
         pathname={location.pathname}
         onOpenSettings={openSettings}
         onNavigate={(path) => navigate(path)}
@@ -325,7 +334,7 @@ export function MainLayout() {
 
       <div className="flex min-h-0 min-w-0 flex-1 bg-[#edf2f0] dark:bg-[#081216]">
         {!isMobile && (
-          <Sidebar isAdmin={me?.role === "admin"} unreadCount={unreadCount} />
+          <Sidebar role={me?.role} unreadCount={unreadCount} />
         )}
         <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
           <Suspense fallback={<PageLoader />}>
@@ -335,15 +344,15 @@ export function MainLayout() {
       </div>
 
       <CommandPalette
-        isAdmin={me?.role === "admin"}
-        onOpenSettings={me?.role === "admin" ? () => openSettings("general") : undefined}
+        role={me?.role}
+        onOpenSettings={isAdmin ? () => openSettings("general") : undefined}
       />
 
       {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
           ahí el espacio es para el composer y se vuelve con la flecha. */}
       {isMobile && !chatId && (
         <MobileNavBar
-          isAdmin={me?.role === "admin"}
+          role={me?.role}
           unreadCount={unreadCount}
         />
       )}

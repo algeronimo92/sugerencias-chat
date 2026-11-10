@@ -45,6 +45,9 @@ export function useRealtimeConnection(
   bus: RealtimeBus,
   notify: NotifyFn = () => {},
   onInternalMention: InternalMentionFn = () => {},
+  // `enabled: false` no abre el socket: un rol sin chats (el analista) no
+  // recibe nada por él y el backend lo cerraría con 4403.
+  { enabled = true }: { enabled?: boolean } = {},
 ) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -65,6 +68,7 @@ export function useRealtimeConnection(
   })
 
   useEffect(() => {
+    if (!enabled) return
     let socket: WebSocket | null = null
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
     let pingInterval: ReturnType<typeof setInterval> | null = null
@@ -147,5 +151,5 @@ export function useRealtimeConnection(
         socket.close()
       }
     }
-  }, [bus, queryClient, navigate])
+  }, [bus, queryClient, navigate, enabled])
 }

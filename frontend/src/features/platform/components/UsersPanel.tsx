@@ -1,4 +1,4 @@
-import { Check, Loader2, Mail, ShieldCheck, User as UserIcon } from 'lucide-react'
+import { BarChart3, Check, Loader2, Mail, ShieldCheck, User as UserIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { UserRole } from '../../../shared/types'
 import { Select } from '../../../shared/ui/Input'
@@ -56,11 +56,14 @@ function NewUserForm() {
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
         <p className="self-center text-xs leading-relaxed text-wa-muted dark:text-wa-muted-dark">
-          Le enviaremos un enlace seguro para crear su contraseña.
+          {role === 'analista'
+            ? 'Solo verá el dashboard: sin chats, leads ni tareas.'
+            : 'Le enviaremos un enlace seguro para crear su contraseña.'}
         </p>
         <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className={FIELD_CLASS}>
           <option value="vendedor">Vendedor</option>
           <option value="admin">Admin</option>
+          <option value="analista">Analista</option>
         </Select>
       </div>
       <button
@@ -107,6 +110,8 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
           <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark truncate flex items-center gap-1.5">
             {user.role === 'admin' ? (
               <ShieldCheck className="w-3.5 h-3.5 text-wa-primary-strong dark:text-wa-primary shrink-0" />
+            ) : user.role === 'analista' ? (
+              <BarChart3 className="w-3.5 h-3.5 text-wa-muted shrink-0" aria-label="Solo dashboard" />
             ) : (
               <UserIcon className="w-3.5 h-3.5 text-wa-muted shrink-0" />
             )}
@@ -135,6 +140,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
           >
             <option value="vendedor">Vendedor</option>
             <option value="admin">Admin</option>
+            <option value="analista">Analista</option>
           </Select>
           <button
             type="button"

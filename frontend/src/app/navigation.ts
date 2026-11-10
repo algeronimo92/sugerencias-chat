@@ -36,6 +36,21 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return pathname === item.path
 }
 
-export function visibleNavItems(isAdmin: boolean): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin)
+/** `role` es el de la sesión tal como llega del backend (texto). */
+export function visibleNavItems(role: string | undefined): NavItem[] {
+  // El analista existe para mirar el dashboard: ninguna otra vista le sirve y
+  // el backend se las niega (app/modules/auth/role_policy.py).
+  if (role === 'analista') return NAV_ITEMS.filter((item) => item.path === '/dashboard')
+  return NAV_ITEMS.filter((item) => !item.adminOnly || role === 'admin')
+}
+
+/** A dónde va "/" y cualquier ruta que el rol no puede ver. */
+export function homePathFor(role: string | undefined): string {
+  return role === 'analista' ? '/dashboard' : '/'
+}
+
+export function roleLabel(role: string | undefined): string {
+  if (role === 'admin') return 'Administrador'
+  if (role === 'analista') return 'Analista'
+  return 'Vendedor'
 }
