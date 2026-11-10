@@ -27,12 +27,10 @@ export function useMoveLeadStage() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: moveLeadStage,
-    onSuccess: (_chat, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
-      // Cerrar con venta también registra la compra.
-      if (variables.sale) queryClient.invalidateQueries({ queryKey: leadKeys.sales(variables.chatId) })
     },
   })
 }

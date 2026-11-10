@@ -7,7 +7,7 @@ import type { DashboardMetrics } from '../types'
 import { formatDayLabel, formatMoney, formatNumber } from './format'
 import { NoData } from './primitives'
 import type { ServiceBucket, ServiceMetric } from './serviceBreakdown'
-import { bucketDays, buildBuckets, fromAppointments, fromSales, headline, pickSeries, shares } from './serviceBreakdown'
+import { bucketDays, buildBuckets, fromAppointments, headline, pickSeries, shares } from './serviceBreakdown'
 
 const AXIS = '#8696a0'
 const TOOLTIP_STYLE = {
@@ -59,42 +59,19 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   )
 }
 
-type SourceId = 'appointments' | 'sales'
-
-/** Cuánto se agendó o se vendió de cada tratamiento en cada día o semana del
- *  período, y qué parte del total fue cada uno. Barras apiladas para ver el
- *  volumen y la mezcla a la vez, líneas para comparar la tendencia de cada
- *  tratamiento sin que se tapen, y la torta para el reparto del período.
- *
- *  Hay negocios que registran la venta como cita (con adelanto) y nunca usan
- *  "Registrar compra": por eso el panel abre en citas cuando no hay ventas,
- *  en vez de mostrarse vacío. */
+/** Cuánto se separó de cada tratamiento en cada día o semana del período, y
+ *  qué parte del total fue cada uno. Barras apiladas para ver el volumen y la
+ *  mezcla a la vez, líneas para comparar la tendencia de cada tratamiento sin
+ *  que se tapen, y la torta para el reparto del período. */
 export function ServiceBreakdownPanel({ data, days }: { data: DashboardMetrics; days: number }) {
-  const hasSales = data.sales.by_service.length > 0
-  // El negocio mide sus ventas por las separaciones de cita; las compras
-  // registradas son la otra fuente y solo se ofrecen si existen.
-  const [sourceId, setSourceId] = useState<SourceId>('appointments')
   const [chosenMetric, setMetric] = useState<ServiceMetric>('count')
   const [view, setView] = useState<'bars' | 'lines'>('bars')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
 
-  const source = sourceId === 'sales' ? fromSales(data.sales) : fromAppointments(data)
+  const source = fromAppointments(data)
   const metric: ServiceMetric = source.hasRevenue ? chosenMetric : 'count'
-  const sourcePicker = hasSales && (
-    <Segmented label="Qué se cuenta" value={sourceId} onChange={(value) => { setSourceId(value); setHidden(new Set()) }}
-      options={[{ value: 'appointments', label: 'Separaciones' }, { value: 'sales', label: 'Compras registradas' }]} />
-  )
 
-  if (source.ranking.length === 0) {
-    return (
-      <div>
-        {sourcePicker && <div className="mb-3">{sourcePicker}</div>}
-        <NoData label={sourceId === 'sales'
-          ? 'Sin compras registradas en el período. Se registran al mover un lead a una etapa ganada o con "Registrar compra" en su ficha.'
-          : 'Sin separaciones en el período'} />
-      </div>
-    )
-  }
+  if (source.ranking.length === 0) return <NoData label="Sin separaciones en el período" />
 
   const allSeries = pickSeries(source)
   const series = allSeries.filter((item) => !hidden.has(item.key))
@@ -141,7 +118,6 @@ export function ServiceBreakdownPanel({ data, days }: { data: DashboardMetrics; 
     <div>
       {summary && <p className="mb-3 text-sm font-medium text-gray-800 dark:text-wa-text-dark">{summary}</p>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {sourcePicker}
         {source.hasRevenue && (
           <Segmented label="Medida" value={metric} onChange={setMetric}
             options={[{ value: 'count', label: 'Cantidad' }, { value: 'revenue', label: source.revenueLabel }]} />

@@ -1,52 +1,68 @@
 import { describe, expect, it } from 'vitest'
-import type { DashboardMetrics, DashboardSales } from '../types'
-import { OTHER_KEY, bucketDays, buildBuckets, fromAppointments, fromSales, headline, pickSeries, shares } from './serviceBreakdown'
+import type { DashboardMetrics } from '../types'
+import { OTHER_KEY, bucketDays, buildBuckets, fromAppointments, headline, pickSeries, shares } from './serviceBreakdown'
 
-function sales(overrides: Partial<DashboardSales>): DashboardSales {
-  return {
-    currency: 'PEN',
-    totals: { count: 0, revenue: 0, avg_ticket: null, sessions: 0, discount: 0, discount_rate: null, buyers: 0 },
-    previous: null,
-    trend: [],
-    previous_trend: [],
-    by_package: [],
-    by_service: [],
-    by_service_daily: [],
-    by_seller: [],
-    recent: [],
-    ...overrides,
-  }
+const days = (n: number) => Array.from({ length: n }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, '0')}`, value: 0 }))
+
+function metrics(rows: DashboardMetrics['appointments']['by_treatment_daily'], period = 10): DashboardMetrics {
+  return { appointments: { trend: days(period), by_treatment_daily: rows } } as unknown as DashboardMetrics
 }
 
-const days = (n: number) => Array.from({ length: n }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, '0')}`, count: 0, revenue: 0 }))
-const service = (id: number, name: string, revenue: number) => ({ service_id: id, name, count: 1, revenue })
+const row = (date: string, key: string, name: string, count: number, amount = 0) => ({ date, key, name, count, amount })
 
 describe('pickSeries', () => {
-  it('da color propio a los cinco que más ingresaron y agrupa el resto en Otros', () => {
-    const data = sales({ by_service: [1, 2, 3, 4, 5, 6, 7].map((id) => service(id, `S${id}`, 100 - id)) })
-    const series = pickSeries(fromSales(data))
-    expect(series.map((item) => item.name)).toEqual(['S1', 'S2', 'S3', 'S4', 'S5', 'Otros'])
+  it('da color propio a los cinco con más separaciones y agrupa el resto en Otros', () => {
+    const data = metrics([1, 2, 3, 4, 5, 6, 7].map((n) => row('2026-10-01', `t${n}`, `T${n}`, 10 - n)))
+    const series = pickSeries(fromAppointments(data))
+    expect(series.map((item) => item.name)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'Otros'])
     expect(new Set(series.map((item) => item.color)).size).toBe(6)
   })
 
   it('no agrega Otros cuando no sobra ningún tratamiento', () => {
-    expect(pickSeries(fromSales(sales({ by_service: [service(1, 'HIFU', 10)] }))).map((item) => item.key)).toEqual(['id:1'])
+    expect(pickSeries(fromAppointments(metrics([row('2026-10-01', 'hifu', 'HIFU', 1)]))).map((item) => item.key)).toEqual(['hifu'])
+  })
+})
+
+describe('fromAppointments', () => {
+  const data = metrics([
+    row('2026-10-01', 'hifu12d', 'Hifu12D', 3, 300),
+    row('2026-10-02', 'hifu12d', 'HIFU 12D', 1, 50),
+    row('2026-10-02', 'hollywoodpeelx3', 'Hollywood Peel x3', 2, 100),
+  ], 3)
+
+  it('ordena por cantidad y muestra la escritura que más se usó', () => {
+    const source = fromAppointments(data)
+    expect(source.ranking).toEqual([
+      { key: 'hifu12d', name: 'Hifu12D', count: 4 },
+      { key: 'hollywoodpeelx3', name: 'Hollywood Peel x3', count: 2 },
+    ])
+    // El monto de una separación es su adelanto.
+    expect(source.revenueLabel).toBe('Monto')
+  })
+
+  it('suma los adelantos como monto', () => {
+    const source = fromAppointments(data)
+    expect(buildBuckets(source, pickSeries(source), 'revenue', 1).map((bucket) => bucket.total)).toEqual([300, 150, 0])
+  })
+
+  it('cuenta separaciones por día con la clave unificada', () => {
+    const source = fromAppointments(data)
+    const buckets = buildBuckets(source, pickSeries(source), 'count', 1)
+    expect(buckets.map((bucket) => bucket.total)).toEqual([3, 3, 0])
+    expect(headline(shares(buckets, pickSeries(source)), String, source.verb)).toBe('Hifu12D fue el más separado: 4, el 67% del período.')
   })
 })
 
 describe('buildBuckets', () => {
-  const data = sales({
-    trend: days(10),
-    by_service: [service(1, 'HIFU', 900), service(2, 'Hollywood Peel', 500), ...[3, 4, 5, 6].map((id) => service(id, `S${id}`, 10))],
-    by_service_daily: [
-      { date: '2026-10-01', service_id: 1, name: 'HIFU', count: 2, revenue: 600 },
-      { date: '2026-10-04', service_id: 2, name: 'Hollywood Peel', count: 3, revenue: 500 },
-      { date: '2026-10-10', service_id: 1, name: 'HIFU', count: 1, revenue: 300 },
-      // El sexto tratamiento cae en Otros.
-      { date: '2026-10-10', service_id: 6, name: 'S6', count: 4, revenue: 10 },
-    ],
-  })
-  const source = fromSales(data)
+  const data = metrics([
+    row('2026-10-01', 'hifu', 'HIFU', 2),
+    row('2026-10-04', 'hp', 'Hollywood Peel', 3),
+    row('2026-10-10', 'hifu', 'HIFU', 1),
+    ...['t3', 't4', 't5'].map((key) => row('2026-10-05', key, key.toUpperCase(), 1)),
+    // Con seis tratamientos, el que menos separó cae en Otros.
+    row('2026-10-10', 't6', 'T6', 4),
+  ])
+  const source = fromAppointments(data)
   const series = pickSeries(source)
 
   it('cuenta las semanas desde hoy hacia atrás: solo la más vieja puede quedar corta', () => {
@@ -56,20 +72,14 @@ describe('buildBuckets', () => {
       ['2026-10-04', '2026-10-10'],
     ])
     expect(buckets.map((bucket) => bucket.partialDays)).toEqual([3, null])
-    expect(buckets[0].values['id:1']).toBe(2)
-    expect(buckets[1]).toMatchObject({ total: 8, values: { 'id:1': 1, 'id:2': 3, [OTHER_KEY]: 4 } })
-  })
-
-  it('suma ingresos cuando se pide esa medida', () => {
-    const buckets = buildBuckets(source, series, 'revenue', 7)
-    expect(buckets.map((bucket) => bucket.total)).toEqual([600, 810])
+    expect(buckets[0].values.hifu).toBe(2)
+    expect(buckets[1]).toMatchObject({ total: 11, values: { hifu: 1, hp: 3, t6: 4, [OTHER_KEY]: 1 } })
   })
 
   it('reparte el período en porcentajes con Otros al final', () => {
     const result = shares(buildBuckets(source, series, 'count', 1), series)
-    expect(result.map((item) => [item.name, item.value, item.share])).toEqual([
-      ['HIFU', 3, 30], ['Hollywood Peel', 3, 30], ['S3', 0, 0], ['S4', 0, 0], ['S5', 0, 0], ['Otros', 4, 40],
-    ])
+    expect(result.at(-1)?.name).toBe('Otros')
+    expect(result.reduce((sum, item) => sum + item.value, 0)).toBe(13)
   })
 })
 
@@ -80,47 +90,12 @@ describe('bucketDays', () => {
 })
 
 describe('headline', () => {
-  it('nombra al más vendido sin contar Otros y calla si no hubo ventas', () => {
+  it('nombra al más separado sin contar Otros y calla si no hubo separaciones', () => {
     const series = [
       { key: OTHER_KEY, name: 'Otros', color: 'x', value: 9, share: 60 },
-      { key: 'id:1', name: 'HIFU', color: 'y', value: 6, share: 40 },
+      { key: 'hifu', name: 'HIFU', color: 'y', value: 6, share: 40 },
     ]
-    expect(headline(series, String)).toBe('HIFU fue el más vendido: 6, el 40% del período.')
+    expect(headline(series, String, 'separado')).toBe('HIFU fue el más separado: 6, el 40% del período.')
     expect(headline([{ ...series[1], value: 0, share: 0 }], String)).toBeNull()
-  })
-})
-
-describe('fromAppointments', () => {
-  const metrics = {
-    appointments: {
-      trend: days(3).map(({ date }) => ({ date, value: 0 })),
-      by_treatment_daily: [
-        { date: '2026-10-01', key: 'hifu12d', name: 'Hifu12D', count: 3, amount: 300 },
-        { date: '2026-10-02', key: 'hifu12d', name: 'HIFU 12D', count: 1, amount: 50 },
-        { date: '2026-10-02', key: 'hollywoodpeelx3', name: 'Hollywood Peel x3', count: 2, amount: 100 },
-      ],
-    },
-  } as unknown as DashboardMetrics
-
-  it('ordena por cantidad y muestra la escritura que más se usó', () => {
-    const source = fromAppointments(metrics)
-    expect(source.ranking).toEqual([
-      { key: 'hifu12d', name: 'Hifu12D', count: 4 },
-      { key: 'hollywoodpeelx3', name: 'Hollywood Peel x3', count: 2 },
-    ])
-    // El monto de una separación es su adelanto.
-    expect(source.revenueLabel).toBe('Monto')
-  })
-
-  it('suma los adelantos como monto', () => {
-    const source = fromAppointments(metrics)
-    expect(buildBuckets(source, pickSeries(source), 'revenue', 1).map((bucket) => bucket.total)).toEqual([300, 150, 0])
-  })
-
-  it('cuenta citas por día con la clave unificada', () => {
-    const source = fromAppointments(metrics)
-    const buckets = buildBuckets(source, pickSeries(source), 'count', 1)
-    expect(buckets.map((bucket) => bucket.total)).toEqual([3, 3, 0])
-    expect(headline(shares(buckets, pickSeries(source)), String, source.verb)).toBe('Hifu12D fue el más separado: 4, el 67% del período.')
   })
 })

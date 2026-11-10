@@ -19,14 +19,6 @@ export function percentChange(current: number | null, previous: number | null | 
   return { direction: change > 0 ? 'up' : 'down', label: `${change > 0 ? '▲ +' : '▼ '}${change}%` }
 }
 
-/** Cambio de una tasa, en puntos y no en porcentaje de porcentaje. */
-export function pointsChange(current: number | null, previous: number | null | undefined): Change {
-  if (current == null || previous == null) return { direction: 'none', label: 'Sin período anterior' }
-  const change = Math.round((current - previous) * 10) / 10
-  if (change === 0) return { direction: 'flat', label: 'Igual' }
-  return { direction: change > 0 ? 'up' : 'down', label: `${change > 0 ? '▲ +' : '▼ '}${change.toLocaleString('es-PE')} pts` }
-}
-
 export interface ComparedPoint {
   /** Fecha de inicio del tramo en el período actual. */
   date: string

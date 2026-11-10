@@ -307,48 +307,21 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Monto de separación')).toBeInTheDocument()
   })
 
-  it('compara separaciones y compras registradas con el período anterior', async () => {
+  it('compara las separaciones con el período anterior y ya no muestra compras registradas', async () => {
     const user = userEvent.setup()
     renderDashboard(true)
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     expect(screen.getByText('3 clientas')).toBeInTheDocument()
     expect(screen.getByText('2 de 3 separaciones')).toBeInTheDocument()
-    // Las compras registradas aparecen debajo porque este negocio tiene alguna.
-    expect(screen.getByRole('heading', { name: 'Compras registradas' })).toBeInTheDocument()
-    expect(screen.getByText('3 clientes')).toBeInTheDocument()
-    for (const label of ['▲ +50%', '▲ +25%', '▼ -17%', '▲ +75%']) {
+    for (const label of ['▲ +50%', '▲ +25%']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0)
     }
-    // Un descuento que sube se dice en puntos, no en porcentaje de porcentaje.
-    expect(screen.getByText('▲ +3.1 pts')).toBeInTheDocument()
-  })
-
-  it('ordena los paquetes por la columna elegida y marca los que antes no se vendían', async () => {
-    const user = userEvent.setup()
-    renderDashboard(true)
-    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
-
-    const table = screen.getByRole('columnheader', { name: 'Paquete' }).closest('table')!
-    const firstPackage = () => within(table).getAllByRole('row')[1]
-    expect(within(firstPackage()).getByText('Hollywood Peel - Rostro')).toBeInTheDocument()
-    expect(within(table).getByText('Nuevo')).toBeInTheDocument()
-
-    // Láser x10 vende menos compras pero trae diez sesiones por compra.
-    await user.click(within(table).getByRole('button', { name: /Sesiones/ }))
-    expect(within(firstPackage()).getByText('Láser')).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: /Sesiones/ })).toHaveAttribute('aria-sort', 'descending')
-  })
-
-  it('marca al vendedor con descuento alto y abre el chat de una compra reciente', async () => {
-    const user = userEvent.setup()
-    const { onOpenChat } = renderDashboard(true)
-    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
-
-    expect(screen.getByTitle('Descuento promedio por encima del 8%')).toHaveTextContent('11.1%')
-    expect(screen.getByText(/Lista S\/\s?450/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Rosa Quispe/ }))
-    expect(onOpenChat).toHaveBeenCalledWith('lead-7')
+    // "Registrar compra" se quitó: aunque el backend traiga compras, la
+    // pestaña ya no las muestra.
+    expect(screen.queryByRole('heading', { name: 'Compras registradas' })).toBeNull()
+    expect(screen.queryByText('Monto vendido')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Compras registradas' })).toBeNull()
   })
 
   it('abre el chat de una separación ligada a un lead y lista sin enlace la que no lo está', async () => {
@@ -373,24 +346,6 @@ describe('DashboardPage', () => {
     const panel = screen.getByRole('heading', { name: 'Por tratamiento' }).closest('section')!
     await user.click(within(panel).getByRole('button', { name: 'Monto' }))
     expect(within(panel).getByText(/Hifu12D fue el más separado: S\/\s?400, el 67% del período\./)).toBeInTheDocument()
-  })
-
-  it('ofrece las compras registradas como otra fuente del panel por tratamiento', async () => {
-    const user = userEvent.setup()
-    renderDashboard(true)
-    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
-
-    const panel = screen.getByRole('heading', { name: 'Por tratamiento' }).closest('section')!
-    await user.click(within(panel).getByRole('button', { name: 'Compras registradas' }))
-    expect(within(panel).getByText('Hollywood Peel - Rostro fue el más vendido: 2, el 67% del período.')).toBeInTheDocument()
-    // La participación se lee en texto, no solo en la torta.
-    const shareList = within(panel).getByText('Participación del período').parentElement!
-    expect(within(shareList).getByText('67%')).toBeInTheDocument()
-
-    // Ocultar un tratamiento lo saca de la tabla y del reparto.
-    await user.click(within(panel).getByRole('button', { name: 'Láser' }))
-    expect(within(panel).getByRole('button', { name: 'Láser' })).toHaveAttribute('aria-pressed', 'false')
-    expect(within(shareList).getByText('100%')).toBeInTheDocument()
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {
