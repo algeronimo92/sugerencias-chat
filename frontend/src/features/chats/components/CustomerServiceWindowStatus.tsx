@@ -1,5 +1,5 @@
 import { AlertTriangle, BadgePercent, Clock3, LockKeyhole, Megaphone, MessageCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { CustomerServiceWindow } from '../types'
 
 function useRemainingSeconds(expiresAt: string | null | undefined) {
@@ -34,6 +34,18 @@ function formatExpiry(expiresAt: string) {
   })
 }
 
+/** En el celular la cabecera del chat no da para la frase entera: se ve la
+ *  versión corta y la larga queda para el lector de pantalla. Desde sm se ve
+ *  la larga. */
+function Compact({ short, full }: { short: ReactNode; full: ReactNode }) {
+  return (
+    <>
+      <span className="sm:hidden" aria-hidden="true">{short}</span>
+      <span className="max-sm:sr-only">{full}</span>
+    </>
+  )
+}
+
 export function CustomerServiceWindowBadge({ data, isLoading }: { data?: CustomerServiceWindow; isLoading: boolean }) {
   const remaining = useRemainingSeconds(data?.expires_at)
   const freeEntryRemaining = useRemainingSeconds(data?.free_entry_point_expires_at)
@@ -49,7 +61,7 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
         title="Este lead todavía no escribió por WhatsApp. La ventana de 24 h arranca con su primer mensaje."
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-wa-field px-2 py-1 text-[10px] font-medium text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark"
       >
-        <MessageCircle className="h-3 w-3 shrink-0" /> Todavía no te escribió
+        <MessageCircle className="h-3 w-3 shrink-0" /> <Compact short="Sin mensajes" full="Todavía no te escribió" />
       </span>
     )
   }
@@ -60,9 +72,10 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
       >
         <BadgePercent className="h-3 w-3 shrink-0" />
-        <span>
-          Plantillas gratis · <span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span>
-        </span>
+        <Compact
+          short={<span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span>}
+          full={<>Plantillas gratis · <span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span></>}
+        />
       </span>
     )
   }
@@ -72,7 +85,7 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
         title="Pasaron más de 24 h desde el último mensaje del cliente. Para escribirle, usa una plantilla aprobada de WhatsApp."
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
       >
-        <LockKeyhole className="h-3 w-3 shrink-0" /> Venció el plazo para responder
+        <LockKeyhole className="h-3 w-3 shrink-0" /> <Compact short="Vencido" full="Venció el plazo para responder" />
       </span>
     )
   }
@@ -84,9 +97,10 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-medium ${urgent ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400' : warning ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-green-50 text-wa-primary-strong dark:bg-green-950/40 dark:text-wa-primary'}`}
     >
       {urgent ? <AlertTriangle className="h-3 w-3 shrink-0" /> : <Clock3 className="h-3 w-3 shrink-0" />}
-      <span>
-        Quedan <span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span> para responder
-      </span>
+      <Compact
+        short={<span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span>}
+        full={<>Quedan <span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span> para responder</>}
+      />
     </span>
   )
 }
