@@ -7,6 +7,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MyAutomationExecutionsPage } from './MyAutomationExecutionsPage'
@@ -14,7 +15,10 @@ import type { AutomationExecution } from '../types'
 
 const navigate = vi.fn()
 
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigate,
+  Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
+}))
 
 vi.mock('../queries', () => ({
   useManualFlows: vi.fn(),
@@ -128,6 +132,7 @@ describe('MyAutomationExecutionsPage', () => {
     render(<MyAutomationExecutionsPage />)
 
     expect(screen.queryByLabelText('Enviado por')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver flujos automáticos' })).not.toBeInTheDocument()
     expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith(false)
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined, team: undefined })
   })
@@ -152,6 +157,17 @@ describe('MyAutomationExecutionsPage', () => {
     await user.click(screen.getByLabelText('Enviado por'))
     await user.click(screen.getByRole('option', { name: 'Yo' }))
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined })
+  })
+
+  // El título dice "enviados" pero la lista solo trae lo iniciado a mano: sin
+  // esta salida, ver pocos envíos se leía como "los automáticos no salieron".
+  it('le dice al admin que los automáticos viven en el historial de Automatizaciones', () => {
+    mockQuery({}, 'admin')
+    render(<MyAutomationExecutionsPage />)
+
+    expect(screen.getByText('Tu equipo no inició ningún flujo a mano hoy')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ver flujos automáticos' })).toHaveAttribute('href', '/automations?tab=history')
+    expect(screen.queryByRole('option', { name: /Automáticos/ })).not.toBeInTheDocument()
   })
 
   it('muestra esqueletos mientras carga', () => {

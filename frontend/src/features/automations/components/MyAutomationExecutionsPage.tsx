@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react'
 import {
 AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Layers,Loader2,MessageSquare,
-PauseCircle,PlayCircle,RefreshCw,RotateCcw,Send,SkipForward,XCircle,
+PauseCircle,PlayCircle,RefreshCw,RotateCcw,Send,SkipForward,Workflow,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
@@ -434,7 +434,7 @@ export function MyAutomationExecutionsPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Flujos enviados</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
             {isAdmin
-              ? 'Revisa los flujos que tu equipo inició desde una conversación y en qué paso van.'
+              ? 'Los flujos que tu equipo inició a mano desde una conversación, y en qué paso van.'
               : 'Revisa los flujos que iniciaste desde una conversación y en qué paso van.'}
           </p>
         </header>
@@ -453,6 +453,22 @@ export function MyAutomationExecutionsPage() {
           sender={sender}
           onSenderChange={setSenderChoice}
         />
+
+        {/* El título promete "enviados" y la lista solo trae lo iniciado a
+            mano: la dueña veía pocos envíos y creía que los automáticos no
+            habían salido. Es orientación, no alerta: gris y sin triángulo. */}
+        {isAdmin && (
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-wa-muted dark:text-wa-muted-dark">
+            Los flujos automáticos no aparecen aquí.
+            <Link
+              to="/automations?tab=history"
+              className="inline-flex items-center gap-1.5 rounded font-semibold text-wa-primary-strong underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:text-wa-primary"
+            >
+              <Workflow className="h-4 w-4" aria-hidden="true" />
+              Ver flujos automáticos
+            </Link>
+          </p>
+        )}
 
         {executions.length > 0 && !isError && (
           <section aria-label="Filtrar por estado" className="mt-5 flex flex-wrap gap-2">
@@ -541,7 +557,7 @@ export function MyAutomationExecutionsPage() {
                   <h3 className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
                     {isFiltered
                       ? activeGroup.emptyTitle
-                      : sender === 'team' ? 'Tu equipo todavía no envió ningún flujo hoy' : 'Todavía no enviaste ningún flujo hoy'}
+                      : sender === 'team' ? 'Tu equipo no inició ningún flujo a mano hoy' : 'Todavía no enviaste ningún flujo hoy'}
                   </h3>
                   <p className="mt-1 max-w-xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
                     {isFiltered
