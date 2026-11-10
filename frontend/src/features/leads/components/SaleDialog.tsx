@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClassOverPanel, dialogOverlayClassOverPanel } from '../../../shared/ui/Dialog'
 import { Input, Select, Textarea, labelClass } from '../../../shared/ui/Input'
 import { useLeadServices } from '../../catalogs/public/useLeadServices'
 import type { LeadSaleInput } from '../types'
@@ -124,11 +124,11 @@ export function SaleDialog({ leadName, defaultServiceName, stageName, onConfirm,
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onCancel() }}>
       <Dialog.Portal>
-        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Overlay className={dialogOverlayClassOverPanel} />
         <Dialog.Content asChild>
           <form
             onSubmit={handleSubmit}
-            className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
+            className={`${dialogContentPositionClassOverPanel} w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
           >
             <div className="flex items-center justify-between border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
               <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">{title}</Dialog.Title>

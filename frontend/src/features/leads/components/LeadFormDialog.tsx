@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowDown, Loader2, MessageCircle, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
-import { DialogPrimitive as Dialog } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClassOverPanel, dialogOverlayClassOverPanel } from '../../../shared/ui/Dialog'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
 import { toLocalInput } from '../../../shared/utils/datetime'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -50,13 +50,6 @@ function emptyToNull(value: string): string | null {
 const FIELD_CLASS = fieldClass
 
 const LABEL_CLASS = labelClass
-
-// Por encima del cajón de sugerencias (z-76), desde donde se edita el lead en
-// móvil y tablet, y de la barra inferior (z-86), como el panel de citas. Con
-// la capa de diálogo común (z-50) el formulario se abría por detrás del cajón
-// y parecía que el lápiz no hacía nada.
-const OVERLAY_CLASS = 'fixed inset-0 z-[87] bg-black/50 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out'
-const CONTENT_POSITION_CLASS = 'fixed left-1/2 top-1/2 z-[88] -translate-x-1/2 -translate-y-1/2 outline-none'
 
 export function LeadFormDialog({
   title,
@@ -230,7 +223,7 @@ export function LeadFormDialog({
   return (
     <Dialog.Root open onOpenChange={open => { if (!open && !isSubmitting) onCancel() }}>
       <Dialog.Portal>
-        <Dialog.Overlay className={OVERLAY_CLASS} />
+        <Dialog.Overlay className={dialogOverlayClassOverPanel} />
         <Dialog.Content
           asChild
           onEscapeKeyDown={event => { if (isSubmitting) event.preventDefault() }}
@@ -241,7 +234,7 @@ export function LeadFormDialog({
         >
         <form
         onSubmit={handleSubmit}
-        className={`${CONTENT_POSITION_CLASS} w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
+        className={`${dialogContentPositionClassOverPanel} w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
           <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">{title}</Dialog.Title>

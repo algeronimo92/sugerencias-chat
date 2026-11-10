@@ -56,6 +56,14 @@ describe('SaleDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith(null)
   })
 
+  it('se abre por encima del cajón del lead, desde donde se registra la compra en el chat', () => {
+    // Con la capa común el formulario quedaba detrás del cajón (z-76) y no se
+    // veía el botón para confirmar.
+    render(<SaleDialog leadName="Ana" onConfirm={() => {}} onCancel={() => {}} />)
+    expect(screen.getByRole('dialog').className).toContain('z-[88]')
+    expect(document.querySelector('.z-\\[87\\]')).not.toBeNull()
+  })
+
   it('sin etapa solo registra y no ofrece saltear', () => {
     render(<SaleDialog leadName="Ana" onConfirm={() => {}} onCancel={() => {}} />)
 
