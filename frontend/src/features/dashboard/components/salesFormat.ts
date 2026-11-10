@@ -62,3 +62,21 @@ export function sparkSeries(points: DashboardAmountPoint[], metric: 'revenue' | 
   }
   return values
 }
+
+/** Si una fecha `AAAA-MM-DD` cae en domingo. Se lee como fecha de calendario
+ *  (en UTC), no como instante: con la zona local, en Lima un "2026-10-18" se
+ *  correría al sábado 17. */
+export function isSunday(date: string): boolean {
+  return new Date(`${date}T00:00:00Z`).getUTCDay() === 0
+}
+
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/** El mes (abreviado) cuyo día 1 cae entre `start` y `end`, ambos incluidos
+ *  y en formato `AAAA-MM-DD`; null si en ese rango no empieza ningún mes. */
+export function monthStartIn(start: string, end: string): string | null {
+  if (start.slice(8, 10) === '01') return MONTHS[Number(start.slice(5, 7)) - 1]
+  // Un rango de una semana cruza a lo sumo un inicio de mes: el del mes de `end`.
+  if (end.slice(0, 7) !== start.slice(0, 7)) return MONTHS[Number(end.slice(5, 7)) - 1]
+  return null
+}
