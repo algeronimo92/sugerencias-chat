@@ -314,6 +314,12 @@ export interface AutomationExecutionFilters {
    *  backend aunque no se mande explícito; se usa para que la pantalla
    *  "Flujos enviados" se comporte igual si la abre un admin. */
   mine?: boolean
+  /** Solo admin: lo que inició esa persona. El backend responde 403 a
+   *  cualquier otro rol. */
+  startedBy?: number
+  /** Solo admin: lo que inició a mano cualquiera del equipo, sin los
+   *  disparos automáticos del sistema. */
+  team?: boolean
 }
 
 export interface AutomationFlowVersion {

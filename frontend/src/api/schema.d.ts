@@ -13839,6 +13839,8 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 mine?: boolean;
+                started_by?: number | null;
+                team?: boolean;
                 limit?: number;
             };
             header?: never;

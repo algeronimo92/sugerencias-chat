@@ -9,11 +9,9 @@ import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
-import { Select, fieldClass } from '../../../shared/ui/Input'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { StatChip } from '../../../shared/ui/StatChip'
 import { STAT_TONE_ICON as TONE_ICON, type StatTone } from '../../../shared/ui/tones'
-import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
 ACTIVE_EXECUTION_STATUSES,AutomationExecutionStatus,AutomationTrigger,automationStepLabel,
@@ -24,6 +22,10 @@ import type { AutomationActionResult, AutomationExecution } from '../types'
 import { followedBranchText } from '../domain/flowBranches'
 import { executionStatusLabel, executionTriggerLabel, formatExecutionDate, isManuallyCancelled } from '../utils/automationExecutions'
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
+import { useMe } from '../../auth/public/queries'
+import { useUsers } from '../../platform/public/useUsers'
+import { PERIODS, type PeriodKey, type SenderKey } from '../domain/executionHistoryFilters'
+import { ExecutionHistoryFilters } from './ExecutionHistoryFilters'
 
 /* ---------------------------------------------------------------------------
  * Vocabulario de la pantalla
@@ -37,7 +39,6 @@ import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 
 type Tone = StatTone
 type GroupKey = 'all' | 'active' | 'completed' | 'failed' | 'skipped'
-type PeriodKey = 'today' | 'week' | 'month' | 'custom'
 
 interface StatusGroup {
   key: GroupKey
@@ -81,13 +82,6 @@ const STATUS_GROUPS: readonly StatusGroup[] = [
     icon: SkipForward, tone: 'warning',
     matches: status => status === AutomationExecutionStatus.Skipped,
   },
-]
-
-const PERIODS: readonly { key: PeriodKey; label: string; offset: number | null }[] = [
-  { key: 'today', label: 'Hoy', offset: 0 },
-  { key: 'week', label: '7 días', offset: -6 },
-  { key: 'month', label: '30 días', offset: -29 },
-  { key: 'custom', label: 'Otro', offset: null },
 ]
 
 const BADGE_VARIANT: Record<Tone, 'neutral' | 'info' | 'success' | 'danger' | 'warning'> = {
@@ -178,10 +172,13 @@ function groupByDay(executions: AutomationExecution[]) {
 
 /* -------------------------------------------------------------------- fila */
 
-function ExecutionRow({ execution, onCancel, isCancelling }: {
+function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender }: {
   execution: AutomationExecution
   onCancel: () => void
   isCancelling: boolean
+  viewerId: number | undefined
+  /** Con envíos de varias personas a la vista, cada fila dice de quién es. */
+  showSender: boolean
 }) {
   const navigate = useNavigate()
   const tone = statusTone(execution.status)
@@ -192,6 +189,8 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
   const steps = execution.action_results ?? []
   const serviceWindow = isServiceWindowFailure(execution)
   const summary = rowSummary(execution)
+  const isMine = viewerId === undefined || execution.started_by_user_id === viewerId
+  const senderName = execution.started_by_name || 'Usuario eliminado'
 
   return (
     <details className="group border-b border-wa-border last:border-b-0 dark:border-wa-border-dark">
@@ -210,7 +209,7 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
             )}
           </span>
           <span className="mt-0.5 block truncate text-xs text-wa-muted dark:text-wa-muted-dark lg:hidden">
-            {leadLabel} · {timeLabel(execution.created_at)}
+            {leadLabel}{showSender ? ` · ${senderName}` : ''} · {timeLabel(execution.created_at)}
           </span>
           <span className={`mt-0.5 hidden truncate text-xs lg:block ${
             failed ? 'text-red-700 dark:text-red-300' : 'text-wa-muted dark:text-wa-muted-dark'
@@ -223,6 +222,9 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
         </span>
 
         <span className="hidden min-w-0 flex-1 truncate text-sm text-wa-text dark:text-wa-text-dark lg:block">{leadLabel}</span>
+        {showSender && (
+          <span className="hidden w-36 shrink-0 truncate text-sm text-wa-muted dark:text-wa-muted-dark lg:block">{senderName}</span>
+        )}
 
         <span className="shrink-0 lg:w-28">
           <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(execution.status, execution.error)}</Badge>
@@ -255,7 +257,7 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
             <dt className="text-wa-muted dark:text-wa-muted-dark">Origen</dt>
             <dd className="mt-1 font-medium text-wa-text dark:text-white">
               {execution.trigger_type === AutomationTrigger.Manual && execution.start_source === 'manual'
-                ? 'Lo iniciaste desde el chat'
+                ? (isMine ? 'Lo iniciaste desde el chat' : `Lo inició ${senderName} desde el chat`)
                 : execution.start_source === 'flow'
                   ? 'Llamado por otro flujo'
                   : executionTriggerLabel(execution.trigger_type)}
@@ -342,7 +344,8 @@ function ExecutionRow({ execution, onCancel, isCancelling }: {
 
 /* ------------------------------------------------------------------ página */
 
-/** Historial personal de flujos iniciados manualmente por el usuario. */
+/** Historial de flujos iniciados a mano: los propios y, para el admin, los
+ *  del equipo. */
 export function MyAutomationExecutionsPage() {
   const navigate = useNavigate()
   const { data: flows = [] } = useManualFlows()
@@ -354,12 +357,24 @@ export function MyAutomationExecutionsPage() {
   const [ruleId, setRuleId] = useState<number | null>(null)
   const [group, setGroup] = useState<GroupKey>('all')
 
+  const { data: me } = useMe()
+  const isAdmin = me?.role === 'admin'
+  const { data: users = [] } = useUsers(isAdmin)
+  // El admin arranca en "Todo el equipo": con solo lo suyo veía cero y
+  // concluía que ese día no había salido ningún flujo. null = ese default.
+  const [senderChoice, setSenderChoice] = useState<SenderKey | null>(null)
+  const sender: SenderKey = isAdmin ? senderChoice ?? 'team' : 'me'
+  const otherUsers = users.filter(item => item.id !== me?.id)
+  const senderName = typeof sender === 'number' ? users.find(item => item.id === sender)?.name ?? null : null
+
   const preset = PERIODS.find(item => item.key === period)
   const dateFrom = period === 'custom' ? customFrom : isoDateOffset(preset?.offset ?? 0)
   const dateTo = period === 'custom' ? customTo : todayISODate()
 
   const { data: executions = [], isLoading, isFetching, isError, error, refetch } = useAutomationExecutions({
-    mine: true,
+    mine: sender === 'me',
+    startedBy: typeof sender === 'number' ? sender : undefined,
+    team: sender === 'team' || undefined,
     ruleId: ruleId ?? undefined,
     dateFrom,
     dateTo,
@@ -380,13 +395,14 @@ export function MyAutomationExecutionsPage() {
   )
   const days = useMemo(() => groupByDay(visible), [visible])
 
-  const isFiltered = period !== 'today' || ruleId !== null || group !== 'all'
+  const isFiltered = period !== 'today' || ruleId !== null || group !== 'all' || senderChoice !== null
   const flowName = flows.find(flow => flow.id === ruleId)?.name
   const periodSummary = period === 'custom'
     ? periodLabel(dateFrom, dateTo)
     : period === 'today' ? 'Hoy' : period === 'week' ? 'Últimos 7 días' : 'Últimos 30 días'
 
   function resetFilters() {
+    setSenderChoice(null)
     setPeriod('today')
     setCustomFrom(todayISODate())
     setCustomTo(todayISODate())
@@ -417,59 +433,26 @@ export function MyAutomationExecutionsPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Flujos enviados</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Revisa los flujos que iniciaste desde una conversación y en qué paso van.
+            {isAdmin
+              ? 'Revisa los flujos que tu equipo inició desde una conversación y en qué paso van.'
+              : 'Revisa los flujos que iniciaste desde una conversación y en qué paso van.'}
           </p>
         </header>
 
-        <section aria-label="Filtros del historial" className="mt-6 rounded-xl border border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-            <div className="min-w-0">
-              <p className="mb-2 text-sm font-semibold text-wa-text dark:text-wa-text-dark">Período</p>
-              <div role="group" aria-label="Período del historial" className="inline-flex max-w-full rounded-lg border border-wa-border bg-wa-app p-1 dark:border-wa-border-dark dark:bg-wa-app-dark">
-                {PERIODS.map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => selectPeriod(item.key)}
-                    aria-pressed={period === item.key}
-                    className={`min-h-10 rounded-md px-3 text-sm font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${
-                      period === item.key
-                        ? 'bg-white font-semibold text-wa-text shadow-sm dark:bg-wa-head-dark dark:text-wa-text-dark'
-                        : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="block min-w-0 flex-1 lg:max-w-xs">
-              <span className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">Flujo</span>
-              <Select
-                value={ruleId ?? ''}
-                onChange={event => setRuleId(event.target.value ? Number(event.target.value) : null)}
-                className="min-h-10 w-full border-wa-border bg-white shadow-none dark:border-wa-border-dark dark:bg-wa-panel-dark"
-              >
-                <option value="">Todos los flujos</option>
-                {flows.map(flow => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
-              </Select>
-            </label>
-          </div>
-
-          {period === 'custom' && (
-            <div className="mt-4 flex flex-col gap-3 border-t border-wa-border pt-4 sm:flex-row dark:border-wa-border-dark">
-              <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark sm:max-w-48">
-                Desde
-                <input type="date" value={customFrom} max={customTo} onChange={event => setCustomFrom(event.target.value)} className={cn(fieldClass, 'min-h-10 w-full border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark')} />
-              </label>
-              <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark sm:max-w-48">
-                Hasta
-                <input type="date" value={customTo} min={customFrom} max={todayISODate()} onChange={event => setCustomTo(event.target.value)} className={cn(fieldClass, 'min-h-10 w-full border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark')} />
-              </label>
-            </div>
-          )}
-        </section>
+        <ExecutionHistoryFilters
+          period={period}
+          onPeriodChange={selectPeriod}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustomFromChange={setCustomFrom}
+          onCustomToChange={setCustomTo}
+          flows={flows}
+          ruleId={ruleId}
+          onRuleChange={setRuleId}
+          senderOptions={isAdmin ? otherUsers : null}
+          sender={sender}
+          onSenderChange={setSenderChoice}
+        />
 
         {executions.length > 0 && !isError && (
           <section aria-label="Filtrar por estado" className="mt-5 flex flex-wrap gap-2">
@@ -496,7 +479,7 @@ export function MyAutomationExecutionsPage() {
               <p aria-live="polite" className="mt-0.5 text-sm text-wa-muted dark:text-wa-muted-dark">
                 {isLoading
                   ? 'Cargando envíos…'
-                  : `${visible.length} ${visible.length === 1 ? 'envío' : 'envíos'} · ${periodSummary}${flowName ? ` · ${flowName}` : ''}`}
+                  : `${visible.length} ${visible.length === 1 ? 'envío' : 'envíos'} · ${periodSummary}${flowName ? ` · ${flowName}` : ''}${sender === 'team' ? ' · Todo el equipo' : senderName ? ` · ${senderName}` : ''}`}
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -556,11 +539,13 @@ export function MyAutomationExecutionsPage() {
                 </span>
                 <div className="min-w-0">
                   <h3 className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
-                    {isFiltered ? activeGroup.emptyTitle : 'Todavía no enviaste ningún flujo hoy'}
+                    {isFiltered
+                      ? activeGroup.emptyTitle
+                      : sender === 'team' ? 'Tu equipo todavía no envió ningún flujo hoy' : 'Todavía no enviaste ningún flujo hoy'}
                   </h3>
                   <p className="mt-1 max-w-xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
                     {isFiltered
-                      ? 'Prueba otro período o flujo para encontrar el envío que buscas.'
+                      ? `Prueba otro período${isAdmin ? ', flujo o persona' : ' o flujo'} para encontrar el envío que buscas.`
                       : 'Abre una conversación y selecciona Iniciar flujo. Los envíos aparecerán aquí con su estado y sus pasos.'}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -596,6 +581,8 @@ export function MyAutomationExecutionsPage() {
                       execution={execution}
                       isCancelling={cancelExecution.isPending && cancelExecution.variables === execution.id}
                       onCancel={() => handleCancel(execution)}
+                      viewerId={me?.id}
+                      showSender={sender === 'team'}
                     />
                   ))}
                 </section>
