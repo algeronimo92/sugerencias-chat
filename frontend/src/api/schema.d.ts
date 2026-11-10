@@ -4855,6 +4855,11 @@ export interface components {
             previous_trend: components["schemas"]["DashboardSeparationPoint"][];
             /** By Seller */
             by_seller: components["schemas"]["DashboardSeparationSeller"][];
+            /**
+             * By Owner
+             * @default []
+             */
+            by_owner: components["schemas"]["DashboardSeparationSeller"][];
             /** Recent */
             recent: components["schemas"]["DashboardSeparationRow"][];
         };

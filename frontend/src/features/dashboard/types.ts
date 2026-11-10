@@ -61,14 +61,23 @@ export interface DashboardSeparationTotals {
   clients: number
 }
 
+export interface DashboardSeparationRankRow {
+  name: string
+  count: number
+  amount: number
+  with_deposit: number
+}
+
 export interface DashboardSeparations {
   totals: DashboardSeparationTotals
   /** null si en la ventana anterior no hubo separaciones. */
   previous: DashboardSeparationTotals | null
   trend: { date: string; count: number; amount: number }[]
   previous_trend: { date: string; count: number; amount: number }[]
-  /** Ranking del equipo: llega igual en los dos scopes. */
-  by_seller: { name: string; count: number; amount: number; with_deposit: number }[]
+  /** Ranking del equipo por quién registró la separación; llega igual en los dos scopes. */
+  by_seller: DashboardSeparationRankRow[]
+  /** Ranking del equipo por la vendedora asignada a la clienta en el CRM. */
+  by_owner: DashboardSeparationRankRow[]
   recent: {
     id: number
     /** null cuando la cita no quedó ligada a un lead: no hay chat que abrir. */

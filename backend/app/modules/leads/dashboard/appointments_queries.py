@@ -264,18 +264,18 @@ def _separation_trend(rows, first_day, days: int) -> list[dict]:
     return points
 
 
-def _separation_seller_stmt(scope: DashboardScope):
+def _separation_ranking_stmt(scope: DashboardScope, name, *joins):
     # Ranking del equipo: no se acota al scope, como los demás rankings.
-    name = func.coalesce(User.name, "Sin asignar")
+    stmt = select(
+        name.label("name"),
+        func.count(Appointment.id).label("count"),
+        func.coalesce(func.sum(DEPOSIT), 0).label("amount"),
+        func.count(Appointment.id).filter(DEPOSIT > 0).label("with_deposit"),
+    )
+    for target, on in joins:
+        stmt = stmt.outerjoin(target, on)
     return (
-        select(
-            name.label("name"),
-            func.count(Appointment.id).label("count"),
-            func.coalesce(func.sum(DEPOSIT), 0).label("amount"),
-            func.count(Appointment.id).filter(DEPOSIT > 0).label("with_deposit"),
-        )
-        .outerjoin(User, User.id == Appointment.created_by_user_id)
-        .where(
+        stmt.where(
             Appointment.created_at >= scope.start,
             Appointment.status.in_(BOOKED_STATUSES),
             Appointment.test_mode.is_(False),
@@ -283,6 +283,27 @@ def _separation_seller_stmt(scope: DashboardScope):
         .group_by(name)
         .order_by(func.sum(DEPOSIT).desc(), func.count(Appointment.id).desc())
         .limit(12)
+    )
+
+
+def _separation_seller_stmt(scope: DashboardScope):
+    """Quién llenó el formulario de "Separar cita"."""
+    return _separation_ranking_stmt(
+        scope, func.coalesce(User.name, "Sin asignar"), (User, User.id == Appointment.created_by_user_id),
+    )
+
+
+def _separation_owner_stmt(scope: DashboardScope):
+    """La vendedora a la que está asignada la clienta en el CRM, aunque la
+    cita la haya registrado otra persona (una recepcionista, una compañera
+    que cubrió el turno). Las citas sin lead quedan aparte en vez de
+    desaparecer, y un lead sin vendedora se distingue de una cita sin lead."""
+    name = case(
+        (Appointment.lead_id.is_(None), "Sin lead vinculado"),
+        else_=func.coalesce(Owner.name, "Lead sin vendedora"),
+    )
+    return _separation_ranking_stmt(
+        scope, name, (Lead, Lead.id == Appointment.lead_id), (Owner, Owner.id == Lead.vendedor_id),
     )
 
 
@@ -306,15 +327,26 @@ def _separation_recent_stmt(condition):
     )
 
 
+def _ranking(rows) -> list[dict]:
+    return [
+        {
+            "name": str(row["name"]), "count": int(row["count"]), "amount": _money(row["amount"]),
+            "with_deposit": int(row["with_deposit"] or 0),
+        }
+        for row in rows
+    ]
+
+
 async def _separations(scope: DashboardScope) -> dict:
     current = _booked(scope, scope.start)
     previous = _booked(scope, scope.previous_start, scope.start)
-    totals, previous_totals, trend, previous_trend, sellers, recent = await asyncio.gather(
+    totals, previous_totals, trend, previous_trend, sellers, owners, recent = await asyncio.gather(
         execute_mapping(_separation_totals_stmt(current)),
         execute_mapping(_separation_totals_stmt(previous)),
         execute_mapping(_separation_trend_stmt(current)),
         execute_mapping(_separation_trend_stmt(previous)),
         execute_mapping(_separation_seller_stmt(scope)),
+        execute_mapping(_separation_owner_stmt(scope)),
         execute_mapping(_separation_recent_stmt(current)),
     )
     before = _separation_totals(previous_totals[0])
@@ -324,13 +356,8 @@ async def _separations(scope: DashboardScope) -> dict:
         "previous": before if before["count"] else None,
         "trend": _separation_trend(trend, scope.start_date, scope.days),
         "previous_trend": _separation_trend(previous_trend, scope.start_date - timedelta(days=scope.days), scope.days),
-        "by_seller": [
-            {
-                "name": str(row["name"]), "count": int(row["count"]), "amount": _money(row["amount"]),
-                "with_deposit": int(row["with_deposit"] or 0),
-            }
-            for row in sellers
-        ],
+        "by_seller": _ranking(sellers),
+        "by_owner": _ranking(owners),
         "recent": [
             {
                 "id": int(row["id"]),

@@ -98,6 +98,7 @@ function metrics(): DashboardMetrics {
         trend: [{ date: '2026-09-20', count: 1, amount: 100 }, { date: '2026-09-21', count: 2, amount: 150 }],
         previous_trend: [{ date: '2026-08-21', count: 1, amount: 100 }, { date: '2026-08-22', count: 1, amount: 100 }],
         by_seller: [{ name: 'Grecia', count: 3, amount: 250, with_deposit: 2 }],
+        by_owner: [{ name: 'Antonella', count: 2, amount: 200, with_deposit: 2 }, { name: 'Sin lead vinculado', count: 1, amount: 50, with_deposit: 0 }],
         recent: [
           {
             id: 9, lead_id: 'lead-9', name: 'Ana Torres', treatment: 'Hifu12D', amount: 150, date: '2026-10-01',
@@ -308,6 +309,21 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('heading', { name: 'Compras registradas' })).toBeNull()
     expect(screen.queryByText('Monto vendido')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Compras registradas' })).toBeNull()
+  })
+
+  it('separa quién registró la separación de la vendedora asignada a la clienta', async () => {
+    const user = userEvent.setup()
+    renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    const registro = screen.getByRole('region', { name: 'Quién registró la separación' })
+    expect(within(registro).getByRole('columnheader', { name: 'Registró' })).toBeInTheDocument()
+    expect(within(registro).getByRole('row', { name: /Grecia 3 S\/\s?250 67%/ })).toBeInTheDocument()
+
+    const vendedora = screen.getByRole('region', { name: 'Por vendedora de la clienta' })
+    expect(within(vendedora).getByRole('columnheader', { name: 'Vendedora' })).toBeInTheDocument()
+    expect(within(vendedora).getByRole('row', { name: /Antonella 2 S\/\s?200 100%/ })).toBeInTheDocument()
+    expect(within(vendedora).getByRole('row', { name: /Sin lead vinculado 1/ })).toBeInTheDocument()
   })
 
   it('abre el chat de una separación ligada a un lead y lista sin enlace la que no lo está', async () => {
