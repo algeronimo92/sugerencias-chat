@@ -97,28 +97,3 @@ async def get_lead_service_by_name(name: str, active_only: bool = True) -> dict 
     async with session_scope() as session:
         row = (await session.execute(stmt)).mappings().first()
     return dict(row) if row else None
-
-
-async def get_sellable_package(service_id: int, package_id: int) -> dict | None:
-    """El paquete que un vendedor puede cerrar: activo y de un servicio
-    activo. Devuelve lo que la venta copia (nombres, sesiones, precio)."""
-    stmt = (
-        select(
-            LeadService.id.label("service_id"),
-            LeadService.name.label("service_name"),
-            ServicePackage.id.label("package_id"),
-            ServicePackage.name.label("package_name"),
-            ServicePackage.sessions,
-            ServicePackage.price,
-        )
-        .join(ServicePackage, ServicePackage.service_id == LeadService.id)
-        .where(
-            LeadService.id == service_id,
-            ServicePackage.id == package_id,
-            LeadService.is_active == true(),
-            ServicePackage.is_active == true(),
-        )
-    )
-    async with session_scope() as session:
-        row = (await session.execute(stmt)).mappings().first()
-    return dict(row) if row else None

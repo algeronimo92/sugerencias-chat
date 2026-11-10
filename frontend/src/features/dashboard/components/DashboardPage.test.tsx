@@ -1,17 +1,25 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DashboardPage } from './DashboardPage'
 import type { DashboardMetrics, DashboardScope } from '../types'
 
 const requestedScopes: (DashboardScope | null)[] = []
+const requests: { days: number; scope: DashboardScope | null; sellerId: number | null }[] = []
 
 vi.mock('../hooks/useDashboard', () => ({
-  useDashboard: (_days: number, scope: DashboardScope | null) => {
+  useDashboard: (days: number, scope: DashboardScope | null, sellerId: number | null = null) => {
     requestedScopes.push(scope)
+    requests.push({ days, scope, sellerId })
     return { data: metrics(), isLoading: false, isFetching: false, error: null, refetch: vi.fn() }
   },
+}))
+
+// Las vendedoras que el admin puede elegir para mirar sus métricas.
+vi.mock('../../platform/public/useUsers', () => ({
+  useSellers: () => ({ data: [{ id: 2, name: 'Lucía Ramos', role: 'vendedor' }, { id: 3, name: 'Marco Díaz', role: 'vendedor' }] }),
 }))
 
 // Las etapas son las del negocio; acá alcanza con las que trae una cuenta nueva.
@@ -57,38 +65,7 @@ function metrics(): DashboardMetrics {
       stale: [{ name: '+7 días', value: 4 }],
       conversations_open: 5, conversations_closed: 7, avg_close_hours: 20.5,
     },
-    sales: {
-      currency: 'PEN',
-      totals: { count: 3, revenue: 1250, avg_ticket: 416.67, sessions: 7, discount: 40, discount_rate: 3.1, buyers: 3 },
-      previous: { count: 2, revenue: 1000, avg_ticket: 500, sessions: 4, discount: 0, discount_rate: 0, buyers: 2 },
-      trend: [
-        { date: '2026-09-20', count: 1, revenue: 400 },
-        { date: '2026-09-21', count: 2, revenue: 850 },
-      ],
-      previous_trend: [
-        { date: '2026-08-21', count: 1, revenue: 500 },
-        { date: '2026-08-22', count: 1, revenue: 500 },
-      ],
-      by_package: [
-        {
-          package_id: 4, service_name: 'Hollywood Peel - Rostro', package_name: 'x3', sessions: 3,
-          count: 2, revenue: 850, avg_ticket: 425, previous_count: 1,
-        },
-        {
-          package_id: 5, service_name: 'Láser', package_name: 'x10', sessions: 10,
-          count: 1, revenue: 400, avg_ticket: 400, previous_count: 0,
-        },
-      ],
-      by_service: [{ service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 }],
-      by_seller: [
-        { user_id: 2, name: 'Lucía Ramos', count: 2, revenue: 850, avg_ticket: 425, discount_rate: 4.5 },
-        { user_id: 3, name: 'Marco Díaz', count: 1, revenue: 400, avg_ticket: 400, discount_rate: 11.1 },
-      ],
-      recent: [{
-        id: 31, lead_id: 'lead-7', lead_name: 'Rosa Quispe', service_name: 'Láser', package_name: 'x6',
-        amount: 400, list_price: 450, sold_at: '2026-09-21T15:00:00Z', seller_name: 'Marco Díaz',
-      }],
-    },
+    currency: 'PEN',
     automations: {
       by_flow: [{
         name: 'Recordatorio de Yape', rule_id: 12, trigger_type: 'manual', value: 8,
@@ -110,9 +87,31 @@ function metrics(): DashboardMetrics {
     appointments: {
       by_status: [{ name: 'Registrada', value: 5 }],
       by_treatment: [{ name: 'Limpieza facial', value: 3 }],
+      by_treatment_daily: [
+        { date: '2026-09-20', key: 'hifu12d', name: 'Hifu12D', count: 3, amount: 300 },
+        { date: '2026-09-21', key: 'hifu12d', name: 'HIFU 12D', count: 1, amount: 100 },
+        { date: '2026-09-21', key: 'limpiezafacial', name: 'Limpieza Facial', count: 4, amount: 200 },
+      ],
+      separations: {
+        totals: { count: 3, amount: 250, with_deposit: 2, avg_deposit: 125, clients: 3 },
+        previous: { count: 2, amount: 200, with_deposit: 2, avg_deposit: 100, clients: 2 },
+        trend: [{ date: '2026-09-20', count: 1, amount: 100 }, { date: '2026-09-21', count: 2, amount: 150 }],
+        previous_trend: [{ date: '2026-08-21', count: 1, amount: 100 }, { date: '2026-08-22', count: 1, amount: 100 }],
+        by_seller: [{ name: 'Grecia', count: 3, amount: 250, with_deposit: 2 }],
+        recent: [
+          {
+            id: 9, lead_id: 'lead-9', name: 'Ana Torres', treatment: 'Hifu12D', amount: 150, date: '2026-10-01',
+            time: '10:00', created_at: '2026-09-21T15:00:00Z', seller_name: 'Grecia',
+          },
+          {
+            id: 10, lead_id: null, name: 'Sin Ficha', treatment: 'Consulta', amount: 0, date: '2026-10-02',
+            time: '11:00', created_at: '2026-09-21T16:00:00Z', seller_name: 'Grecia',
+          },
+        ],
+      },
       by_user: [{ name: 'Grecia', value: 5 }],
       by_owner: [{ name: 'Antonella', value: 4 }, { name: 'Sin lead vinculado', value: 1 }],
-      trend: [{ date: '2026-09-20', value: 5 }],
+      trend: [{ date: '2026-09-20', value: 5 }, { date: '2026-09-21', value: 3 }],
       lost_reasons: [{ name: 'Precio', value: 2 }],
       upcoming: [
         { id: 1, lead_id: 'lead-1', name: 'Ana Pérez', date: '2026-09-22', time: '14:00', treatment: 'Botox' },
@@ -135,29 +134,100 @@ function metrics(): DashboardMetrics {
   }
 }
 
-function renderDashboard(role = 'vendedor') {
+function CurrentQuery() {
+  return <output data-testid="query">{useLocation().search}</output>
+}
+
+function renderDashboard(role = 'vendedor', url = '/dashboard') {
   requestedScopes.length = 0
+  requests.length = 0
   const onOpenFlows = vi.fn()
   const onOpenChat = vi.fn()
   const onFilterChats = vi.fn()
-  render(
-    <DashboardPage
-      role={role}
-      onOpenTasks={vi.fn()}
-      onOpenFlows={onOpenFlows}
-      onOpenChat={onOpenChat}
-      onFilterChats={onFilterChats}
-    />,
+  const view = render(
+    <MemoryRouter initialEntries={[url]}>
+      <DashboardPage
+        role={role}
+        onOpenTasks={vi.fn()}
+        onOpenFlows={onOpenFlows}
+        onOpenChat={onOpenChat}
+        onFilterChats={onFilterChats}
+      />
+      <CurrentQuery />
+    </MemoryRouter>,
   )
-  return { onOpenFlows, onOpenChat, onFilterChats }
+  return { onOpenFlows, onOpenChat, onFilterChats, unmount: view.unmount }
 }
 
 describe('DashboardPage', () => {
-  it('un analista ve el equipo y no puede cambiar de alcance', () => {
-    renderDashboard('analista')
-    expect(requestedScopes.at(-1)).toBe('team')
-    expect(screen.queryByLabelText('Alcance de las métricas')).toBeNull()
+  // La última vista se guarda en el navegador: cada test arranca sin ella.
+  beforeEach(() => localStorage.removeItem('dashboard-filtros'))
+
+  it('un analista ve siempre al equipo y no elige a quién mirar', () => {
+    renderDashboard('analista', '/dashboard?alcance=mio')
+
+    expect(requests.at(-1)).toEqual({ days: 30, scope: 'team', sellerId: null })
+    expect(screen.queryByLabelText('De quién son las métricas')).toBeNull()
     expect(screen.getByLabelText('Período')).toBeInTheDocument()
+  })
+
+  it('abre la pestaña, el período y la vendedora que trae el enlace', () => {
+    renderDashboard('admin', '/dashboard?pestana=ventas&dias=7&vendedora=2')
+
+    expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
+    expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 2 })
+    expect(screen.getByLabelText('De quién son las métricas')).toHaveTextContent('Lucía Ramos')
+    expect(screen.getByText(/Lo que separó Lucía Ramos/)).toBeInTheDocument()
+  })
+
+  it('lleva cada cambio de filtro a la dirección y lo recuerda al volver sin parámetros', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderDashboard('admin')
+
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+    await user.click(screen.getByLabelText('Período'))
+    await user.click(screen.getByRole('option', { name: 'Últimos 7 días' }))
+    await user.click(screen.getByLabelText('De quién son las métricas'))
+    await user.click(screen.getByRole('option', { name: 'Marco Díaz' }))
+    expect(screen.getByTestId('query')).toHaveTextContent('?pestana=ventas&dias=7&vendedora=3')
+    unmount()
+
+    // Entrar desde el menú (sin parámetros) vuelve a la última vista.
+    renderDashboard('admin')
+    expect(screen.getByTestId('query')).toHaveTextContent('vendedora=3')
+    expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 3 })
+  })
+
+  it('cada sección copia su propio enlace, con la vista actual y su nombre al final', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    // En la app el router y la barra de direcciones coinciden; acá hay que
+    // fijar la dirección de la ventana, que es la que se copia.
+    window.history.replaceState({}, '', '/dashboard?pestana=ventas&dias=7&vendedora=2')
+    renderDashboard('admin', '/dashboard?pestana=ventas&dias=7&vendedora=2')
+
+    // Ya no hay un "Copiar enlace" general: la barra de direcciones cumple esa función.
+    expect(screen.queryByRole('button', { name: 'Copiar enlace' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Copiar enlace a la sección Por tratamiento' }))
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/dashboard\?pestana=ventas&dias=7&vendedora=2#por-tratamiento$/))
+  })
+
+  it('al abrir el enlace de una sección baja hasta ella', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderDashboard('admin', '/dashboard?pestana=ventas&dias=30&alcance=equipo#por-tratamiento')
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('seccion-por-tratamiento'))
+  })
+
+  it('al vendedor no le ofrece mirar a otras personas', async () => {
+    const user = userEvent.setup()
+    renderDashboard('vendedor')
+    await user.click(screen.getByLabelText('De quién son las métricas'))
+    expect(screen.getByRole('option', { name: 'Todo el equipo' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Lucía Ramos' })).toBeNull()
   })
 
   it('abre en lo propio para un vendedor y en el equipo para un admin', () => {
@@ -209,18 +279,17 @@ describe('DashboardPage', () => {
     expect(screen.getByText('1 ejecuciones no llegaron a enviarse')).toBeInTheDocument()
   })
 
-  it('muestra las ventas en la moneda del negocio y contra el período anterior', () => {
+  it('resume las separaciones en la moneda del negocio y contra el período anterior', () => {
     renderDashboard('admin')
 
-    // El total y el ticket llevan la moneda del perfil; el cambio dice la
-    // dirección con flecha y signo, no solo con color.
-    expect(screen.getByText(/S\/\s?1,250/)).toBeInTheDocument()
-    expect(screen.getByText('▲ +25% vs. período anterior')).toBeInTheDocument()
+    // La venta del negocio es la separación de cita: el monto es la suma de
+    // adelantos, con la moneda del perfil y el cambio con flecha y signo.
+    expect(screen.getByText(/S\/\s?250/)).toBeInTheDocument()
     expect(screen.getByText('▲ +50% vs. período anterior')).toBeInTheDocument()
-    expect(screen.getByText('▼ -17% vs. período anterior')).toBeInTheDocument()
-    // Los paquetes se cuentan por compras aunque el backend los ordene por ingresos.
-    expect(screen.getByText('Hollywood Peel - Rostro · x3')).toBeInTheDocument()
-    expect(screen.getByText('Láser · x10')).toBeInTheDocument()
+    expect(screen.getAllByText('▲ +25% vs. período anterior')).toHaveLength(2)
+    // Las variantes de escritura del tratamiento cuentan juntas.
+    expect(screen.getByText('Tratamientos más separados')).toBeInTheDocument()
+    expect(screen.getByText('Hifu12D')).toBeInTheDocument()
   })
 
   it('lleva de Resumen a la pestaña de ventas', async () => {
@@ -229,48 +298,48 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Ver ventas' }))
     expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Ingresos cobrados')).toBeInTheDocument()
+    expect(screen.getByText('Monto de separación')).toBeInTheDocument()
   })
 
-  it('compara cada cifra de ventas con el período anterior', async () => {
+  it('compara las separaciones con el período anterior y ya no muestra compras registradas', async () => {
     const user = userEvent.setup()
     renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
-    expect(screen.getByText('3 clientes')).toBeInTheDocument()
-    // Compras +50 %, ingresos +25 %, ticket -17 %, sesiones +75 %.
-    for (const label of ['▲ +50%', '▲ +25%', '▼ -17%', '▲ +75%']) {
+    expect(screen.getByText('3 clientas')).toBeInTheDocument()
+    expect(screen.getByText('2 de 3 separaciones')).toBeInTheDocument()
+    for (const label of ['▲ +50%', '▲ +25%']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0)
     }
-    // Un descuento que sube se dice en puntos, no en porcentaje de porcentaje.
-    expect(screen.getByText('▲ +3.1 pts')).toBeInTheDocument()
+    // "Registrar compra" se quitó: aunque el backend traiga compras, la
+    // pestaña ya no las muestra.
+    expect(screen.queryByRole('heading', { name: 'Compras registradas' })).toBeNull()
+    expect(screen.queryByText('Monto vendido')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Compras registradas' })).toBeNull()
   })
 
-  it('ordena los paquetes por la columna elegida y marca los que antes no se vendían', async () => {
-    const user = userEvent.setup()
-    renderDashboard('admin')
-    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
-
-    const table = screen.getAllByRole('table')[0]
-    const firstPackage = () => within(table).getAllByRole('row')[1]
-    expect(within(firstPackage()).getByText('Hollywood Peel - Rostro')).toBeInTheDocument()
-    expect(within(table).getByText('Nuevo')).toBeInTheDocument()
-
-    // Láser x10 vende menos compras pero trae diez sesiones por compra.
-    await user.click(within(table).getByRole('button', { name: /Sesiones/ }))
-    expect(within(firstPackage()).getByText('Láser')).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: /Sesiones/ })).toHaveAttribute('aria-sort', 'descending')
-  })
-
-  it('marca al vendedor con descuento alto y abre el chat de una compra reciente', async () => {
+  it('abre el chat de una separación ligada a un lead y lista sin enlace la que no lo está', async () => {
     const user = userEvent.setup()
     const { onOpenChat } = renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
-    expect(screen.getByTitle('Descuento promedio por encima del 8%')).toHaveTextContent('11.1%')
-    expect(screen.getByText(/Lista S\/\s?450/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Rosa Quispe/ }))
-    expect(onOpenChat).toHaveBeenCalledWith('lead-7')
+    await user.click(screen.getByRole('button', { name: /Ana Torres/ }))
+    expect(onOpenChat).toHaveBeenCalledWith('lead-9')
+    expect(screen.getByText('Sin Ficha')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sin Ficha/ })).toBeNull()
+    expect(screen.getByText('Sin adelanto')).toBeInTheDocument()
+  })
+
+  it('desglosa las separaciones por tratamiento, en cantidad o en monto', async () => {
+    const user = userEvent.setup()
+    renderDashboard('admin')
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    expect(screen.getByRole('heading', { name: 'Por tratamiento' })).toBeInTheDocument()
+    expect(screen.getByText('Hifu12D fue el más separado: 4, el 50% del período.')).toBeInTheDocument()
+    const panel = screen.getByRole('heading', { name: 'Por tratamiento' }).closest('section')!
+    await user.click(within(panel).getByRole('button', { name: 'Monto' }))
+    expect(within(panel).getByText(/Hifu12D fue el más separado: S\/\s?400, el 67% del período\./)).toBeInTheDocument()
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {
@@ -313,7 +382,7 @@ describe('DashboardPage', () => {
     const user = userEvent.setup()
     renderDashboard()
 
-    await user.click(screen.getByLabelText('Alcance de las métricas'))
+    await user.click(screen.getByLabelText('De quién son las métricas'))
     await user.click(screen.getByRole('option', { name: 'Todo el equipo' }))
     expect(requestedScopes.at(-1)).toBe('team')
   })

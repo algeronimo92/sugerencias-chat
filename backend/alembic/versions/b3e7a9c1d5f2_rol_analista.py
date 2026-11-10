@@ -1,7 +1,7 @@
 """Rol analista: solo mira el dashboard.
 
 Revision ID: b3e7a9c1d5f2
-Revises: c8d3e5f7a9b1
+Revises: e4b8d2f6a913
 Create Date: 2026-11-09
 
 Hasta acá un usuario era admin o vendedor. El negocio quiere dar acceso a
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b3e7a9c1d5f2"
-down_revision: Union[str, None] = "c8d3e5f7a9b1"
+down_revision: Union[str, None] = "e4b8d2f6a913"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

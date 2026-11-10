@@ -89,6 +89,8 @@ export function Select({
   title,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: SelectProps) {
   const options = collectOptions(children)
   const normalizedValue = String(value ?? defaultValue ?? '')
@@ -118,6 +120,10 @@ export function Select({
         title={title}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
+        // La ayuda y el error del campo: sin esto el lector de pantalla no
+        // los anuncia al llegar al selector.
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         className={cn(
           fieldClass,
           'flex min-h-9 items-center justify-between gap-2 text-left shadow-sm data-[placeholder]:text-wa-muted dark:data-[placeholder]:text-wa-muted-dark',

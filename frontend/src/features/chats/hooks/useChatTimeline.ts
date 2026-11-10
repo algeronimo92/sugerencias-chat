@@ -12,9 +12,10 @@ import { messageMediaFilename } from '../utils/messageMedia'
 import { useInternalNotes } from './useInternalNotes'
 import { useMessages } from './useMessages'
 
-/** Lo que del historial del lead se muestra como evento del hilo: cambios de
- *  etapa y compras (registradas o eliminadas). */
-const TIMELINE_ACTIVITY_TYPES: ReadonlySet<string> = new Set(['stage_changed', 'sale_recorded', 'sale_deleted'])
+/** Lo que del historial del lead se muestra como evento del hilo: los cambios
+ *  de etapa. Las compras registradas salían acá también hasta que se quitó
+ *  "Registrar compra": la venta del negocio es la separación de cita. */
+const TIMELINE_ACTIVITY_TYPES: ReadonlySet<string> = new Set(['stage_changed'])
 
 /** Qué ejecuciones de flujo se ven como evento del hilo: las que alguien
  *  lanzó a propósito sobre este lead (a mano o desde otro flujo). Las de

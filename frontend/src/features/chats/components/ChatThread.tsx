@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X, Zap, ZapOff } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, PanelRight, X, Zap, ZapOff } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useActivityHold } from '../../../shared/activity'
@@ -7,6 +7,7 @@ import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
 import { LeadAutomationPanel } from '../../automations/public/LeadAutomationPanel'
 import { FlowPicker } from '../../automations/public/FlowPicker'
+import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {
@@ -25,13 +26,13 @@ import { formatDayLabel, formatMessageTime, parseContent } from '../../whatsapp/
 import { messageMediaFilename } from '../utils/messageMedia'
 import { AlbumBubble } from './AlbumBubble'
 import { ChatComposer } from './ChatComposer'
+import { ChatHeaderMoreMenu } from './ChatHeaderMoreMenu'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
 import { FlowEventCard } from './FlowEventCard'
-import { SaleCard } from './SaleCard'
 import { StageChangeCard } from './StageChangeCard'
 import { originGroupKey, originLabel } from '../domain/messageOrigin'
 
@@ -371,7 +372,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-xs shrink-0">
             {avatarInitial(chat)}
           </div>
-          <div className="min-w-0">
+          {/* overflow-hidden: el aviso de las 24 h no puede dibujarse encima de
+              los botones cuando el nombre queda angosto en el celular. */}
+          <div className="min-w-0 overflow-hidden">
             <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">{displayName(chat)}</p>
             <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
           </div>
@@ -383,7 +386,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             disabled={isUpdatingLead}
             aria-label={chat.conversacion_abierta ? 'Cerrar conversación' : 'Abrir conversación'}
             title={chat.conversacion_abierta ? 'Conversación abierta — toca para cerrarla' : 'Conversación cerrada — toca para abrirla'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 max-sm:hidden ${
               chat.conversacion_abierta
                 ? 'text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30'
                 : 'text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30'
@@ -412,7 +415,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             title={chat.automatizacion_pausada
               ? 'Sin automatizaciones nuevas para este cliente. Toca para reactivarlas'
               : 'Automatizaciones nuevas activas. Toca para que no se inicien más'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 max-sm:hidden ${
               chat.automatizacion_pausada
                 ? 'bg-amber-100 text-amber-700 hover:bg-amber-200/70 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
                 : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
@@ -420,14 +423,31 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           >
             {chat.automatizacion_pausada ? <ZapOff className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
           </button>
+          {/* Separar la cita es la venta: se llega en un toque desde la
+              conversación, sin pasar por la ficha. */}
+          <LeadAppointmentAction chat={chat} variant="header" />
+          <div className="sm:hidden">
+            <ChatHeaderMoreMenu
+              conversationOpen={chat.conversacion_abierta}
+              automationPaused={chat.automatizacion_pausada}
+              disabled={isUpdatingLead}
+              onToggleConversation={toggleConversation}
+              onToggleAutomation={toggleAutomation}
+            />
+          </div>
           {onOpenSuggestions && (
             <button
               type="button"
               onClick={onOpenSuggestions}
-              aria-label="Ver sugerencias del lead"
+              // Abre la ficha del lead, que además trae el copiloto. Antes era
+              // un ícono de estrellas: prometía IA y abría sobre todo la ficha,
+              // así que nadie lo buscaba para agendar. Las estrellas quedan
+              // para la IA, dentro del panel.
+              aria-label="Abrir ficha del lead"
+              title="Ficha del lead"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
             >
-              <Sparkles className="h-5 w-5" />
+              <PanelRight className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -494,9 +514,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               if (item.kind === 'activity') {
                 return (
                   <Fragment key={item.key}>
-                    {item.activity.event_type === 'stage_changed'
-                      ? <StageChangeCard activity={item.activity} />
-                      : <SaleCard activity={item.activity} />}
+                    <StageChangeCard activity={item.activity} />
                   </Fragment>
                 )
               }

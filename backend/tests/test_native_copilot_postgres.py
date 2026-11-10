@@ -1,5 +1,5 @@
 """El copiloto nativo contra PostgreSQL real: contexto, catálogo con paquetes,
-compras, conocimiento y job auditado, con el modelo simulado."""
+conocimiento y job auditado, con el modelo simulado."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from app.modules.ai.ai_jobs import create_ai_job
 from app.modules.ai.infrastructure.native_provider import NativeAiProvider
 from app.modules.ai.knowledge_service import create_document
 from app.modules.catalogs.service import create_lead_service, create_service_package
-from app.modules.leads.application.sales import SaleInput, record_sale
 from app.modules.leads.domain.lead import Actor
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
 from app.modules.platform.ports.settings_service import update_settings
@@ -70,7 +69,6 @@ async def test_native_suggestion_end_to_end(tenant) -> None:
             await session.execute(Lead.__table__.update().where(Lead.id == lead_id).values(nombre="Ana", servicio_interes="Hollywood Peel - Rostro"))
             await session.execute(insert(WspMessage).values(chat_id=lead_id, sender="cliente", content="Hola, tengo manchas", sent_at=now - timedelta(minutes=5), message_type="text"))
             await session.execute(insert(WspMessage).values(chat_id=lead_id, sender="cliente", content="¿Cuántas sesiones necesito?", sent_at=now - timedelta(minutes=1), message_type="text"))
-        await record_sale(lead_id, SaleInput(service_id=cejas["id"], package_id=cejas_single["id"]), actor=Actor.user(admin_id))
 
         await update_settings({"ai_gemini_api_key": "AIza-test"})
         context = await fetch_analysis_context(lead_id)
@@ -93,7 +91,8 @@ async def test_native_suggestion_end_to_end(tenant) -> None:
         prompt = client.requests[0].user
         assert '"x3"' in prompt and '"400.00"' in prompt
         assert "carbón activado" in prompt  # la ficha del servicio de interés
-        assert '"Borrado de Cejas"' in prompt and '"Individual"' in prompt  # compras previas
+        assert '"Borrado de Cejas"' in prompt  # todo el catálogo vigente
+        assert "<compras>" not in prompt
         assert prompt.index("Hola, tengo manchas") < prompt.index("¿Cuántas sesiones necesito?")
 
         async with session_scope() as session:

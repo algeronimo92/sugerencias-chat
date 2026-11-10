@@ -1,7 +1,8 @@
-import type { LucideIcon } from 'lucide-react'
+import { Link2, type LucideIcon } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip } from 'recharts'
 import type { DashboardFunnelStep, DashboardMetricItem, DashboardPoint, DashboardTagRow } from '../types'
 import { PLACEHOLDER_NAMES, formatDayLabel, formatNumber } from './format'
+import { copySectionLink, sectionElementId } from './sectionLink'
 
 interface MetricCardProps {
   label: string
@@ -50,12 +51,16 @@ export function MetricCard({ label, value, hint, icon: Icon, danger = false, onC
 }
 
 export function Panel({
+  anchor,
   title,
   subtitle,
   action,
   children,
   className = '',
 }: {
+  /** Nombre fijo de la sección en el enlace (`#anchor`). Fijo y no sacado del
+   *  título, que cambia con el período o la persona que se mira. */
+  anchor: string
   title: string
   subtitle?: string
   action?: React.ReactNode
@@ -63,13 +68,29 @@ export function Panel({
   className?: string
 }) {
   return (
-    <section className={`rounded-xl border border-wa-border bg-white p-5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark ${className}`}>
+    <section
+      id={sectionElementId(anchor)}
+      aria-labelledby={`${sectionElementId(anchor)}-titulo`}
+      // scroll-mt: al llegar por un enlace, el título no queda pegado al borde.
+      className={`scroll-mt-4 rounded-xl border border-wa-border bg-white p-5 shadow-sm transition-shadow dark:border-wa-border-dark dark:bg-wa-panel-dark ${className}`}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-wa-text-dark">{title}</h2>
+        <div className="min-w-0">
+          <h2 id={`${sectionElementId(anchor)}-titulo`} className="text-sm font-semibold text-gray-800 dark:text-wa-text-dark">{title}</h2>
           {subtitle && <p className="mt-0.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">{subtitle}</p>}
         </div>
-        {action}
+        <div className="flex shrink-0 items-center gap-2">
+          {action}
+          <button
+            type="button"
+            onClick={() => void copySectionLink(anchor, title)}
+            aria-label={`Copiar enlace a la sección ${title}`}
+            title="Copiar enlace a esta sección"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-wa-hover hover:text-wa-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark dark:hover:text-wa-text-dark"
+          >
+            <Link2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </div>
       {children}
     </section>

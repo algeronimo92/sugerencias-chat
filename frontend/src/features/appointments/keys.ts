@@ -11,4 +11,6 @@ export const appointmentKeys = {
   // Fuera de `all`: refrescar el historial de citas no tiene por qué releer
   // la plantilla del evento.
   calendarTemplate: ['appointment-calendar-template'] as const,
+  // Moneda del negocio para el símbolo del adelanto: cambia casi nunca.
+  businessCurrency: ['appointment-business-currency'] as const,
 }

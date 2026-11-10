@@ -7,7 +7,7 @@ import { Input, Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { avatarInitial, displayName, isBotAttended } from '../utils/chat'
 import { parseContent } from '../../whatsapp/public/message'
-import type { Chat, LeadSaleInput } from '../types'
+import type { Chat } from '../types'
 import {
 STAGE_DOT_CLASS,
 STAGE_HEADER_CLASS,
@@ -28,7 +28,6 @@ type KanbanPage,
 } from '../kanban-queries'
 import type { LeadStage, LeadStageDefinition } from '../types'
 import { LostReasonDialog } from './LostReasonDialog'
-import { SaleDialog } from './SaleDialog'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -312,9 +311,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   const [pendingLost, setPendingLost] = useState<
     { kind: 'single'; chat: Chat; stage: LeadStage } | { kind: 'bulk'; count: number; stage: LeadStage } | null
   >(null)
-  // Movimiento a una etapa ganada esperando que el asesor diga con qué
-  // paquete cerró (o lo saltee). Solo de a uno: una venta es de un lead.
-  const [pendingSale, setPendingSale] = useState<{ chat: Chat; stage: LeadStage } | null>(null)
   const catalog = useLeadStageCatalog()
   const { data: snapshot, isLoading: snapshotLoading, isError: snapshotError, refetch } = useKanbanSnapshot(debouncedSearch)
   const { data: tags = [] } = useTags()
@@ -327,7 +323,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     return () => clearTimeout(timeout)
   }, [search])
 
-  function handleMove(chat: Chat, stage: LeadStage, razonPerdido?: string | null, sale?: LeadSaleInput | null) {
+  function handleMove(chat: Chat, stage: LeadStage, razonPerdido?: string | null) {
     if (chat.stage === stage || movingIds.has(chat.chat_id)) return
     // Antes de dar un lead por perdido se pide la razón (una sola vez: la
     // segunda pasada llega desde el diálogo con razonPerdido ya definido).
@@ -336,16 +332,10 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
       setPendingLost({ kind: 'single', chat, stage })
       return
     }
-    // Y antes de darlo por ganado, con qué paquete cerró (mismo mecanismo).
-    if (catalog.isWon(stage) && sale === undefined) {
-      setDraggedChat(null)
-      setPendingSale({ chat, stage })
-      return
-    }
     setMovingIds((current) => new Set(current).add(chat.chat_id))
     setDraggedChat(null)
     moveLead(
-      { chatId: chat.chat_id, stage, razonPerdido, sale },
+      { chatId: chat.chat_id, stage, razonPerdido },
       {
         // Un arrastre que cae en la columna equivocada se corrige con un click,
         // sin volver a buscar la tarjeta. Si venía de "perdido" se le devuelve
@@ -562,21 +552,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             ))}
           </div>
         </>
-      )}
-
-      {pendingSale && (
-        <SaleDialog
-          leadName={displayName(pendingSale.chat)}
-          defaultServiceName={pendingSale.chat.servicio_interes}
-          stageName={catalog.label(pendingSale.stage)}
-          allowSkip
-          onCancel={() => setPendingSale(null)}
-          onConfirm={(sale) => {
-            const pending = pendingSale
-            setPendingSale(null)
-            handleMove(pending.chat, pending.stage, undefined, sale)
-          }}
-        />
       )}
 
       {pendingLost && (

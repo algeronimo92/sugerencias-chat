@@ -116,6 +116,19 @@ async def test_test_mode_is_admin_only():
     assert exc.value.status_code == 403
 
 
+async def test_a_negative_deposit_is_rejected_and_decimals_are_kept(dependencies):
+    """El adelanto es plata que dejó la clienta: un negativo es un error de
+    tipeo que después restaría en los montos del dashboard."""
+    with pytest.raises(HTTPException) as exc:
+        await appointments.post_appointment(_body(custom_fields={"adelanto": -22}), SELLER)
+    assert exc.value.status_code == 422
+    assert "negativo" in exc.value.detail
+
+    result = await appointments.post_appointment(_body(custom_fields={"adelanto": 14.5}), SELLER)
+    assert result["success"] is True
+    assert result["appointment"]["adelanto"] == 14.5
+
+
 async def _stored(world, **values):
     stored = await world.repository.add({
         "created_by_user_id": SELLER.id, "lead_id": None, "nombre_completo": "Ana Pérez", "dni": "",

@@ -102,43 +102,11 @@ class KanbanSnapshot(BaseModel):
     stages: dict[str, KanbanPage]
 
 
-class LeadSaleCreate(BaseModel):
-    """Qué compró el lead: un paquete del catálogo y lo cobrado."""
-
-    service_id: int
-    package_id: int
-    # En blanco, el precio de lista del paquete.
-    amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
-    notes: str | None = Field(default=None, max_length=500)
-    sold_at: datetime | None = None
-
-
-class LeadSaleItem(BaseModel):
-    id: int
-    lead_id: str
-    service_id: int | None = None
-    package_id: int | None = None
-    service_name: str
-    package_name: str
-    sessions: int
-    list_price: Decimal
-    amount: Decimal
-    notes: str | None = None
-    sold_by_user_id: int | None = None
-    sold_by_name: str | None = None
-    sold_at: str
-    created_by_user_id: int | None = None
-    created_at: str
-
-
 class LeadStageUpdate(BaseModel):
     stage: LeadStageKey
     # Solo se persiste al pasar a una etapa de tipo `lost` (como `perdido`);
     # se ignora en cualquier otra.
     razon_perdido: str | None = Field(default=None, max_length=500)
-    # Al pasar a una etapa ganada: con qué paquete cerró. Opcional, como la
-    # razón de pérdida; se puede registrar después desde el panel del lead.
-    sale: LeadSaleCreate | None = None
 
 
 class LeadStageItem(BaseModel):
@@ -298,85 +266,6 @@ class DashboardSummary(BaseModel):
     tagged_leads: int
 
 
-class DashboardSalesTotals(BaseModel):
-    # Flotantes y no Decimal, como el resto del dashboard: el JSON lleva
-    # números, no texto. Los importes son lo cobrado, no el precio de lista.
-    count: int
-    revenue: float
-    avg_ticket: float | None = None
-    sessions: int
-    discount: float
-    # Porcentaje del descuento sobre el precio de lista; None sin ventas.
-    discount_rate: float | None = None
-    buyers: int
-
-
-class DashboardSalesPoint(BaseModel):
-    date: str
-    count: int
-    revenue: float
-
-
-class DashboardSalesPackage(BaseModel):
-    # None cuando el paquete ya no existe en el catálogo: la fila se arma con
-    # los nombres que la venta conserva.
-    package_id: int | None = None
-    service_name: str
-    package_name: str
-    sessions: int
-    count: int
-    revenue: float
-    avg_ticket: float | None = None
-    # Compras del mismo paquete en la ventana anterior; 0 si no vendía.
-    previous_count: int
-
-
-class DashboardSalesService(BaseModel):
-    service_id: int | None = None
-    name: str
-    count: int
-    revenue: float
-
-
-class DashboardSalesSeller(BaseModel):
-    user_id: int | None = None
-    name: str
-    count: int
-    revenue: float
-    avg_ticket: float | None = None
-    discount_rate: float | None = None
-
-
-class DashboardSaleRow(BaseModel):
-    id: int
-    lead_id: str
-    lead_name: str
-    service_name: str
-    package_name: str
-    amount: float
-    list_price: float
-    sold_at: str
-    seller_name: str
-
-
-class DashboardSales(BaseModel):
-    # Código ISO 4217 del perfil del negocio; None si no lo configuró o no es
-    # un código válido, y entonces los importes van sin moneda.
-    currency: str | None = None
-    totals: DashboardSalesTotals
-    # Misma medida en la ventana anterior de igual duración; None si en esa
-    # ventana no hubo ventas y no hay contra qué comparar.
-    previous: DashboardSalesTotals | None = None
-    trend: list[DashboardSalesPoint]
-    # Alineada con `trend` por posición: el día 1 contra el día 1.
-    previous_trend: list[DashboardSalesPoint]
-    by_package: list[DashboardSalesPackage]
-    by_service: list[DashboardSalesService]
-    # Ranking del equipo: no depende del scope.
-    by_seller: list[DashboardSalesSeller]
-    recent: list[DashboardSaleRow]
-
-
 class DashboardPipeline(BaseModel):
     stale: list[DashboardMetricItem]
     conversations_open: int
@@ -427,11 +316,74 @@ class DashboardLinkage(BaseModel):
     rate: float | None = None
 
 
+class DashboardAppointmentTreatmentDay(BaseModel):
+    """Citas agendadas de un tratamiento en un día (solo días con citas).
+    ``key`` agrupa las variantes de escritura del formulario."""
+    date: str
+    key: str
+    name: str
+    count: int
+    # Suma de adelantos de esas citas.
+    amount: float
+
+
+class DashboardSeparationTotals(BaseModel):
+    count: int
+    # Suma de adelantos (campo fijo o personalizado "adelanto").
+    amount: float
+    with_deposit: int
+    # Promedio entre las separaciones que dejaron adelanto.
+    avg_deposit: float | None = None
+    clients: int
+
+
+class DashboardSeparationPoint(BaseModel):
+    date: str
+    count: int
+    amount: float
+
+
+class DashboardSeparationSeller(BaseModel):
+    name: str
+    count: int
+    amount: float
+    with_deposit: int
+
+
+class DashboardSeparationRow(BaseModel):
+    id: int
+    # None cuando el teléfono de la cita no identificó a un único lead.
+    lead_id: str | None = None
+    name: str
+    treatment: str
+    amount: float
+    # Día y hora de la cita, tal como se registraron.
+    date: str
+    time: str
+    created_at: str
+    seller_name: str
+
+
+class DashboardSeparations(BaseModel):
+    """La venta del negocio medida como separación de cita con adelanto."""
+    totals: DashboardSeparationTotals
+    previous: DashboardSeparationTotals | None = None
+    trend: list[DashboardSeparationPoint]
+    previous_trend: list[DashboardSeparationPoint]
+    # Ranking del equipo: no depende del scope.
+    by_seller: list[DashboardSeparationSeller]
+    recent: list[DashboardSeparationRow]
+
+
 class DashboardAppointments(BaseModel):
     by_status: list[DashboardMetricItem]
     by_user: list[DashboardMetricItem]
     by_owner: list[DashboardMetricItem]
     by_treatment: list[DashboardMetricItem]
+    # Citas agendadas por tratamiento y día: el panel "Por tratamiento" las
+    # usa en los negocios que registran la venta como cita.
+    by_treatment_daily: list[DashboardAppointmentTreatmentDay]
+    separations: DashboardSeparations
     trend: list[DashboardPoint]
     lost_reasons: list[DashboardMetricItem]
     upcoming: list[DashboardUpcomingAppointment]
@@ -451,6 +403,33 @@ class DashboardActivity(BaseModel):
     messages: DashboardMessages
 
 
+class DashboardLegacySalesTotals(BaseModel):
+    count: int = 0
+    revenue: float = 0
+    avg_ticket: float | None = None
+    sessions: int = 0
+    discount: float = 0
+    discount_rate: float | None = None
+    buyers: int = 0
+
+
+class DashboardLegacySales(BaseModel):
+    """El bloque de ventas como lo leen las versiones anteriores de la app,
+    vacío: sin compras, con la moneda. Las versiones de antes de quitar
+    "Registrar compra" leen `totals.count`, `previous` y las listas; con solo
+    la moneda su dashboard fallaba (2026-11-10, Safari con la PWA vieja)."""
+    currency: str | None = None
+    totals: DashboardLegacySalesTotals = Field(default_factory=DashboardLegacySalesTotals)
+    previous: DashboardLegacySalesTotals | None = None
+    trend: list[dict] = Field(default_factory=list)
+    previous_trend: list[dict] = Field(default_factory=list)
+    by_package: list[dict] = Field(default_factory=list)
+    by_service: list[dict] = Field(default_factory=list)
+    by_service_daily: list[dict] = Field(default_factory=list)
+    by_seller: list[dict] = Field(default_factory=list)
+    recent: list[dict] = Field(default_factory=list)
+
+
 class DashboardMetrics(BaseModel):
     period_days: int
     scope: Literal["mine", "team"]
@@ -462,7 +441,14 @@ class DashboardMetrics(BaseModel):
     new_leads_trend: list[DashboardPoint]
     funnel: list[DashboardFunnelStep]
     pipeline: DashboardPipeline
-    sales: DashboardSales
+    # Código ISO 4217 del perfil del negocio, o None si no lo configuró o no
+    # es un código válido: los importes van entonces sin moneda.
+    currency: str | None = None
+    # Compatibilidad con la versión anterior de la app, que leía la moneda de
+    # `sales.currency`. Al borrar el bloque de ventas, quien tenía esa versión
+    # guardada veía romperse la pestaña Ventas (2026-11-10). Solo trae la
+    # moneda; se puede quitar cuando no quede nadie con esa versión.
+    sales: "DashboardLegacySales"
     automations: DashboardAutomations
     tags: DashboardTags
     appointments: DashboardAppointments

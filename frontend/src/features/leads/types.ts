@@ -35,38 +35,9 @@ export interface MoveLeadStageInput {
   /** Solo se persiste al pasar a `perdido`; el backend la ignora si no. */
   razonPerdido?: string | null
   /** Al pasar a una etapa ganada: con qué paquete cerró. Opcional. */
-  sale?: LeadSaleInput | null
 }
 
 /** Qué compró el lead: un paquete del catálogo y lo cobrado. */
-export interface LeadSaleInput {
-  service_id: number
-  package_id: number
-  /** Decimal como texto; en blanco es el precio de lista. */
-  amount?: string | null
-  notes?: string | null
-  sold_at?: string | null
-}
-
-export interface LeadSale {
-  id: number
-  lead_id: string
-  service_id: number | null
-  package_id: number | null
-  service_name: string
-  package_name: string
-  sessions: number
-  /** Decimales serializados como texto ("400.00"). */
-  list_price: string
-  amount: string
-  notes: string | null
-  sold_by_user_id: number | null
-  sold_by_name: string | null
-  sold_at: string
-  created_by_user_id: number | null
-  created_at: string
-}
-
 export interface BulkActionResult {
   succeeded: string[]
   failed: string[]

@@ -1,6 +1,6 @@
 """Borrar un servicio del catálogo contra PostgreSQL real: se borra el manual
 que nadie usa (con sus paquetes) y se rechaza, diciendo qué lo usa, el que ya
-tiene leads, ventas, plantillas, reglas que lo asignan o documentos de la IA.
+tiene leads, plantillas, reglas que lo asignan o documentos de la IA.
 Una regla que solo filtra por su nombre no lo impide: se avisa qué le pasa."""
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from sqlalchemy import func, insert, select, update
 from app.db.models.auth import User
 from app.db.models.automations import AutomationRule
 from app.db.models.catalogs import LeadService, MessageTemplate, ServicePackage
-from app.db.models.leads import Lead, LeadSale
+from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.modules.ai.knowledge_service import create_document
 from app.modules.catalogs.erp_catalog import apply_catalog, parse_catalog
@@ -79,10 +79,6 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
         lead_id = await _lead_interested_in(name)
         await _lead_interested_in(name)
         async with session_scope() as session:
-            await session.execute(insert(LeadSale).values(
-                lead_id=lead_id, service_id=service_id, service_name=name, package_name="Única",
-                sessions=1, list_price=Decimal("100"), amount=Decimal("100"), sold_at=NOW,
-            ))
             await session.execute(insert(MessageTemplate).values(name="Info peeling", content="Hola", service=name, created_by_user_id=admin_id, created_at=NOW, updated_at=NOW))
             await session.execute(insert(AutomationRule).values(
                 name="Asignar peeling", trigger_type="manual", trigger_config={}, conditions={},
@@ -104,17 +100,16 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
         await create_document("Ficha del peeling", "Renueva la piel.", "ficha", service_ids=[service_id])
 
         assert sorted(await _usages(service_id)) == sorted([
-            "1 plantilla", "2 leads", "1 venta registrada", "1 automatización", "1 documento de conocimiento",
+            "1 plantilla", "2 leads", "1 automatización", "1 documento de conocimiento",
         ])
 
         # Lo mismo, con a quién ir a ver: el cuadro de eliminar lo muestra
         # antes de intentarlo (antes solo decía "1 lead", sin cuál).
         report = await service_usage(service_id)
         by_kind = {usage.kind: usage for usage in report.usages}
-        assert set(by_kind) == {"plantillas", "leads", "ventas", "automatizaciones", "documentos"}
+        assert set(by_kind) == {"plantillas", "leads", "automatizaciones", "documentos"}
         assert len(by_kind["leads"].items) == 2 and lead_id in {item_id for item_id, _ in by_kind["leads"].items}
         assert by_kind["leads"].count == 2
-        assert by_kind["ventas"].items == ((lead_id, by_kind["ventas"].items[0][1]),)
         assert [name for _, name in by_kind["plantillas"].items] == ["Info peeling"]
         assert [name for _, name in by_kind["automatizaciones"].items] == ["Asignar peeling"]
         assert [(notice.kind, [rule for _, rule in notice.items]) for notice in report.notices] == [("filtros", ["Seguimiento peeling"])]
@@ -123,7 +118,6 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
 
         async with session_scope() as session:
             assert await session.scalar(select(LeadService.id).where(LeadService.id == service_id)) == service_id
-            assert await session.scalar(select(LeadSale.service_id).where(LeadSale.lead_id == lead_id)) == service_id
 
 
 async def test_erp_service_cannot_be_deleted_in_the_crm(tenant) -> None:

@@ -44,66 +44,41 @@ export interface DashboardUpcomingAppointment {
   treatment: string | null
 }
 
-export interface DashboardSalesTotals {
-  count: number
-  /** Lo cobrado, no el precio de lista. */
-  revenue: number
-  avg_ticket: number | null
-  sessions: number
-  discount: number
-  /** Porcentaje del descuento sobre el precio de lista. */
-  discount_rate: number | null
-  buyers: number
-}
-
-export interface DashboardSalesPoint {
+/** Un punto de una serie diaria con cantidad y monto (separaciones). */
+export interface DashboardAmountPoint {
   date: string
   count: number
   revenue: number
 }
 
-export interface DashboardSalesPackage {
-  /** null cuando el paquete ya no está en el catálogo. */
-  package_id: number | null
-  service_name: string
-  package_name: string
-  sessions: number
+export interface DashboardSeparationTotals {
   count: number
-  revenue: number
-  avg_ticket: number | null
-  /** Compras del mismo paquete en la ventana anterior; 0 si no vendía. */
-  previous_count: number
+  /** Suma de adelantos. */
+  amount: number
+  with_deposit: number
+  /** Promedio entre las que dejaron adelanto. */
+  avg_deposit: number | null
+  clients: number
 }
 
-export interface DashboardSales {
-  /** Código ISO 4217 del negocio, o null si no lo configuró. */
-  currency: string | null
-  totals: DashboardSalesTotals
-  /** null si en la ventana anterior no hubo ventas. */
-  previous: DashboardSalesTotals | null
-  trend: DashboardSalesPoint[]
-  /** Alineada con `trend` por posición. */
-  previous_trend: DashboardSalesPoint[]
-  by_package: DashboardSalesPackage[]
-  by_service: { service_id: number | null; name: string; count: number; revenue: number }[]
+export interface DashboardSeparations {
+  totals: DashboardSeparationTotals
+  /** null si en la ventana anterior no hubo separaciones. */
+  previous: DashboardSeparationTotals | null
+  trend: { date: string; count: number; amount: number }[]
+  previous_trend: { date: string; count: number; amount: number }[]
   /** Ranking del equipo: llega igual en los dos scopes. */
-  by_seller: {
-    user_id: number | null
-    name: string
-    count: number
-    revenue: number
-    avg_ticket: number | null
-    discount_rate: number | null
-  }[]
+  by_seller: { name: string; count: number; amount: number; with_deposit: number }[]
   recent: {
     id: number
-    lead_id: string
-    lead_name: string
-    service_name: string
-    package_name: string
+    /** null cuando la cita no quedó ligada a un lead: no hay chat que abrir. */
+    lead_id: string | null
+    name: string
+    treatment: string
     amount: number
-    list_price: number
-    sold_at: string
+    date: string
+    time: string
+    created_at: string
     seller_name: string
   }[]
 }
@@ -138,9 +113,9 @@ export interface DashboardMetrics {
     conversations_closed: number
     avg_close_hours: number | null
   }
-  /** Compras registradas en el período (por fecha de venta), contra la
-   *  ventana anterior de la misma duración. */
-  sales: DashboardSales
+  /** Código ISO 4217 del negocio, o null si no lo configuró: los importes
+   *  (adelantos) van entonces sin moneda. */
+  currency: string | null
   automations: {
     by_flow: DashboardFlowRow[]
     by_actor: DashboardMetricItem[]
@@ -168,6 +143,11 @@ export interface DashboardMetrics {
     /** De quién es el lead al que quedó vinculada. */
     by_owner: DashboardMetricItem[]
     by_treatment: DashboardMetricItem[]
+    /** Citas agendadas por tratamiento y día (sin duplicadas, fallidas ni de
+     *  prueba). `key` junta las variantes de escritura del formulario. */
+    by_treatment_daily: { date: string; key: string; name: string; count: number; amount: number }[]
+    /** La venta del negocio: citas agendadas con su adelanto. */
+    separations: DashboardSeparations
     trend: DashboardPoint[]
     lost_reasons: DashboardMetricItem[]
     upcoming: DashboardUpcomingAppointment[]

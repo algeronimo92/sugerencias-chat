@@ -36,7 +36,6 @@ CONTEXT = {
     "lead": {
         "nombre": "Ana", "estado": "calificado", "servicio_interes": "Hollywood Peel - Rostro", "ultimo_emisor": "cliente",
         "ultimo_mensaje_at": "2026-11-07T15:00:00+00:00", "contador_noshow": 1,
-        "compras": [{"servicio": "Borrado de Cejas", "paquete": "Individual", "sesiones": 1, "monto": "300.00", "fecha": "2026-10-01"}],
     },
     "messages": [
         {"id": 3, "sender": "cliente", "content": "¿Cuánto cuesta el pack de 3?", "sent_at": "2026-11-07T15:00:00+00:00", "message_type": "text"},
@@ -147,7 +146,8 @@ async def test_prompt_carries_catalog_packages_purchases_knowledge_and_history(m
     [client] = clients.values()
     prompt = client.requests[0].user
     assert '"paquetes"' in prompt and '"x3"' in prompt and '"400.00"' in prompt
-    assert '"Borrado de Cejas"' in prompt  # compras previas
+    # Ya no hay compras en el CRM: el prompt no las menciona.
+    assert "<compras>" not in prompt
     assert "Peeling con carbón activado" in prompt  # conocimiento
     assert "Hola, quiero quitar manchas" in prompt  # historial, más antiguo arriba
     assert prompt.index("Hola, quiero quitar manchas") < prompt.index("¿Cuánto cuesta el pack de 3?")

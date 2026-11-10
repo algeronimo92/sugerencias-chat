@@ -181,13 +181,16 @@ describe('ChatThread', () => {
   it('solo muestra los botones de móvil cuando el padre los pasa', () => {
     const { unmount } = renderThread()
     expect(screen.queryByLabelText('Volver a la lista de chats')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Ver sugerencias del lead')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Abrir ficha del lead')).not.toBeInTheDocument()
+    // Separar cita está siempre en la cabecera, también en escritorio, donde
+    // la ficha ya se ve al costado.
+    expect(screen.getByRole('button', { name: 'Separar cita para este lead' })).toBeInTheDocument()
     unmount()
 
     const onBack = vi.fn()
     renderThread({ onBack, onOpenSuggestions: vi.fn() })
     expect(screen.getByLabelText('Volver a la lista de chats')).toBeInTheDocument()
-    expect(screen.getByLabelText('Ver sugerencias del lead')).toBeInTheDocument()
+    expect(screen.getByLabelText('Abrir ficha del lead')).toBeInTheDocument()
   })
 
   it('habilita descargar en la barra al seleccionar un mensaje multimedia', async () => {
