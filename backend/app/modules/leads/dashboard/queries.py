@@ -19,6 +19,7 @@ from app.modules.leads.dashboard import (
     tags_queries as tags,
 )
 from app.modules.leads.dashboard.currency import business_currency
+from app.modules.leads.schemas import DashboardLegacySales
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, DashboardScope, build_scope
 from app.tenancy.context import get_current_tenant
 
@@ -56,8 +57,9 @@ async def _compute(scope: DashboardScope) -> dict:
         "appointments": appointments_block,
         "activity": activity_block,
         "currency": currency,
-        # Para la versión anterior de la app: ver DashboardMetrics.sales.
-        "sales": {"currency": currency},
+        # Para las versiones anteriores de la app: el bloque de ventas vacío,
+        # con la forma que leen. Ver DashboardLegacySales.
+        "sales": DashboardLegacySales(currency=currency).model_dump(),
         "generated_at": scope.now.isoformat(),
     }
 
