@@ -94,6 +94,39 @@
   --color-flow-node-border-dark: #5b6574;
 }
 
+/* Paleta categórica para gráficos con varias series a la vez (ventas por
+   tratamiento). Es la paleta de referencia validada como conjunto para series
+   adyacentes (barras apiladas, líneas, torta): separación para daltonismo y
+   visión normal por encima del piso en los dos modos. Va como variable y no en
+   @theme porque Recharts la recibe en atributos SVG y tiene que cambiar sola
+   con el tema. Más de cinco series se agrupan en "Otros", que es neutro. */
+:root {
+  --viz-cat-1: #2a78d6;
+  --viz-cat-2: #eb6834;
+  --viz-cat-3: #1baf7a;
+  --viz-cat-4: #eda100;
+  --viz-cat-5: #e87ba4;
+  --viz-cat-other: #8696a0;
+  /* Fondo de los paneles: separa los segmentos apilados. */
+  --viz-surface: #ffffff;
+  /* Tooltip de los gráficos: sigue al tema como el resto del panel. */
+  --viz-text: #111b21;
+  --viz-muted: #667781;
+  --viz-border: #e9edef;
+}
+.dark {
+  --viz-cat-1: #3987e5;
+  --viz-cat-2: #d95926;
+  --viz-cat-3: #199e70;
+  --viz-cat-4: #c98500;
+  --viz-cat-5: #d55181;
+  --viz-cat-other: #667781;
+  --viz-surface: #111b21;
+  --viz-text: #e9edef;
+  --viz-muted: #8696a0;
+  --viz-border: #222d34;
+}
+
 /* ============================================================
    Editor visual de flujos — tema oscuro de @xyflow/react
    `.react-flow.dark` es la clase que la propia librería agrega cuando

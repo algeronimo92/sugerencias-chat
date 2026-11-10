@@ -338,6 +338,15 @@ class DashboardSalesService(BaseModel):
     revenue: float
 
 
+class DashboardSalesServiceDay(BaseModel):
+    """Ventas de un servicio en un día. Solo vienen los días con ventas."""
+    date: str
+    service_id: int | None = None
+    name: str
+    count: int
+    revenue: float
+
+
 class DashboardSalesSeller(BaseModel):
     user_id: int | None = None
     name: str
@@ -372,6 +381,9 @@ class DashboardSales(BaseModel):
     previous_trend: list[DashboardSalesPoint]
     by_package: list[DashboardSalesPackage]
     by_service: list[DashboardSalesService]
+    # Lo mismo que by_service, partido por día: alimenta las barras apiladas,
+    # las líneas y la torta por tratamiento.
+    by_service_daily: list[DashboardSalesServiceDay]
     # Ranking del equipo: no depende del scope.
     by_seller: list[DashboardSalesSeller]
     recent: list[DashboardSaleRow]

@@ -86,6 +86,8 @@ export interface DashboardSales {
   previous_trend: DashboardSalesPoint[]
   by_package: DashboardSalesPackage[]
   by_service: { service_id: number | null; name: string; count: number; revenue: number }[]
+  /** Lo mismo que by_service, por día; solo los días con ventas. */
+  by_service_daily: { date: string; service_id: number | null; name: string; count: number; revenue: number }[]
   /** Ranking del equipo: llega igual en los dos scopes. */
   by_seller: {
     user_id: number | null
