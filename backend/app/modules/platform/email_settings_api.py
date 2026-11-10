@@ -68,7 +68,7 @@ async def _status(values: dict | None = None) -> dict:
     values = values if values is not None else await read_email_settings()
     return values | {
         "oauth_available": await email_oauth.available_providers(),
-        "platform_available": platform_transport() is not None,
+        "platform_available": await platform_transport() is not None,
     }
 
 

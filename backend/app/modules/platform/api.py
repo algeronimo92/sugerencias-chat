@@ -6,7 +6,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 """
 
 from __future__ import annotations
-from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate)
+from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, PlatformEmailStatus, PlatformEmailUpdate)
 
 import base64
 import binascii
@@ -31,6 +31,19 @@ from app.modules.platform.platform_organizations import (
 from app.modules.platform.platform_organizations import list_organizations as listar_organizaciones
 from app.modules.platform.starter_pack import apply_starter_pack
 from app.modules.platform.platform_settings import list_platform_settings, update_platform_settings
+from app.core.errors import Invalid, Unavailable
+from app.integrations.email_service import (
+    EmailDeliveryError,
+    EmailNotConfiguredError,
+    platform_transport,
+    send_test_email,
+)
+from app.modules.platform.email_settings import EmailSettingsError
+from app.modules.platform.platform_email import (
+    clear_platform_email,
+    read_platform_email,
+    save_platform_email,
+)
 from app.modules.platform.platform_auth import (
     PLATFORM_COOKIE_NAME,
     SESSION_HOURS,
@@ -125,6 +138,40 @@ async def put_platform_settings(body: UpdatePlatformSettingsBody):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await list_platform_settings()
+
+
+@router.get("/email", dependencies=protected, response_model=PlatformEmailStatus)
+async def get_platform_email():
+    return await read_platform_email()
+
+
+@router.put("/email", dependencies=protected, response_model=PlatformEmailStatus)
+async def put_platform_email(body: PlatformEmailUpdate):
+    try:
+        return await save_platform_email(**body.model_dump())
+    except EmailSettingsError as exc:
+        raise Invalid(str(exc), code="email_settings_invalid") from exc
+
+
+@router.delete("/email", dependencies=protected, response_model=PlatformEmailStatus)
+async def delete_platform_email():
+    return await clear_platform_email()
+
+
+@router.post("/email/test", dependencies=protected, response_model=EmailTestResult)
+async def post_platform_email_test(user: PlatformUser = Depends(get_current_platform_user)):
+    # Solo al correo del operador que prueba: el panel no debe servir para
+    # mandar correos a direcciones arbitrarias desde el remitente de la
+    # plataforma.
+    try:
+        transport = await send_test_email(recipient=user.email, transport=await platform_transport())
+    except EmailNotConfiguredError as exc:
+        raise Unavailable(
+            "No hay correo de la plataforma configurado.", code="email_not_configured"
+        ) from exc
+    except EmailDeliveryError as exc:
+        raise Unavailable(str(exc), code="email_delivery_failed") from exc
+    return {"recipient": user.email, "source": transport.source}
 
 
 @router.post("/organizations", dependencies=protected, status_code=201)

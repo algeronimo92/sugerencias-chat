@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -214,6 +214,23 @@ export async function fetchPlatformSettings(): Promise<PlatformSetting[]> {
 
 export async function savePlatformSettings(values: Record<string, string>): Promise<PlatformSetting[]> {
   return (await client.put<ApiResponse<'/api/platform/settings', 'put'>>("/api/platform/settings", { values })).data
+}
+
+export async function fetchPlatformEmail(): Promise<PlatformEmailStatus> {
+  return (await client.get<ApiResponse<'/api/platform/email', 'get'>>('/api/platform/email')).data
+}
+
+export async function savePlatformEmail(payload: PlatformEmailPayload): Promise<PlatformEmailStatus> {
+  return (await client.put<ApiResponse<'/api/platform/email', 'put'>>('/api/platform/email', payload)).data
+}
+
+export async function clearPlatformEmail(): Promise<PlatformEmailStatus> {
+  return (await client.delete<ApiResponse<'/api/platform/email', 'delete'>>('/api/platform/email')).data
+}
+
+/** Manda una prueba al correo del operador con sesión, desde el remitente de la plataforma. */
+export async function sendPlatformEmailTest(): Promise<EmailTestResult> {
+  return (await client.post<ApiResponse<'/api/platform/email/test', 'post'>>('/api/platform/email/test')).data
 }
 
 export async function fetchOrganizations(): Promise<OrganizationList> {

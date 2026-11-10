@@ -18,6 +18,9 @@ from app.core.config import settings
 from app.modules.platform.ports.branding import (DEFAULT_BRANDING, OrganizationNotFound, get_branding)
 from app.integrations import email_oauth
 from app.modules.platform.ports.mail_settings import (
+    PlatformMailConfig,
+    environment_mail_config,
+    get_platform_mail_config,
     get_tenant_mail_config,
     get_tenant_mail_oauth,
     store_rotated_refresh_token,
@@ -46,7 +49,8 @@ class SmtpTransport:
     starttls: bool
     from_address: str
     from_name: str
-    # "tenant": el SMTP que cargó el negocio; "platform": el del .env.
+    # "tenant": el SMTP que cargó el negocio; "platform": el del panel de
+    # plataforma o, en su defecto, el del .env.
     source: str
 
     @property
@@ -56,25 +60,25 @@ class SmtpTransport:
         return self.source == "tenant"
 
 
-def platform_transport() -> SmtpTransport | None:
-    if not (
-        settings.email_provider.strip().lower() == "smtp"
-        and settings.smtp_host.strip()
-        and settings.email_from_address.strip()
-        and not (settings.smtp_ssl and settings.smtp_starttls)
-    ):
-        return None
+def _platform_smtp(config: PlatformMailConfig) -> SmtpTransport:
     return SmtpTransport(
-        host=settings.smtp_host.strip(),
-        port=settings.smtp_port,
-        username=settings.smtp_username,
-        password=settings.smtp_password,
-        use_ssl=settings.smtp_ssl,
-        starttls=settings.smtp_starttls,
-        from_address=settings.email_from_address.strip(),
-        from_name=settings.email_from_name.strip(),
+        host=config.host,
+        port=config.port,
+        username=config.username,
+        password=config.password,
+        use_ssl=config.security == "ssl",
+        starttls=config.security == "starttls",
+        from_address=config.from_address,
+        from_name=config.from_name,
         source="platform",
     )
+
+
+async def platform_transport() -> SmtpTransport | None:
+    """El SMTP cargado en el panel de plataforma o, si no hay, el del .env."""
+
+    config = await get_platform_mail_config() or environment_mail_config()
+    return _platform_smtp(config) if config else None
 
 
 async def tenant_transport() -> SmtpTransport | None:
@@ -128,7 +132,7 @@ async def tenant_oauth_transport() -> OAuthTransport | None:
 async def resolve_transport() -> Transport | None:
     """La cuenta conectada del negocio, su SMTP, o el de la plataforma."""
 
-    return await tenant_oauth_transport() or await tenant_transport() or platform_transport()
+    return await tenant_oauth_transport() or await tenant_transport() or await platform_transport()
 
 
 async def email_is_configured() -> bool:
@@ -329,10 +333,10 @@ async def _send_with_oauth(
         await store_rotated_refresh_token(rotated)
 
 
-async def send_test_email(*, recipient: str) -> Transport:
+async def send_test_email(*, recipient: str, transport: Transport | None = None) -> Transport:
     """Manda una prueba con el mismo transporte que usarían las invitaciones."""
 
-    transport = await resolve_transport()
+    transport = transport or await resolve_transport()
     if transport is None:
         raise EmailNotConfiguredError("No hay correo de envío configurado")
     brand = await current_brand_name()

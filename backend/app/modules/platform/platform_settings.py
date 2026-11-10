@@ -30,6 +30,10 @@ class PlatformSettingDef:
     key: str
     label: str
     secret: bool
+    # Las que tienen su propio formulario en el panel (el correo de la
+    # plataforma): no salen en "Credenciales globales" ni se guardan por ahí,
+    # donde se editarían sueltas, sin la validación de su formulario.
+    hidden: bool = False
 
 
 PLATFORM_SETTING_DEFS = (
@@ -59,9 +63,19 @@ PLATFORM_SETTING_DEFS = (
     PlatformSettingDef("microsoft_oauth_client_secret", "Microsoft OAuth Client Secret (correo)", True),
     PlatformSettingDef("zoho_oauth_client_id", "Zoho OAuth Client ID (correo)", False),
     PlatformSettingDef("zoho_oauth_client_secret", "Zoho OAuth Client Secret (correo)", True),
+    # Correo de envío de la plataforma (ver platform_email.py). Sin respaldo
+    # clave por clave en el entorno: el .env se usa entero o no se usa.
+    PlatformSettingDef("platform_smtp_host", "Servidor SMTP de la plataforma", False, hidden=True),
+    PlatformSettingDef("platform_smtp_port", "Puerto SMTP de la plataforma", False, hidden=True),
+    PlatformSettingDef("platform_smtp_security", "Seguridad SMTP de la plataforma", False, hidden=True),
+    PlatformSettingDef("platform_smtp_username", "Usuario SMTP de la plataforma", False, hidden=True),
+    PlatformSettingDef("platform_smtp_password", "Contraseña SMTP de la plataforma", True, hidden=True),
+    PlatformSettingDef("platform_email_from_address", "Remitente de la plataforma", False, hidden=True),
+    PlatformSettingDef("platform_email_from_name", "Nombre del remitente de la plataforma", False, hidden=True),
 )
 _DEFS_BY_KEY = {definition.key: definition for definition in PLATFORM_SETTING_DEFS}
 PLATFORM_KEYS = frozenset(_DEFS_BY_KEY)
+_HIDDEN_KEYS = frozenset(d.key for d in PLATFORM_SETTING_DEFS if d.hidden)
 _CACHE_TTL_SECONDS = 30.0
 _cache: tuple[float, dict[str, str], dict[str, str]] | None = None
 _cache_lock = asyncio.Lock()
@@ -169,11 +183,13 @@ async def list_platform_settings() -> list[dict]:
             "value": None if definition.secret else values[definition.key],
         }
         for definition in PLATFORM_SETTING_DEFS
+        if not definition.hidden
     ]
 
 
-async def update_platform_settings(values: dict[str, str]) -> None:
-    unknown = set(values) - PLATFORM_KEYS
+async def update_platform_settings(values: dict[str, str], *, include_hidden: bool = False) -> None:
+    allowed = PLATFORM_KEYS if include_hidden else PLATFORM_KEYS - _HIDDEN_KEYS
+    unknown = set(values) - allowed
     if unknown:
         raise ValueError(f"Configuración global desconocida: {', '.join(sorted(unknown))}")
 

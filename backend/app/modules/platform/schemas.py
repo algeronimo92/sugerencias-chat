@@ -259,6 +259,31 @@ class EmailSettingsUpdate(BaseModel):
     from_name: str = Field(default="", max_length=100)
 
 
+class PlatformEmailStatus(BaseModel):
+    # De dónde salen hoy los correos de respaldo: el panel, el .env o ninguno.
+    source: Literal["platform", "environment"] | None
+    host: str
+    port: int
+    security: Literal["starttls", "ssl"]
+    username: str
+    password_configured: bool
+    from_address: str
+    from_name: str
+    environment_host: str | None = None
+    environment_from_address: str | None = None
+
+
+class PlatformEmailUpdate(BaseModel):
+    host: str = Field(min_length=1, max_length=253)
+    port: int = Field(ge=1, le=65535)
+    security: Literal["starttls", "ssl"]
+    username: str = Field(default="", max_length=254)
+    # null conserva la contraseña guardada; nunca se devuelve.
+    password: str | None = Field(default=None, max_length=512)
+    from_address: str = Field(min_length=3, max_length=254)
+    from_name: str = Field(default="", max_length=100)
+
+
 class EmailConnectRequest(BaseModel):
     provider: EmailOAuthProvider
     # window.location.origin del CRM: adonde vuelve el callback.

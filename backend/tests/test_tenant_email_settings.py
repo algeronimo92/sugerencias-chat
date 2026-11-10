@@ -105,6 +105,8 @@ async def test_clear_goes_back_to_the_platform(store) -> None:
 
 
 def _platform_env(monkeypatch) -> None:
+    # Sin SMTP cargado en el panel de plataforma: se usa el del .env.
+    monkeypatch.setattr(email_service, "get_platform_mail_config", AsyncMock(return_value=None))
     monkeypatch.setattr(email_service.settings, "email_provider", "smtp")
     monkeypatch.setattr(email_service.settings, "smtp_host", "smtp.platform.com")
     monkeypatch.setattr(email_service.settings, "smtp_ssl", False)

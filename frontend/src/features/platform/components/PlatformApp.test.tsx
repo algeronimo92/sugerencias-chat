@@ -36,6 +36,7 @@ describe('PlatformApp', () => {
       if (url === '/api/platform/organizations/1/ai') return Promise.resolve({ data: { enabled: true, monthly_quota: null, used_this_month: 12 } })
       if (url === '/api/platform/organizations/1/integrations') return Promise.resolve({ data: citasIntegrations })
       if (url === '/api/platform/knowledge-templates') return Promise.resolve({ data: [] })
+      if (url === '/api/platform/email') return Promise.resolve({ data: { source: null, host: '', port: 587, security: 'starttls', username: '', password_configured: false, from_address: '', from_name: '', environment_host: null, environment_from_address: null } })
       return Promise.resolve({ data: { head: 'abc', items: organizations } })
     })
     api.post.mockResolvedValue({ data: {} })

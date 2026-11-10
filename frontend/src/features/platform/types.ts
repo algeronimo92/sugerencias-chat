@@ -60,6 +60,8 @@ export type GoogleCalendarItem = Delivered<ApiSchemas['GoogleCalendarItem']>
 export type EmailSettingsStatus = Delivered<ApiSchemas['EmailSettingsStatus']>
 export type EmailSettingsPayload = ApiSchemas['EmailSettingsUpdate']
 export type EmailTestResult = Delivered<ApiSchemas['EmailTestResult']>
+export type PlatformEmailStatus = Delivered<ApiSchemas['PlatformEmailStatus']>
+export type PlatformEmailPayload = ApiSchemas['PlatformEmailUpdate']
 export type EmailOAuthProvider = ApiSchemas['EmailConnectRequest']['provider']
 
 export interface MetaEmbeddedSignupPayload {

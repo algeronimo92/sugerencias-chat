@@ -86,7 +86,10 @@ async def test_update_rejects_unknown_key() -> None:
 async def test_single_tenant_migrates_only_missing_global_values(monkeypatch) -> None:
     monkeypatch.setattr(platform_settings.settings, "multitenancy_enabled", False)
     for key in platform_settings.PLATFORM_KEYS:
-        monkeypatch.setattr(platform_settings.settings, key, "")
+        # El correo de la plataforma no tiene respaldo clave por clave en el
+        # entorno (ver platform_email.py): no hay atributo que vaciar.
+        if hasattr(platform_settings.settings, key):
+            monkeypatch.setattr(platform_settings.settings, key, "")
     monkeypatch.setattr(
         platform_settings,
         "_raw_database_values",

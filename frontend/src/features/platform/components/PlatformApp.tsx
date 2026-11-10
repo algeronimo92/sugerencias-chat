@@ -43,6 +43,7 @@ import { Input } from "../../../shared/ui/Input";
 import { platformKeys } from '../keys'
 import { StarterPackAction } from './StarterPackAction'
 import { KnowledgeTemplatesPanel } from './KnowledgeTemplatesPanel'
+import { PlatformEmailPanel } from './PlatformEmailPanel'
 
 
 function mensajeDeError(error: unknown): string {
@@ -1148,6 +1149,8 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
         </section>
 
         <CredencialesPlataforma />
+
+        <PlatformEmailPanel />
 
         <KnowledgeTemplatesPanel />
 
