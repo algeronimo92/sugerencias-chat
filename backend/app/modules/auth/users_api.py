@@ -6,13 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db.models.auth import User
 from app.modules.auth.account_actions import (
     InvalidActionTokenError,
-    UserAlreadyActiveError,
     invite_user,
     issue_invitation_link,
     request_password_reset,
     revoke_pending_invitations,
 )
 from app.modules.auth.auth_service import invalidate_user_cache, require_admin
+from app.modules.auth.errors import UserAlreadyActiveError
 from app.modules.auth.users_service import EmailAlreadyExistsError, LastAdminError, get_user_by_id, list_users, update_user
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
 from app.modules.auth.session_service import revoke_all_for_user
@@ -73,13 +73,18 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
         raise HTTPException(status_code=400, detail="No puedes dejar la cuenta sin ningún administrador activo")
     except EmailAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
+    except UserAlreadyActiveError:
+        raise HTTPException(
+            status_code=409,
+            detail="El correo solo se puede cambiar mientras la invitación está pendiente",
+        )
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     invalidate_user_cache(user_id)
     if body.is_active is False:
         await revoke_all_for_user(user_id, include_devices=True)
-    if "email" in values and not user["is_active"]:
+    if "email" in values:
         # La invitación fue al correo anterior; la nueva se pide desde el panel.
         await revoke_pending_invitations(user_id)
     return user
@@ -99,7 +104,7 @@ async def resend_invitation(user_id: int):
     user = await get_user_by_id(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if user.is_active:
+    if not user.invitation_pending:
         raise HTTPException(status_code=409, detail="El usuario ya activó su cuenta")
     try:
         return await invite_user(email=user.email, name=user.name, role=user.role)

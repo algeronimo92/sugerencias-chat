@@ -26,7 +26,7 @@ from app.integrations.email_service import (
     send_password_reset,
 )
 from app.modules.auth.session_service import revoke_all_for_user
-from app.modules.auth.errors import EmailAlreadyExistsError
+from app.modules.auth.errors import EmailAlreadyExistsError, UserAlreadyActiveError
 from app.db.uow import session_scope
 
 
@@ -52,10 +52,6 @@ def _ensure_email_ready() -> None:
         raise EmailNotConfiguredError("El correo transaccional no está configurado")
     # Valida también que exista una URL canónica antes de escribir en DB.
     public_app_url()
-
-
-class UserAlreadyActiveError(Exception):
-    """La cuenta ya se activó: no hay invitación que emitir."""
 
 
 async def _rotate_invitation(session, *, user_id: int, raw_token: str, now: datetime) -> datetime:
@@ -97,7 +93,9 @@ async def invite_user(*, email: str, name: str, role: str) -> dict:
                     select(User).where(User.email == normalized_email).with_for_update()
                 )
             ).scalar_one_or_none()
-            if user is not None and user.is_active:
+            # Una cuenta que ya se activó alguna vez no se "reinvita": si está
+            # desactivada, se reactiva desde el panel y conserva su clave.
+            if user is not None and not user.invitation_pending:
                 raise EmailAlreadyExistsError(normalized_email)
             if user is None:
                 user = User(
@@ -130,6 +128,7 @@ async def invite_user(*, email: str, name: str, role: str) -> dict:
         "name": user.name,
         "role": user.role,
         "is_active": user.is_active,
+        "invitation_pending": user.invitation_pending,
     }
 
 
@@ -148,7 +147,7 @@ async def issue_invitation_link(user_id: int) -> dict:
         ).scalar_one_or_none()
         if user is None:
             raise InvalidActionTokenError()
-        if user.is_active:
+        if not user.invitation_pending:
             raise UserAlreadyActiveError()
         expires_at = await _rotate_invitation(session, user_id=user.id, raw_token=raw_token, now=now)
     return {"url": invitation_url(raw_token), "expires_at": expires_at}
@@ -270,6 +269,7 @@ async def consume_action_token(*, token: str, purpose: str, password: str) -> No
         user.password_hash = hash_password(password)
         if purpose == INVITATION:
             user.is_active = True
+            user.activated_at = now
         action.used_at = now
         # Toda credencial anterior del mismo propósito queda consumida.
         await session.execute(

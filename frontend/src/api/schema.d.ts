@@ -7301,6 +7301,8 @@ export interface components {
             role: components["schemas"]["UserRole"];
             /** Is Active */
             is_active: boolean;
+            /** Invitation Pending */
+            invitation_pending: boolean;
         };
         /** UserOut */
         UserOut: {

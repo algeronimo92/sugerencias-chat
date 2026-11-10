@@ -75,6 +75,9 @@ class UserItem(BaseModel):
     name: str
     role: UserRole
     is_active: bool
+    # Nunca activó su cuenta: el correo se puede corregir y la invitación
+    # reenviar o copiar. Un desactivado (entró alguna vez) no es pendiente.
+    invitation_pending: bool
 
 class CreateUserRequest(BaseModel):
     email: str

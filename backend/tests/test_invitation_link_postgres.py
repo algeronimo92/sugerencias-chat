@@ -70,6 +70,17 @@ async def test_each_link_replaces_the_previous_one_and_activates_the_account(ten
 
         with pytest.raises(UserAlreadyActiveError):
             await issue_invitation_link(user_id)
+        with pytest.raises(UserAlreadyActiveError):
+            await update_user(user_id, {"email": "otra@example.com"})
+
+        # Desactivada sigue siendo una cuenta que entró alguna vez, no una
+        # invitación pendiente: ni enlace nuevo ni cambio de correo.
+        deactivated = await update_user(user_id, {"is_active": False})
+        assert deactivated["invitation_pending"] is False
+        with pytest.raises(UserAlreadyActiveError):
+            await issue_invitation_link(user_id)
+        with pytest.raises(UserAlreadyActiveError):
+            await update_user(user_id, {"email": "otra@example.com"})
 
 
 async def test_unknown_users_get_no_link(tenant):
@@ -89,6 +100,7 @@ async def test_changing_the_email_of_a_pending_invitation_revokes_its_link(tenan
 
         saved = await update_user(user_id, {"email": "correcto@example.com"})
         assert saved["email"] == "correcto@example.com"
+        assert saved["invitation_pending"] is True
         await revoke_pending_invitations(user_id)
 
         # Quien tenga el enlace que fue al correo equivocado ya no activa la cuenta.

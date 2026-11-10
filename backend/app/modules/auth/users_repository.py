@@ -1,11 +1,11 @@
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
-from sqlalchemy import func, insert, select, true, update
+from sqlalchemy import false, func, insert, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import User
-from app.modules.auth.errors import EmailAlreadyExistsError, LastAdminError
+from app.modules.auth.errors import EmailAlreadyExistsError, LastAdminError, UserAlreadyActiveError
 from app.db.uow import session_scope
 
 
@@ -16,6 +16,7 @@ def _row_to_user(user: User) -> dict:
         "name": user.name,
         "role": user.role,
         "is_active": user.is_active,
+        "invitation_pending": user.invitation_pending,
     }
 
 
@@ -67,13 +68,15 @@ async def names_by_ids(user_ids: Iterable[int]) -> dict[int, str]:
 
 
 async def create_user(email: str, name: str, password_hash: str, role: str) -> dict:
+    now = datetime.now(timezone.utc)
     stmt = insert(User).values(
         email=email,
         name=name,
         password_hash=password_hash,
         role=role,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=now,
+        activated_at=now,
     )
     async with session_scope() as session:
         try:
@@ -97,7 +100,12 @@ async def count_active_admins(exclude_user_id: int | None = None) -> int:
 async def update_user(user_id: int, values: dict) -> dict | None:
     """values puede traer 'email', 'role' y/o 'is_active'. Si el cambio dejaría
     sin ningún admin activo, se rechaza con LastAdminError antes de aplicarlo;
-    un correo que ya usa otra cuenta, con EmailAlreadyExistsError."""
+    un correo que ya usa otra cuenta, con EmailAlreadyExistsError.
+
+    El correo solo cambia mientras la invitación sigue pendiente: es la
+    identidad con la que esa persona entra, y cambiárselo a alguien que ya
+    activó su cuenta permitiría pedir un restablecimiento a la dirección
+    nueva y entrar en su nombre (UserAlreadyActiveError)."""
     demotes_or_deactivates = values.get("role") not in (None, "admin") or values.get("is_active") is False
     if demotes_or_deactivates:
         user = await get_user_by_id(user_id)
@@ -109,14 +117,18 @@ async def update_user(user_id: int, values: dict) -> dict | None:
         return _row_to_user(user) if user else None
 
     stmt = update(User).where(User.id == user_id).values(**values)
+    if "email" in values:
+        stmt = stmt.where(User.is_active == false(), User.activated_at.is_(None))
     async with session_scope() as session:
         try:
             result = await session.execute(stmt)
-            if result.rowcount == 0:
-                return None
             await session.flush()
         except IntegrityError:
             raise EmailAlreadyExistsError(values.get("email"))
+        if result.rowcount == 0:
+            if "email" in values and await session.get(User, user_id) is not None:
+                raise UserAlreadyActiveError()
+            return None
 
     user = await get_user_by_id(user_id)
     return _row_to_user(user) if user else None
