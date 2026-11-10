@@ -10,6 +10,22 @@
          barra de estado y de la barra de gestos; el margen real lo ponen las
          utilidades pt-safe / pb-safe con env(safe-area-inset-*). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- En Android se quita viewport-fit=cover. Con él, la app instalada en un
+         equipo con barra de tres botones se dibujó hasta el borde físico de la
+         pantalla mientras env(safe-area-inset-bottom) valía 0: el cuadro de
+         escritura del chat quedó entero debajo de la barra del sistema y no se
+         podía escribir. Sin cover, Android deja la página por encima de sus
+         barras, que es lo que la app ya suponía. iOS lo conserva: ahí sí
+         informa los márgenes y la app instalada los necesita. Va en un script
+         propio y antes del primer frame para que la página nunca se mida con
+         el alto equivocado. -->
+    <script>
+      if (/Android/i.test(navigator.userAgent)) {
+        document
+          .querySelector('meta[name="viewport"]')
+          .setAttribute('content', 'width=device-width, initial-scale=1.0')
+      }
+    </script>
     <meta name="apple-mobile-web-app-title" content="CRM" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
