@@ -75,11 +75,11 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <Panel title="Leads nuevos por día" className="lg:col-span-2">
+        <Panel anchor="leads-nuevos-por-dia" title="Leads nuevos por día" className="lg:col-span-2">
           <TrendChart points={data.new_leads_trend} label="Leads" />
         </Panel>
 
-        <Panel
+        <Panel anchor="mensajes-por-dia"
           title="Mensajes enviados por día"
           subtitle="Solo los que salieron de la app: un mensaje escrito desde el celular llega sin autor"
           className="lg:col-span-2"
@@ -87,18 +87,18 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <TrendChart points={activity.messages.trend} label="Mensajes" />
         </Panel>
 
-        <Panel
+        <Panel anchor="actividad"
           title={who(subject, { me: 'Mi actividad', team: 'Actividad del equipo', seller: (name) => `Actividad de ${name}` })}
           subtitle={who(subject, { me: 'Acciones que registré en el período', team: 'Acciones del equipo en el período', seller: (name) => `Acciones de ${name} en el período` })}
         >
           <BarList items={activity.by_type} emptyLabel="Sin actividad registrada" />
         </Panel>
 
-        <Panel title="Quién manda más mensajes" subtitle={`Ranking del equipo · ${period}`}>
+        <Panel anchor="quien-manda-mensajes" title="Quién manda más mensajes" subtitle={`Ranking del equipo · ${period}`}>
           <BarList items={activity.messages.by_user} emptyLabel="Nadie envió mensajes desde la app" />
         </Panel>
 
-        <Panel
+        <Panel anchor="ventas"
           title="Ventas"
           subtitle={`${who(subject, { me: 'Lo que separé', team: 'Lo que separó el equipo', seller: (name) => `Lo que separó ${name}` })} · ${period}`}
           action={
@@ -140,7 +140,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <BarList items={topTreatments} emptyLabel="Sin separaciones en el período" />
         </Panel>
 
-        <Panel title="Ritmo de atención" subtitle="Conversaciones y leads que se están enfriando">
+        <Panel anchor="ritmo-de-atencion" title="Ritmo de atención" subtitle="Conversaciones y leads que se están enfriando">
           <StatGrid
             stats={[
               { label: 'Conversaciones abiertas', value: formatNumber(pipeline.conversations_open) },
@@ -164,7 +164,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           />
         </Panel>
 
-        <Panel
+        <Panel anchor="proximas-citas"
           title="Próximas citas"
           subtitle="Siguientes 7 días"
           className="lg:col-span-2"

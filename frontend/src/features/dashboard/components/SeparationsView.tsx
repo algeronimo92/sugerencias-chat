@@ -61,7 +61,7 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <Panel
+        <Panel anchor="separaciones-por-dia"
           title={days >= 90 ? 'Separaciones por semana' : 'Separaciones por día'}
           subtitle={`${who(subject, { me: 'Lo que separé', team: 'Lo que separó el equipo', seller: (name) => `Lo que separó ${name}` })} · comparado con los ${days} días anteriores`}
           className="lg:col-span-2"
@@ -73,7 +73,7 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
           )}
         </Panel>
 
-        <Panel
+        <Panel anchor="por-tratamiento"
           title="Por tratamiento"
           subtitle={`Cuánto se separó de cada tratamiento por ${days <= 14 ? 'día' : 'semana'} y qué parte del total fue cada uno`}
           className="lg:col-span-2"
@@ -81,7 +81,7 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
           <ServiceBreakdownPanel data={data} days={days} />
         </Panel>
 
-        <Panel title="Por responsable" subtitle={`Ranking del equipo · últimos ${days} días`}>
+        <Panel anchor="por-responsable" title="Por responsable" subtitle={`Ranking del equipo · últimos ${days} días`}>
           {separations.by_seller.length === 0 ? (
             <NoData label="Nadie registró separaciones en el período" />
           ) : (
@@ -112,7 +112,7 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
           )}
         </Panel>
 
-        <Panel title="Últimas separaciones" subtitle="Abre el chat de la clienta cuando la cita quedó ligada a su ficha">
+        <Panel anchor="ultimas-separaciones" title="Últimas separaciones" subtitle="Abre el chat de la clienta cuando la cita quedó ligada a su ficha">
           {separations.recent.length === 0 ? (
             <NoData label="Sin separaciones en el período" />
           ) : (
