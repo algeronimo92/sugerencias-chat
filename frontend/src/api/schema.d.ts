@@ -865,41 +865,6 @@ export interface paths {
         patch: operations["move_chat_stage_api_chats__chat_id__stage_patch"];
         trace?: never;
     };
-    "/api/chats/{chat_id}/sales": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Chat Sales */
-        get: operations["get_chat_sales_api_chats__chat_id__sales_get"];
-        put?: never;
-        /** Post Chat Sale */
-        post: operations["post_chat_sale_api_chats__chat_id__sales_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/chats/{chat_id}/sales/{sale_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Chat Sale */
-        delete: operations["delete_chat_sale_api_chats__chat_id__sales__sale_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/chats/{chat_id}": {
         parameters: {
             query?: never;
@@ -4715,7 +4680,8 @@ export interface components {
             /** Funnel */
             funnel: components["schemas"]["DashboardFunnelStep"][];
             pipeline: components["schemas"]["DashboardPipeline"];
-            sales: components["schemas"]["DashboardSales"];
+            /** Currency */
+            currency?: string | null;
             automations: components["schemas"]["DashboardAutomations"];
             tags: components["schemas"]["DashboardTags"];
             appointments: components["schemas"]["DashboardAppointments"];
@@ -4747,135 +4713,6 @@ export interface components {
             date: string;
             /** Value */
             value: number;
-        };
-        /** DashboardSaleRow */
-        DashboardSaleRow: {
-            /** Id */
-            id: number;
-            /** Lead Id */
-            lead_id: string;
-            /** Lead Name */
-            lead_name: string;
-            /** Service Name */
-            service_name: string;
-            /** Package Name */
-            package_name: string;
-            /** Amount */
-            amount: number;
-            /** List Price */
-            list_price: number;
-            /** Sold At */
-            sold_at: string;
-            /** Seller Name */
-            seller_name: string;
-        };
-        /** DashboardSales */
-        DashboardSales: {
-            /** Currency */
-            currency?: string | null;
-            totals: components["schemas"]["DashboardSalesTotals"];
-            previous?: components["schemas"]["DashboardSalesTotals"] | null;
-            /** Trend */
-            trend: components["schemas"]["DashboardSalesPoint"][];
-            /** Previous Trend */
-            previous_trend: components["schemas"]["DashboardSalesPoint"][];
-            /** By Package */
-            by_package: components["schemas"]["DashboardSalesPackage"][];
-            /** By Service */
-            by_service: components["schemas"]["DashboardSalesService"][];
-            /** By Service Daily */
-            by_service_daily: components["schemas"]["DashboardSalesServiceDay"][];
-            /** By Seller */
-            by_seller: components["schemas"]["DashboardSalesSeller"][];
-            /** Recent */
-            recent: components["schemas"]["DashboardSaleRow"][];
-        };
-        /** DashboardSalesPackage */
-        DashboardSalesPackage: {
-            /** Package Id */
-            package_id?: number | null;
-            /** Service Name */
-            service_name: string;
-            /** Package Name */
-            package_name: string;
-            /** Sessions */
-            sessions: number;
-            /** Count */
-            count: number;
-            /** Revenue */
-            revenue: number;
-            /** Avg Ticket */
-            avg_ticket?: number | null;
-            /** Previous Count */
-            previous_count: number;
-        };
-        /** DashboardSalesPoint */
-        DashboardSalesPoint: {
-            /** Date */
-            date: string;
-            /** Count */
-            count: number;
-            /** Revenue */
-            revenue: number;
-        };
-        /** DashboardSalesSeller */
-        DashboardSalesSeller: {
-            /** User Id */
-            user_id?: number | null;
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
-            /** Revenue */
-            revenue: number;
-            /** Avg Ticket */
-            avg_ticket?: number | null;
-            /** Discount Rate */
-            discount_rate?: number | null;
-        };
-        /** DashboardSalesService */
-        DashboardSalesService: {
-            /** Service Id */
-            service_id?: number | null;
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
-            /** Revenue */
-            revenue: number;
-        };
-        /**
-         * DashboardSalesServiceDay
-         * @description Ventas de un servicio en un día. Solo vienen los días con ventas.
-         */
-        DashboardSalesServiceDay: {
-            /** Date */
-            date: string;
-            /** Service Id */
-            service_id?: number | null;
-            /** Name */
-            name: string;
-            /** Count */
-            count: number;
-            /** Revenue */
-            revenue: number;
-        };
-        /** DashboardSalesTotals */
-        DashboardSalesTotals: {
-            /** Count */
-            count: number;
-            /** Revenue */
-            revenue: number;
-            /** Avg Ticket */
-            avg_ticket?: number | null;
-            /** Sessions */
-            sessions: number;
-            /** Discount */
-            discount: number;
-            /** Discount Rate */
-            discount_rate?: number | null;
-            /** Buyers */
-            buyers: number;
         };
         /** DashboardSeparationPoint */
         DashboardSeparationPoint: {
@@ -5789,55 +5626,6 @@ export interface components {
             /** Other Id */
             other_id: string;
         };
-        /**
-         * LeadSaleCreate
-         * @description Qué compró el lead: un paquete del catálogo y lo cobrado.
-         */
-        LeadSaleCreate: {
-            /** Service Id */
-            service_id: number;
-            /** Package Id */
-            package_id: number;
-            /** Amount */
-            amount?: number | string | null;
-            /** Notes */
-            notes?: string | null;
-            /** Sold At */
-            sold_at?: string | null;
-        };
-        /** LeadSaleItem */
-        LeadSaleItem: {
-            /** Id */
-            id: number;
-            /** Lead Id */
-            lead_id: string;
-            /** Service Id */
-            service_id?: number | null;
-            /** Package Id */
-            package_id?: number | null;
-            /** Service Name */
-            service_name: string;
-            /** Package Name */
-            package_name: string;
-            /** Sessions */
-            sessions: number;
-            /** List Price */
-            list_price: string;
-            /** Amount */
-            amount: string;
-            /** Notes */
-            notes?: string | null;
-            /** Sold By User Id */
-            sold_by_user_id?: number | null;
-            /** Sold By Name */
-            sold_by_name?: string | null;
-            /** Sold At */
-            sold_at: string;
-            /** Created By User Id */
-            created_by_user_id?: number | null;
-            /** Created At */
-            created_at: string;
-        };
         /** LeadServiceCreate */
         LeadServiceCreate: {
             /** Name */
@@ -5981,7 +5769,6 @@ export interface components {
             stage: string;
             /** Razon Perdido */
             razon_perdido?: string | null;
-            sale?: components["schemas"]["LeadSaleCreate"] | null;
         };
         /** LeadStageWebhookBody */
         LeadStageWebhookBody: {
@@ -9224,102 +9011,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Chat"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_chat_sales_api_chats__chat_id__sales_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeadSaleItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_chat_sale_api_chats__chat_id__sales_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LeadSaleCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeadSaleItem"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_chat_sale_api_chats__chat_id__sales__sale_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: string;
-                sale_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {

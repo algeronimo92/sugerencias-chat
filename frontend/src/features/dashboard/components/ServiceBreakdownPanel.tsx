@@ -83,7 +83,7 @@ export function ServiceBreakdownPanel({ data, days }: { data: DashboardMetrics; 
   }))
   const chartData = visibleBuckets.map((bucket) => ({ ...bucket.values, label: `${shortDay(bucket.start)}${bucket.partialDays ? '*' : ''}`, bucket }))
   const pie = shares(visibleBuckets, series)
-  const format = (value: number) => (metric === 'revenue' ? formatMoney(value, data.sales.currency) : formatNumber(value))
+  const format = (value: number) => (metric === 'revenue' ? formatMoney(value, data.currency) : formatNumber(value))
   const tick = (value: number) =>
     metric === 'revenue' && value >= 1000 ? `${(value / 1000).toLocaleString('es-PE', { maximumFractionDigits: 1 })} mil` : formatNumber(value)
   const unit = size === 1 ? 'día' : 'semana'

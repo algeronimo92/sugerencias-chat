@@ -3,7 +3,7 @@ negocio. Hace lo mismo que el workflow de n8n, en el mismo orden y con los
 mismos pasos auditados, sin salir del proceso:
 
 1. carga el contexto autorizado del lead (``context_loaded``);
-2. carga el catálogo con paquetes, las compras y los recursos;
+2. carga el catálogo con paquetes y los recursos;
 3. busca conocimiento a partir del servicio de interés y los últimos mensajes
    del cliente, por palabras y por significado, y combina las dos búsquedas
    (``knowledge_searched``);
@@ -51,7 +51,7 @@ PROMPT_VERSION = "copiloto-2026-11-09"
 #   bloque del user prompt.
 # - user prompt (build_user_prompt): los datos de este pedido, armados en cada
 #   sugerencia: <negocio> (el Perfil del negocio), <lead>, <catalogo>,
-#   <compras>, <recursos_disponibles>, <conocimiento> (solo los fragmentos
+#   <recursos_disponibles>, <conocimiento> (solo los fragmentos
 #   que la búsqueda eligió), <historial> e <indicacion_vendedor>.
 _SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.md"
 # Mensajes recientes que entran al prompt (los más viejos quedan fuera: el
@@ -312,7 +312,6 @@ def build_user_prompt(
         + "\n- Horas desde el último mensaje: " + str(_hours_since(lead.get("ultimo_mensaje_at"), now))
         + "\n</datos_temporales>",
         "<catalogo>\nServicios y paquetes vigentes (precios en la moneda del negocio):\n" + _json(compact_catalog(catalog)) + "\n</catalogo>",
-        "<compras>\nLo que este lead ya compró (servicio, paquete, sesiones, monto, fecha):\n" + _json(lead.get("compras") or []) + "\n</compras>",
         "<recursos_disponibles>\nArchivos que el negocio autorizó como adjuntos (id, nombre, tipo, url, descripcion):\n" + _json(resources) + "\n</recursos_disponibles>",
         "<conocimiento>\nFragmentos de fichas, políticas y guías del negocio elegidos para esta conversación:\n" + _json(knowledge_view) + "\n</conocimiento>",
         "<historial>\nConversación de WhatsApp (más antiguo arriba, horas en la zona del negocio):\n" + _json(compact_messages(messages, now.tzinfo)) + "\n</historial>",

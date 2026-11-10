@@ -1,5 +1,5 @@
 """Distribución del pipeline: etapas, orígenes, servicios, embudo y leads
-fríos que nadie tocó en días. Las ventas viven en sales_queries.py."""
+fríos que nadie tocó en días."""
 
 import asyncio
 from datetime import timedelta

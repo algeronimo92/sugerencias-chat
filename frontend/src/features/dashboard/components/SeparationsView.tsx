@@ -22,7 +22,7 @@ const TREND_LABELS = { revenue: 'Monto', count: 'Separaciones' }
 export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
   const separations = data.appointments.separations
   const { totals, previous } = separations
-  const currency = data.sales.currency
+  const currency = data.currency
   const money = (value: number | null) => formatMoney(value, currency)
   // La serie viene con "amount"; el gráfico de tendencia la lee como "revenue".
   const asPoints = (points: typeof separations.trend) => points.map((point) => ({ date: point.date, count: point.count, revenue: point.amount }))

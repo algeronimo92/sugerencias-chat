@@ -37,7 +37,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
   const leadScope = who(subject, { me: 'Asignados a mí', team: 'Base del equipo', seller: (name) => `Asignados a ${name}` })
   // La venta del negocio es la separación de cita con su adelanto.
   const { separations } = data.appointments
-  const currency = data.sales.currency
+  const currency = data.currency
   const topTreatments = fromAppointments(data).ranking.slice(0, 8).map((item) => ({ name: item.name, value: item.count ?? 0 }))
   const sellerAmounts = separations.by_seller.slice(0, 8).map((item) => ({ name: item.name, value: Math.round(item.amount) }))
   return (

@@ -1,6 +1,6 @@
 /** Cálculos de la pestaña Ventas. Viven aparte de los componentes porque
  *  mezclar funciones con componentes en un archivo rompe el fast refresh. */
-import type { DashboardSalesPoint } from '../types'
+import type { DashboardAmountPoint } from '../types'
 
 export type Direction = 'up' | 'down' | 'flat' | 'none'
 
@@ -33,8 +33,8 @@ export interface ComparedPoint {
 /** Une las dos series por posición (día 1 con día 1). Con 90 días agrupa por
  *  semana: 90 puntos diarios de una clínica chica son ruido, no tendencia. */
 export function compareSeries(
-  current: DashboardSalesPoint[],
-  previous: DashboardSalesPoint[],
+  current: DashboardAmountPoint[],
+  previous: DashboardAmountPoint[],
   metric: 'revenue' | 'count',
   bucketDays: number,
 ): ComparedPoint[] {
@@ -54,7 +54,7 @@ export function compareSeries(
 }
 
 /** Una docena de tramos para la sparkline, sin importar el largo del período. */
-export function sparkSeries(points: DashboardSalesPoint[], metric: 'revenue' | 'count'): number[] {
+export function sparkSeries(points: DashboardAmountPoint[], metric: 'revenue' | 'count'): number[] {
   const size = Math.max(1, Math.ceil(points.length / 12))
   const values: number[] = []
   for (let start = 0; start < points.length; start += size) {
