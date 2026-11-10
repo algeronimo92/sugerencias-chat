@@ -16,7 +16,7 @@ interface Props {
 const iconButtonClass ='rounded-lg p-1.5 hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
 
 /**
- * Agendar desde la ficha del lead, en un panel que se desliza desde la
+ * Separar cita desde el chat o la ficha del lead, en un panel que se desliza desde la
  * derecha: el chat queda a la vista para copiar la fecha u hora que dijo el
  * cliente. En móvil ocupa toda la pantalla.
  */
@@ -56,7 +56,7 @@ function PanelHeader({ lead, flow }: { lead: LeadSnapshot; flow: LeadAppointment
         ? <button type="button" aria-label="Volver al formulario" className={iconButtonClass} onClick={flow.backToForm} disabled={flow.state.busy}><ArrowLeft className="h-4 w-4" /></button>
         : <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark"><CalendarPlus className="h-4 w-4" /></span>}
       <div className="min-w-0 flex-1">
-        <DialogPrimitive.Title className="font-semibold">{reviewing ? 'Actualizar el lead' : 'Agendar cita'}</DialogPrimitive.Title>
+        <DialogPrimitive.Title className="font-semibold">{reviewing ? 'Actualizar el lead' : 'Separar cita'}</DialogPrimitive.Title>
         <p className="truncate text-xs text-wa-muted">{lead.name || lead.phone || 'Lead sin nombre'}</p>
       </div>
       <DialogPrimitive.Close asChild><button type="button" aria-label="Cerrar" className={iconButtonClass} disabled={flow.state.busy}><X className="h-4 w-4" /></button></DialogPrimitive.Close>
