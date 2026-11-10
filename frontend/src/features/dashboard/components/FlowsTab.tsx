@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { AUTOMATION_TRIGGERS } from '../../automations/public/automationCatalog'
 import { formatNumber, formatShortDateTime } from './format'
 import { BarList, NoData, Panel, StatGrid, StackedBarList, TrendChart } from './primitives'
@@ -8,7 +9,7 @@ import type { StackSegment } from './primitives'
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onOpenFlows: () => void
 }
 
@@ -32,7 +33,7 @@ function formatLastRun(iso: string | null): string | undefined {
   return `Último: ${formatShortDateTime(iso)}`
 }
 
-export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
+export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
   const { automations } = data
   const period = `Últimos ${days} días`
   const active = automations.active_now
@@ -42,7 +43,7 @@ export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel
         title="Flujos activados por tipo"
-        subtitle={isMine ? `Los que yo disparé · ${period}` : `Todo el equipo · ${period}`}
+        subtitle={`${who(subject, { me: 'Los que yo disparé', team: 'Todo el equipo', seller: (name) => `Los que disparó ${name}` })} · ${period}`}
         className="lg:col-span-2"
         action={
           <button

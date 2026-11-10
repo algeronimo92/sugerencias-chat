@@ -1,4 +1,5 @@
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { formatMoney, formatNumber, formatShortDateTime } from './format'
 import { NoData, Panel } from './primitives'
 import { SalesPackagesTable } from './SalesPackagesTable'
@@ -9,7 +10,7 @@ import { percentChange, pointsChange, sparkSeries } from './salesFormat'
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onOpenChat: (leadId: string) => void
 }
 
@@ -20,7 +21,7 @@ const DISCOUNT_WARNING_RATE = 8
 /** Qué se vende, cuánto deja y quién lo cierra, contra la ventana anterior.
  *  Todo responde al período y al alcance de la cabecera, salvo los rankings,
  *  que siempre son del equipo. */
-export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
+export function SalesTab({ data, days, subject, onOpenChat }: Props) {
   // La venta se mide por las separaciones de cita. Las compras registradas
   // ("Registrar compra") se muestran debajo solo si el negocio las usa: un
   // bloque entero en cero confunde más de lo que informa.
@@ -28,11 +29,11 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
   const hasPurchases = sales.totals.count > 0 || sales.previous != null
   return (
     <>
-      <SeparationsView data={data} days={days} isMine={isMine} onOpenChat={onOpenChat} />
+      <SeparationsView data={data} days={days} subject={subject} onOpenChat={onOpenChat} />
       {hasPurchases && (
         <section className="mt-8" aria-labelledby="compras-registradas">
           <h2 id="compras-registradas" className="mb-3 text-sm font-semibold text-wa-text dark:text-wa-text-dark">Compras registradas</h2>
-          <PurchasesView data={data} days={days} isMine={isMine} onOpenChat={onOpenChat} />
+          <PurchasesView data={data} days={days} subject={subject} onOpenChat={onOpenChat} />
         </section>
       )}
     </>
@@ -40,7 +41,7 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
 }
 
 /** Compras registradas con paquete y precio, para los negocios que las usan. */
-function PurchasesView({ data, days, isMine, onOpenChat }: Props) {
+function PurchasesView({ data, days, subject, onOpenChat }: Props) {
   const { sales } = data
   const { totals, previous, currency } = sales
   const period = `Últimos ${days} días`
@@ -88,7 +89,7 @@ function PurchasesView({ data, days, isMine, onOpenChat }: Props) {
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Panel
           title={days >= 90 ? 'Compras por semana' : 'Compras por día'}
-          subtitle={`${isMine ? 'Lo que cerré' : 'Lo que cerró el equipo'} · comparado con los ${days} días anteriores`}
+          subtitle={`${who(subject, { me: 'Lo que cerré', team: 'Lo que cerró el equipo', seller: (name) => `Lo que cerró ${name}` })} · comparado con los ${days} días anteriores`}
           className="lg:col-span-2"
         >
           <SalesTrendChart current={sales.trend} previous={sales.previous_trend} days={days} currency={currency} />

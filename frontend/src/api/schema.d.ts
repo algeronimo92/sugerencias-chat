@@ -13551,6 +13551,7 @@ export interface operations {
             query?: {
                 days?: number;
                 scope?: string | null;
+                seller_id?: number | null;
             };
             header?: never;
             path?: never;

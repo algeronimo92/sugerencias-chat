@@ -12,6 +12,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
 from app.modules.leads.dashboard import api as dashboard_router
@@ -200,11 +201,11 @@ async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
 
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
-    await dashboard_router.dashboard(days=30, scope=None, user=SimpleNamespace(id=3, role="vendedor"))
-    await dashboard_router.dashboard(days=30, scope=None, user=SimpleNamespace(id=1, role="admin"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
     # Un vendedor sí puede pedir el total del equipo: ya ve todos los chats, así
     # que no es información nueva y le da contexto a sus propios números.
-    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
 
     assert received == [(30, SCOPE_MINE, 3), (30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 3)]
 
@@ -342,3 +343,24 @@ async def test_separations_read_the_deposit_from_either_field_and_compare_window
     assert any("appointments.created_at < " in sql for sql in deposit_sql), "falta el tope de la ventana anterior"
     scoped = [sql for sql in deposit_sql if "GROUP BY coalesce(users.name" not in sql]
     assert all("appointments.created_by_user_id = " in sql for sql in scoped)
+
+
+@pytest.mark.asyncio
+async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(monkeypatch):
+    """Filtrar por vendedora es mirar "lo suyo" de otra persona: el admin
+    puede, un vendedor no (ya ve los rankings del equipo)."""
+    received = []
+
+    async def fake_metrics(days, scope, user_id):
+        received.append((days, scope, user_id))
+        return {}
+
+    monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
+
+    await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=1, role="admin"))
+    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=3, user=SimpleNamespace(id=3, role="vendedor"))
+    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 3)]
+
+    with pytest.raises(HTTPException) as exc:
+        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=3, role="vendedor"))
+    assert exc.value.status_code == 403

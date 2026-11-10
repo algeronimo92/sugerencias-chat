@@ -1,18 +1,19 @@
 import type { ChatFilters } from '../../leads/types'
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { formatNumber } from './format'
 import { BarList, Panel, StatGrid, TagBarList, TrendChart } from './primitives'
 
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function TagsTab({ data, days, isMine, onFilterChats }: Props) {
+export function TagsTab({ data, days, subject, onFilterChats }: Props) {
   const { coverage, top, by_user, trend } = data.tags
-  const scopeLabel = isMine ? 'Entre mis leads' : 'Entre todos los leads'
+  const scopeLabel = who(subject, { me: 'Entre mis leads', team: 'Entre todos los leads', seller: (name) => `Entre los leads de ${name}` })
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">

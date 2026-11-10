@@ -1,17 +1,25 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DashboardPage } from './DashboardPage'
 import type { DashboardMetrics, DashboardScope } from '../types'
 
 const requestedScopes: (DashboardScope | null)[] = []
+const requests: { days: number; scope: DashboardScope | null; sellerId: number | null }[] = []
 
 vi.mock('../hooks/useDashboard', () => ({
-  useDashboard: (_days: number, scope: DashboardScope | null) => {
+  useDashboard: (days: number, scope: DashboardScope | null, sellerId: number | null = null) => {
     requestedScopes.push(scope)
+    requests.push({ days, scope, sellerId })
     return { data: metrics(), isLoading: false, isFetching: false, error: null, refetch: vi.fn() }
   },
+}))
+
+// Las vendedoras que el admin puede elegir para mirar sus métricas.
+vi.mock('../../platform/public/useUsers', () => ({
+  useSellers: () => ({ data: [{ id: 2, name: 'Lucía Ramos', role: 'vendedor' }, { id: 3, name: 'Marco Díaz', role: 'vendedor' }] }),
 }))
 
 // Las etapas son las del negocio; acá alcanza con las que trae una cuenta nueva.
@@ -164,24 +172,70 @@ function metrics(): DashboardMetrics {
   }
 }
 
-function renderDashboard(isAdmin = false) {
+function CurrentQuery() {
+  return <output data-testid="query">{useLocation().search}</output>
+}
+
+function renderDashboard(isAdmin = false, url = '/dashboard') {
   requestedScopes.length = 0
+  requests.length = 0
   const onOpenFlows = vi.fn()
   const onOpenChat = vi.fn()
   const onFilterChats = vi.fn()
-  render(
-    <DashboardPage
-      isAdmin={isAdmin}
-      onOpenTasks={vi.fn()}
-      onOpenFlows={onOpenFlows}
-      onOpenChat={onOpenChat}
-      onFilterChats={onFilterChats}
-    />,
+  const view = render(
+    <MemoryRouter initialEntries={[url]}>
+      <DashboardPage
+        isAdmin={isAdmin}
+        onOpenTasks={vi.fn()}
+        onOpenFlows={onOpenFlows}
+        onOpenChat={onOpenChat}
+        onFilterChats={onFilterChats}
+      />
+      <CurrentQuery />
+    </MemoryRouter>,
   )
-  return { onOpenFlows, onOpenChat, onFilterChats }
+  return { onOpenFlows, onOpenChat, onFilterChats, unmount: view.unmount }
 }
 
 describe('DashboardPage', () => {
+  // La última vista se guarda en el navegador: cada test arranca sin ella.
+  beforeEach(() => localStorage.removeItem('dashboard-filtros'))
+
+  it('abre la pestaña, el período y la vendedora que trae el enlace', () => {
+    renderDashboard(true, '/dashboard?pestana=ventas&dias=7&vendedora=2')
+
+    expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
+    expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 2 })
+    expect(screen.getByLabelText('De quién son las métricas')).toHaveTextContent('Lucía Ramos')
+    expect(screen.getByText(/Lo que separó Lucía Ramos/)).toBeInTheDocument()
+  })
+
+  it('lleva cada cambio de filtro a la dirección y lo recuerda al volver sin parámetros', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderDashboard(true)
+
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+    await user.click(screen.getByLabelText('Período'))
+    await user.click(screen.getByRole('option', { name: 'Últimos 7 días' }))
+    await user.click(screen.getByLabelText('De quién son las métricas'))
+    await user.click(screen.getByRole('option', { name: 'Marco Díaz' }))
+    expect(screen.getByTestId('query')).toHaveTextContent('?pestana=ventas&dias=7&vendedora=3')
+    unmount()
+
+    // Entrar desde el menú (sin parámetros) vuelve a la última vista.
+    renderDashboard(true)
+    expect(screen.getByTestId('query')).toHaveTextContent('vendedora=3')
+    expect(requests.at(-1)).toEqual({ days: 7, scope: null, sellerId: 3 })
+  })
+
+  it('al vendedor no le ofrece mirar a otras personas', async () => {
+    const user = userEvent.setup()
+    renderDashboard(false)
+    await user.click(screen.getByLabelText('De quién son las métricas'))
+    expect(screen.getByRole('option', { name: 'Todo el equipo' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Lucía Ramos' })).toBeNull()
+  })
+
   it('abre en lo propio para un vendedor y en el equipo para un admin', () => {
     renderDashboard(false)
     expect(requestedScopes.at(-1)).toBe('mine')
@@ -379,7 +433,7 @@ describe('DashboardPage', () => {
     const user = userEvent.setup()
     renderDashboard()
 
-    await user.click(screen.getByLabelText('Alcance de las métricas'))
+    await user.click(screen.getByLabelText('De quién son las métricas'))
     await user.click(screen.getByRole('option', { name: 'Todo el equipo' }))
     expect(requestedScopes.at(-1)).toBe('team')
   })
