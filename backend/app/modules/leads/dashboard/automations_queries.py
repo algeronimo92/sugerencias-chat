@@ -1,7 +1,7 @@
 """Qué flujos se activaron, de qué tipo, quién los disparó y cómo terminaron.
 
 La atribución sale de `automation_executions`: `start_source` distingue el
-disparo a mano del vendedor (`manual`, con `started_by_user_id`) del piloto
+disparo a mano del vendedor (`manual`, con `started_by_user_id`) del
 automático (`system`) y de un flujo que invocó a otro (`flow`).
 """
 
@@ -13,7 +13,9 @@ from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.models.auth import User
 from app.db.models.automations import AutomationExecution, AutomationRule
 
-from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import (
+    DashboardScope, execute_mapping, items, local_day, local_slot, local_weekday, series,
+)
 
 
 ACTIVE_STATUSES = (
@@ -24,7 +26,9 @@ ACTIVE_STATUSES = (
 
 SOURCE_LABELS = {
     "manual": "Iniciado a mano",
-    "system": "Piloto automático",
+    # Era "Piloto automático"; "Flujos enviados" dice "automáticos" y un mismo
+    # concepto con dos nombres se leía como dos cosas distintas.
+    "system": "Automático",
     "flow": "Desde otro flujo",
 }
 
@@ -41,6 +45,35 @@ def _scoped(stmt, scope: DashboardScope):
     panel responde "qué mandé yo", no "qué pasó en mis leads".
     """
     return stmt.where(scope.mine(AutomationExecution.started_by_user_id))
+
+
+def is_automatic():
+    """Lo que arrancó un disparador y lo que esos flujos llamaron.
+
+    El `!= 'manual'` deja como "a mano" el envío de un usuario ya borrado, cuyo
+    `started_by_user_id` quedó en NULL por el ON DELETE SET NULL. Todo lo que
+    no es automático cuenta como a mano, así las dos series suman el total.
+    """
+    return AutomationExecution.started_by_user_id.is_(None) & (AutomationExecution.start_source != "manual")
+
+
+def by_hour_stmt(scope: DashboardScope):
+    """En scope propio solo hay flujos a mano: `started_by_user_id` no se llena
+    en los automáticos, igual que en el resto del bloque de flujos."""
+    weekday, slot = local_weekday(AutomationExecution.created_at), local_slot(AutomationExecution.created_at)
+    return (
+        select(
+            weekday.label("weekday"),
+            slot.label("slot"),
+            func.count(AutomationExecution.id).filter(~is_automatic()).label("flows_manual"),
+            func.count(AutomationExecution.id).filter(is_automatic()).label("flows_automatic"),
+        )
+        .where(
+            AutomationExecution.created_at >= scope.start,
+            scope.mine(AutomationExecution.started_by_user_id),
+        )
+        .group_by(weekday, slot)
+    )
 
 
 async def _by_flow(scope: DashboardScope) -> list[dict]:
@@ -182,7 +215,11 @@ async def collect(scope: DashboardScope) -> dict:
     )
     day = local_day(AutomationExecution.created_at)
     trend_stmt = _scoped(
-        select(day.label("day"), func.count(AutomationExecution.id).label("total"))
+        select(
+            day.label("day"),
+            func.count(AutomationExecution.id).label("total"),
+            func.count(AutomationExecution.id).filter(is_automatic()).label("automatic"),
+        )
         .where(AutomationExecution.created_at >= scope.start)
         .group_by(day)
         .order_by(day),
@@ -207,6 +244,11 @@ async def collect(scope: DashboardScope) -> dict:
         ],
         "by_trigger": items(triggers),
         "trend": series(trend, scope),
+        # La misma serie partida en dos; "a mano" es el resto, así suman el total.
+        "trend_manual": series(
+            [{"day": row["day"], "total": int(row["total"]) - int(row["automatic"])} for row in trend], scope
+        ),
+        "trend_automatic": series([{"day": row["day"], "total": row["automatic"]} for row in trend], scope),
         "failures": failures,
         "active_now": active_now,
     }

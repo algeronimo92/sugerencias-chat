@@ -21,6 +21,7 @@ from app.modules.leads.dashboard import (
     activity_queries as activity,
     appointments_queries as appointments,
     automations_queries as automations,
+    hours_queries as hours,
     leads_queries as leads,
     summary_queries as summary,
     tags_queries as tags,
@@ -29,7 +30,7 @@ from app.modules.leads.dashboard import currency
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, build_scope
 
 
-BLOCKS = (summary, leads, automations, tags, appointments, activity)
+BLOCKS = (summary, leads, automations, tags, appointments, activity, hours)
 
 
 def _sample_value(column):
@@ -102,13 +103,14 @@ async def test_payload_carries_every_panel(compiled_sql):
     assert data["scope"] == SCOPE_MINE
     assert data["period_days"] == 30
     for key in ("summary", "stages", "origins", "services", "sellers", "new_leads_trend",
-                "funnel", "pipeline", "automations", "tags", "appointments", "activity", "currency"):
+                "funnel", "pipeline", "automations", "tags", "appointments", "activity", "hours", "currency"):
         assert key in data, f"falta el bloque {key}"
     for key in ("total_leads", "new_leads", "awaiting_reply", "overdue_tasks", "completed_tasks",
                 "avg_response_minutes", "appointments_created", "flows_started", "flows_active",
                 "messages_sent", "tagged_leads"):
         assert key in data["summary"], f"falta el KPI {key}"
-    for key in ("by_flow", "by_actor", "by_source", "by_trigger", "trend", "failures", "active_now"):
+    for key in ("by_flow", "by_actor", "by_source", "by_trigger", "trend", "trend_manual",
+                "trend_automatic", "failures", "active_now"):
         assert key in data["automations"], f"falta el panel de flujos {key}"
     for key in ("coverage", "top", "by_user", "trend"):
         assert key in data["tags"], f"falta el panel de etiquetas {key}"
@@ -312,3 +314,52 @@ async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(mo
     with pytest.raises(HTTPException) as exc:
         await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=3, role="vendedor"))
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_flow_trend_splits_into_manual_and_automatic_that_add_up(compiled_sql):
+    data = await dashboard_service.get_dashboard_metrics(7, SCOPE_TEAM, user_id=7)
+    flows = data["automations"]
+
+    assert len(flows["trend_manual"]) == len(flows["trend_automatic"]) == 7
+    for total, manual, automatic in zip(flows["trend"], flows["trend_manual"], flows["trend_automatic"]):
+        assert manual["value"] + automatic["value"] == total["value"]
+
+
+@pytest.mark.asyncio
+async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compiled_sql):
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+    hours = data["hours"]
+
+    # Sin esto, un período con cinco lunes haría ver al lunes más cargado.
+    assert sum(hours["weekday_occurrences"]) == 30
+    assert len(hours["weekday_occurrences"]) == 7
+    assert hours["slot_hours"] == 2 and hours["engagement_window_hours"] == 24
+    # Conversaciones y flujos caen en la misma celda y se funden en una fila.
+    assert hours["cells"] == [{
+        "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
+        "flows_manual": 1, "flows_automatic": 1,
+    }]
+
+
+@pytest.mark.asyncio
+async def test_engagement_counts_turns_after_our_first_reply_within_the_window(compiled_sql):
+    """Tres mensajes seguidos del cliente antes de que nadie conteste no son
+    avance: cuenta que escriba de nuevo después de nuestra respuesta."""
+    await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+    sql = next(statement for statement in compiled_sql if "AS engaged" in statement and "isodow" in statement)
+
+    assert "sender != " in sql and "min(" in sql
+    assert "EXISTS" in sql
+    assert "leads.created_at + " in sql
+    assert "America/Lima" not in sql or "timezone(" in sql
+
+
+@pytest.mark.asyncio
+async def test_hours_follow_the_scope(compiled_sql):
+    await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+    by_hour = [statement for statement in compiled_sql if "isodow" in statement]
+
+    assert len(by_hour) == 2
+    assert any("leads.vendedor_id = " in statement for statement in by_hour)
+    assert any("automation_executions.started_by_user_id = " in statement for statement in by_hour)
