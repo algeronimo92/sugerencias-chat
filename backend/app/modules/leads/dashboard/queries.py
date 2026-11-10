@@ -56,6 +56,8 @@ async def _compute(scope: DashboardScope) -> dict:
         "appointments": appointments_block,
         "activity": activity_block,
         "currency": currency,
+        # Para la versión anterior de la app: ver DashboardMetrics.sales.
+        "sales": {"currency": currency},
         "generated_at": scope.now.isoformat(),
     }
 
