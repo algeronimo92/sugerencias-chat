@@ -5,6 +5,8 @@ import { AUTOMATION_TRIGGERS } from '../../automations/public/automationCatalog'
 import { formatNumber, formatShortDateTime } from './format'
 import { BarList, NoData, Panel, StatGrid, StackedBarList, TrendChart } from './primitives'
 import type { StackSegment } from './primitives'
+import { FlowTrendChart } from './FlowTrendChart'
+import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
 
 interface Props {
   data: DashboardMetrics
@@ -26,6 +28,11 @@ const SEGMENTS: StackSegment[] = [
   { key: 'active', label: 'Activos', color: 'bg-viz-active dark:bg-viz-active-dark' },
   { key: 'skipped', label: 'Omitidos', color: 'bg-viz-idle dark:bg-viz-idle-dark' },
   { key: 'failed', label: 'Fallidos', color: 'bg-viz-failed dark:bg-viz-failed-dark' },
+]
+
+const FLOW_READINGS: HoursReadingOption[] = [
+  { key: 'flows_manual', label: 'A mano', hint: 'Flujos iniciados desde un chat, en promedio por día de la semana.' },
+  { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que arrancó un disparador, en promedio por día de la semana.' },
 ]
 
 function formatLastRun(iso: string | null): string | undefined {
@@ -77,12 +84,30 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
         <BarList items={automations.by_actor} emptyLabel="Nadie disparó flujos a mano" />
       </Panel>
 
-      <Panel anchor="como-arrancaron" title="Cómo arrancaron" subtitle="A mano, por piloto automático o desde otro flujo">
+      <Panel anchor="como-arrancaron" title="Cómo arrancaron" subtitle="A mano, automáticos o llamados por otro flujo">
         <BarList items={automations.by_source} emptyLabel="Sin ejecuciones en el período" />
       </Panel>
 
       <Panel anchor="flujos-por-dia" title="Flujos por día" className="lg:col-span-2">
-        <TrendChart points={automations.trend} label="Ejecuciones" />
+        {/* Lo propio de alguien solo tiene flujos a mano: partirlo dejaría una serie siempre en cero. */}
+        {subject.kind === 'team' && automations.trend_manual && automations.trend_automatic
+          ? <FlowTrendChart manual={automations.trend_manual} automatic={automations.trend_automatic} />
+          : <TrendChart points={automations.trend} label="Ejecuciones" />}
+      </Panel>
+
+      <Panel
+        anchor="a-que-hora-salen"
+        title="A qué hora salen los flujos"
+        subtitle={`${who(subject, { me: 'Los que yo disparé', team: 'Todo el equipo', seller: (name) => `Los que disparó ${name}` })} · ${period} · por día de la semana`}
+        className="lg:col-span-2"
+      >
+        <HoursHeatmap
+          hours={data.hours}
+          days={days}
+          // Lo propio de alguien solo tiene flujos a mano: un automático no lo inicia nadie.
+          readings={subject.kind === 'team' ? FLOW_READINGS : FLOW_READINGS.slice(0, 1)}
+          label="A qué hora salen los flujos"
+        />
       </Panel>
 
       <Panel anchor="pendientes-ahora" title="Pendientes ahora mismo" subtitle="Sin ventana de tiempo: una espera larga puede venir de antes">

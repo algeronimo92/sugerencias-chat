@@ -8,6 +8,19 @@ import { isPersonal, who, type DashboardSubject } from './subject'
 import { formatChange, formatDuration, formatMoney, formatNumber } from './format'
 import { fromAppointments } from './serviceBreakdown'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
+import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
+
+// "Cuántas llegan" dice cuándo escribe la gente (y cuándo Meta muestra los
+// anuncios); "Siguieron conversando" es lo que responde a qué hora reaccionan
+// mejor. Van juntas para no leer el volumen como si fuera calidad.
+const CONVERSATION_READINGS: HoursReadingOption[] = [
+  { key: 'conversations', label: 'Cuántas llegan', hint: 'Conversaciones nuevas, en promedio por día de la semana.' },
+  {
+    key: 'engaged',
+    label: 'Siguieron conversando',
+    hint: '% que volvió a escribir después de nuestra primera respuesta, humana o automática, dentro de las 24 h. Las de hoy aún no cuentan.',
+  },
+]
 
 interface Props {
   data: DashboardMetrics
@@ -77,6 +90,15 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Panel anchor="leads-nuevos-por-dia" title="Leads nuevos por día" className="lg:col-span-2">
           <TrendChart points={data.new_leads_trend} label="Leads" />
+        </Panel>
+
+        <Panel
+          anchor="horas-de-mas-movimiento"
+          title="Horas de más movimiento"
+          subtitle={`${who(subject, { me: 'Mis leads', team: 'Todo el equipo', seller: (name) => `Leads de ${name}` })} · ${period} · por día de la semana y franja de ${data.hours?.slot_hours ?? 2} horas`}
+          className="lg:col-span-2"
+        >
+          <HoursHeatmap hours={data.hours} days={days} readings={CONVERSATION_READINGS} label="Horas de más movimiento" />
         </Panel>
 
         <Panel anchor="mensajes-por-dia"

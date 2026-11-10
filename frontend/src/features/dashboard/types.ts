@@ -131,6 +131,10 @@ export interface DashboardMetrics {
     by_source: DashboardMetricItem[]
     by_trigger: DashboardMetricItem[]
     trend: DashboardPoint[]
+    /** `trend` partida en dos series que suman lo mismo. Opcionales: una
+     *  respuesta guardada de la versión anterior no las trae. */
+    trend_manual?: DashboardPoint[]
+    trend_automatic?: DashboardPoint[]
     failures: {
       total: number
       failed: number
@@ -171,5 +175,30 @@ export interface DashboardMetrics {
     by_user: DashboardMetricItem[]
     messages: { trend: DashboardPoint[]; by_user: DashboardMetricItem[] }
   }
+  /** Opcional por lo mismo que las series de arriba: sin él, el mapa de
+   *  horas muestra "Sin datos" en vez de romper la pestaña. */
+  hours?: DashboardHours
   generated_at: string
+}
+
+export interface DashboardHourCell {
+  /** 0 = lunes … 6 = domingo, en la hora local del negocio. */
+  weekday: number
+  slot: number
+  conversations: number
+  /** Las que ya tuvieron sus 24 h completas: denominador de `engaged`. */
+  settled: number
+  /** Volvieron a escribir tras nuestra primera respuesta, dentro de la ventana. */
+  engaged: number
+  flows_manual: number
+  flows_automatic: number
+}
+
+export interface DashboardHours {
+  slot_hours: number
+  engagement_window_hours: number
+  /** Cuántas veces cayó cada día de la semana en el período (0 = lunes). */
+  weekday_occurrences: number[]
+  /** Solo las celdas con algún movimiento. */
+  cells: DashboardHourCell[]
 }

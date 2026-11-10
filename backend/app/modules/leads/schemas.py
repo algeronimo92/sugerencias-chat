@@ -286,6 +286,9 @@ class DashboardAutomations(BaseModel):
     by_source: list[DashboardMetricItem]
     by_trigger: list[DashboardMetricItem]
     trend: list[DashboardPoint]
+    # `trend` partida en dos series que suman lo mismo.
+    trend_manual: list[DashboardPoint]
+    trend_automatic: list[DashboardPoint]
     failures: DashboardFlowFailures
     active_now: dict[str, int]
 
@@ -406,6 +409,30 @@ class DashboardActivity(BaseModel):
     messages: DashboardMessages
 
 
+class DashboardHourCell(BaseModel):
+    # 0 = lunes … 6 = domingo, en la hora local del negocio.
+    weekday: int
+    # Franja del día: 0 = primeras `slot_hours` horas.
+    slot: int
+    # Leads creados en esa franja.
+    conversations: int
+    # De esos, los que ya tuvieron su ventana completa: denominador de `engaged`.
+    settled: int
+    # Volvieron a escribir tras nuestra primera respuesta, dentro de la ventana.
+    engaged: int
+    flows_manual: int
+    flows_automatic: int
+
+
+class DashboardHours(BaseModel):
+    slot_hours: int
+    engagement_window_hours: int
+    # Cuántas veces cayó cada día de la semana en el período (0 = lunes).
+    weekday_occurrences: list[int]
+    # Solo las celdas con algún movimiento.
+    cells: list[DashboardHourCell]
+
+
 class DashboardLegacySalesTotals(BaseModel):
     count: int = 0
     revenue: float = 0
@@ -456,4 +483,5 @@ class DashboardMetrics(BaseModel):
     tags: DashboardTags
     appointments: DashboardAppointments
     activity: DashboardActivity
+    hours: DashboardHours
     generated_at: str

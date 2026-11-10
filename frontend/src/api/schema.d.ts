@@ -4595,6 +4595,10 @@ export interface components {
             by_trigger: components["schemas"]["DashboardMetricItem"][];
             /** Trend */
             trend: components["schemas"]["DashboardPoint"][];
+            /** Trend Manual */
+            trend_manual: components["schemas"]["DashboardPoint"][];
+            /** Trend Automatic */
+            trend_automatic: components["schemas"]["DashboardPoint"][];
             failures: components["schemas"]["DashboardFlowFailures"];
             /** Active Now */
             active_now: {
@@ -4652,6 +4656,34 @@ export interface components {
             value: number;
             /** Rate */
             rate?: number | null;
+        };
+        /** DashboardHourCell */
+        DashboardHourCell: {
+            /** Weekday */
+            weekday: number;
+            /** Slot */
+            slot: number;
+            /** Conversations */
+            conversations: number;
+            /** Settled */
+            settled: number;
+            /** Engaged */
+            engaged: number;
+            /** Flows Manual */
+            flows_manual: number;
+            /** Flows Automatic */
+            flows_automatic: number;
+        };
+        /** DashboardHours */
+        DashboardHours: {
+            /** Slot Hours */
+            slot_hours: number;
+            /** Engagement Window Hours */
+            engagement_window_hours: number;
+            /** Weekday Occurrences */
+            weekday_occurrences: number[];
+            /** Cells */
+            cells: components["schemas"]["DashboardHourCell"][];
         };
         /**
          * DashboardLegacySales
@@ -4781,6 +4813,7 @@ export interface components {
             tags: components["schemas"]["DashboardTags"];
             appointments: components["schemas"]["DashboardAppointments"];
             activity: components["schemas"]["DashboardActivity"];
+            hours: components["schemas"]["DashboardHours"];
             /** Generated At */
             generated_at: string;
         };

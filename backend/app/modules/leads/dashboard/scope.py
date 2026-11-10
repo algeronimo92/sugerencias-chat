@@ -10,7 +10,7 @@ los flujos por `started_by_user_id` y las citas por `created_by_user_id`.
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import Date, func, true
+from sqlalchemy import Date, Integer, cast, func, true
 from app.db.uow import session_scope
 
 
@@ -70,6 +70,22 @@ def local_day(column):
     """Fecha local del negocio para agrupar series por día. Declara el tipo
     para que la fila traiga un ``date`` y no un valor sin tipo."""
     return func.date(func.timezone(BUSINESS_TZ_NAME, column), type_=Date)
+
+
+# Con celdas de una hora quedan 168, casi todas con muy pocos casos para
+# sacarles un porcentaje, y en el celular no se pueden tocar.
+SLOT_HOURS = 2
+SLOTS_PER_DAY = 24 // SLOT_HOURS
+
+
+def local_weekday(column):
+    """Lunes = 1 … domingo = 7, en la hora local del negocio."""
+    return cast(func.extract("isodow", func.timezone(BUSINESS_TZ_NAME, column)), Integer)
+
+
+def local_slot(column):
+    hour = func.extract("hour", func.timezone(BUSINESS_TZ_NAME, column))
+    return cast(func.floor(hour / SLOT_HOURS), Integer)
 
 
 async def execute_mapping(stmt):
