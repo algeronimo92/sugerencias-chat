@@ -53,7 +53,7 @@ function sales(days: number): DashboardSales {
 function metrics(days: number, withSales = true): DashboardMetrics {
   const data = sales(days)
   const appointments = data.by_service_daily.map((row) => ({
-    date: row.date, key: row.name.toLowerCase().replace(/\s+/g, ''), name: row.name, count: row.count + 1,
+    date: row.date, key: row.name.toLowerCase().replace(/\s+/g, ''), name: row.name, count: row.count + 1, amount: row.revenue / 4,
   }))
   return {
     sales: withSales ? data : { ...data, by_service: [], by_service_daily: [] },

@@ -5,12 +5,16 @@ import { Input, Select, Textarea } from '../../../shared/ui/Input'
 import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
 import { useSellers } from '../../platform/public/useUsers'
 import { customKey } from '../domain/leadPrefill'
+import { useBusinessCurrency } from '../hooks/useBusinessCurrency'
 import type { AppointmentFormState } from '../hooks/useAppointmentForm'
 import { ServiceCombobox } from './ServiceCombobox'
 
 export const fieldClass = 'h-11 border-wa-border bg-wa-field px-3 focus:ring-wa-primary-strong dark:border-wa-border-dark dark:bg-wa-field-dark'
 const labelClass = 'mb-1.5 flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark'
 const attachmentButtonClass = 'flex min-h-20 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-wa-border bg-wa-field/40 px-3 py-3 text-sm font-medium disabled:opacity-40 dark:border-wa-border-dark dark:bg-wa-field-dark/40'
+// Clave del campo personalizado donde los negocios cargan el adelanto (la misma
+// que lee el backend, CUSTOM_ADELANTO_KEY): se muestra como monto.
+const DEPOSIT_FIELD_KEY = 'adelanto'
 const HOURS = Array.from({ length: 24 }, (_, hour) => [`${String(hour).padStart(2, '0')}:00`, `${String(hour).padStart(2, '0')}:30`]).flat()
 
 type FromLead = (key: string) => boolean
@@ -55,6 +59,7 @@ function BusinessFieldsSection({ state, fromLead, compact }: { state: Appointmen
 }
 
 function BusinessFieldsBody({ state, fromLead, compact }: { state: AppointmentFormState; fromLead: FromLead; compact: boolean }) {
+  const currency = useBusinessCurrency()
   if (state.customFieldsLoading) return <p className="text-sm text-wa-muted">Cargando campos…</p>
   if (state.customFieldsError) return <p className="text-sm text-red-600 dark:text-red-400">No se pudieron cargar los campos. <button type="button" className="font-semibold underline" onClick={() => state.refetchCustomFields()}>Reintentar</button></p>
   if (state.definitions.length === 0) return <p className="text-sm text-wa-muted">No hay campos adicionales configurados.</p>
@@ -62,7 +67,7 @@ function BusinessFieldsBody({ state, fromLead, compact }: { state: AppointmentFo
     <div className={`grid gap-4 ${compact ? '' : 'sm:grid-cols-2'}`}>
       {state.definitions.map(field => (
         <Field key={field.id} label={field.label} required={field.required} fromLead={fromLead(customKey(field.key))}>
-          <CustomFieldInput field={field} value={state.customFields[field.key]} onChange={value => state.setCustomField(field.key, value)} disabled={state.busy} className={fieldClass} />
+          <CustomFieldInput field={field} value={state.customFields[field.key]} onChange={value => state.setCustomField(field.key, value)} disabled={state.busy} className={fieldClass} currency={field.key === DEPOSIT_FIELD_KEY ? currency : undefined} />
         </Field>
       ))}
     </div>

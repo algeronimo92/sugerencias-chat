@@ -117,7 +117,7 @@ async def test_payload_carries_every_panel(compiled_sql):
     for key in ("coverage", "top", "by_user", "trend"):
         assert key in data["tags"], f"falta el panel de etiquetas {key}"
     for key in ("by_status", "by_treatment", "by_treatment_daily", "by_user", "by_owner", "trend",
-                "lost_reasons", "upcoming", "no_shows", "linkage"):
+                "lost_reasons", "upcoming", "no_shows", "linkage", "separations"):
         assert key in data["appointments"], f"falta el panel de citas {key}"
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
@@ -323,4 +323,22 @@ async def test_booked_appointments_by_treatment_skip_duplicates_and_tests(compil
     assert "appointments.status IN" in sql and "appointments.test_mode IS false" in sql
     assert "appointments.created_by_user_id = " in sql
     assert "mode() WITHIN GROUP (ORDER BY appointments.tratamiento)" in sql
-    assert set(data["appointments"]["by_treatment_daily"][0]) == {"date", "key", "name", "count"}
+    assert set(data["appointments"]["by_treatment_daily"][0]) == {"date", "key", "name", "count", "amount"}
+
+
+@pytest.mark.asyncio
+async def test_separations_read_the_deposit_from_either_field_and_compare_windows(compiled_sql):
+    """La venta es la separación de cita: el monto sale del adelanto fijo o del
+    campo personalizado, y la comparación usa la ventana anterior sin solaparse."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    separations = data["appointments"]["separations"]
+    for key in ("totals", "previous", "trend", "previous_trend", "by_seller", "recent"):
+        assert key in separations, f"falta {key} en separaciones"
+    assert len(separations["trend"]) == len(separations["previous_trend"]) == 30
+
+    deposit_sql = [sql for sql in compiled_sql if "jsonb_typeof(appointments.custom_fields" in sql]
+    assert deposit_sql, "el monto debe leer el campo personalizado adelanto"
+    assert any("appointments.created_at < " in sql for sql in deposit_sql), "falta el tope de la ventana anterior"
+    scoped = [sql for sql in deposit_sql if "GROUP BY coalesce(users.name" not in sql]
+    assert all("appointments.created_by_user_id = " in sql for sql in scoped)

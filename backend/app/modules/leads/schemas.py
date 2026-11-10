@@ -446,6 +446,56 @@ class DashboardAppointmentTreatmentDay(BaseModel):
     key: str
     name: str
     count: int
+    # Suma de adelantos de esas citas.
+    amount: float
+
+
+class DashboardSeparationTotals(BaseModel):
+    count: int
+    # Suma de adelantos (campo fijo o personalizado "adelanto").
+    amount: float
+    with_deposit: int
+    # Promedio entre las separaciones que dejaron adelanto.
+    avg_deposit: float | None = None
+    clients: int
+
+
+class DashboardSeparationPoint(BaseModel):
+    date: str
+    count: int
+    amount: float
+
+
+class DashboardSeparationSeller(BaseModel):
+    name: str
+    count: int
+    amount: float
+    with_deposit: int
+
+
+class DashboardSeparationRow(BaseModel):
+    id: int
+    # None cuando el teléfono de la cita no identificó a un único lead.
+    lead_id: str | None = None
+    name: str
+    treatment: str
+    amount: float
+    # Día y hora de la cita, tal como se registraron.
+    date: str
+    time: str
+    created_at: str
+    seller_name: str
+
+
+class DashboardSeparations(BaseModel):
+    """La venta del negocio medida como separación de cita con adelanto."""
+    totals: DashboardSeparationTotals
+    previous: DashboardSeparationTotals | None = None
+    trend: list[DashboardSeparationPoint]
+    previous_trend: list[DashboardSeparationPoint]
+    # Ranking del equipo: no depende del scope.
+    by_seller: list[DashboardSeparationSeller]
+    recent: list[DashboardSeparationRow]
 
 
 class DashboardAppointments(BaseModel):
@@ -456,6 +506,7 @@ class DashboardAppointments(BaseModel):
     # Citas agendadas por tratamiento y día: el panel "Por tratamiento" las
     # usa en los negocios que registran la venta como cita.
     by_treatment_daily: list[DashboardAppointmentTreatmentDay]
+    separations: DashboardSeparations
     trend: list[DashboardPoint]
     lost_reasons: list[DashboardMetricItem]
     upcoming: list[DashboardUpcomingAppointment]
