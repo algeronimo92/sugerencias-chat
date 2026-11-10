@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { Skeleton } from '../shared/ui/Skeleton'
 import {
   ElevenLabsIntegrationCard,
+  EmailIntegrationCard,
   ErpIntegrationCard,
   GoogleCalendarIntegrationCard,
   WhatsappIntegrationCard,
@@ -19,8 +20,9 @@ const CalendarEventTemplateEditor = lazy(() =>
 /**
  * Conexiones con servicios externos, en orden fijo: WhatsApp (sin él no hay
  * CRM), el calendario (citas de todos los días), el ERP (lo que cotiza la
- * IA) y la voz (se configura una vez). El chip de cada tarjeta ya dice el
- * estado; reordenar por estado solo desorientaría.
+ * IA), la voz (se configura una vez) y el correo de envío (al final: sin él
+ * se usa el de la plataforma). El chip de cada tarjeta ya dice el estado;
+ * reordenar por estado solo desorientaría.
  */
 export function IntegrationsPage() {
   const { hash } = useLocation()
@@ -60,7 +62,7 @@ export function IntegrationsPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Integraciones</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Conecta WhatsApp, tu calendario, la lista de precios, las sugerencias con IA y la voz de los audios.
+            Conecta WhatsApp, tu calendario, la lista de precios, las sugerencias con IA, la voz de los audios y el correo de envío.
           </p>
           <p aria-live="polite" className="mt-1 text-sm text-wa-muted dark:text-wa-muted-dark">{summary}</p>
         </header>
@@ -90,6 +92,7 @@ export function IntegrationsPage() {
             <ErpIntegrationCard />
             <AiIntegrationCard />
             <ElevenLabsIntegrationCard />
+            <EmailIntegrationCard />
           </div>
         )}
       </main>

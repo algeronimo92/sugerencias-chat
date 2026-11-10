@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { useSettings } from '../hooks/useSettings'
 import { groupSettings, useSettingsDraft } from '../settingsDraft'
-import { EmailPanel } from './EmailPanel'
 import { SettingField } from './SettingField'
 import { UsersPanel } from './UsersPanel'
 
@@ -14,7 +13,7 @@ interface Props {
   onOpenIntegrations?: () => void
 }
 
-type Tab = 'general' | 'usuarios' | 'correo'
+type Tab = 'general' | 'usuarios'
 
 // Las conexiones con terceros viven en la página de Integraciones, cada una
 // con su propio "Guardar": acá no se muestran ni se reenvían, donde un
@@ -60,15 +59,12 @@ export function SettingsDialog({ onClose, initialTab = 'general', onOpenIntegrat
             <button type="button" onClick={() => setTab('usuarios')} className={`${TAB_CLASS(tab === 'usuarios')} shrink-0`}>
               Usuarios
             </button>
-            <button type="button" onClick={() => setTab('correo')} className={`${TAB_CLASS(tab === 'correo')} shrink-0`}>
-              Correo
-            </button>
           </div>
           {onOpenIntegrations && (
             <p className="flex items-center gap-1.5 border-t border-wa-border/70 px-4 py-2 text-xs text-wa-muted dark:border-wa-border-dark/70 dark:text-wa-muted-dark">
               <Plug className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>
-                WhatsApp, Google Calendar, ERP y voz ahora están en{' '}
+                WhatsApp, Google Calendar, ERP, voz y correo ahora están en{' '}
                 <button type="button" onClick={onOpenIntegrations} className="font-semibold text-wa-primary-strong underline dark:text-wa-primary">
                   Integraciones
                 </button>
@@ -80,8 +76,6 @@ export function SettingsDialog({ onClose, initialTab = 'general', onOpenIntegrat
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           {tab === 'usuarios' && <UsersPanel />}
-
-          {tab === 'correo' && <EmailPanel />}
 
           {tab === 'general' && isLoading && (
             <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Cargando configuración...</p>

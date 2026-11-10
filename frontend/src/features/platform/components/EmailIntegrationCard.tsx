@@ -1,6 +1,7 @@
 import { CheckCircle2, ChevronDown, Loader2, Mail, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
+import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
   useClearEmailSettings,
@@ -12,27 +13,44 @@ import { EmailConnectCard } from './EmailConnectCard'
 import { EmailSmtpForm } from './EmailSmtpForm'
 
 const cardClass = 'space-y-3 rounded-xl border border-wa-border p-4 dark:border-wa-border-dark'
-const titleClass = 'flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark'
 const hintClass = 'text-[11px] text-wa-muted dark:text-wa-muted-dark'
 const errorClass = 'text-xs text-red-500 dark:text-red-400'
 
+function stateOf(status: EmailSettingsStatus | undefined, failed: boolean): { state: IntegrationState; label?: string } {
+  if (failed) return { state: 'error' }
+  if (status?.configured) return { state: 'connected' }
+  if (status?.platform_available) return { state: 'unconfigured', label: 'Usa el de la plataforma' }
+  return { state: 'unconfigured' }
+}
+
 // El correo desde el que salen las invitaciones y avisos del negocio: una
 // cuenta conectada con un clic o un SMTP. Sin ninguno se usa el de la
-// plataforma, que no lleva el dominio del negocio.
-export function EmailPanel() {
+// plataforma, que no lleva el dominio del negocio. Vive en Integraciones
+// junto a las otras cuentas externas del negocio, no en Configuración.
+export function EmailIntegrationCard() {
   const { data: status, isLoading, error } = useEmailSettings()
+  const { state, label } = stateOf(status, Boolean(error))
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-wa-muted dark:text-wa-muted-dark" aria-label="Cargando" />
-      </div>
-    )
-  }
-  if (error || !status) {
-    return <p className={`${errorClass} py-8 text-center`}>No se pudo cargar la configuración de correo.</p>
-  }
-  return <EmailSettingsView status={status} />
+  return (
+    <IntegrationCard
+      id="correo"
+      icon={Mail}
+      title="Correo de envío"
+      description="Las invitaciones a tu equipo y los avisos salen desde este correo, con el nombre de tu negocio."
+      state={state}
+      stateLabel={label}
+    >
+      {isLoading && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-wa-muted dark:text-wa-muted-dark" aria-label="Cargando" />
+        </div>
+      )}
+      {!isLoading && (error || !status) && (
+        <p className={errorClass} role="alert">No se pudo cargar la configuración de correo.</p>
+      )}
+      {status && <EmailSettingsView status={status} />}
+    </IntegrationCard>
+  )
 }
 
 function EmailSettingsView({ status }: { status: EmailSettingsStatus }) {
@@ -45,16 +63,7 @@ function EmailSettingsView({ status }: { status: EmailSettingsStatus }) {
 
   return (
     <div className="space-y-4">
-      <div className={cardClass}>
-        <div className={titleClass}>
-          <Mail className="h-4 w-4" aria-hidden="true" />
-          Correo de envío
-        </div>
-        <p className={hintClass}>
-          Las invitaciones a tu equipo y los avisos salen desde este correo, con el nombre de tu negocio.
-        </p>
-        <StatusNote status={status} />
-      </div>
+      <StatusNote status={status} />
 
       <EmailConnectCard status={status} />
 

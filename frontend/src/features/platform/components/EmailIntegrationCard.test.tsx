@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { readEmailConnectReturn } from '../public/emailConnectReturn'
 import type { EmailSettingsStatus } from '../types'
-import { EmailPanel } from './EmailPanel'
+import { EmailIntegrationCard } from './EmailIntegrationCard'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
 
@@ -29,12 +29,12 @@ function renderPanel(status: EmailSettingsStatus) {
   api.get.mockResolvedValue({ data: status })
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <EmailPanel />
+      <EmailIntegrationCard />
     </QueryClientProvider>,
   )
 }
 
-describe('EmailPanel', () => {
+describe('EmailIntegrationCard', () => {
   beforeEach(() => {
     api.get.mockReset()
     api.put.mockReset()
@@ -55,6 +55,17 @@ describe('EmailPanel', () => {
       provider: 'zoho', return_origin: 'https://acme.example.com',
     })
     vi.unstubAllGlobals()
+  })
+
+  it('es una tarjeta de Integraciones con ancla #correo y su estado', async () => {
+    const { unmount } = renderPanel(empty)
+    const card = await screen.findByRole('region', { name: /Correo de envío/ })
+    expect(card).toHaveAttribute('id', 'correo')
+    expect(await screen.findByText('Usa el de la plataforma')).toBeInTheDocument()
+    unmount()
+
+    renderPanel(smtp)
+    expect(await screen.findByText('Conectado')).toBeInTheDocument()
   })
 
   it('solo muestra los proveedores que la plataforma habilitó', async () => {

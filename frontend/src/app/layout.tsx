@@ -90,7 +90,7 @@ export function MainLayout() {
     setIsSettingsOpen(true);
   }
 
-  // Las conexiones con terceros (WhatsApp, calendario, ERP, voz) tienen su
+  // Las conexiones con terceros (WhatsApp, calendario, ERP, voz, correo) tienen su
   // página: el diálogo de Configuración queda para los ajustes del CRM.
   function openIntegrations(anchor?: IntegrationAnchor) {
     setIsSettingsOpen(false);
@@ -108,12 +108,10 @@ export function MainLayout() {
     if (!result) return;
     if (result.ok) toast.success(result.message);
     else toast.error(result.message);
-    if (calendar) {
-      navigate({ pathname: "/integraciones", search: "", hash: "#calendario" }, { replace: true });
-    } else {
-      openSettings("correo");
-      navigate({ pathname: location.pathname, search: "" }, { replace: true });
-    }
+    navigate(
+      { pathname: "/integraciones", search: "", hash: calendar ? "#calendario" : "#correo" },
+      { replace: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
   const { data: unreadCount = 0 } = useUnreadCount(!isAnalyst);

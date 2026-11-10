@@ -206,7 +206,7 @@ async def email_oauth_callback(
         # Sin un state válido no se sabe a qué CRM volver.
         return PlainTextResponse(
             "El enlace para conectar el correo venció o no es válido. "
-            "Vuelve a intentarlo desde Configuración → Correo.",
+            "Vuelve a intentarlo desde Integraciones → Correo de envío.",
             status_code=400,
         )
 

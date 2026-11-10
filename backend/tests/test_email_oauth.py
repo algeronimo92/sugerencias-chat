@@ -128,7 +128,55 @@ async def test_revoked_authorization_asks_to_reconnect(monkeypatch) -> None:
         )
 
     assert caught.value.code == "reconnect"
-    assert "Configuración → Correo" in str(caught.value)
+    assert "Integraciones → Correo de envío" in str(caught.value)
+
+
+def _google_send_rejected(monkeypatch, response: httpx.Response) -> None:
+    monkeypatch.setattr(email_oauth, "oauth_client", AsyncMock(return_value=CLIENT))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "at"})
+        return response
+
+    _mock_http(monkeypatch, handler)
+
+
+async def _send_with_google() -> None:
+    await email_oauth.send_message(
+        Connection("google", "rt", "ventas@acme.com"),
+        EmailMessage(),
+        recipients=["a@b.com"],
+        subject="s",
+        html_body="",
+    )
+
+
+async def test_gmail_api_disabled_points_to_the_platform_not_to_reconnecting(monkeypatch) -> None:
+    _google_send_rejected(monkeypatch, httpx.Response(403, json={"error": {
+        "code": 403,
+        "message": "Gmail API has not been used in project 1 before or it is disabled.",
+        "details": [{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "SERVICE_DISABLED"}],
+        "errors": [{"reason": "accessNotConfigured", "domain": "usageLimits"}],
+    }}))
+
+    with pytest.raises(EmailOAuthError) as caught:
+        await _send_with_google()
+
+    assert caught.value.code == "service_disabled"
+    assert "plataforma" in str(caught.value)
+    assert "conectar" not in str(caught.value)
+
+
+async def test_gmail_forbidden_for_other_reasons_still_asks_to_reconnect(monkeypatch) -> None:
+    _google_send_rejected(monkeypatch, httpx.Response(403, json={"error": {
+        "code": 403, "errors": [{"reason": "insufficientPermissions"}],
+    }}))
+
+    with pytest.raises(EmailOAuthError) as caught:
+        await _send_with_google()
+
+    assert caught.value.code == "forbidden"
 
 
 async def test_zoho_connection_reads_the_mailbox_in_its_data_center(monkeypatch) -> None:

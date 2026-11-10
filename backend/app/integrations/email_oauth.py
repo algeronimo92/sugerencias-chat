@@ -96,7 +96,7 @@ class Connection:
 def _reconnect_message(provider: str) -> str:
     return (
         f"La conexión con {PROVIDER_LABELS[provider]} venció o fue revocada; "
-        "vuelve a conectar el correo en Configuración → Correo"
+        "vuelve a conectar el correo en Integraciones → Correo de envío"
     )
 
 
@@ -278,6 +278,22 @@ async def _access_token(client: httpx.AsyncClient, connection: Connection, confi
     return access_token, rotated if rotated and rotated != connection.refresh_token else None
 
 
+_GOOGLE_DISABLED_REASONS = {"SERVICE_DISABLED", "accessNotConfigured"}
+
+
+def _google_api_disabled(response: httpx.Response) -> bool:
+    if response.status_code != 403:
+        return False
+    try:
+        error = response.json().get("error") or {}
+    except ValueError:
+        return False
+    if not isinstance(error, dict):
+        return False
+    entries = [*(error.get("details") or []), *(error.get("errors") or [])]
+    return any(isinstance(entry, dict) and entry.get("reason") in _GOOGLE_DISABLED_REASONS for entry in entries)
+
+
 async def send_message(
     connection: Connection, message: EmailMessage, *, recipients: list[str], subject: str, html_body: str
 ) -> str | None:
@@ -324,6 +340,17 @@ async def send_message(
         logger.warning(
             "El proveedor %s rechazó un envío: status=%s", connection.provider, response.status_code
         )
+        # Un 403 de Google también llega cuando la Gmail API está apagada en
+        # el proyecto del cliente OAuth de la plataforma: pasó al conectar el
+        # primer correo, y el "vuelve a conectarla" mandaba al negocio a
+        # reconectar una cuenta que estaba bien.
+        if connection.provider == "google" and _google_api_disabled(response):
+            logger.warning("La Gmail API está desactivada en el proyecto del cliente OAuth de la plataforma")
+            raise EmailOAuthError(
+                "La plataforma todavía no tiene activado el envío por Gmail. "
+                "Avisa al soporte de CliniVentas o usa otro correo mientras tanto.",
+                "service_disabled",
+            )
         if response.status_code in {401, 403}:
             raise EmailOAuthError(
                 f"{PROVIDER_LABELS[connection.provider]} no permitió enviar desde esta cuenta. "
