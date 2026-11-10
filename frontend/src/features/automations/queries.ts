@@ -36,12 +36,11 @@ function summarize(rules: AutomationRule[]): AutomationRuleSummary[] {
  * referencia y el lienzo redibujaba sus 50 bloques por cada mensaje de
  * WhatsApp. `select` devuelve la misma referencia mientras esto no cambie.
  */
-export function useAutomationRuleSummaries({ enabled = true }: { enabled?: boolean } = {}) {
+export function useAutomationRuleSummaries() {
   const connected = useChatSocketConnected()
   return useQuery({
     queryKey: automationKeys.all,
     queryFn: fetchAutomationRules,
-    enabled,
     refetchInterval: connected ? false : 60_000,
     select: summarize,
   })
@@ -53,11 +52,11 @@ export function useAutomationRuleSummaries({ enabled = true }: { enabled?: boole
 // en curso" y su botón de cancelar no queden congelados.
 const ACTIVE_EXECUTION_POLL_MS = 12_000
 
-export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false, startedBy, team, automatic }: AutomationExecutionFilters = {}) {
+export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false, startedBy, team }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, automatic }),
-    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, automatic }),
+    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }),
+    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }),
     refetchInterval: (query) => {
       if (connected) return false
       if (chatId) {

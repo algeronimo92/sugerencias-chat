@@ -117,13 +117,3 @@ async def test_history_can_scope_to_anything_started_by_a_person(monkeypatch):
     sql = await _history_sql(monkeypatch, started_by_anyone=True)
 
     assert "automation_executions.started_by_user_id IS NOT NULL" in sql
-
-
-@pytest.mark.asyncio
-async def test_history_can_scope_to_automatic_starts(monkeypatch):
-    # "Automáticos" en "Flujos enviados": lo que arrancó un disparador, sin
-    # contar como automático el envío manual de un usuario ya borrado.
-    sql = await _history_sql(monkeypatch, automatic_only=True)
-
-    assert "automation_executions.started_by_user_id IS NULL" in sql
-    assert "automation_executions.start_source != 'manual'" in sql

@@ -7,6 +7,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MyAutomationExecutionsPage } from './MyAutomationExecutionsPage'
@@ -14,19 +15,21 @@ import type { AutomationExecution } from '../types'
 
 const navigate = vi.fn()
 
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigate,
+  Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
+}))
 
 vi.mock('../queries', () => ({
   useManualFlows: vi.fn(),
   useAutomationExecutions: vi.fn(),
-  useAutomationRuleSummaries: vi.fn(),
   useCancelExecution: vi.fn(),
 }))
 
 vi.mock('../../auth/public/queries', () => ({ useMe: vi.fn() }))
 vi.mock('../../platform/public/useUsers', () => ({ useUsers: vi.fn() }))
 
-import { useAutomationExecutions, useAutomationRuleSummaries, useCancelExecution, useManualFlows } from '../queries'
+import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
 
@@ -63,8 +66,7 @@ function mockQuery(value: Record<string, unknown>, role: 'admin' | 'vendedor' = 
   vi.mocked(useUsers).mockReturnValue({
     data: role === 'admin' ? [{ id: 1, name: 'Yo' }, { id: 2, name: 'Marta' }] : [],
   } as never)
-  vi.mocked(useManualFlows).mockReturnValue({ data: [{ id: 1, name: 'Bienvenida' }] } as never)
-  vi.mocked(useAutomationRuleSummaries).mockReturnValue({ data: [{ id: 1, name: 'Bienvenida' }, { id: 9, name: 'Respuesta al primer mensaje' }] } as never)
+  vi.mocked(useManualFlows).mockReturnValue({ data: [] } as never)
   vi.mocked(useCancelExecution).mockReturnValue({ mutate: vi.fn(), isPending: false } as never)
   vi.mocked(useAutomationExecutions).mockReturnValue({
     data: [], isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn(),
@@ -130,6 +132,7 @@ describe('MyAutomationExecutionsPage', () => {
     render(<MyAutomationExecutionsPage />)
 
     expect(screen.queryByLabelText('Enviado por')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver flujos automáticos' })).not.toBeInTheDocument()
     expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith(false)
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined, team: undefined })
   })
@@ -156,21 +159,15 @@ describe('MyAutomationExecutionsPage', () => {
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined })
   })
 
-  // Una clínica que responde casi todo con disparadores veía pocos envíos aun
-  // con "Todo el equipo": esos flujos no los inicia nadie.
-  it('deja al admin ver los flujos que arrancó un disparador, con todos los flujos en el filtro', async () => {
+  // El título dice "enviados" pero la lista solo trae lo iniciado a mano: sin
+  // esta salida, ver pocos envíos se leía como "los automáticos no salieron".
+  it('le dice al admin que los automáticos viven en el historial de Automatizaciones', () => {
     mockQuery({}, 'admin')
-    const user = userEvent.setup()
     render(<MyAutomationExecutionsPage />)
 
-    expect(vi.mocked(useAutomationRuleSummaries)).toHaveBeenLastCalledWith({ enabled: false })
-    await user.click(screen.getByLabelText('Enviado por'))
-    await user.click(screen.getByRole('option', { name: /Automáticos/ }))
-
-    expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: false, team: undefined, automatic: true })
-    expect(vi.mocked(useAutomationRuleSummaries)).toHaveBeenLastCalledWith({ enabled: true })
-    await user.click(screen.getByLabelText('Flujo'))
-    expect(screen.getByRole('option', { name: 'Respuesta al primer mensaje' })).toBeInTheDocument()
+    expect(screen.getByText('Tu equipo no inició ningún flujo a mano hoy')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ver flujos automáticos' })).toHaveAttribute('href', '/automations?tab=history')
+    expect(screen.queryByRole('option', { name: /Automáticos/ })).not.toBeInTheDocument()
   })
 
   it('muestra esqueletos mientras carga', () => {

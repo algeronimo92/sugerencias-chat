@@ -320,9 +320,6 @@ export interface AutomationExecutionFilters {
   /** Solo admin: lo que inició a mano cualquiera del equipo, sin los
    *  disparos automáticos del sistema. */
   team?: boolean
-  /** Solo admin: lo que arrancó un disparador (y lo que esos flujos
-   *  llamaron), sin nadie detrás. */
-  automatic?: boolean
 }
 
 export interface AutomationFlowVersion {

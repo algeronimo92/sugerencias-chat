@@ -5,7 +5,7 @@ FileJson,GitBranch,History,Layers3,Loader2,LocateFixed,MessageCircle,Pencil,Plus
 Sparkles,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -154,7 +154,10 @@ export function AutomationsPage() {
   const deleteAutomation = useDeleteAutomation()
   const retryExecution = useRetryExecution()
   const cancelExecution = useCancelExecution()
-  const [tab, setTab] = useState<'rules' | 'flows' | 'history'>('rules')
+  // `?tab=history` existe para el enlace "Ver flujos automáticos" de "Flujos
+  // enviados": sin él, quien llegaba buscando el historial caía en Reglas.
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<'rules' | 'flows' | 'history'>(() => searchParams.get('tab') === 'history' ? 'history' : 'rules')
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)

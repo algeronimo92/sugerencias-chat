@@ -210,16 +210,12 @@ async def get_executions(
     # cuenta, veía cero y creía que ese día no había salido ningún flujo.
     started_by: int | None = Query(default=None, ge=1),
     team: bool = False,
-    # Solo admin: lo que arrancó un disparador, sin nadie detrás. Es la otra
-    # mitad de `team`: una clínica que responde casi todo con disparadores
-    # veía pocos envíos en "Flujos enviados" aun mirando a todo el equipo.
-    automatic: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     user: User = Depends(get_current_user),
 ):
     is_admin = user.role == "admin"
-    if (started_by is not None or team or automatic) and not is_admin:
-        raise HTTPException(403, "Solo un administrador puede ver los flujos que no inició él mismo.")
+    if (started_by is not None or team) and not is_admin:
+        raise HTTPException(403, "Solo un administrador puede ver los flujos que envió otra persona.")
     # Sin admin y sin chat puntual, jamás se entrega el historial completo de
     # todos los leads: se acota siempre a lo que el propio usuario disparó a
     # mano. Con chat_id, en cambio, el vendedor sigue viendo todo lo que corre
@@ -227,11 +223,12 @@ async def get_executions(
     # panel "Automatizaciones" del chat, y ahí sí necesita verlo todo para
     # entender por qué el sistema le va a escribir al cliente.
     scope_to_self = mine or (not is_admin and not chat_id)
-    initiator = None
     if started_by is not None:
-        initiator = started_by
-    elif not team and not automatic and scope_to_self:
-        initiator = user.id
+        initiator, any_initiator = started_by, False
+    elif team:
+        initiator, any_initiator = None, True
+    else:
+        initiator, any_initiator = (user.id if scope_to_self else None), False
     return await list_automation_executions(
         rule_id,
         status,
@@ -242,8 +239,7 @@ async def get_executions(
         date_from=date_from,
         date_to=date_to,
         started_by_user_id=initiator,
-        started_by_anyone=team and started_by is None,
-        automatic_only=automatic and not team and started_by is None,
+        started_by_anyone=any_initiator,
     )
 
 

@@ -13841,7 +13841,6 @@ export interface operations {
                 mine?: boolean;
                 started_by?: number | null;
                 team?: boolean;
-                automatic?: boolean;
                 limit?: number;
             };
             header?: never;

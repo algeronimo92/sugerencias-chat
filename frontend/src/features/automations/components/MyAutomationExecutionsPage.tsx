@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react'
 import {
 AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Layers,Loader2,MessageSquare,
-PauseCircle,PlayCircle,RefreshCw,RotateCcw,Send,SkipForward,XCircle,
+PauseCircle,PlayCircle,RefreshCw,RotateCcw,Send,SkipForward,Workflow,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
@@ -17,7 +17,7 @@ import {
 ACTIVE_EXECUTION_STATUSES,AutomationExecutionStatus,AutomationTrigger,automationStepLabel,
 isServiceWindowFailure,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
-import { useAutomationExecutions, useAutomationRuleSummaries, useCancelExecution, useManualFlows } from '../queries'
+import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 import { followedBranchText } from '../domain/flowBranches'
 import { executionStatusLabel, executionTriggerLabel, formatExecutionDate, isManuallyCancelled } from '../utils/automationExecutions'
@@ -348,7 +348,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
  *  del equipo. */
 export function MyAutomationExecutionsPage() {
   const navigate = useNavigate()
-  const { data: manualFlows = [] } = useManualFlows()
+  const { data: flows = [] } = useManualFlows()
   const cancelExecution = useCancelExecution()
 
   const [period, setPeriod] = useState<PeriodKey>('today')
@@ -366,18 +366,6 @@ export function MyAutomationExecutionsPage() {
   const sender: SenderKey = isAdmin ? senderChoice ?? 'team' : 'me'
   const otherUsers = users.filter(item => item.id !== me?.id)
   const senderName = typeof sender === 'number' ? users.find(item => item.id === sender)?.name ?? null : null
-  const isSystem = sender === 'system'
-  // Un disparador puede arrancar cualquier flujo, no solo los que se ofrecen
-  // en "Iniciar flujo": con la lista manual, el filtro Flujo quedaba corto.
-  const { data: allFlows = [] } = useAutomationRuleSummaries({ enabled: isSystem })
-  const flows = isSystem ? allFlows : manualFlows
-  const senderSummary = sender === 'team' ? 'Todo el equipo' : isSystem ? 'Automáticos' : senderName
-
-  function selectSender(next: SenderKey) {
-    // Las dos vistas listan flujos distintos: el elegido puede no existir en la otra.
-    if ((next === 'system') !== isSystem) setRuleId(null)
-    setSenderChoice(next)
-  }
 
   const preset = PERIODS.find(item => item.key === period)
   const dateFrom = period === 'custom' ? customFrom : isoDateOffset(preset?.offset ?? 0)
@@ -387,7 +375,6 @@ export function MyAutomationExecutionsPage() {
     mine: sender === 'me',
     startedBy: typeof sender === 'number' ? sender : undefined,
     team: sender === 'team' || undefined,
-    automatic: isSystem || undefined,
     ruleId: ruleId ?? undefined,
     dateFrom,
     dateTo,
@@ -447,7 +434,7 @@ export function MyAutomationExecutionsPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Flujos enviados</h1>
           <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
             {isAdmin
-              ? 'Revisa los flujos que tu equipo inició desde una conversación y en qué paso van.'
+              ? 'Los flujos que tu equipo inició a mano desde una conversación, y en qué paso van.'
               : 'Revisa los flujos que iniciaste desde una conversación y en qué paso van.'}
           </p>
         </header>
@@ -464,8 +451,24 @@ export function MyAutomationExecutionsPage() {
           onRuleChange={setRuleId}
           senderOptions={isAdmin ? otherUsers : null}
           sender={sender}
-          onSenderChange={selectSender}
+          onSenderChange={setSenderChoice}
         />
+
+        {/* El título promete "enviados" y la lista solo trae lo iniciado a
+            mano: la dueña veía pocos envíos y creía que los automáticos no
+            habían salido. Es orientación, no alerta: gris y sin triángulo. */}
+        {isAdmin && (
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-wa-muted dark:text-wa-muted-dark">
+            Los flujos automáticos no aparecen aquí.
+            <Link
+              to="/automations?tab=history"
+              className="inline-flex items-center gap-1.5 rounded font-semibold text-wa-primary-strong underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:text-wa-primary"
+            >
+              <Workflow className="h-4 w-4" aria-hidden="true" />
+              Ver flujos automáticos
+            </Link>
+          </p>
+        )}
 
         {executions.length > 0 && !isError && (
           <section aria-label="Filtrar por estado" className="mt-5 flex flex-wrap gap-2">
@@ -492,7 +495,7 @@ export function MyAutomationExecutionsPage() {
               <p aria-live="polite" className="mt-0.5 text-sm text-wa-muted dark:text-wa-muted-dark">
                 {isLoading
                   ? 'Cargando envíos…'
-                  : `${visible.length} ${visible.length === 1 ? 'envío' : 'envíos'} · ${periodSummary}${flowName ? ` · ${flowName}` : ''}${senderSummary ? ` · ${senderSummary}` : ''}`}
+                  : `${visible.length} ${visible.length === 1 ? 'envío' : 'envíos'} · ${periodSummary}${flowName ? ` · ${flowName}` : ''}${sender === 'team' ? ' · Todo el equipo' : senderName ? ` · ${senderName}` : ''}`}
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -554,7 +557,7 @@ export function MyAutomationExecutionsPage() {
                   <h3 className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
                     {isFiltered
                       ? activeGroup.emptyTitle
-                      : sender === 'team' ? 'Tu equipo todavía no envió ningún flujo hoy' : 'Todavía no enviaste ningún flujo hoy'}
+                      : sender === 'team' ? 'Tu equipo no inició ningún flujo a mano hoy' : 'Todavía no enviaste ningún flujo hoy'}
                   </h3>
                   <p className="mt-1 max-w-xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
                     {isFiltered
