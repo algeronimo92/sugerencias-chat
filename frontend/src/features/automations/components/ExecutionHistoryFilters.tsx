@@ -68,13 +68,14 @@ export function ExecutionHistoryFilters({
               value={String(sender)}
               onChange={event => {
                 const value = event.target.value
-                onSenderChange(value === 'team' || value === 'me' ? value : Number(value))
+                onSenderChange(value === 'team' || value === 'me' || value === 'system' ? value : Number(value))
               }}
               className="min-h-10 w-full border-wa-border bg-white shadow-none dark:border-wa-border-dark dark:bg-wa-panel-dark"
             >
               <option value="team">Todo el equipo</option>
               <option value="me">Yo</option>
               {senderOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              <option value="system">Automáticos (disparadores)</option>
             </Select>
           </label>
         )}

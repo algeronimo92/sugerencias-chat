@@ -29,11 +29,11 @@ export async function fetchAutomationRules(): Promise<AutomationRule[]> {
   return data.map(toAutomationRule)
 }
 
-export async function fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters): Promise<AutomationExecution[]> {
+export async function fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, automatic }: AutomationExecutionFilters): Promise<AutomationExecution[]> {
   const { data } = await client.get<ApiResponse<'/api/automations/executions', 'get'>>('/api/automations/executions', {
       params: {
         rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, active,
-        date_from: dateFrom, date_to: dateTo, mine, started_by: startedBy, team, limit: 200,
+        date_from: dateFrom, date_to: dateTo, mine, started_by: startedBy, team, automatic, limit: 200,
       },
     })
   return data.map(toAutomationExecution)

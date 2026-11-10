@@ -19,13 +19,14 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../queries', () => ({
   useManualFlows: vi.fn(),
   useAutomationExecutions: vi.fn(),
+  useAutomationRuleSummaries: vi.fn(),
   useCancelExecution: vi.fn(),
 }))
 
 vi.mock('../../auth/public/queries', () => ({ useMe: vi.fn() }))
 vi.mock('../../platform/public/useUsers', () => ({ useUsers: vi.fn() }))
 
-import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
+import { useAutomationExecutions, useAutomationRuleSummaries, useCancelExecution, useManualFlows } from '../queries'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
 
@@ -62,7 +63,8 @@ function mockQuery(value: Record<string, unknown>, role: 'admin' | 'vendedor' = 
   vi.mocked(useUsers).mockReturnValue({
     data: role === 'admin' ? [{ id: 1, name: 'Yo' }, { id: 2, name: 'Marta' }] : [],
   } as never)
-  vi.mocked(useManualFlows).mockReturnValue({ data: [] } as never)
+  vi.mocked(useManualFlows).mockReturnValue({ data: [{ id: 1, name: 'Bienvenida' }] } as never)
+  vi.mocked(useAutomationRuleSummaries).mockReturnValue({ data: [{ id: 1, name: 'Bienvenida' }, { id: 9, name: 'Respuesta al primer mensaje' }] } as never)
   vi.mocked(useCancelExecution).mockReturnValue({ mutate: vi.fn(), isPending: false } as never)
   vi.mocked(useAutomationExecutions).mockReturnValue({
     data: [], isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn(),
@@ -152,6 +154,23 @@ describe('MyAutomationExecutionsPage', () => {
     await user.click(screen.getByLabelText('Enviado por'))
     await user.click(screen.getByRole('option', { name: 'Yo' }))
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined })
+  })
+
+  // Una clínica que responde casi todo con disparadores veía pocos envíos aun
+  // con "Todo el equipo": esos flujos no los inicia nadie.
+  it('deja al admin ver los flujos que arrancó un disparador, con todos los flujos en el filtro', async () => {
+    mockQuery({}, 'admin')
+    const user = userEvent.setup()
+    render(<MyAutomationExecutionsPage />)
+
+    expect(vi.mocked(useAutomationRuleSummaries)).toHaveBeenLastCalledWith({ enabled: false })
+    await user.click(screen.getByLabelText('Enviado por'))
+    await user.click(screen.getByRole('option', { name: /Automáticos/ }))
+
+    expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: false, team: undefined, automatic: true })
+    expect(vi.mocked(useAutomationRuleSummaries)).toHaveBeenLastCalledWith({ enabled: true })
+    await user.click(screen.getByLabelText('Flujo'))
+    expect(screen.getByRole('option', { name: 'Respuesta al primer mensaje' })).toBeInTheDocument()
   })
 
   it('muestra esqueletos mientras carga', () => {

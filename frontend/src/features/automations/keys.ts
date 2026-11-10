@@ -17,9 +17,9 @@ export const automationKeys = {
 
 export const executionKeys = {
   all: ['automation-executions'] as const,
-  list: ({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters) => [
+  list: ({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, automatic }: AutomationExecutionFilters) => [
     'automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all',
-    dateFrom ?? 'none', dateTo ?? 'none', mine, startedBy ?? 'none', team ?? false,
+    dateFrom ?? 'none', dateTo ?? 'none', mine, startedBy ?? 'none', team ?? false, automatic ?? false,
   ] as const,
   detail: (executionId: number | null) => ['automation-executions', 'by-id', executionId] as const,
 }
