@@ -4763,6 +4763,8 @@ export interface components {
             by_package: components["schemas"]["DashboardSalesPackage"][];
             /** By Service */
             by_service: components["schemas"]["DashboardSalesService"][];
+            /** By Service Daily */
+            by_service_daily: components["schemas"]["DashboardSalesServiceDay"][];
             /** By Seller */
             by_seller: components["schemas"]["DashboardSalesSeller"][];
             /** Recent */
@@ -4813,6 +4815,22 @@ export interface components {
         };
         /** DashboardSalesService */
         DashboardSalesService: {
+            /** Service Id */
+            service_id?: number | null;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Revenue */
+            revenue: number;
+        };
+        /**
+         * DashboardSalesServiceDay
+         * @description Ventas de un servicio en un día. Solo vienen los días con ventas.
+         */
+        DashboardSalesServiceDay: {
+            /** Date */
+            date: string;
             /** Service Id */
             service_id?: number | null;
             /** Name */

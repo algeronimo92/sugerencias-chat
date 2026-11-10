@@ -2,6 +2,7 @@ import type { DashboardMetrics } from '../types'
 import { formatMoney, formatNumber, formatShortDateTime } from './format'
 import { NoData, Panel } from './primitives'
 import { SalesPackagesTable } from './SalesPackagesTable'
+import { ServiceBreakdownPanel } from './ServiceBreakdownPanel'
 import { SalesTrendChart, StatTile } from './SalesCharts'
 import { percentChange, pointsChange, sparkSeries } from './salesFormat'
 
@@ -29,8 +30,11 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatTile
-          label="Ingresos cobrados"
+          // Es lo acordado al vender (lead_sales.amount), no lo que entró a
+          // caja: con cuotas o adelantos "cobrados" prometería otra cosa.
+          label="Monto vendido"
           value={money(totals.revenue)}
+          hint="Lo acordado al cerrar cada venta"
           change={percentChange(totals.revenue, previous?.revenue)}
           trend={sparkSeries(sales.trend, 'revenue')}
         />
@@ -76,6 +80,14 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
           className="lg:col-span-2"
         >
           <SalesPackagesTable packages={sales.by_package} currency={currency} />
+        </Panel>
+
+        <Panel
+          title="Por tratamiento"
+          subtitle={`Cuánto se vendió de cada tratamiento por ${days <= 14 ? 'día' : 'semana'} y qué parte del total fue cada uno`}
+          className="lg:col-span-2"
+        >
+          <ServiceBreakdownPanel sales={sales} days={days} />
         </Panel>
 
         <Panel title="Ingresos por servicio" subtitle="El tratamiento que buscaba el cliente, sumando todos sus paquetes">

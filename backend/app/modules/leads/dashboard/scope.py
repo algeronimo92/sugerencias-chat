@@ -10,7 +10,7 @@ los flujos por `started_by_user_id` y las citas por `created_by_user_id`.
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import func, true
+from sqlalchemy import Date, func, true
 from app.db.uow import session_scope
 
 
@@ -67,8 +67,9 @@ def build_scope(days: int, scope: str, user_id: int) -> DashboardScope:
 
 
 def local_day(column):
-    """Fecha local del negocio para agrupar series por día."""
-    return func.date(func.timezone(BUSINESS_TZ_NAME, column))
+    """Fecha local del negocio para agrupar series por día. Declara el tipo
+    para que la fila traiga un ``date`` y no un valor sin tipo."""
+    return func.date(func.timezone(BUSINESS_TZ_NAME, column), type_=Date)
 
 
 async def execute_mapping(stmt):

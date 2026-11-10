@@ -79,7 +79,14 @@ function metrics(): DashboardMetrics {
           count: 1, revenue: 400, avg_ticket: 400, previous_count: 0,
         },
       ],
-      by_service: [{ service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 }],
+      by_service: [
+        { service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 },
+        { service_id: 2, name: 'Láser', count: 1, revenue: 400 },
+      ],
+      by_service_daily: [
+        { date: '2026-09-20', service_id: 2, name: 'Láser', count: 1, revenue: 400 },
+        { date: '2026-09-21', service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 },
+      ],
       by_seller: [
         { user_id: 2, name: 'Lucía Ramos', count: 2, revenue: 850, avg_ticket: 425, discount_rate: 4.5 },
         { user_id: 3, name: 'Marco Díaz', count: 1, revenue: 400, avg_ticket: 400, discount_rate: 11.1 },
@@ -222,7 +229,7 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Ver ventas' }))
     expect(screen.getByRole('tab', { name: 'Ventas' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Ingresos cobrados')).toBeInTheDocument()
+    expect(screen.getByText('Monto vendido')).toBeInTheDocument()
   })
 
   it('compara cada cifra de ventas con el período anterior', async () => {
@@ -264,6 +271,24 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Lista S\/\s?450/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Rosa Quispe/ }))
     expect(onOpenChat).toHaveBeenCalledWith('lead-7')
+  })
+
+  it('desglosa las ventas por tratamiento con su participación y una tabla', async () => {
+    const user = userEvent.setup()
+    renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    expect(screen.getByRole('heading', { name: 'Por tratamiento' })).toBeInTheDocument()
+    expect(screen.getByText('Hollywood Peel - Rostro fue el más vendido: 2, el 67% del período.')).toBeInTheDocument()
+    // La participación se lee en texto, no solo en la torta.
+    const shareList = screen.getByText('Participación del período').parentElement!
+    expect(within(shareList).getByText('67%')).toBeInTheDocument()
+    expect(within(shareList).getByText('33%')).toBeInTheDocument()
+
+    // Ocultar un tratamiento lo saca de la tabla y del reparto.
+    await user.click(screen.getByRole('button', { name: 'Láser' }))
+    expect(screen.getByRole('button', { name: 'Láser' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(shareList).getByText('100%')).toBeInTheDocument()
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {

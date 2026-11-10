@@ -195,6 +195,37 @@ def _services(rows) -> list[dict]:
     ]
 
 
+def _service_day_stmt(condition):
+    """Compras e ingresos de cada servicio por día local. Solo las filas con
+    ventas: el frontend rellena los huecos al agrupar por semana."""
+    day = local_day(LeadSale.sold_at)
+    return (
+        select(
+            day.label("day"),
+            LeadSale.service_id.label("service_id"),
+            _latest_name(LeadSale.service_name).label("name"),
+            func.count(LeadSale.id).label("count"),
+            func.coalesce(func.sum(LeadSale.amount), 0).label("revenue"),
+        )
+        .where(condition)
+        .group_by(day, LeadSale.service_id, case((LeadSale.service_id.is_(None), LeadSale.service_name)))
+        .order_by(day)
+    )
+
+
+def _service_days(rows) -> list[dict]:
+    return [
+        {
+            "date": row["day"].isoformat(),
+            "service_id": int(row["service_id"]) if row["service_id"] is not None else None,
+            "name": str(row["name"]),
+            "count": int(row["count"]),
+            "revenue": _money(row["revenue"]),
+        }
+        for row in rows
+    ]
+
+
 # --- Por vendedor -----------------------------------------------------------
 
 def _seller_stmt(scope: DashboardScope):
@@ -283,7 +314,7 @@ async def collect(scope: DashboardScope) -> dict:
     current, previous = _current(scope), _previous(scope)
     (
         totals_rows, previous_rows, trend_rows, previous_trend_rows,
-        package_rows, previous_package_rows, service_rows, seller_rows, recent_rows, currency,
+        package_rows, previous_package_rows, service_rows, service_day_rows, seller_rows, recent_rows, currency,
     ) = await asyncio.gather(
         execute_mapping(_totals_stmt(current)),
         execute_mapping(_totals_stmt(previous)),
@@ -292,6 +323,7 @@ async def collect(scope: DashboardScope) -> dict:
         execute_mapping(_package_stmt(current)),
         execute_mapping(_package_stmt(previous)),
         execute_mapping(_service_stmt(current)),
+        execute_mapping(_service_day_stmt(current)),
         execute_mapping(_seller_stmt(scope)),
         execute_mapping(_recent_stmt(current)),
         _currency(),
@@ -310,6 +342,7 @@ async def collect(scope: DashboardScope) -> dict:
         "previous_trend": _trend(previous_trend_rows, scope.start_date - timedelta(days=scope.days), scope.days),
         "by_package": _packages(package_rows, previous_package_rows),
         "by_service": _services(service_rows),
+        "by_service_daily": _service_days(service_day_rows),
         "by_seller": _sellers(seller_rows, names),
         "recent": _recent(recent_rows, names),
     }

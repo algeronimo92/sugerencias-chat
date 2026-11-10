@@ -71,6 +71,9 @@ async def test_sales_round_trip_and_dashboard(tenant) -> None:
             ("Individual", "Marco", lead_id), ("x3", "Lucía", lead_id),
         ]
         assert sum(point["revenue"] for point in team["trend"]) == 560.0
+        # Las dos ventas son del mismo servicio y del mismo día.
+        assert [(d["service_id"], d["count"], d["revenue"]) for d in team["by_service_daily"]] == [(service["id"], 2, 560.0)]
+        assert team["by_service_daily"][0]["date"] == team["trend"][-1]["date"]
         assert len(team["trend"]) == len(team["previous_trend"]) == 30
 
         mine = await collect_sales(build_scope(30, "mine", seller_id))

@@ -122,7 +122,7 @@ async def test_payload_carries_every_panel(compiled_sql):
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
     for key in ("currency", "totals", "previous", "trend", "previous_trend", "by_package",
-                "by_service", "by_seller", "recent"):
+                "by_service", "by_service_daily", "by_seller", "recent"):
         assert key in data["sales"], f"falta el panel de ventas {key}"
 
 
@@ -297,3 +297,15 @@ def test_packages_match_the_previous_window_by_catalog_id_or_copied_names():
         ("x6", 5, 600.0),
         ("Viejo", 0, 90.0),
     ]
+
+
+@pytest.mark.asyncio
+async def test_sales_by_service_per_day_stay_in_the_period_and_scope(compiled_sql):
+    """La serie por tratamiento suma lo mismo que el período: misma ventana y,
+    en el scope propio, solo lo que vendió el usuario."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    daily_sql = [sql for sql in compiled_sql if "lead_sales.service_id" in sql and "GROUP BY date(" in sql]
+    assert daily_sql, "falta la consulta diaria por servicio"
+    assert all("lead_sales.sold_by_user_id = " in sql for sql in daily_sql)
+    assert set(data["sales"]["by_service_daily"][0]) == {"date", "service_id", "name", "count", "revenue"}
