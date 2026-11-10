@@ -50,7 +50,9 @@ export function useResendInvitation() {
 }
 
 export function useCreateInvitationLink() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createInvitationLink,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: userKeys.all }),
   })
 }

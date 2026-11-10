@@ -1,5 +1,5 @@
 import { BarChart3, Check, Link2, Loader2, Mail, Pencil, ShieldCheck, User as UserIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { UserRole } from '../../../shared/types'
 import { Select } from '../../../shared/ui/Input'
@@ -156,6 +156,10 @@ function EmailEditor({
 }) {
   const [email, setEmail] = useState(user.email)
   const unchanged = email.trim().toLowerCase() === user.email
+  const field = useRef<HTMLInputElement>(null)
+  // El editor se abre por un clic en el lápiz: el foco sigue a esa acción,
+  // no a la carga de la página.
+  useEffect(() => field.current?.focus(), [])
 
   return (
     <form
@@ -170,7 +174,7 @@ function EmailEditor({
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        autoFocus
+        ref={field}
         required
         aria-label="Correo"
         className={`${FIELD_CLASS} py-1 text-xs`}
