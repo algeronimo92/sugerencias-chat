@@ -126,13 +126,16 @@ export function Select({
         aria-invalid={ariaInvalid}
         className={cn(
           fieldClass,
-          'flex min-h-9 items-center justify-between gap-2 text-left shadow-sm data-[placeholder]:text-wa-muted dark:data-[placeholder]:text-wa-muted-dark',
+          'group relative flex min-h-9 min-w-0 cursor-pointer items-center gap-3 text-left shadow-sm enabled:hover:border-wa-border dark:enabled:hover:border-wa-border-dark data-[placeholder]:text-wa-muted dark:data-[placeholder]:text-wa-muted-dark',
           className,
+          'pr-10',
         )}
       >
-        <SelectPrimitive.Value />
+        <span className="min-w-0 flex-1 truncate">
+          <SelectPrimitive.Value />
+        </span>
         <SelectPrimitive.Icon asChild>
-          <ChevronDown className="h-4 w-4 shrink-0 text-wa-muted transition-transform duration-150 dark:text-wa-muted-dark" aria-hidden="true" />
+          <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-wa-muted transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none dark:text-wa-muted-dark" aria-hidden="true" />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>

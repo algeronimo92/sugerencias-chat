@@ -26,4 +26,19 @@ describe('identidad visible del contacto', () => {
   it('usa la primera letra útil del username en el avatar', () => {
     expect(avatarInitial(chat({ username: '@gporta.21' }))).toBe('G')
   })
+  it.each(['😀 Ana', '👩🏽‍⚕️ Ana', '🇵🇪 Ana', '❤️ Ana', '1️⃣ Ana', '  ✨ Ana'])('ignora emojis en %s', name => {
+    expect(avatarInitial(chat({ name }))).toBe('A')
+    expect(displayName(chat({ name }))).toBe(name.trim())
+  })
+
+  it('conserva letras Unicode y números', () => {
+    expect(avatarInitial(chat({ name: '🌸 élena' }))).toBe('É')
+    expect(avatarInitial(chat({ name: '李' }))).toBe('李')
+    expect(avatarInitial(chat({ name: '123 Ana' }))).toBe('1')
+  })
+
+  it.each([null, '', '   ', '👩🏽‍⚕️✨', '1️⃣'])('usa marcador si %s no tiene inicial', name => {
+    expect(avatarInitial(chat({ name, phone: '+51943663225' }))).toBe('#')
+  })
+
 })

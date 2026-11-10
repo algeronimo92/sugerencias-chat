@@ -16,9 +16,10 @@ export function displayPhone(chat: Chat): string {
 }
 
 export function avatarInitial(chat: Chat): string {
-  const username = displayUsername(chat)
-  if (username) return username[1]?.toUpperCase() ?? '#'
-  return chat.name?.trim()[0]?.toUpperCase() ?? '#'
+  // Conserva la prioridad del username y busca caracteres Unicode completos.
+  const name = displayUsername(chat) ?? chat.name
+  const initial = name?.replace(/[0-9#*]\uFE0F?\u20E3/gu, '').match(/[\p{L}\p{N}]/u)?.[0]
+  return initial?.toUpperCase() ?? '#'
 }
 
 export type WaitingTier = 'fresh' | 'warning' | 'urgent'

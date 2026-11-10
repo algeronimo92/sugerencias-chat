@@ -121,7 +121,7 @@ describe('NewAppointmentPage: validación por campo', () => {
 
     // Corregir el campo borra su error en el momento.
     fireEvent.change(screen.getByLabelText('Nombre completo *'), { target: { value: 'Ana' } })
-    expect(screen.queryByText('Escribe el nombre de la clienta.')).toBeNull()
+    expect(screen.queryByText('Escribe el nombre del cliente.')).toBeNull()
   })
 
   it('ofrece atajos de fecha y arranca las horas en la mañana', async () => {
