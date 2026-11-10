@@ -4558,6 +4558,21 @@ export interface components {
             by_user: components["schemas"]["DashboardMetricItem"][];
             messages: components["schemas"]["DashboardMessages"];
         };
+        /**
+         * DashboardAppointmentTreatmentDay
+         * @description Citas agendadas de un tratamiento en un día (solo días con citas).
+         *     ``key`` agrupa las variantes de escritura del formulario.
+         */
+        DashboardAppointmentTreatmentDay: {
+            /** Date */
+            date: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
         /** DashboardAppointments */
         DashboardAppointments: {
             /** By Status */
@@ -4568,6 +4583,8 @@ export interface components {
             by_owner: components["schemas"]["DashboardMetricItem"][];
             /** By Treatment */
             by_treatment: components["schemas"]["DashboardMetricItem"][];
+            /** By Treatment Daily */
+            by_treatment_daily: components["schemas"]["DashboardAppointmentTreatmentDay"][];
             /** Trend */
             trend: components["schemas"]["DashboardPoint"][];
             /** Lost Reasons */

@@ -117,9 +117,14 @@ function metrics(): DashboardMetrics {
     appointments: {
       by_status: [{ name: 'Registrada', value: 5 }],
       by_treatment: [{ name: 'Limpieza facial', value: 3 }],
+      by_treatment_daily: [
+        { date: '2026-09-20', key: 'hifu12d', name: 'Hifu12D', count: 3 },
+        { date: '2026-09-21', key: 'hifu12d', name: 'HIFU 12D', count: 1 },
+        { date: '2026-09-21', key: 'limpiezafacial', name: 'Limpieza Facial', count: 4 },
+      ],
       by_user: [{ name: 'Grecia', value: 5 }],
       by_owner: [{ name: 'Antonella', value: 4 }, { name: 'Sin lead vinculado', value: 1 }],
-      trend: [{ date: '2026-09-20', value: 5 }],
+      trend: [{ date: '2026-09-20', value: 5 }, { date: '2026-09-21', value: 3 }],
       lost_reasons: [{ name: 'Precio', value: 2 }],
       upcoming: [
         { id: 1, lead_id: 'lead-1', name: 'Ana Pérez', date: '2026-09-22', time: '14:00', treatment: 'Botox' },
@@ -289,6 +294,18 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Láser' }))
     expect(screen.getByRole('button', { name: 'Láser' })).toHaveAttribute('aria-pressed', 'false')
     expect(within(shareList).getByText('100%')).toBeInTheDocument()
+  })
+
+  it('cuenta las citas agendadas por tratamiento cuando se elige esa fuente', async () => {
+    const user = userEvent.setup()
+    renderDashboard(true)
+    await user.click(screen.getByRole('tab', { name: 'Ventas' }))
+
+    await user.click(screen.getByRole('button', { name: 'Citas agendadas' }))
+    // Las variantes de escritura cuentan juntas; con citas no hay medida en plata.
+    expect(screen.getByText('Hifu12D fue el más agendado: 4, el 50% del período.')).toBeInTheDocument()
+    const panel = screen.getByRole('heading', { name: 'Por tratamiento' }).closest('section')!
+    expect(within(panel).queryByRole('button', { name: 'Ingresos' })).toBeNull()
   })
 
   it('lleva de una cita próxima al chat del lead', async () => {

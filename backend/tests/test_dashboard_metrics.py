@@ -116,8 +116,8 @@ async def test_payload_carries_every_panel(compiled_sql):
         assert key in data["automations"], f"falta el panel de flujos {key}"
     for key in ("coverage", "top", "by_user", "trend"):
         assert key in data["tags"], f"falta el panel de etiquetas {key}"
-    for key in ("by_status", "by_treatment", "by_user", "by_owner", "trend", "lost_reasons",
-                "upcoming", "no_shows", "linkage"):
+    for key in ("by_status", "by_treatment", "by_treatment_daily", "by_user", "by_owner", "trend",
+                "lost_reasons", "upcoming", "no_shows", "linkage"):
         assert key in data["appointments"], f"falta el panel de citas {key}"
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
@@ -309,3 +309,18 @@ async def test_sales_by_service_per_day_stay_in_the_period_and_scope(compiled_sq
     assert daily_sql, "falta la consulta diaria por servicio"
     assert all("lead_sales.sold_by_user_id = " in sql for sql in daily_sql)
     assert set(data["sales"]["by_service_daily"][0]) == {"date", "service_id", "name", "count", "revenue"}
+
+
+@pytest.mark.asyncio
+async def test_booked_appointments_by_treatment_skip_duplicates_and_tests(compiled_sql):
+    """Solo cuentan las citas agendadas de verdad, del período y del scope, con
+    las variantes de escritura del tratamiento juntas."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    daily_sql = [sql for sql in compiled_sql if "regexp_replace(appointments.tratamiento" in sql]
+    assert len(daily_sql) == 1
+    sql = daily_sql[0]
+    assert "appointments.status IN" in sql and "appointments.test_mode IS false" in sql
+    assert "appointments.created_by_user_id = " in sql
+    assert "mode() WITHIN GROUP (ORDER BY appointments.tratamiento)" in sql
+    assert set(data["appointments"]["by_treatment_daily"][0]) == {"date", "key", "name", "count"}

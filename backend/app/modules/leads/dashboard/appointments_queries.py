@@ -124,6 +124,47 @@ async def _no_shows(scope: DashboardScope) -> dict:
     return {"leads": int(row["leads"] or 0), "total": int(row["total"] or 0)}
 
 
+# Citas que quedaron agendadas de verdad: una duplicada o una que falló en n8n
+# no es una venta, y las de prueba no son de ningún cliente.
+BOOKED_STATUSES = ("created", "created_with_errors")
+
+
+def _treatment_key(column):
+    """El tratamiento es texto libre del formulario: "Hifu12D" y "HIFU 12D" son
+    lo mismo. Se agrupa sin mayúsculas ni espacios; el nombre que se muestra es
+    el que más se usó."""
+    return func.lower(func.regexp_replace(column, r"\s+", "", "g"))
+
+
+def _treatment_day_stmt(scope: DashboardScope):
+    day = local_day(Appointment.created_at)
+    key = _treatment_key(Appointment.tratamiento)
+    return _scoped(
+        select(
+            day.label("day"),
+            key.label("key"),
+            func.mode().within_group(Appointment.tratamiento).label("name"),
+            func.count(Appointment.id).label("count"),
+        )
+        .where(
+            Appointment.created_at >= scope.start,
+            Appointment.status.in_(BOOKED_STATUSES),
+            Appointment.test_mode.is_(False),
+            func.length(func.trim(Appointment.tratamiento)) > 0,
+        )
+        .group_by(day, key)
+        .order_by(day),
+        scope,
+    )
+
+
+def _treatment_days(rows) -> list[dict]:
+    return [
+        {"date": row["day"].isoformat(), "key": str(row["key"]), "name": str(row["name"]), "count": int(row["count"])}
+        for row in rows
+    ]
+
+
 async def collect(scope: DashboardScope) -> dict:
     status_stmt = _scoped(
         select(Appointment.status.label("name"), func.count(Appointment.id).label("value"))
@@ -181,7 +222,7 @@ async def collect(scope: DashboardScope) -> dict:
         .limit(8)
     )
 
-    statuses, treatments, by_user, by_owner, trend, lost, upcoming, no_shows, linkage = await asyncio.gather(
+    statuses, treatments, by_user, by_owner, trend, lost, upcoming, no_shows, linkage, treatment_days = await asyncio.gather(
         execute_mapping(status_stmt),
         execute_mapping(treatment_stmt),
         execute_mapping(by_user_stmt),
@@ -191,6 +232,7 @@ async def collect(scope: DashboardScope) -> dict:
         _upcoming(scope),
         _no_shows(scope),
         _linkage(scope),
+        execute_mapping(_treatment_day_stmt(scope)),
     )
     return {
         "by_status": [
@@ -198,6 +240,7 @@ async def collect(scope: DashboardScope) -> dict:
             for row in statuses
         ],
         "by_treatment": items(treatments),
+        "by_treatment_daily": _treatment_days(treatment_days),
         "by_user": items(by_user),
         "by_owner": items(by_owner),
         "trend": series(trend, scope),

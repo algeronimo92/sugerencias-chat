@@ -84,10 +84,10 @@ export function SalesTab({ data, days, isMine, onOpenChat }: Props) {
 
         <Panel
           title="Por tratamiento"
-          subtitle={`Cuánto se vendió de cada tratamiento por ${days <= 14 ? 'día' : 'semana'} y qué parte del total fue cada uno`}
+          subtitle={`Cuánto se agendó o se vendió de cada tratamiento por ${days <= 14 ? 'día' : 'semana'} y qué parte del total fue cada uno`}
           className="lg:col-span-2"
         >
-          <ServiceBreakdownPanel sales={sales} days={days} />
+          <ServiceBreakdownPanel data={data} days={days} />
         </Panel>
 
         <Panel title="Ingresos por servicio" subtitle="El tratamiento que buscaba el cliente, sumando todos sus paquetes">

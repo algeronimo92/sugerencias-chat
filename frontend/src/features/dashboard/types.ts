@@ -170,6 +170,9 @@ export interface DashboardMetrics {
     /** De quién es el lead al que quedó vinculada. */
     by_owner: DashboardMetricItem[]
     by_treatment: DashboardMetricItem[]
+    /** Citas agendadas por tratamiento y día (sin duplicadas, fallidas ni de
+     *  prueba). `key` junta las variantes de escritura del formulario. */
+    by_treatment_daily: { date: string; key: string; name: string; count: number }[]
     trend: DashboardPoint[]
     lost_reasons: DashboardMetricItem[]
     upcoming: DashboardUpcomingAppointment[]
