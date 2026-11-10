@@ -16,6 +16,22 @@ from tests.meta_fixtures import PHONE_NUMBER_ID, inbound_cases
 from tests.conftest import patch_session_scope
 
 
+@pytest.mark.parametrize('name', [None, '', '   ', '👩🏽‍⚕️✨', '1️⃣', '❤️', '🇵🇪', '...'])
+def test_contact_without_useful_name_is_saved_as_phone(name):
+    assert whatsapp_identity_service._contact_name(None, name, '51955544433', None) == '51955544433'
+    assert whatsapp_identity_service._contact_name(name, None, '51955544433', None) == '51955544433'
+
+
+def test_phone_placeholder_can_be_replaced_by_real_name():
+    assert whatsapp_identity_service._contact_name('51955544433', '🌸 Ana', '51955544433', None) == '🌸 Ana'
+    assert whatsapp_identity_service._contact_name('Ana', 'Rosa', '51955544433', None) == 'Ana'
+
+
+def test_no_phone_is_invented_when_meta_only_supplies_user_id():
+    assert whatsapp_identity_service._contact_name(None, '✨', None, None) is None
+    assert whatsapp_identity_service._contact_name(None, None, '51955544433', '@ana') is None
+
+
 def test_inbound_takes_wa_id_user_id_and_profile_literally():
     case = inbound_cases()["text_with_user_id"]
     identity = identity_from_inbound(PHONE_NUMBER_ID, case["message"], [case["contact"]])
