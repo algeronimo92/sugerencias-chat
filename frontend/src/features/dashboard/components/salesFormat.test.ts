@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSeries, percentChange, sparkSeries } from './salesFormat'
+import { compareSeries, isSunday, monthStartIn, percentChange, sparkSeries } from './salesFormat'
 
 const day = (date: string, count: number, revenue: number) => ({ date, count, revenue })
 
@@ -42,5 +42,22 @@ describe('sparkSeries', () => {
     const values = sparkSeries(points, 'revenue')
     expect(values.length).toBeLessThanOrEqual(12)
     expect(values.reduce((sum, value) => sum + value, 0)).toBe(900)
+  })
+})
+
+describe('isSunday', () => {
+  it('reconoce el domingo por la fecha de calendario, sin correrse por la zona horaria', () => {
+    expect(isSunday('2026-10-18')).toBe(true)
+    expect(isSunday('2026-10-17')).toBe(false)
+    expect(isSunday('2026-10-19')).toBe(false)
+  })
+})
+
+describe('monthStartIn', () => {
+  it('dice qué mes empieza dentro de una semana', () => {
+    expect(monthStartIn('2026-10-29', '2026-11-04')).toBe('nov')
+    expect(monthStartIn('2026-11-01', '2026-11-07')).toBe('nov')
+    expect(monthStartIn('2026-11-02', '2026-11-08')).toBeNull()
+    expect(monthStartIn('2026-12-28', '2027-01-03')).toBe('ene')
   })
 })
