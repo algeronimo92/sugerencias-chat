@@ -1,16 +1,28 @@
-from app.modules.auth.schemas import (UserItem, CreateUserRequest, UpdateUserRequest)
+import re
+
+from app.modules.auth.schemas import InvitationLinkOut, UserItem, CreateUserRequest, UpdateUserRequest
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 
 from app.db.models.auth import User
-from app.modules.auth.account_actions import invite_user, request_password_reset
+from app.modules.auth.account_actions import (
+    InvalidActionTokenError,
+    invite_user,
+    issue_invitation_link,
+    request_password_reset,
+    revoke_pending_invitations,
+)
 from app.modules.auth.auth_service import invalidate_user_cache, require_admin
+from app.modules.auth.errors import UserAlreadyActiveError
 from app.modules.auth.users_service import EmailAlreadyExistsError, LastAdminError, get_user_by_id, list_users, update_user
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
 from app.modules.auth.session_service import revoke_all_for_user
 from app.modules.auth.types import UserRole
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
+
+# Un correo con forma de correo: lo que importa es no guardar algo a lo que
+# nunca llegará una invitación ni un restablecimiento.
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 @router.get("", response_model=list[UserItem])
@@ -51,16 +63,30 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
         raise HTTPException(status_code=400, detail="No puedes quitarte a ti mismo el acceso de administrador")
 
     values = body.model_dump(exclude_unset=True)
+    if "email" in values:
+        values["email"] = (values["email"] or "").strip().lower()
+        if not EMAIL_RE.match(values["email"]):
+            raise HTTPException(status_code=400, detail="El correo no es válido")
     try:
         user = await update_user(user_id, values)
     except LastAdminError:
         raise HTTPException(status_code=400, detail="No puedes dejar la cuenta sin ningún administrador activo")
+    except EmailAlreadyExistsError:
+        raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
+    except UserAlreadyActiveError:
+        raise HTTPException(
+            status_code=409,
+            detail="El correo solo se puede cambiar mientras la invitación está pendiente",
+        )
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     invalidate_user_cache(user_id)
     if body.is_active is False:
         await revoke_all_for_user(user_id, include_devices=True)
+    if "email" in values:
+        # La invitación fue al correo anterior; la nueva se pide desde el panel.
+        await revoke_pending_invitations(user_id)
     return user
 
 
@@ -78,7 +104,7 @@ async def resend_invitation(user_id: int):
     user = await get_user_by_id(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if user.is_active:
+    if not user.invitation_pending:
         raise HTTPException(status_code=409, detail="El usuario ya activó su cuenta")
     try:
         return await invite_user(email=user.email, name=user.name, role=user.role)
@@ -86,4 +112,21 @@ async def resend_invitation(user_id: int):
         raise HTTPException(
             status_code=503,
             detail="No se pudo reenviar la invitación. Revisa la configuración de correo.",
+        )
+
+
+@router.post("/{user_id}/invitation-link", response_model=InvitationLinkOut)
+async def create_invitation_link(user_id: int):
+    """Para cuando el correo no llega: el admin copia el enlace y lo pasa por
+    otro canal. Cada pedido reemplaza al enlace anterior."""
+    try:
+        return await issue_invitation_link(user_id)
+    except InvalidActionTokenError:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    except UserAlreadyActiveError:
+        raise HTTPException(status_code=409, detail="El usuario ya activó su cuenta")
+    except EmailNotConfiguredError:
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo armar el enlace: falta la URL pública de la aplicación.",
         )

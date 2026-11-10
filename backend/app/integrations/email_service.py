@@ -127,9 +127,16 @@ def _action_html(*, brand: str, greeting: str, message: str, action: str, url: s
 </div></body></html>"""
 
 
+def invitation_url(token: str) -> str:
+    """El mismo enlace que va en el correo; el admin también puede copiarlo
+    desde Configuración cuando el correo no llega."""
+
+    return f"{public_app_url()}/accept-invitation?token={token}"
+
+
 async def send_invitation(*, recipient: str, name: str, token: str) -> None:
     brand = await current_brand_name()
-    url = f"{public_app_url()}/accept-invitation?token={token}"
+    url = invitation_url(token)
     subject = f"Te invitaron a {brand}"
     message = f"Hola {name}, crea tu contraseña para acceder a {brand}."
     await send_email(
