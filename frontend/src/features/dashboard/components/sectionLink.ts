@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { copyText } from '../../../shared/utils/clipboard'
 
 /** Id en pantalla de una sección del dashboard; el enlace la nombra en el
  *  fragmento de la dirección (`#separaciones-por-dia`). */
@@ -12,10 +13,12 @@ export function sectionUrl(anchor: string): string {
 }
 
 export async function copySectionLink(anchor: string, title: string) {
-  try {
-    await navigator.clipboard.writeText(sectionUrl(anchor))
+  const url = sectionUrl(anchor)
+  if (await copyText(url)) {
     toast.success(`Enlace a «${title}» copiado`, { description: 'Quien lo abra llega a esta sección, con el mismo período y la misma persona.' })
-  } catch {
-    toast.error('No se pudo copiar el enlace', { description: 'Cópialo desde la barra de direcciones y agrega al final #' + anchor })
+    return
   }
+  // Pedir que lo armen a mano desde la barra de direcciones era poco práctico:
+  // se muestra el enlace entero para seleccionarlo y copiarlo.
+  toast.error('No se pudo copiar el enlace', { description: url, duration: 15000 })
 }
