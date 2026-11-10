@@ -19,6 +19,7 @@ from app.integrations.email_service import (
     EmailDeliveryError,
     EmailNotConfiguredError,
     email_is_configured,
+    invitation_url,
     public_app_url,
     send_invitation,
     send_operational_alert,
@@ -53,6 +54,36 @@ def _ensure_email_ready() -> None:
     public_app_url()
 
 
+class UserAlreadyActiveError(Exception):
+    """La cuenta ya se activó: no hay invitación que emitir."""
+
+
+async def _rotate_invitation(session, *, user_id: int, raw_token: str, now: datetime) -> datetime:
+    """Deja un solo enlace vigente: el anterior deja de servir y el nuevo vence
+    dentro del plazo configurado."""
+    await session.execute(
+        update(AuthActionToken)
+        .where(
+            AuthActionToken.user_id == user_id,
+            AuthActionToken.purpose == INVITATION,
+            AuthActionToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+    expires_at = now + timedelta(hours=settings.invitation_expire_hours)
+    session.add(
+        AuthActionToken(
+            id=str(uuid4()),
+            user_id=user_id,
+            purpose=INVITATION,
+            token_hash=_token_hash(raw_token),
+            created_at=now,
+            expires_at=expires_at,
+        )
+    )
+    return expires_at
+
+
 async def invite_user(*, email: str, name: str, role: str) -> dict:
     _ensure_email_ready()
     now = datetime.now(timezone.utc)
@@ -84,25 +115,7 @@ async def invite_user(*, email: str, name: str, role: str) -> dict:
                 user.name = name.strip()
                 user.role = role
 
-            await session.execute(
-                update(AuthActionToken)
-                .where(
-                    AuthActionToken.user_id == user.id,
-                    AuthActionToken.purpose == INVITATION,
-                    AuthActionToken.used_at.is_(None),
-                )
-                .values(used_at=now)
-            )
-            session.add(
-                AuthActionToken(
-                    id=str(uuid4()),
-                    user_id=user.id,
-                    purpose=INVITATION,
-                    token_hash=_token_hash(raw_token),
-                    created_at=now,
-                    expires_at=now + timedelta(hours=settings.invitation_expire_hours),
-                )
-            )
+            await _rotate_invitation(session, user_id=user.id, raw_token=raw_token, now=now)
             # Si SMTP falla, la transacción se revierte: no queda una
             # cuenta fantasma que el invitado no pueda activar.
             await send_invitation(
@@ -118,6 +131,45 @@ async def invite_user(*, email: str, name: str, role: str) -> dict:
         "role": user.role,
         "is_active": user.is_active,
     }
+
+
+async def issue_invitation_link(user_id: int) -> dict:
+    """Enlace de invitación para entregar a mano (WhatsApp, en persona) cuando
+    el correo no llega o no está configurado. Reemplaza al que se mandó por
+    correo, así que solo circula el último que el admin pidió."""
+
+    # Sin URL canónica no hay enlace que dar: se comprueba antes de tocar la base.
+    public_app_url()
+    now = datetime.now(timezone.utc)
+    raw_token = _new_token()
+    async with session_scope() as session:
+        user = (
+            await session.execute(select(User).where(User.id == user_id).with_for_update())
+        ).scalar_one_or_none()
+        if user is None:
+            raise InvalidActionTokenError()
+        if user.is_active:
+            raise UserAlreadyActiveError()
+        expires_at = await _rotate_invitation(session, user_id=user.id, raw_token=raw_token, now=now)
+    return {"url": invitation_url(raw_token), "expires_at": expires_at}
+
+
+async def revoke_pending_invitations(user_id: int) -> None:
+    """Al cambiar el correo de alguien que todavía no entró, el enlace que se
+    mandó a la dirección anterior deja de valer: quien lo tenga no debe poder
+    activar la cuenta a nombre del correo nuevo."""
+
+    now = datetime.now(timezone.utc)
+    async with session_scope() as session:
+        await session.execute(
+            update(AuthActionToken)
+            .where(
+                AuthActionToken.user_id == user_id,
+                AuthActionToken.purpose == INVITATION,
+                AuthActionToken.used_at.is_(None),
+            )
+            .values(used_at=now)
+        )
 
 
 async def request_password_reset(email: str) -> None:

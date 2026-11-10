@@ -24,9 +24,12 @@ export interface CreateUserPayload {
 
 export interface UpdateUserPayload {
   id: number
+  email?: string
   role?: UserRole
   is_active?: boolean
 }
+
+export type InvitationLink = Delivered<ApiSchemas['InvitationLinkOut']>
 
 /** Con Meta Cloud API no hay ciclo de QR: el número está vinculado o faltan
  * las credenciales. */

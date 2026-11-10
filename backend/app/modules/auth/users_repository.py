@@ -95,8 +95,9 @@ async def count_active_admins(exclude_user_id: int | None = None) -> int:
 
 
 async def update_user(user_id: int, values: dict) -> dict | None:
-    """values puede traer 'role' y/o 'is_active'. Si el cambio dejaría sin
-    ningún admin activo, se rechaza con LastAdminError antes de aplicarlo."""
+    """values puede traer 'email', 'role' y/o 'is_active'. Si el cambio dejaría
+    sin ningún admin activo, se rechaza con LastAdminError antes de aplicarlo;
+    un correo que ya usa otra cuenta, con EmailAlreadyExistsError."""
     demotes_or_deactivates = values.get("role") not in (None, "admin") or values.get("is_active") is False
     if demotes_or_deactivates:
         user = await get_user_by_id(user_id)
@@ -109,10 +110,13 @@ async def update_user(user_id: int, values: dict) -> dict | None:
 
     stmt = update(User).where(User.id == user_id).values(**values)
     async with session_scope() as session:
-        result = await session.execute(stmt)
-        if result.rowcount == 0:
-            return None
-        await session.flush()
+        try:
+            result = await session.execute(stmt)
+            if result.rowcount == 0:
+                return None
+            await session.flush()
+        except IntegrityError:
+            raise EmailAlreadyExistsError(values.get("email"))
 
     user = await get_user_by_id(user_id)
     return _row_to_user(user) if user else None

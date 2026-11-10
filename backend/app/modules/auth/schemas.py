@@ -82,8 +82,13 @@ class CreateUserRequest(BaseModel):
     role: str = "vendedor"
 
 class UpdateUserRequest(BaseModel):
+    email: str | None = Field(default=None, min_length=3, max_length=254)
     role: str | None = None
     is_active: bool | None = None
+
+class InvitationLinkOut(BaseModel):
+    url: str
+    expires_at: datetime
 
 class MfaStatusOut(BaseModel):
     enabled: bool

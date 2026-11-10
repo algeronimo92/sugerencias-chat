@@ -1,10 +1,19 @@
-import { BarChart3, Check, Loader2, Mail, ShieldCheck, User as UserIcon } from 'lucide-react'
+import { BarChart3, Check, Link2, Loader2, Mail, Pencil, ShieldCheck, User as UserIcon } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import type { UserRole } from '../../../shared/types'
 import { Select } from '../../../shared/ui/Input'
+import { copyText } from '../../../shared/utils/clipboard'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
-import { useCreateUser, useResendInvitation, useSendPasswordReset, useUpdateUser, useUsers } from '../hooks/useUsers'
+import {
+  useCreateInvitationLink,
+  useCreateUser,
+  useResendInvitation,
+  useSendPasswordReset,
+  useUpdateUser,
+  useUsers,
+} from '../hooks/useUsers'
 import type { AppUser } from '../types'
 const FIELD_CLASS =
   'w-full text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark'
@@ -100,13 +109,120 @@ function EmailAccessControl({ user }: { user: AppUser }) {
   )
 }
 
+function InvitationLinkControl({ user }: { user: AppUser }) {
+  const link = useCreateInvitationLink()
+
+  async function handleCopy() {
+    let issued: { url: string; expires_at: string }
+    try {
+      issued = await link.mutateAsync(user.id)
+    } catch (err) {
+      toast.error(extractErrorMessage(err))
+      return
+    }
+    const expiry = new Date(issued.expires_at).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' })
+    const description = `Vence el ${expiry}. El enlace que se mandó antes por correo dejó de valer.`
+    if (await copyText(issued.url)) {
+      toast.success('Enlace de invitación copiado', { description })
+      return
+    }
+    // Sin portapapeles, el enlace se muestra entero para seleccionarlo a mano.
+    toast.error('No se pudo copiar el enlace', { description: issued.url, duration: 15000 })
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      disabled={link.isPending}
+      className="flex items-center gap-1 text-xs text-wa-muted transition-colors hover:text-wa-primary-strong disabled:opacity-50 dark:text-wa-muted-dark dark:hover:text-wa-primary"
+    >
+      {link.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
+      Copiar enlace
+    </button>
+  )
+}
+
+function EmailEditor({
+  user,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  user: AppUser
+  onSave: (email: string) => void
+  onCancel: () => void
+  isPending: boolean
+}) {
+  const [email, setEmail] = useState(user.email)
+  const unchanged = email.trim().toLowerCase() === user.email
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (unchanged) onCancel()
+        else onSave(email.trim())
+      }}
+      className="mt-1 flex items-center gap-1.5"
+    >
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        autoFocus
+        required
+        aria-label="Correo"
+        className={`${FIELD_CLASS} py-1 text-xs`}
+      />
+      <button
+        type="submit"
+        disabled={isPending}
+        className="shrink-0 rounded-md bg-wa-primary px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-wa-primary-strong disabled:opacity-50"
+      >
+        {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Guardar'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={isPending}
+        className="shrink-0 rounded-md border border-wa-border px-2 py-1 text-xs text-gray-600 transition-colors hover:bg-wa-hover disabled:opacity-50 dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"
+      >
+        Cancelar
+      </button>
+    </form>
+  )
+}
+
 function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
-  const { mutate: updateUser, isPending, error } = useUpdateUser()
+  const { mutate: updateUser, isPending, error, reset } = useUpdateUser()
+  const [editingEmail, setEditingEmail] = useState(false)
+
+  function saveEmail(email: string) {
+    updateUser(
+      { id: user.id, email },
+      {
+        onSuccess: (saved) => {
+          setEditingEmail(false)
+          if (!saved.is_active) {
+            toast.info('Correo actualizado', {
+              description: 'La invitación enviada al correo anterior dejó de valer: reenvíala o copia un enlace nuevo.',
+            })
+          }
+        },
+      }
+    )
+  }
+
+  function cancelEmail() {
+    reset()
+    setEditingEmail(false)
+  }
 
   return (
     <div className="border border-wa-border dark:border-wa-border-dark rounded-lg p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-wa-text dark:text-wa-text-dark truncate flex items-center gap-1.5">
             {user.role === 'admin' ? (
               <ShieldCheck className="w-3.5 h-3.5 text-wa-primary-strong dark:text-wa-primary shrink-0" />
@@ -118,7 +234,22 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
             {user.name}
             {isSelf && <span className="text-[10px] text-wa-muted font-normal">(tú)</span>}
           </p>
-          <p className="text-xs text-wa-muted dark:text-wa-muted-dark truncate">{user.email}</p>
+          {editingEmail ? (
+            <EmailEditor user={user} onSave={saveEmail} onCancel={cancelEmail} isPending={isPending} />
+          ) : (
+            <p className="flex items-center gap-1 text-xs text-wa-muted dark:text-wa-muted-dark">
+              <span className="truncate">{user.email}</span>
+              <button
+                type="button"
+                onClick={() => setEditingEmail(true)}
+                aria-label={`Cambiar el correo de ${user.name}`}
+                title="Cambiar correo"
+                className="shrink-0 rounded p-0.5 transition-colors hover:text-wa-primary-strong dark:hover:text-wa-primary"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </p>
+          )}
         </div>
         {!user.is_active && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-wa-field dark:bg-wa-head-dark text-wa-muted dark:text-wa-muted-dark font-medium shrink-0">
@@ -151,7 +282,10 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
             {user.is_active ? 'Desactivar' : 'Activar'}
           </button>
         </div>
-        <EmailAccessControl user={user} />
+        <div className="flex items-center gap-3">
+          {!user.is_active && <InvitationLinkControl user={user} />}
+          <EmailAccessControl user={user} />
+        </div>
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -28,6 +28,12 @@ export async function sendPasswordReset(id: number) {
 export async function resendInvitation(id: number): Promise<AppUser> {
   return (
       await client.post<ApiResponse<'/api/users/{user_id}/resend-invitation', 'post'>>(`/api/users/${id}/resend-invitation`)
+    ).data
+}
+
+export async function createInvitationLink(id: number): Promise<InvitationLink> {
+  return (
+      await client.post<ApiResponse<'/api/users/{user_id}/invitation-link', 'post'>>(`/api/users/${id}/invitation-link`)
     ).data
 }
 
