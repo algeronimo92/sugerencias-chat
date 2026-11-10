@@ -4632,6 +4632,14 @@ export interface components {
             /** Rate */
             rate?: number | null;
         };
+        /**
+         * DashboardLegacySales
+         * @description Lo único que la versión anterior de la app lee del bloque de ventas.
+         */
+        DashboardLegacySales: {
+            /** Currency */
+            currency?: string | null;
+        };
         /** DashboardLinkage */
         DashboardLinkage: {
             /** Total */
@@ -4682,6 +4690,7 @@ export interface components {
             pipeline: components["schemas"]["DashboardPipeline"];
             /** Currency */
             currency?: string | null;
+            sales: components["schemas"]["DashboardLegacySales"];
             automations: components["schemas"]["DashboardAutomations"];
             tags: components["schemas"]["DashboardTags"];
             appointments: components["schemas"]["DashboardAppointments"];

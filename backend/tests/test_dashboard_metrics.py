@@ -248,7 +248,9 @@ async def test_currency_only_passes_iso_codes(monkeypatch):
 async def test_payload_carries_the_business_currency(compiled_sql):
     data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
     assert data["currency"] == "PEN"
-    assert "sales" not in data
+    # La versión anterior de la app lee `sales.currency`: sin esto su pestaña
+    # Ventas se rompía hasta que se actualizara.
+    assert data["sales"] == {"currency": "PEN"}
 
 
 

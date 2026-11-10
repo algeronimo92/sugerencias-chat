@@ -403,6 +403,11 @@ class DashboardActivity(BaseModel):
     messages: DashboardMessages
 
 
+class DashboardLegacySales(BaseModel):
+    """Lo único que la versión anterior de la app lee del bloque de ventas."""
+    currency: str | None = None
+
+
 class DashboardMetrics(BaseModel):
     period_days: int
     scope: Literal["mine", "team"]
@@ -417,6 +422,11 @@ class DashboardMetrics(BaseModel):
     # Código ISO 4217 del perfil del negocio, o None si no lo configuró o no
     # es un código válido: los importes van entonces sin moneda.
     currency: str | None = None
+    # Compatibilidad con la versión anterior de la app, que leía la moneda de
+    # `sales.currency`. Al borrar el bloque de ventas, quien tenía esa versión
+    # guardada veía romperse la pestaña Ventas (2026-11-10). Solo trae la
+    # moneda; se puede quitar cuando no quede nadie con esa versión.
+    sales: "DashboardLegacySales"
     automations: DashboardAutomations
     tags: DashboardTags
     appointments: DashboardAppointments
