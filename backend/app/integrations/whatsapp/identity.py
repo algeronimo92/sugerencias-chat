@@ -10,7 +10,6 @@ nunca deriva uno del otro.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -122,19 +121,14 @@ def _display_username(username: str | None) -> str | None:
     return "@" + username.lstrip("@") if username else None
 
 
-def _useful_name(value: str | None) -> str | None:
-    value = _clean(value)
-    # Los números encerrados en teclas también son emojis, no un nombre.
-    without_keycaps = re.sub(r"[0-9#*]\ufe0f?\u20e3", "", value or "")
-    return value if any(char.isalnum() for char in without_keycaps) else None
-
-
-def _contact_name(current: str | None, incoming: str | None, phone: str | None, username: str | None) -> str | None:
-    """El teléfono provisional cede su lugar cuando llega un nombre real."""
-    current_name = _useful_name(current)
+def _contact_name(current: str | None, incoming: str | None, phone: str | None) -> str | None:
+    """Guarda solo nombres recibidos; el respaldo con teléfono es de la UI."""
+    current_name = _clean(current)
     if current_name and current_name != phone:
         return current_name
-    return _useful_name(incoming) or (phone if not _useful_name(username) else current_name)
+    # Permite reparar un teléfono provisional previo cuando llega el perfil.
+    # Un eco sin perfil no borra ni inventa nombres.
+    return _clean(incoming) or current_name
 
 
 def _alias_filter(identity: ContactIdentity):
@@ -186,7 +180,7 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
                 return None
             lead = Lead(
                 telefono=identity.wa_id,
-                nombre=_contact_name(None, identity.profile_name, identity.wa_id, identity.username),
+                nombre=_contact_name(None, identity.profile_name, identity.wa_id),
                 nombre_usuario=_display_username(identity.username),
                 created_at=now,
                 updated_at=now,
@@ -204,7 +198,7 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
             lead.nombre_usuario = username
             lead.updated_at = now
 
-        name = _contact_name(lead.nombre, identity.profile_name, lead.telefono, lead.nombre_usuario)
+        name = _contact_name(lead.nombre, identity.profile_name, lead.telefono)
         if name != lead.nombre:
             lead.nombre = name
             lead.updated_at = now

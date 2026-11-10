@@ -57,3 +57,13 @@ export const EstadoVacio: Story = {
     </Card>
   ),
 }
+
+export const AyudasContextuales: Story = {
+  render: () => (
+    <Card className="flex min-h-64 w-[min(42rem,90vw)] flex-wrap items-center justify-center gap-4 p-8">
+      <Tooltip content="Configuración" side="top"><Button variant="secondary">Ayuda breve</Button></Tooltip>
+      <Tooltip content="Muestra las conversaciones que todavía esperan una respuesta de tu equipo." side="bottom"><Button variant="secondary">Ayuda descriptiva</Button></Tooltip>
+      <Tooltip content="Conversaciones" side="right"><Button variant="ghost">Ayuda lateral</Button></Tooltip>
+    </Card>
+  ),
+}
