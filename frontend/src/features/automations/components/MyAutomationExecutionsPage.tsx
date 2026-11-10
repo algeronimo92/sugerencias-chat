@@ -9,11 +9,9 @@ import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
-import { Select, fieldClass } from '../../../shared/ui/Input'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { StatChip } from '../../../shared/ui/StatChip'
 import { STAT_TONE_ICON as TONE_ICON, type StatTone } from '../../../shared/ui/tones'
-import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
 ACTIVE_EXECUTION_STATUSES,AutomationExecutionStatus,AutomationTrigger,automationStepLabel,
@@ -26,6 +24,8 @@ import { executionStatusLabel, executionTriggerLabel, formatExecutionDate, isMan
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
+import { PERIODS, type PeriodKey, type SenderKey } from '../domain/executionHistoryFilters'
+import { ExecutionHistoryFilters } from './ExecutionHistoryFilters'
 
 /* ---------------------------------------------------------------------------
  * Vocabulario de la pantalla
@@ -39,7 +39,6 @@ import { useUsers } from '../../platform/public/useUsers'
 
 type Tone = StatTone
 type GroupKey = 'all' | 'active' | 'completed' | 'failed' | 'skipped'
-type PeriodKey = 'today' | 'week' | 'month' | 'custom'
 
 interface StatusGroup {
   key: GroupKey
@@ -83,13 +82,6 @@ const STATUS_GROUPS: readonly StatusGroup[] = [
     icon: SkipForward, tone: 'warning',
     matches: status => status === AutomationExecutionStatus.Skipped,
   },
-]
-
-const PERIODS: readonly { key: PeriodKey; label: string; offset: number | null }[] = [
-  { key: 'today', label: 'Hoy', offset: 0 },
-  { key: 'week', label: '7 días', offset: -6 },
-  { key: 'month', label: '30 días', offset: -29 },
-  { key: 'custom', label: 'Otro', offset: null },
 ]
 
 const BADGE_VARIANT: Record<Tone, 'neutral' | 'info' | 'success' | 'danger' | 'warning'> = {
@@ -352,9 +344,6 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
 
 /* ------------------------------------------------------------------ página */
 
-/** A quién pertenecen los envíos listados: 'me', 'team' o el id de una persona. */
-type SenderKey = 'me' | 'team' | number
-
 /** Historial de flujos iniciados a mano: los propios y, para el admin, los
  *  del equipo. */
 export function MyAutomationExecutionsPage() {
@@ -450,73 +439,20 @@ export function MyAutomationExecutionsPage() {
           </p>
         </header>
 
-        <section aria-label="Filtros del historial" className="mt-6 rounded-xl border border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-            <div className="min-w-0">
-              <p className="mb-2 text-sm font-semibold text-wa-text dark:text-wa-text-dark">Período</p>
-              <div role="group" aria-label="Período del historial" className="inline-flex max-w-full rounded-lg border border-wa-border bg-wa-app p-1 dark:border-wa-border-dark dark:bg-wa-app-dark">
-                {PERIODS.map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => selectPeriod(item.key)}
-                    aria-pressed={period === item.key}
-                    className={`min-h-10 rounded-md px-3 text-sm font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${
-                      period === item.key
-                        ? 'bg-white font-semibold text-wa-text shadow-sm dark:bg-wa-head-dark dark:text-wa-text-dark'
-                        : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="block min-w-0 flex-1 lg:max-w-xs">
-              <span className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">Flujo</span>
-              <Select
-                value={ruleId ?? ''}
-                onChange={event => setRuleId(event.target.value ? Number(event.target.value) : null)}
-                className="min-h-10 w-full border-wa-border bg-white shadow-none dark:border-wa-border-dark dark:bg-wa-panel-dark"
-              >
-                <option value="">Todos los flujos</option>
-                {flows.map(flow => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
-              </Select>
-            </label>
-
-            {isAdmin && (
-              <label className="block min-w-0 flex-1 lg:max-w-xs">
-                <span className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">Enviado por</span>
-                <Select
-                  value={String(sender)}
-                  onChange={event => {
-                    const value = event.target.value
-                    setSenderChoice(value === 'team' || value === 'me' ? value : Number(value))
-                  }}
-                  className="min-h-10 w-full border-wa-border bg-white shadow-none dark:border-wa-border-dark dark:bg-wa-panel-dark"
-                >
-                  <option value="team">Todo el equipo</option>
-                  <option value="me">Yo</option>
-                  {otherUsers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </Select>
-              </label>
-            )}
-          </div>
-
-          {period === 'custom' && (
-            <div className="mt-4 flex flex-col gap-3 border-t border-wa-border pt-4 sm:flex-row dark:border-wa-border-dark">
-              <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark sm:max-w-48">
-                Desde
-                <input type="date" value={customFrom} max={customTo} onChange={event => setCustomFrom(event.target.value)} className={cn(fieldClass, 'min-h-10 w-full border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark')} />
-              </label>
-              <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark sm:max-w-48">
-                Hasta
-                <input type="date" value={customTo} min={customFrom} max={todayISODate()} onChange={event => setCustomTo(event.target.value)} className={cn(fieldClass, 'min-h-10 w-full border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark')} />
-              </label>
-            </div>
-          )}
-        </section>
+        <ExecutionHistoryFilters
+          period={period}
+          onPeriodChange={selectPeriod}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustomFromChange={setCustomFrom}
+          onCustomToChange={setCustomTo}
+          flows={flows}
+          ruleId={ruleId}
+          onRuleChange={setRuleId}
+          senderOptions={isAdmin ? otherUsers : null}
+          sender={sender}
+          onSenderChange={setSenderChoice}
+        />
 
         {executions.length > 0 && !isError && (
           <section aria-label="Filtrar por estado" className="mt-5 flex flex-wrap gap-2">
