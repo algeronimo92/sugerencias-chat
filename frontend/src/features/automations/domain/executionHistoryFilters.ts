@@ -3,9 +3,8 @@
 
 export type PeriodKey = 'today' | 'week' | 'month' | 'custom'
 
-/** A quién pertenecen los envíos listados: 'me', 'team', 'system' (los que
- *  arrancó un disparador) o el id de una persona. */
-export type SenderKey = 'me' | 'team' | 'system' | number
+/** A quién pertenecen los envíos listados: 'me', 'team' o el id de una persona. */
+export type SenderKey = 'me' | 'team' | number
 
 export const PERIODS: readonly { key: PeriodKey; label: string; offset: number | null }[] = [
   { key: 'today', label: 'Hoy', offset: 0 },

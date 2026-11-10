@@ -17,7 +17,7 @@ import {
 ACTIVE_EXECUTION_STATUSES,AutomationExecutionStatus,AutomationTrigger,automationStepLabel,
 isServiceWindowFailure,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
-import { useAutomationExecutions, useAutomationRuleSummaries, useCancelExecution, useManualFlows } from '../queries'
+import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 import { followedBranchText } from '../domain/flowBranches'
 import { executionStatusLabel, executionTriggerLabel, formatExecutionDate, isManuallyCancelled } from '../utils/automationExecutions'
@@ -348,7 +348,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
  *  del equipo. */
 export function MyAutomationExecutionsPage() {
   const navigate = useNavigate()
-  const { data: manualFlows = [] } = useManualFlows()
+  const { data: flows = [] } = useManualFlows()
   const cancelExecution = useCancelExecution()
 
   const [period, setPeriod] = useState<PeriodKey>('today')
@@ -366,18 +366,6 @@ export function MyAutomationExecutionsPage() {
   const sender: SenderKey = isAdmin ? senderChoice ?? 'team' : 'me'
   const otherUsers = users.filter(item => item.id !== me?.id)
   const senderName = typeof sender === 'number' ? users.find(item => item.id === sender)?.name ?? null : null
-  const isSystem = sender === 'system'
-  // Un disparador puede arrancar cualquier flujo, no solo los que se ofrecen
-  // en "Iniciar flujo": con la lista manual, el filtro Flujo quedaba corto.
-  const { data: allFlows = [] } = useAutomationRuleSummaries({ enabled: isSystem })
-  const flows = isSystem ? allFlows : manualFlows
-  const senderSummary = sender === 'team' ? 'Todo el equipo' : isSystem ? 'Automáticos' : senderName
-
-  function selectSender(next: SenderKey) {
-    // Las dos vistas listan flujos distintos: el elegido puede no existir en la otra.
-    if ((next === 'system') !== isSystem) setRuleId(null)
-    setSenderChoice(next)
-  }
 
   const preset = PERIODS.find(item => item.key === period)
   const dateFrom = period === 'custom' ? customFrom : isoDateOffset(preset?.offset ?? 0)
@@ -387,7 +375,6 @@ export function MyAutomationExecutionsPage() {
     mine: sender === 'me',
     startedBy: typeof sender === 'number' ? sender : undefined,
     team: sender === 'team' || undefined,
-    automatic: isSystem || undefined,
     ruleId: ruleId ?? undefined,
     dateFrom,
     dateTo,
@@ -464,7 +451,7 @@ export function MyAutomationExecutionsPage() {
           onRuleChange={setRuleId}
           senderOptions={isAdmin ? otherUsers : null}
           sender={sender}
-          onSenderChange={selectSender}
+          onSenderChange={setSenderChoice}
         />
 
         {executions.length > 0 && !isError && (
@@ -492,7 +479,7 @@ export function MyAutomationExecutionsPage() {
               <p aria-live="polite" className="mt-0.5 text-sm text-wa-muted dark:text-wa-muted-dark">
                 {isLoading
                   ? 'Cargando envíos…'
-                  : `${visible.length} ${visible.length === 1 ? 'envío' : 'envíos'} · ${periodSummary}${flowName ? ` · ${flowName}` : ''}${senderSummary ? ` · ${senderSummary}` : ''}`}
+                  : `${visible.length} ${visible.length === 1 ? 'envío' : 'envíos'} · ${periodSummary}${flowName ? ` · ${flowName}` : ''}${sender === 'team' ? ' · Todo el equipo' : senderName ? ` · ${senderName}` : ''}`}
               </p>
             </div>
             <div className="flex items-center gap-1">
