@@ -461,17 +461,17 @@ export function ChatWorkspace() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 32, stiffness: 320 }}
-              aria-label="Sugerencias del lead"
+              aria-label="Ficha del lead"
               className="fixed inset-y-0 right-0 z-76 flex w-full max-w-md flex-col overflow-hidden border-l border-wa-border bg-wa-app pt-safe dark:border-wa-border-dark dark:bg-wa-panel-dark"
             >
               <div className="flex h-12 shrink-0 items-center justify-between border-b border-wa-border px-3 dark:border-wa-border-dark">
                 <span className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                  Sugerencias
+                  Ficha del lead
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsSuggestionsOpen(false)}
-                  aria-label="Cerrar sugerencias"
+                  aria-label="Cerrar ficha del lead"
                   className="flex h-11 w-11 items-center justify-center rounded-lg text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
                 >
                   <X className="h-5 w-5" />

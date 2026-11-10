@@ -43,7 +43,10 @@ export function LeadSalesSection({ chat }: { chat: Chat }) {
           Compras
           {sales.length > 0 && <span className="normal-case tracking-normal">· total {formatAmount(saleTotal(sales))}</span>}
         </h4>
-        <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
+        {/* Discreto a propósito: la venta se registra al separar la cita y esto
+            quedó para los negocios que además anotan el paquete. Con el verde
+            de acción competía con "Separar cita", justo debajo. */}
+        <button type="button" onClick={() => setAdding(true)} className="inline-flex min-h-6 items-center gap-1 rounded text-xs font-medium text-wa-muted hover:text-wa-text hover:underline dark:text-wa-muted-dark dark:hover:text-wa-text-dark">
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           Registrar compra
         </button>

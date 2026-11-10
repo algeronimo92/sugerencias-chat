@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X, Zap, ZapOff } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, PanelRight, X, Zap, ZapOff } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useActivityHold } from '../../../shared/activity'
@@ -7,6 +7,7 @@ import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
 import { LeadAutomationPanel } from '../../automations/public/LeadAutomationPanel'
 import { FlowPicker } from '../../automations/public/FlowPicker'
+import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {
@@ -420,14 +421,22 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           >
             {chat.automatizacion_pausada ? <ZapOff className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
           </button>
+          {/* Separar la cita es la venta: se llega en un toque desde la
+              conversación, sin pasar por la ficha. */}
+          <LeadAppointmentAction chat={chat} variant="header" />
           {onOpenSuggestions && (
             <button
               type="button"
               onClick={onOpenSuggestions}
-              aria-label="Ver sugerencias del lead"
+              // Abre la ficha del lead, que además trae el copiloto. Antes era
+              // un ícono de estrellas: prometía IA y abría sobre todo la ficha,
+              // así que nadie lo buscaba para agendar. Las estrellas quedan
+              // para la IA, dentro del panel.
+              aria-label="Abrir ficha del lead"
+              title="Ficha del lead"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
             >
-              <Sparkles className="h-5 w-5" />
+              <PanelRight className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>

@@ -13,6 +13,8 @@ import { LeadTagsPanel } from '../../leads/public/LeadTagsPanel'
 import { LeadTaskCard } from '../../tasks/public/LeadTaskCard'
 import { LeadAnalysisAction } from '../../ai/public/LeadAnalysisAction'
 import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
+import { useLeadPanelTab } from '../hooks/useLeadPanelTab'
+import { LeadPanelTabs } from './LeadPanelTabs'
 import { SuggestionCard } from './SuggestionCard'
 import { SuggestionInstructionBox } from '../../ai/public/SuggestionInstructionBox'
 import { Link } from 'react-router-dom'
@@ -48,33 +50,12 @@ interface Props {
   onUse?: () => void
 }
 
-// Plegar el copiloto es una preferencia de quien usa este navegador, no del
-// lead: queda igual al cambiar de chat y al volver a entrar.
-const COLLAPSED_KEY = 'copiloto-ia-plegado'
-
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function useCollapsed() {
-  const [collapsed, setCollapsed] = useState(readCollapsed)
-  function toggle() {
-    const next = !collapsed
-    setCollapsed(next)
-    // Fuera del updater: React puede ejecutarlo dos veces.
-    try {
-      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
-    } catch {
-      // localStorage bloqueado: el plegado vale solo para esta visita.
-    }
-  }
-  return [collapsed, toggle] as const
-}
-
+/**
+ * Ficha del lead y copiloto IA en dos pestañas. Antes eran un solo scroll con
+ * el copiloto arriba: "Agendar cita" quedaba cuarto y había que buscarlo, y el
+ * botón que abría el panel era un ícono de IA. La ficha abre con "Separar
+ * cita", que es la venta del negocio.
+ */
 export function SuggestionPanel(props: Props) {
   const { chat } = props
   // Indicación opcional del asesor para la IA. Vive acá porque los tres CTA
@@ -82,7 +63,7 @@ export function SuggestionPanel(props: Props) {
   // regeneraciones del mismo lead y se descarta al cambiar de chat.
   const [instruction, setInstruction] = useState('')
   useEffect(() => setInstruction(''), [chat.chat_id])
-  const [collapsed, toggleCollapsed] = useCollapsed()
+  const [tab, setTab] = useLeadPanelTab()
   // Con la ventana de 24 h cerrada solo salen plantillas aprobadas: generar
   // texto libre gastaba IA en algo que no se podía enviar.
   const { data: customerWindow } = useCustomerServiceWindow(chat.chat_id)
@@ -94,71 +75,36 @@ export function SuggestionPanel(props: Props) {
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-wa-panel-dark">
-      <CopilotHeader
-        collapsed={collapsed}
-        onToggle={toggleCollapsed}
-        canRegenerate={Boolean(props.data) && !props.unavailable && !collapsed && !windowClosed}
+      <LeadPanelTabs
+        tab={tab}
+        onChange={setTab}
+        canRegenerate={tab === 'copiloto' && Boolean(props.data) && !props.unavailable && !windowClosed}
         isGenerating={props.isGenerating}
         onRegenerate={() => generate(true)}
       />
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        {!collapsed && (
+      <div
+        role="tabpanel"
+        id={`panel-lead-${tab}`}
+        aria-labelledby={`tab-lead-${tab}`}
+        className="flex-1 space-y-3 overflow-y-auto p-3"
+      >
+        {tab === 'copiloto' ? (
           <section id="copiloto-ia" aria-label="Sugerencias con IA" className="space-y-3">
             <CopilotBody {...props} instruction={instruction} onInstructionChange={setInstruction} onGenerate={generate} windowClosed={windowClosed} />
           </section>
-        )}
-
-        {/* Ficha CRM del lead: siempre visible, debajo de la IA */}
-        <div className="pt-1">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-wa-muted/80 dark:text-wa-muted-dark/80">
-            Ficha del lead
-          </h3>
+        ) : (
           <div className="space-y-3">
-            <LeadAnalysisAction chatId={chat.chat_id} />
-            <LeadInfo chat={chat} />
             <LeadAppointmentAction chat={chat} />
+            <LeadInfo chat={chat} />
+            <LeadAnalysisAction chatId={chat.chat_id} />
             <LeadTaskCard chat={chat} />
             <ScheduledMessageCard chat={chat} />
             <LeadTagsPanel chat={chat} />
             <LeadActivityPanel chatId={chat.chat_id} />
           </div>
-        </div>
+        )}
       </div>
-    </div>
-  )
-}
-
-function CopilotHeader({ collapsed, onToggle, canRegenerate, isGenerating, onRegenerate }: {
-  collapsed: boolean
-  onToggle: () => void
-  canRegenerate: boolean
-  isGenerating: boolean
-  onRegenerate: () => void
-}) {
-  return (
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-wa-border px-3 dark:border-wa-border-dark">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        aria-controls="copiloto-ia"
-        className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-wa-hover dark:hover:bg-wa-hover-dark"
-      >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
-          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-        </span>
-        <span className="text-xs font-bold text-wa-text dark:text-white">Copiloto IA</span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-wa-muted transition-transform ${collapsed ? '-rotate-90' : ''}`} aria-hidden="true" />
-        <span className="sr-only">{collapsed ? 'Mostrar sugerencias' : 'Ocultar sugerencias'}</span>
-      </button>
-      {/* "Otras" solo tiene sentido con sugerencias ya generadas. */}
-      {canRegenerate && (
-        <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isGenerating} title="Generar un juego nuevo de sugerencias" className="ml-auto">
-          <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse text-wa-primary' : ''}`} aria-hidden="true" />
-          Genera otras
-        </Button>
-      )}
     </div>
   )
 }
