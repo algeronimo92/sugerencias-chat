@@ -32,7 +32,6 @@ import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
 import { FlowEventCard } from './FlowEventCard'
-import { SaleCard } from './SaleCard'
 import { StageChangeCard } from './StageChangeCard'
 import { originGroupKey, originLabel } from '../domain/messageOrigin'
 
@@ -503,9 +502,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
               if (item.kind === 'activity') {
                 return (
                   <Fragment key={item.key}>
-                    {item.activity.event_type === 'stage_changed'
-                      ? <StageChangeCard activity={item.activity} />
-                      : <SaleCard activity={item.activity} />}
+                    <StageChangeCard activity={item.activity} />
                   </Fragment>
                 )
               }

@@ -25,8 +25,6 @@ export const leadKeys = {
   /** Los valores de los campos personalizados de un lead. */
   customFieldValues: (leadId: string | null) => ['lead-custom-fields', leadId] as const,
   /** Las compras del lead (con qué paquete cerró). */
-  salesAll: ['lead-sales'] as const,
-  sales: (chatId: string | null) => ['lead-sales', chatId] as const,
 }
 
 export const kanbanKeys = {

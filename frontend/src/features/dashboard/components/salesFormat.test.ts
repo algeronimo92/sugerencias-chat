@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSeries, percentChange, pointsChange, sparkSeries } from './salesFormat'
+import { compareSeries, percentChange, sparkSeries } from './salesFormat'
 
 const day = (date: string, count: number, revenue: number) => ({ date, count, revenue })
 
@@ -13,14 +13,6 @@ describe('percentChange', () => {
     expect(percentChange(150, 100)).toEqual({ direction: 'up', label: '▲ +50%' })
     expect(percentChange(80, 100)).toEqual({ direction: 'down', label: '▼ -20%' })
     expect(percentChange(100, 100)).toEqual({ direction: 'flat', label: 'Igual' })
-  })
-})
-
-describe('pointsChange', () => {
-  it('mide una tasa en puntos, no en porcentaje de porcentaje', () => {
-    expect(pointsChange(6, 4).label).toBe('▲ +2 pts')
-    expect(pointsChange(0, 0).direction).toBe('flat')
-    expect(pointsChange(3, null).direction).toBe('none')
   })
 })
 

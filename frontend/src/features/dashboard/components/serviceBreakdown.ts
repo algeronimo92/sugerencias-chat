@@ -1,20 +1,19 @@
 /** Arma las series por tratamiento para las barras apiladas, las líneas y la
  *  torta. Vive aparte del componente por el fast refresh y para probarlo sin
  *  dibujar: Recharts no renderiza en jsdom. */
-import type { DashboardMetrics, DashboardSales } from '../types'
+import type { DashboardMetrics } from '../types'
 
 export type ServiceMetric = 'count' | 'revenue'
 
 /** Lo que el panel necesita de cualquier fuente: el ranking del período (ya
  *  ordenado) y las cifras por día, con la misma clave. */
 export interface BreakdownSource {
-  /** `count` viene en las separaciones; en ventas el orden es por ingresos. */
-  ranking: { key: string; name: string; count?: number }[]
+  ranking: { key: string; name: string; count: number }[]
   daily: { date: string; key: string; count: number; revenue: number }[]
   /** Todos los días del período, en orden: define los tramos. */
   dates: string[]
   hasRevenue: boolean
-  /** Cómo se llama el monto: "Ingresos" en ventas, "Monto" en separaciones. */
+  /** Cómo se llama el monto en el selector de medida. */
   revenueLabel: string
   /** "vendido" o "agendado", para la frase-titular. */
   verb: string
@@ -43,22 +42,6 @@ export interface ServiceBucket {
 export const MAX_SERVICES = 5
 export const OTHER_KEY = 'otros'
 const COLORS = ['var(--viz-cat-1)', 'var(--viz-cat-2)', 'var(--viz-cat-3)', 'var(--viz-cat-4)', 'var(--viz-cat-5)']
-
-function serviceKey(item: { service_id: number | null; name: string }): string {
-  return item.service_id != null ? `id:${item.service_id}` : `nombre:${item.name}`
-}
-
-/** Ventas: el ranking viene ordenado por ingresos desde el backend. */
-export function fromSales(sales: DashboardSales): BreakdownSource {
-  return {
-    ranking: sales.by_service.map((item) => ({ key: serviceKey(item), name: item.name })),
-    daily: sales.by_service_daily.map((row) => ({ date: row.date, key: serviceKey(row), count: row.count, revenue: row.revenue })),
-    dates: sales.trend.map((point) => point.date),
-    hasRevenue: true,
-    revenueLabel: 'Ingresos',
-    verb: 'vendido',
-  }
-}
 
 /** Separaciones (citas agendadas): el backend ya agrupa las variantes de escritura en `key`.
  *  El ranking es por cantidad y el nombre, el que más se usó en el período. */

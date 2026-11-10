@@ -14,7 +14,6 @@ import { useLeadCustomFieldValues, useUpdateLeadCustomFieldValues } from '../hoo
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
 import { LeadFormDialog } from './LeadFormDialog'
-import { LeadSalesSection } from './LeadSalesSection'
 
 interface Props {
   chat: Chat
@@ -181,7 +180,6 @@ export function LeadInfo({ chat }: Props) {
         </div>
       )}
 
-      <LeadSalesSection chat={chat} />
 
       {chat.proxima_cita && (
         <div className="mt-3 pt-3 border-t border-wa-border dark:border-wa-border-dark">

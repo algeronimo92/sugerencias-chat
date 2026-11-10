@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MoveLeadStageInput, PageParam, LeadSale, LeadSaleInput } from './types'
+import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MoveLeadStageInput, PageParam } from './types'
 
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
@@ -63,27 +63,12 @@ export async function fetchKanbanStage(stage: LeadStage, search: string, offset:
   return data
 }
 
-export async function moveLeadStage({ chatId, stage, razonPerdido, sale }: MoveLeadStageInput): Promise<Chat> {
+export async function moveLeadStage({ chatId, stage, razonPerdido }: MoveLeadStageInput): Promise<Chat> {
   const { data } = await client.patch<ApiResponse<'/api/chats/{chat_id}/stage', 'patch'>>(`/api/chats/${encodeURIComponent(String(chatId))}/stage`, {
     stage,
     razon_perdido: razonPerdido ?? null,
-    sale: sale ?? null,
   })
   return data
-}
-
-export async function fetchLeadSales(chatId: string): Promise<LeadSale[]> {
-  const { data } = await client.get<ApiResponse<'/api/chats/{chat_id}/sales', 'get'>>(`/api/chats/${encodeURIComponent(chatId)}/sales`)
-  return data
-}
-
-export async function recordLeadSale({ chatId, ...sale }: { chatId: string } & LeadSaleInput): Promise<LeadSale> {
-  const { data } = await client.post<ApiResponse<'/api/chats/{chat_id}/sales', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/sales`, sale)
-  return data
-}
-
-export async function deleteLeadSale({ chatId, saleId }: { chatId: string; saleId: number }): Promise<void> {
-  await client.delete<ApiResponse<'/api/chats/{chat_id}/sales/{sale_id}', 'delete'>>(`/api/chats/${encodeURIComponent(chatId)}/sales/${saleId}`)
 }
 
 export function bulkMoveStage({ chatIds, stage, razonPerdido }: BulkMoveStageInput) {

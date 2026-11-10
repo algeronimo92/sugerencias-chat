@@ -13,11 +13,6 @@ vi.mock('../queries', () => ({
 vi.mock('../../catalogs/public/useCustomFields', () => ({
   useCustomFields: () => ({ data: [] }),
 }))
-vi.mock('../hooks/useLeadSales', () => ({
-  useLeadSales: () => ({ data: [], isLoading: false }),
-  useRecordLeadSale: () => ({ mutate: vi.fn(), isPending: false }),
-  useDeleteLeadSale: () => ({ mutate: vi.fn(), isPending: false }),
-}))
 vi.mock('../hooks/useLeadCustomFieldValues', () => ({
   useLeadCustomFieldValues: () => ({ data: {} }),
   useUpdateLeadCustomFieldValues: () => ({ mutate: vi.fn(), isPending: false }),
