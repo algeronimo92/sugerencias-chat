@@ -17,10 +17,17 @@ class User(Base):
     role: Mapped[str] = mapped_column(Text)  # "admin" | "vendedor" | "analista"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Nulo mientras la invitación sigue pendiente; distingue "nunca entró" de
+    # "entró y el admin lo desactivó", que ``is_active`` solo no puede.
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'vendedor', 'analista')", name="users_role_check"),
     )
+
+    @property
+    def invitation_pending(self) -> bool:
+        return not self.is_active and self.activated_at is None
 
 
 class AuthLoginThrottle(Base):

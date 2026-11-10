@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createUser, fetchUsers, resendInvitation, fetchSellers, sendPasswordReset, updateUser } from '../api'
+import { createInvitationLink, createUser, fetchUsers, resendInvitation, fetchSellers, sendPasswordReset, updateUser } from '../api'
 import { userKeys } from '../keys'
 
 export function useSellers({ enabled = true }: { enabled?: boolean } = {}) {
@@ -45,6 +45,14 @@ export function useResendInvitation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: resendInvitation,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: userKeys.all }),
+  })
+}
+
+export function useCreateInvitationLink() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createInvitationLink,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: userKeys.all }),
   })
 }
