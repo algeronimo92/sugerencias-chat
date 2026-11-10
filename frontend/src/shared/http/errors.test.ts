@@ -47,7 +47,7 @@ describe('ApiError', () => {
   })
 
   it('un 500 sin detalle no muestra el texto de axios', () => {
-    expect(extractErrorMessage(apiFailure(500))).toBe('El servidor tuvo un problema. Intentá de nuevo en unos minutos.')
+    expect(extractErrorMessage(apiFailure(500))).toBe('El servidor tuvo un problema. Intenta de nuevo en unos minutos.')
   })
 
   it('un error que no vino de un pedido no es ApiError', () => {

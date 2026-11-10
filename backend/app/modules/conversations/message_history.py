@@ -7,6 +7,7 @@ from app.db.models.conversations import MessageOutbox, WspMessage
 from app.modules.conversations.domain.reactions import MAX_PINNED_MESSAGES
 from app.modules.conversations.chat_rows import MESSAGES_PAGE_SIZE
 from app.modules.conversations.media_dimensions import complete_media_dimensions
+from app.modules.conversations.message_origin import attach_origins, facts_from_row
 from app.modules.conversations.message_serialization import serialize_message
 from app.db.uow import session_scope
 
@@ -82,6 +83,11 @@ async def fetch_messages(
                 # Motivo real de un envío que el outbox dio por fallido, para
                 # que la burbuja muestre algo más útil que "No enviado".
                 MessageOutbox.last_error,
+                # Hechos del origen del mensaje (ver message_origin.py): quién
+                # quedó acreditado, si salió por el outbox y con qué clave.
+                WspMessage.sent_by_user_id,
+                MessageOutbox.id.label("outbox_id"),
+                MessageOutbox.dedupe_key,
             )
             .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
             .where(WspMessage.chat_id == chat_id)
@@ -120,6 +126,7 @@ async def fetch_messages(
         }
         for r in page
     ]
+    items = await attach_origins(items, {r["id"]: facts_from_row(r) for r in page})
     return {"items": items, "has_more": has_more}
 
 
@@ -263,4 +270,4 @@ async def fetch_pinned_messages(chat_id: str) -> list[dict]:
     )
     async with session_scope() as session:
         rows = (await session.execute(stmt)).scalars().all()
-    return [serialize_message(row) for row in rows]
+    return await attach_origins([serialize_message(row) for row in rows])

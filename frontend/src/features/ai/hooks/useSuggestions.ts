@@ -30,7 +30,7 @@ export function useSuggestionStatus(chatId: string | null) {
 /**
  * Generación a demanda: el único camino que llama a la IA. Sin `force`
  * aprovecha la sugerencia vigente del backend si existe (gratis) y genera
- * solo si falta o quedó desactualizada; con `force: true` ("Generá otras")
+ * solo si falta o quedó desactualizada; con `force: true` ("Genera otras")
  * pide un juego nuevo ignorando lo guardado.
  */
 export function useGenerateSuggestions() {

@@ -41,6 +41,11 @@ jobs:
           # encuentra el proyecto React y el check pasaría en verde sin haber
           # mirado nada.
           directory: frontend
+          # En `main` el puntaje es del frontend entero ("49/100 · 1 error"), no
+          # de lo que se mergeó: como estado del commit aparecía junto al
+          # deploy y se leía como un fallo del cambio. Sigue en el log de la
+          # corrida; en los PR el estado sí se publica, porque ahí es solo lo nuevo.
+          commit-status: ${{ github.event_name == 'pull_request' }}
         # Advisory by default: React Doctor reports findings on every PR — a
         # sticky summary comment, inline review comments, and a commit status
         # with the health score — but never fails the check, so it won't red-X

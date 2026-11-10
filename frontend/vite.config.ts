@@ -6,6 +6,12 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // Identificador del build que la app escribe en consola al registrar el
+  // service worker y al aplicar una versión nueva. El Dockerfile lo recibe
+  // como VITE_BUILD_ID; sin él (desarrollo, tests) vale la hora del build.
+  define: {
+    __APP_BUILD__: JSON.stringify(process.env.VITE_BUILD_ID || new Date().toISOString()),
+  },
   server: {
     // Vite bloquea por defecto cualquier Host que no reconozca (protección
     // contra DNS rebinding). Sin esto, acceder al dev server a través de un

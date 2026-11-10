@@ -7,14 +7,17 @@ X,
 import { AnimatePresence, m } from "motion/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router-dom";
+import { readEditField } from "../../../shared/navigation/editFieldLink";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
+import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
 import { useLayout } from "../../../shared/hooks/useBreakpoint";
 import { Button } from "../../../shared/ui/Button";
 import { PageLoader } from "../../../shared/ui/PageLoader";
 import { Spinner } from "../../../shared/ui/Spinner";
 import { extractErrorMessage } from "../../../shared/utils/errors";
 import { hasOpenOverlay } from "../../../shared/utils/overlay";
+import { setPwaCurrentChatId } from "../../../shared/pwaUpdate";
 import {
 SuggestionError,
 useGenerateSuggestions,
@@ -118,11 +121,12 @@ function SuggestionsEmptyState() {
 
 export function ChatWorkspace() {
   const { data: me } = useMe();
+  const isAdmin = me?.role === "admin";
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
   const navigate = useNavigate();
   const location = useLocation();
   const handleSelectChat = useOpenChat();
-  const { chatFilters, openSettings } = useLayoutContext();
+  const { chatFilters, openIntegrations } = useLayoutContext();
   const {
     search,
     setSearch,
@@ -141,6 +145,11 @@ export function ChatWorkspace() {
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  // Se llegó a cambiar un dato del lead (?editar=…, p. ej. desde Catálogos):
+  // fuera de escritorio la ficha vive en el panel deslizable, que arranca
+  // cerrado; queda abierto mientras dure ese pedido.
+  const isEditingFromLink = readEditField(new URLSearchParams(location.search)) !== null;
+  const isLeadPanelOpen = isSuggestionsOpen || isEditingFromLink;
   const [previewChat, setPreviewChat] = useState<Chat | null>(null);
   const { data: unreadCount = 0 } = useUnreadCount();
 
@@ -181,7 +190,7 @@ export function ChatWorkspace() {
   const { data: suggestionStatus = null, isLoading: isSuggestionsLoading } =
     useSuggestionStatus(selectedChat?.chat_id ?? null);
 
-  // Única vía que llama a la IA: CTA "Generá sugerencias" / "Generá otras".
+  // Única vía que llama a la IA: CTA "Genera sugerencias" / "Genera otras".
   const generateSuggestionsMutation = useGenerateSuggestions();
   const isGeneratingForSelected =
     generateSuggestionsMutation.isPending &&
@@ -246,6 +255,13 @@ export function ChatWorkspace() {
     setIsSuggestionsOpen(false);
   }, [chatId]);
 
+  // El aviso de versión nueva se vuelve a ofrecer al cambiar de chat, y quien
+  // lo muestra vive fuera del router: se le cuenta por el store.
+  useEffect(() => {
+    setPwaCurrentChatId(chatId);
+    return () => setPwaCurrentChatId(null);
+  }, [chatId]);
+
   // El panel de sugerencias, compartido por la columna de escritorio y el
   // panel deslizable de móvil/tablet.
   function renderSuggestionPanel(chat: Chat) {
@@ -259,6 +275,10 @@ export function ChatWorkspace() {
         isGenerating={isGeneratingForSelected}
         error={suggestionsErrorMessage}
         errorRetryable={suggestionsErrorRetryable}
+        errorCode={suggestionsError instanceof SuggestionError ? suggestionsError.code : null}
+        unavailable={suggestionStatus?.unavailable ?? null}
+        canConnect={isAdmin}
+        onUse={() => setIsSuggestionsOpen(false)}
         onGenerate={(force = false, instruction) =>
           generateSuggestionsMutation.mutate({
             chat_id: chat.chat_id,
@@ -336,7 +356,7 @@ export function ChatWorkspace() {
             hasNextPageError={isFetchNextPageError}
             onLoadMore={handleLoadMore}
             showConnectWhatsapp={showConnectWhatsapp}
-            onConnectWhatsapp={() => openSettings("whatsapp")}
+            onConnectWhatsapp={() => openIntegrations("whatsapp")}
           />
         </div>
 
@@ -346,6 +366,17 @@ export function ChatWorkspace() {
             className={`h-full min-w-0 flex-1 overflow-hidden bg-white shadow-sm dark:bg-wa-panel-dark ${isMobile ? "" : "rounded-2xl border border-wa-border dark:border-wa-border-dark"}`}
           >
             {selectedChat ? (
+              <div className="flex h-full flex-col">
+                {whatsappStatus != null && whatsappStatus.state !== "open" && (
+                  <IntegrationNotice
+                    className="m-2 mb-0"
+                    tone="warning"
+                    message="WhatsApp no está conectado: lo que escribas acá no se enviará al cliente."
+                    anchor="whatsapp"
+                    canConnect={isAdmin}
+                  />
+                )}
+                <div className="min-h-0 flex-1">
               <ChatThread
                 chat={selectedChat}
                 highlightMessageId={
@@ -357,6 +388,8 @@ export function ChatWorkspace() {
                   isDesktop ? undefined : () => setIsSuggestionsOpen(true)
                 }
               />
+                </div>
+              </div>
             ) : chatId ? (
               /* El lead todavía no llegó (entrada directa por URL o
                recarga). En móvil la lista está oculta, así que sin esta
@@ -409,7 +442,7 @@ export function ChatWorkspace() {
 
       {/* Sugerencias como panel deslizable en móvil y tablet. */}
       <AnimatePresence>
-        {!isDesktop && isSuggestionsOpen && selectedChat && (
+        {!isDesktop && isLeadPanelOpen && selectedChat && (
           <>
             <m.div
               initial={{ opacity: 0 }}
@@ -428,17 +461,17 @@ export function ChatWorkspace() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 32, stiffness: 320 }}
-              aria-label="Sugerencias del lead"
+              aria-label="Ficha del lead"
               className="fixed inset-y-0 right-0 z-76 flex w-full max-w-md flex-col overflow-hidden border-l border-wa-border bg-wa-app pt-safe dark:border-wa-border-dark dark:bg-wa-panel-dark"
             >
               <div className="flex h-12 shrink-0 items-center justify-between border-b border-wa-border px-3 dark:border-wa-border-dark">
                 <span className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                  Sugerencias
+                  Ficha del lead
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsSuggestionsOpen(false)}
-                  aria-label="Cerrar sugerencias"
+                  aria-label="Cerrar ficha del lead"
                   className="flex h-11 w-11 items-center justify-center rounded-lg text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
                 >
                   <X className="h-5 w-5" />

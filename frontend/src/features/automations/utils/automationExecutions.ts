@@ -36,8 +36,40 @@ export function isExecutionStatus(value: string): value is AutomationExecutionSt
   return Object.values(AutomationExecutionStatus).some(status => status === value)
 }
 
-export function executionStatusLabel(status: string) {
+/** Error con el que el backend guarda una ejecución cancelada a mano: no hay
+ *  estado `cancelled`, cancelar la deja en `skipped` con este texto
+ *  (sql_executions.py). Sin distinguirla, se leía «Omitida», como si el flujo
+ *  no aplicara al lead. */
+export const MANUAL_CANCEL_ERROR = 'Cancelada manualmente'
+
+export function isManuallyCancelled(execution: { status: string; error?: string | null }) {
+  return execution.status === AutomationExecutionStatus.Skipped && execution.error === MANUAL_CANCEL_ERROR
+}
+
+export function executionStatusLabel(status: string, error?: string | null) {
+  if (isManuallyCancelled({ status, error })) return 'Cancelada'
   return isExecutionStatus(status) ? EXECUTION_STATUS_LABELS[status] : status
+}
+
+// Un paso de una ejecución. Antes se mostraba el código en inglés ("completed").
+// Los cinco últimos solo los da Probar: dicen qué pasaría, sin hacerlo.
+const STEP_STATUS_LABELS: Record<string, string> = {
+  [AutomationExecutionStatus.Completed]: 'Hecho',
+  [AutomationExecutionStatus.Failed]: 'Falló',
+  [AutomationExecutionStatus.Skipped]: 'Omitido',
+  [AutomationExecutionStatus.Scheduled]: 'Esperando',
+  [AutomationExecutionStatus.Running]: 'En curso',
+  [AutomationExecutionStatus.Paused]: 'En pausa',
+  matched: 'Entra al flujo',
+  evaluated: 'Revisado',
+  would_run: 'Se haría',
+  would_wait: 'Esperaría',
+  would_fail: 'Fallaría',
+}
+
+export function stepStatusLabel(status: unknown) {
+  const value = String(status ?? '')
+  return STEP_STATUS_LABELS[value] ?? value
 }
 
 export function executionActorLabel(execution: AutomationExecution) {

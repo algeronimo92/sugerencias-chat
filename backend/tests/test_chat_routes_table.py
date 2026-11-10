@@ -19,6 +19,7 @@ EXPECTED_ROUTES = [
     ("GET", "/api/chats/kanban/counts", "get_kanban_counts"),
     ("GET", "/api/chats/kanban/snapshot", "get_kanban_snapshot"),
     ("GET", "/api/chats/kanban/{stage}", "get_kanban_stage"),
+    ("POST", "/api/chats/service-interest/reassign", "reassign_service_interest"),
     ("PATCH", "/api/chats/{chat_id}/stage", "move_chat_stage"),
     ("POST", "/api/chats", "create_chat"),
     ("PATCH", "/api/chats/{chat_id}", "update_chat"),

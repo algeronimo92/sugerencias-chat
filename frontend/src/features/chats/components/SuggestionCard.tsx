@@ -1,6 +1,7 @@
-import { Check, ChevronDown, ChevronUp, Copy, MessageSquare, Mic, Video } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, MessageSquare, Mic, PenLine, Video } from 'lucide-react'
 import { useState } from 'react'
 import type { Sugerencia } from '../../ai/types'
+import { useChatDraft } from '../draftStore'
 import { AudioSuggestionDialog } from './AudioSuggestionDialog'
 
 const CANAL_ICON = {
@@ -13,21 +14,32 @@ interface Props {
   sugerencia: Sugerencia
   index: number
   chatId: string
+  /** Después de llevar el texto al compositor (fuera de escritorio el panel
+   *  tapa el chat y hay que cerrarlo para verlo). */
+  onUse?: () => void
 }
 
-export function SuggestionCard({ sugerencia, index, chatId }: Props) {
-  const [copied, setCopied] = useState(false)
+/**
+ * El texto sugerido va al compositor con «Usar», no al portapapeles: en el
+ * celular «Copiar» obligaba a cerrar el panel, tocar el campo y pegar, y en
+ * escritorio nadie sabía si había copiado. Si ya había un borrador se agrega
+ * debajo, igual que una plantilla, para no pisar lo que se estaba escribiendo.
+ */
+export function SuggestionCard({ sugerencia, index, chatId, onUse }: Props) {
+  const [used, setUsed] = useState(false)
   const [showMotivo, setShowMotivo] = useState(false)
   const [isAudioDialogOpen, setIsAudioDialogOpen] = useState(false)
+  const [, setDraft] = useChatDraft(chatId)
 
-  const valueToCopy = sugerencia.texto ?? ''
   const CanalIcon = CANAL_ICON[sugerencia.canal as keyof typeof CANAL_ICON] ?? MessageSquare
 
-  async function handleCopy() {
-    if (!valueToCopy) return
-    await navigator.clipboard.writeText(valueToCopy)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  function handleUse() {
+    const text = sugerencia.texto
+    if (!text) return
+    setDraft(current => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)
+    setUsed(true)
+    setTimeout(() => setUsed(false), 2000)
+    onUse?.()
   }
 
   return (
@@ -51,15 +63,16 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
               Audio
             </button>
             <button type="button"
-              onClick={handleCopy}
+              onClick={handleUse}
+              title="Llevar el texto al cuadro de escritura para revisarlo y enviarlo"
               className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
-                copied
+                used
                   ? 'bg-wa-primary/15 text-wa-primary-strong dark:bg-wa-primary/25 dark:text-wa-primary'
                   : 'bg-wa-primary text-white hover:bg-wa-primary-strong'
               }`}
             >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copiado' : 'Copiar'}
+              {used ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <PenLine className="w-3.5 h-3.5" aria-hidden="true" />}
+              {used ? 'En el cuadro' : 'Usar'}
             </button>
           </div>
         )}
@@ -93,6 +106,10 @@ export function SuggestionCard({ sugerencia, index, chatId }: Props) {
                 {url}
               </a>
             ))}
+            {/* El modelo explica por qué los eligió; antes se pedía y no se mostraba. */}
+            {sugerencia.motivo_adjuntos && (
+              <p className="text-xs text-wa-muted dark:text-wa-muted-dark">{sugerencia.motivo_adjuntos}</p>
+            )}
           </div>
         )}
 

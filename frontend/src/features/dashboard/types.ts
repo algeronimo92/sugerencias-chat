@@ -44,6 +44,54 @@ export interface DashboardUpcomingAppointment {
   treatment: string | null
 }
 
+/** Un punto de una serie diaria con cantidad y monto (separaciones). */
+export interface DashboardAmountPoint {
+  date: string
+  count: number
+  revenue: number
+}
+
+export interface DashboardSeparationTotals {
+  count: number
+  /** Suma de adelantos. */
+  amount: number
+  with_deposit: number
+  /** Promedio entre las que dejaron adelanto. */
+  avg_deposit: number | null
+  clients: number
+}
+
+export interface DashboardSeparationRankRow {
+  name: string
+  count: number
+  amount: number
+  with_deposit: number
+}
+
+export interface DashboardSeparations {
+  totals: DashboardSeparationTotals
+  /** null si en la ventana anterior no hubo separaciones. */
+  previous: DashboardSeparationTotals | null
+  trend: { date: string; count: number; amount: number }[]
+  previous_trend: { date: string; count: number; amount: number }[]
+  /** Ranking del equipo por quién registró la separación; llega igual en los dos scopes. */
+  by_seller: DashboardSeparationRankRow[]
+  /** Ranking del equipo por la vendedora asignada a la clienta en el CRM. */
+  by_owner: DashboardSeparationRankRow[]
+  recent: {
+    id: number
+    /** null cuando la cita no quedó ligada a un lead: no hay chat que abrir. */
+    lead_id: string | null
+    name: string
+    treatment: string
+    amount: number
+    date: string
+    time: string
+    created_at: string
+    seller_name: string
+  }[]
+}
+
 export interface DashboardMetrics {
   period_days: number
   scope: DashboardScope
@@ -74,6 +122,9 @@ export interface DashboardMetrics {
     conversations_closed: number
     avg_close_hours: number | null
   }
+  /** Código ISO 4217 del negocio, o null si no lo configuró: los importes
+   *  (adelantos) van entonces sin moneda. */
+  currency: string | null
   automations: {
     by_flow: DashboardFlowRow[]
     by_actor: DashboardMetricItem[]
@@ -101,6 +152,11 @@ export interface DashboardMetrics {
     /** De quién es el lead al que quedó vinculada. */
     by_owner: DashboardMetricItem[]
     by_treatment: DashboardMetricItem[]
+    /** Citas agendadas por tratamiento y día (sin duplicadas, fallidas ni de
+     *  prueba). `key` junta las variantes de escritura del formulario. */
+    by_treatment_daily: { date: string; key: string; name: string; count: number; amount: number }[]
+    /** La venta del negocio: citas agendadas con su adelanto. */
+    separations: DashboardSeparations
     trend: DashboardPoint[]
     lost_reasons: DashboardMetricItem[]
     upcoming: DashboardUpcomingAppointment[]

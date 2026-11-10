@@ -81,7 +81,7 @@ def normalize_conditions(raw_conditions: object) -> dict:
     # Solo la forma: las etapas son de cada negocio y su existencia se valida
     # contra la base en application.validation, que sí tiene I/O.
     if normalized["stage"] and not is_stage_key(normalized["stage"]):
-        raise InvalidAutomation("Etapa de condición inválida")
+        raise InvalidAutomation("La etapa elegida en las condiciones de entrada no es válida. Elige otra.")
     return normalized
 
 

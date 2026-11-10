@@ -1,8 +1,9 @@
 import { Check, CircleCheck, Download, Forward, Video } from 'lucide-react'
 import type { Message } from '../../whatsapp/types'
-import { formatMessageTime, resolveMediaUrl } from '../../whatsapp/public/message'
+import { resolveMediaUrl } from '../../whatsapp/public/message'
 import type { OpenMedia } from './MessageBubble'
 import { MessageStatusTicks } from './MessageBubble'
+import { MessageFooter } from './MessageFooter'
 
 // Máximo de miniaturas visibles en la grilla; el resto queda atrás del "+N"
 // de la última — igual que WhatsApp, que tampoco expande el preview entero.
@@ -13,6 +14,9 @@ interface Props {
    * en utils/mediaGroups) que se pintan como una sola grilla. */
   messages: Message[]
   isFirstOfGroup: boolean
+  /** Quién o qué mandó el álbum; solo se muestra si abre un grupo (ver
+   * MessageBubble.originLabel). */
+  originLabel?: string | null
   failedMediaIds: Set<number>
   onMediaFailed: (messageId: number) => void
   onOpenMedia: (media: OpenMedia) => void
@@ -35,6 +39,7 @@ interface Props {
 export function AlbumBubble({
   messages,
   isFirstOfGroup,
+  originLabel = null,
   failedMediaIds,
   onMediaFailed,
   onOpenMedia,
@@ -108,6 +113,11 @@ export function AlbumBubble({
           }`}
         >
           {selectionMode && <span aria-hidden="true" className="absolute inset-0 z-20 rounded-bubble" />}
+          {originLabel && isFirstOfGroup && (
+            <p data-testid="message-origin" className="mb-1 truncate px-1 pt-0.5 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
+              {originLabel}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-0.5 overflow-hidden rounded-lg">
             {visible.map((message, index) => {
               const { src, isVideo } = tileFor(message)
@@ -148,10 +158,9 @@ export function AlbumBubble({
             })}
           </div>
           {caption && <p className="whitespace-pre-wrap break-words px-1 pt-1.5">{caption}</p>}
-          <div className="flex items-center justify-end gap-1 px-1 pt-1 text-[10px] text-wa-faint dark:text-wa-text-dark/60">
-            <span>{formatMessageTime(last.sent_at)}</span>
+          <MessageFooter className="px-1 pt-1" sentAt={last.sent_at}>
             {isVendedor && <MessageStatusTicks outboxStatus={last.outbox_status} metaStatus={last.meta_status} statusPayload={last.status_payload} errorDetail={last.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
-          </div>
+          </MessageFooter>
         </div>
       </div>
       {!isVendedor && actions}

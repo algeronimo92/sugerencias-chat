@@ -1,4 +1,4 @@
-import { BotOff, CalendarX, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2 } from 'lucide-react'
+import { CalendarX, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2, ZapOff } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -290,8 +290,8 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             )}
           </p>
           {chat.automatizacion_pausada && (
-            <span title="Automatización pausada en este chat" className="shrink-0 text-amber-500 dark:text-amber-400">
-              <BotOff className="h-3.5 w-3.5" />
+            <span title="Sin automatizaciones nuevas para este cliente" className="shrink-0 text-amber-700 dark:text-amber-400">
+              <ZapOff className="h-3.5 w-3.5" />
             </span>
           )}
           {!isCustomerWindowOpen && (

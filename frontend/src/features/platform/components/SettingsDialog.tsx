@@ -1,34 +1,26 @@
-import { Check, Loader2, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Checkbox } from '../../../shared/ui/Checkbox'
+import { Check, Loader2, Plug, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
-import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useSaveSettings, useSettings } from '../hooks/useSettings'
-import type { SettingItem } from '../types'
-import { AutoAssignSellers } from './AutoAssignSellers'
+import { useSettings } from '../hooks/useSettings'
+import { groupSettings, useSettingsDraft } from '../settingsDraft'
 import { EmailPanel } from './EmailPanel'
-import { GoogleCalendarPanel } from './GoogleCalendarPanel'
+import { SettingField } from './SettingField'
 import { UsersPanel } from './UsersPanel'
-import { WhatsappPanel } from './WhatsappPanel'
+
 interface Props {
   onClose: () => void
   initialTab?: Tab
-  /** El armador del evento de Calendar es de citas, una feature de capa
-   *  superior: llega armado desde app/ en vez de importarse acá. */
-  calendarEventEditor?: ReactNode
+  /** Lleva a la página de Integraciones (y cierra el diálogo). */
+  onOpenIntegrations?: () => void
 }
 
-type Tab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios' | 'correo'
+type Tab = 'general' | 'usuarios' | 'correo'
 
-// Google Calendar tiene su propia pestaña (GoogleCalendarPanel): sus ajustes
-// no se muestran ni se reenvían desde Claves, donde un "Guardar" con el
-// borrador viejo pisaría el calendario recién elegido.
-const CALENDAR_GROUP = 'calendar'
-
-// La exclusión del reparto se guarda como ids, pero se edita como una lista
-// de vendedores y solo tiene sentido con el reparto encendido.
-const AUTO_ASSIGN_KEY = 'auto_assign_leads_enabled'
-const AUTO_ASSIGN_EXCLUDED_KEY = 'auto_assign_excluded_user_ids'
+// Las conexiones con terceros viven en la página de Integraciones, cada una
+// con su propio "Guardar": acá no se muestran ni se reenvían, donde un
+// "Guardar" con el borrador viejo pisaría lo que la otra pantalla acaba de
+// conectar (el calendario elegido, las claves que dejó el Embedded Signup).
+const INTEGRATION_GROUPS = new Set(['calendar', 'meta', 'elevenlabs', 'erp', 'whatsapp', 'ai'])
 
 const TAB_CLASS = (active: boolean) =>
   `px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -37,106 +29,13 @@ const TAB_CLASS = (active: boolean) =>
       : 'text-wa-muted dark:text-wa-muted-dark hover:bg-wa-field dark:hover:bg-wa-head-dark'
   }`
 
-function groupItems(items: SettingItem[]): { group: string; groupLabel: string; items: SettingItem[] }[] {
-  const groups: { group: string; groupLabel: string; items: SettingItem[] }[] = []
-  for (const item of items) {
-    let g = groups.find((g) => g.group === item.group)
-    if (!g) {
-      g = { group: item.group, groupLabel: item.group_label, items: [] }
-      groups.push(g)
-    }
-    g.items.push(item)
-  }
-  return groups
-}
-
-export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEditor }: Props) {
+export function SettingsDialog({ onClose, initialTab = 'general', onOpenIntegrations }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab)
-  const { data: allSettings, isLoading, error } = useSettings(tab === 'claves')
-  const data = useMemo(() => allSettings?.filter((item) => item.group !== CALENDAR_GROUP), [allSettings])
-  const { mutate: save, isPending: isSaving } = useSaveSettings()
-
-  // Valores no-secretos precargados con lo ya guardado (URLs, nombres de
-  // instancia, etc. no son sensibles y sirven de referencia al editar).
-  // Los secretos siempre arrancan vacíos: el backend nunca los devuelve.
-  const [draft, setDraft] = useState<Record<string, string>>({})
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
-  const [clearingSecretKey, setClearingSecretKey] = useState<string | null>(null)
-  // Campos que el usuario tocó y todavía no guardó. Los demás siguen al
-  // servidor: el Embedded Signup de la pestaña WhatsApp guarda el waba id y
-  // el phone number id por su cuenta, y sin resincronizar quedaban vacíos acá
-  // (y un "Guardar" posterior los borraba).
-  const editedKeys = useRef(new Set<string>())
-
-  useEffect(() => {
-    if (!data) return
-    setDraft((prev) => {
-      const next = { ...prev }
-      for (const item of data) {
-        if (!item.secret && !editedKeys.current.has(item.key)) {
-          next[item.key] = item.value || ''
-        }
-      }
-      return next
-    })
-  }, [data])
-
-  function setField(key: string, value: string) {
-    editedKeys.current.add(key)
-    setDraft((prev) => ({ ...prev, [key]: value }))
-    setSavedAt(null)
-  }
-
-  function handleSave() {
-    if (!data) return
-    setSaveError(null)
-
-    const values: Record<string, string> = {}
-    for (const item of data) {
-      const typed = draft[item.key]
-      if (item.secret) {
-        // Un secreto solo se sobrescribe si el usuario tipeó algo nuevo;
-        // dejarlo vacío significa "no tocar", no "borrar" (eso es el botón
-        // de basurero, que manda el pedido al toque).
-        if (typed) values[item.key] = typed
-      } else {
-        values[item.key] = typed ?? ''
-      }
-    }
-
-    save(values, {
-      onSuccess: () => {
-        editedKeys.current.clear()
-        setSavedAt(Date.now())
-        // Los campos secretos que se acaban de guardar se limpian del draft
-        // para no dejar la clave escrita en el input después de guardar.
-        setDraft((prev) => {
-          const next = { ...prev }
-          for (const item of data) {
-            if (item.secret) delete next[item.key]
-          }
-          return next
-        })
-      },
-      onError: (err) => setSaveError(extractErrorMessage(err)),
-    })
-  }
-
-  function handleClearSecret(key: string) {
-    setSaveError(null)
-    setClearingSecretKey(key)
-    save(
-      { [key]: '' },
-      {
-        onSuccess: () => setDraft((prev) => ({ ...prev, [key]: '' })),
-        onError: (err) => setSaveError(extractErrorMessage(err)),
-        onSettled: () => setClearingSecretKey(null),
-      }
-    )
-  }
-
-  const groups = data ? groupItems(data) : []
+  const { data: allSettings, isLoading, error } = useSettings(tab === 'general')
+  const data = useMemo(() => allSettings?.filter((item) => !INTEGRATION_GROUPS.has(item.group)), [allSettings])
+  const form = useSettingsDraft(data)
+  const { handleSave, isSaving, saveError, savedAt, clearingSecretKey } = form
+  const groups = data ? groupSettings(data) : []
 
   return (
     <Dialog.Root open onOpenChange={open => { if (!open) onClose() }}>
@@ -155,14 +54,8 @@ export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEd
             </button>
           </div>
           <div className="flex items-center gap-1 overflow-x-auto px-4 pb-3">
-            <button type="button" onClick={() => setTab('claves')} className={`${TAB_CLASS(tab === 'claves')} shrink-0`}>
-              Claves
-            </button>
-            <button type="button" onClick={() => setTab('whatsapp')} className={`${TAB_CLASS(tab === 'whatsapp')} shrink-0`}>
-              WhatsApp
-            </button>
-            <button type="button" onClick={() => setTab('calendario')} className={`${TAB_CLASS(tab === 'calendario')} shrink-0`}>
-              Calendario
+            <button type="button" onClick={() => setTab('general')} className={`${TAB_CLASS(tab === 'general')} shrink-0`}>
+              General
             </button>
             <button type="button" onClick={() => setTab('usuarios')} className={`${TAB_CLASS(tab === 'usuarios')} shrink-0`}>
               Usuarios
@@ -171,6 +64,18 @@ export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEd
               Correo
             </button>
           </div>
+          {onOpenIntegrations && (
+            <p className="flex items-center gap-1.5 border-t border-wa-border/70 px-4 py-2 text-xs text-wa-muted dark:border-wa-border-dark/70 dark:text-wa-muted-dark">
+              <Plug className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                WhatsApp, Google Calendar, ERP y voz ahora están en{' '}
+                <button type="button" onClick={onOpenIntegrations} className="font-semibold text-wa-primary-strong underline dark:text-wa-primary">
+                  Integraciones
+                </button>
+                .
+              </span>
+            </p>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -178,90 +83,28 @@ export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEd
 
           {tab === 'correo' && <EmailPanel />}
 
-          {tab === 'whatsapp' && <WhatsappPanel onGoToClaves={() => setTab('claves')} />}
-
-          {tab === 'calendario' && <GoogleCalendarPanel eventEditor={calendarEventEditor} />}
-
-          {tab === 'claves' && isLoading && (
+          {tab === 'general' && isLoading && (
             <p className="text-sm text-wa-muted dark:text-wa-muted-dark text-center py-8">Cargando configuración...</p>
           )}
-          {tab === 'claves' && error && (
+          {tab === 'general' && error && (
             <p className="text-sm text-red-500 dark:text-red-400 text-center py-8">
               Error al cargar la configuración.
             </p>
           )}
 
-          {tab === 'claves' && groups.map((g) => (
+          {tab === 'general' && groups.map((g) => (
             <div key={g.group}>
               <h3 className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide mb-2">
                 {g.groupLabel}
               </h3>
               <div className="space-y-2.5">
-                {g.items.map((item) => (
-                  item.key === AUTO_ASSIGN_EXCLUDED_KEY ? (
-                    (draft[AUTO_ASSIGN_KEY] ?? '') === 'true' && (
-                      <AutoAssignSellers
-                        key={item.key}
-                        value={draft[item.key] ?? ''}
-                        onChange={(value) => setField(item.key, value)}
-                      />
-                    )
-                  ) : item.boolean ? (
-                    <label key={item.key} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                      <Checkbox
-                        checked={(draft[item.key] ?? '') === 'true'}
-                        onCheckedChange={(checked) => setField(item.key, checked ? 'true' : 'false')}
-                      />
-                      {item.label}
-                    </label>
-                  ) : (
-                    <div key={item.key}>
-                      <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 mb-1">
-                        {item.label}
-                        {item.secret && (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                              item.configured
-                                ? 'bg-green-100 dark:bg-green-950/50 text-wa-primary-strong dark:text-wa-primary'
-                                : 'bg-wa-field dark:bg-wa-head-dark text-wa-muted dark:text-wa-muted-dark'
-                            }`}
-                          >
-                            {item.configured ? 'Configurada' : 'No configurada'}
-                          </span>
-                        )}
-                      </label>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type={item.secret ? 'password' : 'text'}
-                          value={draft[item.key] ?? ''}
-                          onChange={(e) => setField(item.key, e.target.value)}
-                          placeholder={item.secret ? (item.configured ? '•••• sin cambios' : 'Sin configurar') : ''}
-                          autoComplete="off"
-                          className="flex-1 text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark"
-                        />
-                        {item.secret && item.configured && (
-                          <button
-                            type="button"
-                            onClick={() => handleClearSecret(item.key)}
-                            disabled={isSaving}
-                            aria-label={clearingSecretKey === item.key ? `Borrando ${item.label}` : `Borrar ${item.label}`}
-                            aria-busy={clearingSecretKey === item.key}
-                            title={clearingSecretKey === item.key ? 'Borrando valor…' : 'Borrar valor guardado'}
-                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-wa-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:cursor-wait disabled:opacity-60 transition-colors"
-                          >
-                            {clearingSecretKey === item.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                ))}
+                {g.items.map((item) => <SettingField key={item.key} item={item} form={form} />)}
               </div>
             </div>
           ))}
         </div>
 
-        {tab === 'claves' && (
+        {tab === 'general' && (
           <div className="border-t border-wa-border dark:border-wa-border-dark px-4 py-3 flex items-center gap-3 shrink-0">
             {saveError && <p className="text-xs text-red-500 dark:text-red-400 flex-1">{saveError}</p>}
             {!saveError && savedAt && (
@@ -271,7 +114,7 @@ export function SettingsDialog({ onClose, initialTab = 'claves', calendarEventEd
             )}
             {!saveError && !savedAt && <span className="flex-1" />}
             <button type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={isSaving || isLoading}
               className="px-4 py-2 text-sm font-medium text-white bg-wa-primary hover:bg-wa-primary-strong disabled:opacity-50 rounded-lg transition-colors flex items-center gap-1.5"
             >

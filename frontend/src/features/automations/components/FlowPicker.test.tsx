@@ -59,7 +59,7 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
-    await user.click(screen.getByTitle('Iniciar un flujo automático para este lead'))
+    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
 
     expect(screen.getByText(/No hay flujos disponibles/)).toBeInTheDocument()
   })
@@ -73,7 +73,7 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
-    await user.click(screen.getByTitle('Iniciar un flujo automático para este lead'))
+    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
     await user.click(screen.getByText('Bienvenida guiada'))
 
     expect(mutate).toHaveBeenCalledWith(
@@ -93,7 +93,7 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
 
-    await user.click(screen.getByTitle('Iniciar un flujo automático para este lead'))
+    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
 
     expect(screen.getByText('Ya en curso')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Bienvenida guiada/ })).toBeDisabled()

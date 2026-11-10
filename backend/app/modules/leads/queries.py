@@ -7,11 +7,11 @@ la pantalla necesita. Un archivo ``*queries.py`` nunca escribe (ver
 
 from __future__ import annotations
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
-from app.db.models.leads import LeadActivity
+from app.db.models.leads import Lead, LeadActivity
 from app.core.serialization import json_safe_row as _json_safe_row
 from app.db.uow import session_scope
 
@@ -58,7 +58,9 @@ async def fetch_lead_raw(chat_id: str) -> dict | None:
         row = (
             await session.execute(text("SELECT * FROM leads WHERE id = :id"), {"id": chat_id})
         ).mappings().first()
-    return _json_safe_row(dict(row)) if row is not None else None
+    if row is None:
+        return None
+    return _json_safe_row(dict(row))
 
 
 async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
@@ -72,3 +74,24 @@ async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
             )
         ).mappings().all()
     return [_json_safe_row(dict(row)) for row in rows]
+
+
+def _lead_label(nombre: str | None, telefono: str | None) -> str:
+    return (nombre or "").strip() or (telefono or "").strip() or "Sin nombre"
+
+
+async def service_usage(service_id: int, name: str, limit: int) -> dict:
+    """Leads que tienen el servicio como interés: cuántos y los más recientes
+    (id del lead, nombre o teléfono), para ir a cada chat. El interés se compara como lo sigue un renombre: sin
+    mayúsculas ni espacios de los bordes."""
+    interested = func.lower(func.btrim(Lead.servicio_interes)) == name.strip().lower()
+    async with session_scope() as session:
+        leads = await session.scalar(select(func.count()).select_from(Lead).where(interested)) or 0
+        lead_rows = (await session.execute(
+            select(Lead.id, Lead.nombre, Lead.telefono).where(interested)
+            .order_by(Lead.ultimo_mensaje_at.desc().nulls_last()).limit(limit)
+        )).all() if leads else []
+    return {
+        "leads": leads,
+        "lead_items": [(str(row.id), _lead_label(row.nombre, row.telefono)) for row in lead_rows],
+    }

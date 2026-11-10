@@ -2,7 +2,9 @@ import { useOutletContext } from 'react-router-dom'
 import type { ChatFilters } from '../leads/types'
 
 export type ChatQuickFilter = 'all' | 'unread' | 'mine'
-export type SettingsTab = 'claves' | 'whatsapp' | 'calendario' | 'usuarios' | 'correo'
+export type SettingsTab = 'general' | 'usuarios' | 'correo'
+/** Anclas de la página de Integraciones. */
+export type IntegrationAnchor = 'whatsapp' | 'calendario' | 'erp' | 'voz'
 
 export interface ChatFiltersState {
   search: string
@@ -18,6 +20,7 @@ export interface ChatFiltersState {
 export interface LayoutContext {
   chatFilters: ChatFiltersState
   openSettings: (tab?: SettingsTab) => void
+  openIntegrations: (anchor?: IntegrationAnchor) => void
   openIssueReport: () => void
 }
 

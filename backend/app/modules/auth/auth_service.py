@@ -9,6 +9,7 @@ from fastapi import Depends, Header, Request, Response
 from app.core.config import settings
 from app.core.errors import Forbidden, Unauthorized, Unavailable
 from app.db.models.auth import User
+from app.modules.auth.role_policy import route_allowed_for
 from app.modules.auth.session_service import invalidate_session_cache, resolve_session
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,11 @@ async def get_current_user(request: Request, response: Response) -> User:
             persistent=resolved.persistent,
             absolute_expires_at=resolved.absolute_expires_at,
         )
+    # Después de renovar la cookie: la sesión sigue siendo válida aunque esta
+    # ruta no sea para su rol. El analista solo puede pedir el dashboard y lo
+    # que sostiene su propia sesión (ver role_policy.py).
+    if not route_allowed_for(resolved.user.role, request.method, request.url.path):
+        raise Forbidden("Tu rol solo tiene acceso al dashboard")
     return resolved.user
 
 

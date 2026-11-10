@@ -223,3 +223,30 @@ describe('LeadFormDialog teléfono principal sin resolver', () => {
     expect(screen.queryByText(/los próximos mensajes se le van a mandar a otra persona/)).not.toBeInTheDocument()
   })
 })
+
+describe('LeadFormDialog llegando desde otra pantalla a cambiar el servicio', () => {
+  it('resalta el servicio de interés, le da el foco y dice para qué', () => {
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana', servicio_interes: 'Botox' }}
+        canEditPhone={false}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        highlightService={{ reason: 'Cámbialo o quítalo para poder eliminar «Botox» del catálogo.' }}
+      />,
+    )
+
+    const service = screen.getByLabelText('Servicio de interés')
+    expect(service).toHaveFocus()
+    expect(service.closest('[data-highlighted="true"]')).not.toBeNull()
+    expect(screen.getByText(/para poder eliminar «Botox» del catálogo/)).toBeInTheDocument()
+  })
+
+  it('sin pedido de otra pantalla, nada resaltado', () => {
+    renderDialog()
+    expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
+  })
+})

@@ -37,7 +37,8 @@ async def test_react_sends_the_meta_reaction_and_records_the_event(target):
     assert event["actor"] == "business"
     assert event["target_wa_message_id"] == "WA-9"
     assert event["provider_payload"]["reaction"] == {"message_id": "WA-9", "emoji": "👍"}
-    assert result == {"id": 9, "reactions": [{"emoji": "👍", "from_me": True}]}
+    # El mensaje es del cliente: la respuesta lleva el badge y ningún origen.
+    assert result == {"id": 9, "reactions": [{"emoji": "👍", "from_me": True}], "origin": None}
     assert world.of(ReactionChanged)
 
 

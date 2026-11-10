@@ -1,16 +1,17 @@
-import { ExternalLink, Eye, File as FileIcon, FileText, Film, FolderOpen, Images, Loader2, Pencil, Search, Trash2, UploadCloud, X } from 'lucide-react'
+import { File as FileIcon, FileText, Film, FolderOpen, Images, Loader2, Pencil, Search, Trash2, UploadCloud, X } from 'lucide-react'
 import { useDeferredValue, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
-import { AudioPlayer, VideoPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
+import { uploadSizeError } from '../../../shared/utils/media'
 import { resolveMediaUrl } from '../../whatsapp/public/message'
 import { useDeleteMediaAsset, useMediaLibrary, useRenameMediaAsset, useUploadMediaAsset } from '../queries'
 import type { MediaAsset, MediaAssetKind } from '../types'
+import { AssetPreview } from './AssetPreview'
+import { AssetPreviewDialog } from './AssetPreviewDialog'
 
 const ACCEPTED_TYPES = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
-const MAX_BYTES = 25 * 1024 * 1024
 
 const FILTERS: { value: MediaAssetKind | ''; label: string }[] = [
   { value: '', label: 'Todos' },
@@ -46,50 +47,6 @@ function splitFilename(filename: string) {
   }
 }
 
-function AssetPreview({ asset, onPreview }: { asset: MediaAsset; onPreview: () => void }) {
-  const url = resolveMediaUrl(asset.media_url) ?? ''
-  const [imageFailed, setImageFailed] = useState(false)
-  if (asset.content_type.startsWith('image/')) {
-    if (imageFailed) {
-      return (
-        <div className="flex h-44 flex-col items-center justify-center gap-2 bg-wa-hover text-wa-muted dark:bg-wa-panel-dark">
-          <Images className="h-10 w-10 opacity-60" />
-          <span className="text-xs font-semibold">Vista previa no disponible</span>
-        </div>
-      )
-    }
-    return (
-      <button
-        type="button"
-        onClick={onPreview}
-        aria-label={`Ver vista previa de ${asset.filename}`}
-        className="group relative block h-44 w-full overflow-hidden bg-wa-hover text-left dark:bg-wa-panel-dark"
-      >
-        <img src={url} alt={asset.filename} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
-        <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100 group-focus-visible:bg-black/30 group-focus-visible:opacity-100">
-          <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold"><Eye className="h-4 w-4" />Vista previa</span>
-        </span>
-      </button>
-    )
-  }
-  if (asset.content_type.startsWith('video/')) {
-    return <VideoPlayer src={url} className="h-44 w-full" />
-  }
-  if (asset.content_type.startsWith('audio/')) {
-    return (
-      <div className="flex h-44 flex-col items-center justify-center gap-3 bg-violet-50 px-3 dark:bg-violet-950/20">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">Archivo de audio</span>
-        <AudioPlayer src={url} className="w-full" downloadName={asset.filename} />
-      </div>
-    )
-  }
-  return (
-    <div className="flex h-44 items-center justify-center bg-wa-hover dark:bg-wa-panel-dark">
-      <FileText className="h-12 w-12 text-wa-muted" />
-    </div>
-  )
-}
-
 export function MediaLibraryPage() {
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search.trim())
@@ -100,6 +57,9 @@ export function MediaLibraryPage() {
   const remove = useDeleteMediaAsset()
   const [error, setError] = useState<string | null>(null)
   const [uploadingName, setUploadingName] = useState<string | null>(null)
+  // El video pesado se recomprime en el servidor y tarda más que una subida
+  // normal: el aviso explica la espera.
+  const [isConvertingVideo, setIsConvertingVideo] = useState(false)
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null)
   const [renameAsset, setRenameAsset] = useState<MediaAsset | null>(null)
   const [renameBasename, setRenameBasename] = useState('')
@@ -113,14 +73,15 @@ export function MediaLibraryPage() {
 
   async function uploadFiles(files: File[]) {
     setError(null)
-    const oversized = files.find(file => file.size > MAX_BYTES)
+    const oversized = files.find(file => uploadSizeError(file) != null)
     if (oversized) {
-      setError(`${oversized.name} supera el máximo de 25 MB`)
+      setError(`${oversized.name} ${uploadSizeError(oversized)}`)
       return
     }
     try {
       for (const file of files) {
         setUploadingName(file.name)
+        setIsConvertingVideo(file.type.startsWith('video/'))
         await upload.mutateAsync({
           contentType: file.type || 'application/octet-stream',
           dataBase64: await fileToBase64(file),
@@ -233,7 +194,7 @@ export function MediaLibraryPage() {
           <label className="flex cursor-pointer flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <span className="flex items-center gap-4">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary">{uploadingName ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6" />}</span>
-              <span><span className="block text-sm font-bold text-wa-text dark:text-white">{uploadingName ? `Subiendo ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Carga archivos a la biblioteca'}</span><span className="mt-1 block text-xs text-wa-muted">Arrastra varios archivos o selecciónalos · máximo 25 MB cada uno</span></span>
+              <span><span className="block text-sm font-bold text-wa-text dark:text-white">{uploadingName ? `${isConvertingVideo ? 'Subiendo y convirtiendo' : 'Subiendo'} ${uploadingName}` : isDragging ? 'Suelta los archivos aquí' : 'Carga archivos a la biblioteca'}</span><span className="mt-1 block text-xs text-wa-muted">Arrastra varios archivos o selecciónalos · máximo 25 MB cada uno; los videos, hasta 100 MB, se convierten al formato de WhatsApp</span></span>
             </span>
             <span className="rounded-xl bg-wa-primary-strong px-4 py-2.5 text-xs font-bold text-white shadow-sm">Seleccionar archivos</span>
             <input type="file" multiple disabled={!!uploadingName} accept={ACCEPTED_TYPES} className="hidden" onChange={event => { void uploadFiles(Array.from(event.target.files ?? [])); event.target.value = '' }} />
@@ -329,25 +290,7 @@ export function MediaLibraryPage() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-      <Dialog.Root open={previewAsset != null} onOpenChange={open => { if (!open) setPreviewAsset(null) }}>
-        <Dialog.Portal>
-          <Dialog.Overlay className={`${dialogOverlayClass} bg-black/75`} />
-          <Dialog.Content className={`${dialogContentPositionClass} flex max-h-[92vh] w-[calc(100%-2rem)] max-w-6xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
-            <div className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
-              <Dialog.Title className="min-w-0 truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                {previewAsset?.filename ?? 'Vista previa'}
-              </Dialog.Title>
-              <div className="flex shrink-0 items-center gap-1">
-                {previewAsset && <a href={resolveMediaUrl(previewAsset.media_url) ?? '#'} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/40"><ExternalLink className="h-3.5 w-3.5" />Abrir original</a>}
-                <Dialog.Close asChild><button type="button" title="Cerrar vista previa" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><X className="h-4 w-4" /></button></Dialog.Close>
-              </div>
-            </div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-wa-app p-3 dark:bg-wa-app-dark sm:p-5">
-              {previewAsset && <img src={resolveMediaUrl(previewAsset.media_url) ?? ''} alt={previewAsset.filename} className="max-h-[calc(92vh-5rem)] max-w-full rounded-lg object-contain shadow-lg" />}
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <AssetPreviewDialog asset={previewAsset} onClose={() => setPreviewAsset(null)} />
     </div>
   )
 }

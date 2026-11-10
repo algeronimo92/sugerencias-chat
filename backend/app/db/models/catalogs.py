@@ -39,18 +39,63 @@ class LeadService(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    # Lo que el asistente IA consulta como catálogo: qué es el servicio y
-    # cuánto cuesta. La moneda es la del perfil del negocio (AIProfile).
+    # Sin uso: qué resuelve el servicio y sus condiciones pasaron a sus fichas
+    # de conocimiento (revisión c3f8a2d6e417, que copió lo que había). Siguen
+    # en la tabla un despliegue más porque la versión anterior las lee
+    # mientras corre junto a la nueva; las borra la revisión siguiente.
     description: Mapped[str | None] = mapped_column(Text)
-    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     price_notes: Mapped[str | None] = mapped_column(Text)
+    # Identificador en el ERP del negocio. Con valor, el servicio (nombre,
+    # paquetes, alta/baja) lo administra el ERP vía erp_catalog.py; sin valor,
+    # lo cargó el negocio a mano.
+    external_id: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        CheckConstraint("price IS NULL OR price >= 0", name="lead_services_price_check"),
         Index("uq_lead_services_name_lower", func.lower(name), unique=True),
         Index("idx_lead_services_created_by", created_by),
+        Index(
+            "uq_lead_services_external_id",
+            external_id,
+            unique=True,
+            postgresql_where=external_id.is_not(None),
+        ),
+    )
+
+
+class ServicePackage(Base):
+    """Presentación vendible de un servicio: 1 sesión, pack x3, pack x5...
+
+    Un servicio sin paquetes no tiene precio y el asistente IA no lo cotiza.
+    ``sessions`` es lo que compra el cliente y ``price`` el total del paquete;
+    la moneda es la del perfil del negocio (AIProfile).
+    """
+
+    __tablename__ = "service_packages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    service_id: Mapped[int] = mapped_column(ForeignKey("lead_services.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    sessions: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    notes: Mapped[str | None] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    external_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("sessions >= 1", name="service_packages_sessions_check"),
+        CheckConstraint("price >= 0", name="service_packages_price_check"),
+        Index("uq_service_packages_service_name_lower", service_id, func.lower(name), unique=True),
+        Index("idx_service_packages_service_position", service_id, position, id),
+        Index(
+            "uq_service_packages_external_id",
+            external_id,
+            unique=True,
+            postgresql_where=external_id.is_not(None),
+        ),
     )
 
 

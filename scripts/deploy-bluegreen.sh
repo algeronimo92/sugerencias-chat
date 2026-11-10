@@ -95,7 +95,9 @@ healthy() {
     if $compose exec -T backend python -c \
          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=5)" \
          >/dev/null 2>&1 \
-       && curl -fsS -o /dev/null "http://127.0.0.1:$port/"        && worker_running "$color"; then
+       && curl -fsS -o /dev/null "http://127.0.0.1:$port/" \
+       && curl -fsS -o /dev/null "http://127.0.0.1:$port/api/health/ready" \
+       && worker_running "$color"; then
       return 0
     fi
     attempt=$((attempt + 1))
@@ -198,6 +200,13 @@ cmd_rollback() {
   echo "Reversión a $target completada"
 }
 
+discard_target() {
+  # Un color que no llegó a servir no se deja encendido: con
+  # `restart: unless-stopped`, si sale por un error vuelve a arrancar en bucle.
+  # $1 es el comando compose del color (compose_for).
+  $1 down --remove-orphans || true
+}
+
 cmd_deploy() {
   local active target compose_target
   active="$(active_color)"
@@ -206,19 +215,44 @@ cmd_deploy() {
 
   echo "Sirviendo: $active. Desplegando en: $target (puerto ${PORT[$target]})"
 
-  $compose_target up -d --build
+  # Construir, migrar y recién entonces levantar. Antes se levantaba primero
+  # y se migraba después: el 2026-11-08 la migración falló, `set -e` cortó el
+  # script y el color nuevo quedó corriendo con el esquema viejo. Backend y
+  # worker salían con SchemaNotMigratedError y `restart: unless-stopped` los
+  # reinició unas 25 veces cada uno durante media hora, hasta el deploy
+  # siguiente. El color viejo siguió sirviendo, pero nadie apagó el nuevo.
+  #
+  # Migrar con la imagen nueva antes de que exista su API no cambia nada para
+  # el color viejo: ya convivía con el esquema nuevo mientras se migraba (por
+  # eso las migraciones son aditivas, ver arriba).
+  # El frontend lo lee como `__APP_BUILD__` para el log del service worker.
+  # Sin esto cae a la hora del build y no dice qué commit sirve la pestaña.
+  export VITE_BUILD_ID="${VITE_BUILD_ID:-${GITHUB_SHA:+${GITHUB_SHA:0:7}}}"
+  VITE_BUILD_ID="${VITE_BUILD_ID:-$(git rev-parse --short HEAD 2>/dev/null || true)}"
+  $compose_target build
 
-  # Antes de conmutar: si el esquema no queda listo, el color viejo sigue
-  # sirviendo y aquí no ha pasado nada.
   echo "Aplicando migraciones..."
-  $compose_target run --rm --no-deps backend python -m scripts.migrate
+  if ! $compose_target run --rm --no-deps backend python -m scripts.migrate; then
+    echo "ERROR: las migraciones fallaron. $target no se levanta; $active sigue sirviendo." >&2
+    discard_target "$compose_target"
+    exit 1
+  fi
+
+  # --force-recreate: todo el color nuevo arranca de cero. Sin esto, un
+  # contenedor que quedó de un deploy anterior (el frontend del 2026-11-08) se
+  # reutiliza con el estado de entonces.
+  if ! $compose_target up -d --force-recreate; then
+    echo "ERROR: $target no pudo levantarse. $active sigue sirviendo." >&2
+    discard_target "$compose_target"
+    exit 1
+  fi
 
   echo "Esperando a que $target responda sano..."
   if ! healthy "$target"; then
     echo "ERROR: $target no llegó a estar sano. No se conmuta." >&2
     echo "$active sigue sirviendo con normalidad. Logs del color fallido:" >&2
     $compose_target logs --tail 40 backend worker >&2 || true
-    $compose_target down || true
+    discard_target "$compose_target"
     exit 1
   fi
 
@@ -231,6 +265,7 @@ cmd_deploy() {
     echo "ERROR: traefik no sirve $target. Revirtiendo a $active." >&2
     routing_diagnostics
     write_active "$active"
+    discard_target "$compose_target"
     exit 1
   fi
 

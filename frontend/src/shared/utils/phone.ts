@@ -16,7 +16,7 @@ export const FALLBACK_COUNTRY_CODE = '51'
 const LOCAL_RULES: Record<string, { pattern: RegExp; error: string; maxDigits: number }> = {
   '51': {
     pattern: /^(?:9\d{8}|[14-8]\d{7})$/,
-    error: 'Revisá el número: en Perú los celulares tienen 9 dígitos (empiezan con 9) y los fijos 8',
+    error: 'Revisa el número: en Perú los celulares tienen 9 dígitos (empiezan con 9) y los fijos 8',
     maxDigits: 9,
   },
 }
@@ -54,7 +54,7 @@ export function normalizePhone(raw: string, defaultCountryCode: string): PhoneCh
   }
 
   if (!/^[1-9]\d{7,14}$/.test(digits)) {
-    return { status: 'invalid', error: 'Revisá el número: debe tener entre 8 y 15 dígitos' }
+    return { status: 'invalid', error: 'Revisa el número: debe tener entre 8 y 15 dígitos' }
   }
   return { status: 'valid', digits, preview: formatPhonePreview(digits, cc) }
 }

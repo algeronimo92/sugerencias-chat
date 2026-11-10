@@ -123,7 +123,7 @@ class TestPublishFlowVersion:
             "flow_definition": published,
         }))
 
-        with pytest.raises(ValueError, match="No hay cambios pendientes para publicar"):
+        with pytest.raises(ValueError, match="No hay cambios para publicar"):
             await publish_visual_flow(RULE_ID)
 
         assert in_memory_automations.rules.published == []

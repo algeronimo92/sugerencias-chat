@@ -7,6 +7,8 @@ from enum import StrEnum
 class UserRole(StrEnum):
     ADMIN = "admin"
     SELLER = "vendedor"
+    # Solo mira el dashboard: qué rutas puede pedir lo decide role_policy.py.
+    ANALYST = "analista"
 
 
 class SessionAuthMethod(StrEnum):

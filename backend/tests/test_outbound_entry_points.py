@@ -34,7 +34,10 @@ async def test_sticker_is_queued_as_a_meta_sticker(monkeypatch, broadcast):
 
     result = await chats.send_sticker(CHAT_ID, StickerRequest(asset_id=3), SELLER)
 
-    assert result == {"id": 1, "outbox_status": "queued"}
+    assert result == {
+        "id": 1, "outbox_status": "queued",
+        "origin": {"kind": "user", "user_id": 7, "user_name": None, "execution_id": None},
+    }
     [item] = enqueue.await_args.args[1]
     assert item["message"] == {"type": "sticker", "sticker": {}}
     assert item["media"] == {"media_url": "/api/media/images/gato.png", "filename": "sticker.webp", "as_sticker": True}

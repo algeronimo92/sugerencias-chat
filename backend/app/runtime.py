@@ -39,6 +39,7 @@ from app.integrations.meta_webhook.worker import watch_meta_webhook_inbox
 from app.integrations.n8n.client import close_n8n_client
 from app.integrations.storage.media_storage import storage_backend
 from app.integrations.tts_service import close_tts_client
+from app.modules.ai.public import rechunk_outdated_documents
 from app.modules.auth.auth_service import hash_password
 from app.modules.auth.users_repository import seed_admin_if_needed
 from app.modules.automations.public import (
@@ -52,6 +53,8 @@ from app.modules.conversations.chat_watcher import POLL_INTERVAL_SECONDS, chat_w
 from app.modules.conversations.infrastructure.outbox_worker import forget_outbox, outbox_tick, wait_for_outbox_work
 from app.modules.conversations.infrastructure.scheduled_worker import POLL_SECONDS as SCHEDULED_POLL_SECONDS
 from app.modules.conversations.infrastructure.scheduled_worker import forget_scheduled, scheduled_tick
+from app.modules.catalogs.erp_catalog import SYNC_INTERVAL_SECONDS as ERP_CATALOG_SYNC_SECONDS
+from app.modules.catalogs.erp_catalog import erp_catalog_tick
 from app.modules.platform.meta_costs import SYNC_INTERVAL_SECONDS as META_COSTS_SYNC_SECONDS
 from app.modules.platform.meta_costs import sync_meta_costs
 from app.modules.platform.platform_settings import migrate_legacy_platform_settings, platform_setting
@@ -266,9 +269,9 @@ async def _require_inbound_webhook_token() -> None:
         return
     raise RuntimeError(
         "INBOUND_WEBHOOK_TOKEN no está configurado. Los webhooks entrantes y la "
-        "subida de media quedarían abiertos a Internet. Generá uno con "
-        "`openssl rand -hex 32`, ponelo en backend/.env o en Plataforma y "
-        "configurá el mismo valor en n8n."
+        "subida de media quedarían abiertos a Internet. Genera uno con "
+        "`openssl rand -hex 32`, ponlo en backend/.env o en Plataforma y "
+        "configura el mismo valor en n8n."
     )
 
 
@@ -340,6 +343,7 @@ async def _normalize_settings() -> None:
                         decrypted_settings,
                     )
                 await backfill_automation_state()
+                await _rechunk_knowledge(context.organization_id)
         return
 
     encrypted_settings, decrypted_settings = await migrate_settings_encryption()
@@ -357,6 +361,19 @@ async def _normalize_settings() -> None:
             migrated_platform_settings,
         )
     await backfill_automation_state()
+    await _rechunk_knowledge(None)
+
+
+async def _rechunk_knowledge(organization_id) -> None:
+    """Los fragmentos del conocimiento se rehacen cuando cambia el troceador;
+    si falla, el arranque sigue: el conocimiento viejo sirve igual."""
+    try:
+        count = await rechunk_outdated_documents()
+    except SQLAlchemyError as exc:
+        logger.warning("No se pudo retrocear el conocimiento organization_id=%s: %s", organization_id, exc)
+        return
+    if count:
+        logger.info("Conocimiento retroceado organization_id=%s documentos=%s", organization_id, count)
 
 
 async def _maintain() -> None:
@@ -420,6 +437,9 @@ BACKGROUND_LOOPS = (
     TenantLoop("message-outbox", outbox_tick, wait_for_outbox_work, forget_outbox),
     TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS), forget_scheduled),
     TenantLoop("meta-costs", meta_costs_tick, sleeping(META_COSTS_SYNC_SECONDS)),
+    # La pasada decide sola si le toca (mira la última sincronización): el
+    # sondeo corto solo sirve para recoger pronto una URL recién configurada.
+    TenantLoop("erp-catalog", erp_catalog_tick, sleeping(ERP_CATALOG_SYNC_SECONDS / 12)),
 )
 
 

@@ -63,6 +63,14 @@ describe('flowEditorReducer', () => {
     expect(published).toMatchObject({ publishedDefinition: DEFINITION, notice: 'Flujo publicado · versión 3.' })
   })
 
+  it('al publicar un flujo pausado, el aviso dice si quedó activo o sigue pausado', () => {
+    const resumed = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 4, pausedChoice: 'resume' })
+    const keptPaused = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 4, pausedChoice: 'keepPaused' })
+
+    expect(resumed.notice).toBe('Flujo publicado · versión 4. Ya está activo.')
+    expect(keptPaused.notice).toBe('Flujo publicado · versión 4. Sigue pausado.')
+  })
+
   it('restaurar una versión deselecciona el bloque abierto', () => {
     const restored = flowEditorReducer(stateWith({ selectedId: 'n1' }), { type: 'versionRestored', version: 2 })
 
@@ -77,6 +85,22 @@ describe('flowEditorReducer', () => {
 
     expect(opened).toMatchObject({ jsonViewTab: 'draft', jsonCopied: false })
     expect(opened.openDialogs.jsonView).toBe(true)
+  })
+
+  it('un error de un bloque lo deja elegido, e ir a él no borra el error hasta que se elige otro', () => {
+    const failed = flowEditorReducer(stateWith({ showEntryConditions: true }), { type: 'fail', message: 'Falta conectar la salida', target: 'a12' })
+    expect(failed).toMatchObject({ error: 'Falta conectar la salida', errorTarget: 'a12', selectedId: 'a12', showEntryConditions: false })
+
+    const back = flowEditorReducer(failed, { type: 'select', nodeId: 'a12' })
+    expect(back).toMatchObject({ error: 'Falta conectar la salida', errorTarget: 'a12' })
+
+    const other = flowEditorReducer(back, { type: 'select', nodeId: 'a3' })
+    expect(other).toMatchObject({ error: null, errorTarget: null, selectedId: 'a3' })
+  })
+
+  it('un error del flujo entero no elige ningún bloque', () => {
+    const failed = flowEditorReducer(stateWith({ selectedId: 'a3' }), { type: 'fail', message: 'Falta un bloque Fin' })
+    expect(failed).toMatchObject({ errorTarget: null, selectedId: 'a3' })
   })
 
   it('abrir y cerrar un diálogo no toca a los demás', () => {

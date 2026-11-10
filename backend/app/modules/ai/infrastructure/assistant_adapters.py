@@ -11,6 +11,9 @@ from app.modules.ai.application.ports import AiJobNotStarted
 
 
 class PlatformAiAccess:
+    async def ensure_configured(self, operation: str) -> None:
+        await ai_access.ensure_ai_configured(operation)
+
     async def ensure_available(self, operation: str) -> None:
         await ai_access.ensure_ai_available(operation)
 

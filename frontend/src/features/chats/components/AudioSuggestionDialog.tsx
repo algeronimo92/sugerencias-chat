@@ -4,7 +4,9 @@ import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayCla
 import { AudioPlayer } from '../../../shared/ui/MediaPlayer'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useOutboundMessage } from '../hooks/useOutboundMessage'
-import { useGenerateSpeech } from '../../ai/public/useTts'
+import { useGenerateSpeech, useTtsStatus } from '../../ai/public/useTts'
+import { useMe } from '../../../shared/auth'
+import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
 
 interface Props {
   chatId: string
@@ -18,6 +20,9 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const { mutate: generateSpeech, isPending: isGenerating } = useGenerateSpeech()
+  const { data: tts } = useTtsStatus()
+  const { data: me } = useMe()
+  const ttsReady = tts?.configured !== false
   const { mutate: sendAudio, isPending: isSending } = useOutboundMessage(chatId)
 
   function handleTextChange(value: string) {
@@ -74,19 +79,27 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
               className="w-full text-sm bg-wa-hover dark:bg-wa-head-dark text-wa-text dark:text-wa-text-dark border border-wa-border dark:border-wa-border-dark rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent resize-none"
             />
             <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark mt-1">
-              Ajustá abreviaturas o números (ej. "min." → "minutos") para que se escuche natural.
+              Ajusta abreviaturas o números (ej. "min." → "minutos") para que se escuche natural.
             </p>
           </div>
 
           {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
 
+          {!ttsReady && (
+            <IntegrationNotice
+              message="ElevenLabs no está conectado: no se pueden generar audios con la voz del negocio."
+              anchor="voz"
+              canConnect={me?.role === 'admin'}
+              tone="warning"
+            />
+          )}
           {audio ? (
             <AudioPlayer autoPlay src={`data:${audio.contentType};base64,${audio.dataBase64}`} className="w-full" ariaLabel="Vista previa de audio generado" />
           ) : (
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={isGenerating || !text.trim()}
+              disabled={isGenerating || !text.trim() || !ttsReady}
               className="w-full py-2 text-sm font-medium text-white bg-gray-600 hover:bg-wa-active-dark disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mic className="w-3.5 h-3.5" />}

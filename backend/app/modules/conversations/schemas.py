@@ -33,6 +33,22 @@ class InternalNoteUpdate(BaseModel):
     mentioned_user_ids: list[int] = Field(default_factory=list)
 
 
+class MessageOrigin(BaseModel):
+    """De dónde salió un mensaje del negocio (ver domain/origin.py).
+
+    ``user``: una persona desde la app; ``automation``: una ejecución de flujo
+    (``execution_id``); ``scheduled``: un programado, acreditado a quien lo
+    programó; ``echo``: salió del celular del negocio, no de la app. Los
+    mensajes del cliente no traen origen.
+    """
+
+    kind: Literal["user", "automation", "scheduled", "echo"]
+    user_id: int | None = None
+    # Nombre vigente de la persona, también si ya no está activa.
+    user_name: str | None = None
+    execution_id: int | None = None
+
+
 class Message(BaseModel):
     """Un mensaje del hilo con el contrato de Meta.
 
@@ -85,6 +101,8 @@ class Message(BaseModel):
     pinned_at: str | None = None
     # Motivo real de un envío que el outbox dio por fallido (su last_error).
     error_detail: str | None = None
+    # Quién o qué lo mandó. None en los mensajes del cliente.
+    origin: MessageOrigin | None = None
 
 
 class MessagePage(BaseModel):

@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.events import Phase, subscribe
 from app.db.uow import collect, current_session
-from app.modules.automations.application.management import pause_lead_executions, resume_lead_executions
+from app.modules.automations.application.management import resume_lead_executions
 from app.modules.automations.application.ports import automation_ports
 from app.modules.automations.application.triggers import trigger_inbound_message
 from app.modules.automations.domain.events import (
@@ -31,7 +31,14 @@ from app.modules.automations.domain.events import (
     ExecutionFailed,
 )
 from app.modules.automations.infrastructure import wakeup
-from app.modules.catalogs.public import ServiceRenamed, rename_service_references
+from app.modules.catalogs.public import (
+    ServiceDeletionRequested,
+    ServiceRenamed,
+    describe_usage,
+    filters_by_service,
+    rename_service_references,
+    sets_service,
+)
 from app.modules.conversations.ports.message_queries import fetch_message_by_wa_id
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_ERROR_CODE
 from app.modules.conversations.public import ExternalMessageDetected, ProviderMessageStored
@@ -82,15 +89,34 @@ async def follow_service_rename(event: ServiceRenamed) -> None:
     await automation_ports().rules.rename_service(event.old_name, event.new_name, rename_service_references)
 
 
+@subscribe(ServiceDeletionRequested, phase=Phase.TRANSACTION)
+async def report_service_usage(event: ServiceDeletionRequested) -> None:
+    """Una regla que le pone el servicio a los leads impide borrarlo; una que
+    solo filtra por su nombre ("Servicio de interés contiene") se avisa: es un
+    texto, no un vínculo con el catálogo, y la regla sigue funcionando."""
+    store = automation_ports().rules
+    setting = await store.rules_referencing_service(event.name, sets_service)
+    if setting:
+        event.usages.append(describe_usage("automatizaciones", len(setting), "automatización", "automatizaciones", setting))
+    blocking = {rule_id for rule_id, _ in setting}
+    filtering = [rule for rule in await store.rules_referencing_service(event.name, filters_by_service) if rule[0] not in blocking]
+    if filtering:
+        event.notices.append(describe_usage(
+            "filtros", len(filtering), "automatización filtra por este nombre", "automatizaciones filtran por este nombre", filtering,
+        ))
+
+
 @subscribe(LeadUpdated, phase=Phase.AFTER_COMMIT)
 async def follow_lead_pause(event: LeadUpdated) -> None:
-    """La pausa congela y la reanudación descongela: lo que quedó a medias
-    sigue después por donde iba, con el tiempo que le faltaba."""
+    """Pausar el bot del chat solo impide lanzamientos nuevos (lo mira
+    schedule_in_session al crear ejecuciones): lo que ya está en marcha sigue
+    y se detiene, si hace falta, desde su tarjeta. Hasta el 2026-11-09 la
+    pausa congelaba las ejecuciones de sistema y el vendedor veía dos pausas
+    que prometían lo mismo; al reactivar el bot todavía se descongela lo que
+    aquella regla dejó pausado."""
     if "automatizacion_pausada" not in event.values:
         return
-    if event.values["automatizacion_pausada"]:
-        await pause_lead_executions(event.lead_id)
-    else:
+    if not event.values["automatizacion_pausada"]:
         await resume_lead_executions(event.lead_id)
 
 

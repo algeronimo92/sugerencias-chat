@@ -11,12 +11,17 @@ export interface FlowEditorState {
   savedDefinition: AutomationFlowDefinition | null
   savedName: string | null
   publishedDefinition: AutomationFlowDefinition | null
+  /** Versión publicada en uso (null si nunca se publicó). La regla con la
+   *  que se abrió el editor queda vieja al publicar: esto se actualiza. */
+  publishedVersion: number | null
   name: string
   maxPerHour: number | null
   visibleToSellers: boolean
   selectedId: string | null
   showEntryConditions: boolean
   error: string | null
+  /** El bloque al que se refiere el error, si el servidor lo dijo. */
+  errorTarget: string | null
   notice: string | null
   openDialogs: Record<FlowEditorDialog, boolean>
   jsonViewTab: FlowJsonTab
@@ -26,11 +31,13 @@ export interface FlowEditorState {
 export type FlowEditorAction =
   | { type: 'select'; nodeId: string | null }
   | { type: 'deselectRemoved'; removedIds: Set<string> }
-  | { type: 'fail'; message: string }
+  | { type: 'fail'; message: string; target?: string | null }
   | { type: 'notify'; message: string }
   | { type: 'clearFeedback' }
   | { type: 'draftSaved'; ruleId: number; name: string; definition: AutomationFlowDefinition | null }
-  | { type: 'published'; definition: AutomationFlowDefinition | null; version: number }
+  /** `pausedChoice`: lo que se eligió al publicar un flujo pausado; el aviso
+   *  confirma si quedó activo o sigue pausado. */
+  | { type: 'published'; definition: AutomationFlowDefinition | null; version: number; pausedChoice?: 'resume' | 'keepPaused' }
   | { type: 'versionRestored'; version: number }
   | { type: 'rename'; name: string }
   | { type: 'maxPerHourChanged'; value: number | null }
@@ -54,18 +61,23 @@ export function initialFlowEditorState(
   initialDefinition: AutomationFlowDefinition | null,
   publishedDefinition: AutomationFlowDefinition | null,
   firstNodeId: string | null,
+  showEntryConditions = false,
 ): FlowEditorState {
   return {
     ruleId: rule?.id ?? null,
     savedDefinition: initialDefinition,
     savedName: rule?.name ?? null,
     publishedDefinition,
+    publishedVersion: publishedDefinition && rule?.flow_version ? rule.flow_version : null,
     name: rule?.name ?? 'Nuevo flujo visual',
     maxPerHour: rule?.max_executions_per_hour ?? null,
     visibleToSellers: rule?.visible_to_sellers ?? false,
+    // Con las condiciones de entrada abiertas el panel las muestra a ellas,
+    // no al bloque elegido (ver 'select').
     selectedId: firstNodeId,
-    showEntryConditions: false,
+    showEntryConditions,
     error: null,
+    errorTarget: null,
     notice: null,
     openDialogs: NO_DIALOGS,
     jsonViewTab: 'draft',
@@ -73,27 +85,43 @@ export function initialFlowEditorState(
   }
 }
 
+function publishedNotice(version: number, pausedChoice?: 'resume' | 'keepPaused') {
+  const base = `Flujo publicado · versión ${version}.`
+  if (pausedChoice === 'resume') return `${base} Ya está activo.`
+  if (pausedChoice === 'keepPaused') return `${base} Sigue pausado.`
+  return base
+}
+
 export function flowEditorReducer(state: FlowEditorState, action: FlowEditorAction): FlowEditorState {
   switch (action.type) {
     case 'select':
       // Elegir un bloque cierra las condiciones de entrada: el panel lateral
-      // es uno solo y muestra las propiedades del bloque elegido.
+      // es uno solo y muestra las propiedades del bloque elegido. Ir al bloque
+      // del error no lo borra: sigue a la vista mientras se arregla.
+      if (action.nodeId !== null && action.nodeId === state.errorTarget) {
+        return { ...state, selectedId: action.nodeId, showEntryConditions: false }
+      }
       return {
         ...state,
         selectedId: action.nodeId,
         showEntryConditions: action.nodeId ? false : state.showEntryConditions,
         error: null,
+        errorTarget: null,
       }
     case 'deselectRemoved':
       return state.selectedId && action.removedIds.has(state.selectedId)
         ? { ...state, selectedId: null }
         : state
     case 'fail':
-      return { ...state, error: action.message, notice: null }
+      // Si el error es de un bloque, ese bloque queda elegido: su panel se abre
+      // y el lienzo lo acerca (ver failWith en VisualFlowBuilder).
+      return action.target
+        ? { ...state, error: action.message, errorTarget: action.target, notice: null, selectedId: action.target, showEntryConditions: false }
+        : { ...state, error: action.message, errorTarget: null, notice: null }
     case 'notify':
-      return { ...state, notice: action.message, error: null }
+      return { ...state, notice: action.message, error: null, errorTarget: null }
     case 'clearFeedback':
-      return { ...state, error: null, notice: null }
+      return { ...state, error: null, errorTarget: null, notice: null }
     case 'draftSaved':
       return {
         ...state,
@@ -102,13 +130,16 @@ export function flowEditorReducer(state: FlowEditorState, action: FlowEditorActi
         savedDefinition: action.definition,
         notice: 'Borrador guardado.',
         error: null,
+        errorTarget: null,
       }
     case 'published':
       return {
         ...state,
         publishedDefinition: action.definition,
-        notice: `Flujo publicado · versión ${action.version}.`,
+        publishedVersion: action.version,
+        notice: publishedNotice(action.version, action.pausedChoice),
         error: null,
+        errorTarget: null,
       }
     case 'versionRestored':
       return {
@@ -116,6 +147,7 @@ export function flowEditorReducer(state: FlowEditorState, action: FlowEditorActi
         selectedId: null,
         notice: `Versión ${action.version} cargada como borrador. Revísala y publica para aplicarla.`,
         error: null,
+        errorTarget: null,
       }
     case 'rename':
       return { ...state, name: action.name }
@@ -148,10 +180,11 @@ export function useFlowEditor(
   initialDefinition: AutomationFlowDefinition | null,
   publishedDefinition: AutomationFlowDefinition | null,
   firstNodeId: string | null,
+  showEntryConditions = false,
 ) {
   return useReducer(
     flowEditorReducer,
     undefined,
-    () => initialFlowEditorState(rule, initialDefinition, publishedDefinition, firstNodeId),
+    () => initialFlowEditorState(rule, initialDefinition, publishedDefinition, firstNodeId, showEntryConditions),
   )
 }

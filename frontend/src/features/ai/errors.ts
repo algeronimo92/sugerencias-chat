@@ -4,6 +4,7 @@ const NON_RETRYABLE_CODES = new Set([
   'ai_disabled',
   'ai_quota_exceeded',
   'ai_not_configured',
+  'ai_key_missing',
   'ai_workflow_rejected',
   'ai_workflow_misconfigured',
 ])

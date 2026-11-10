@@ -3,7 +3,7 @@ import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
 import type { SuggestionResponse, SuggestionStatus } from './types'
 import type { MediaAsset } from "../media/types";
-import type { AIProfile, AIUsage, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, LeadAnalysisResult, TtsResult } from "./types";
+import type { AIProfile, AIUsage, AiProvidersStatus, AiProviderTestResult, GenerateParams, KnowledgeDocument, KnowledgeDocumentSummary, KnowledgeDocumentType, KnowledgePdfImport, KnowledgeTemplateSummary, LeadAnalysisResult, TtsResult } from "./types";
 
 export async function generateSuggestions(params: GenerateParams): Promise<SuggestionResponse> {
   try {
@@ -47,22 +47,70 @@ export async function saveAiProfile(profile: Omit<AIProfile, 'updated_at'>): Pro
   return (await client.put<ApiResponse<'/api/ai/profile', 'put'>>('/api/ai/profile', profile)).data
 }
 
+/** Durante el despliegue la versión anterior del servidor no manda
+ *  `service_ids`; sin esto la pantalla de Conocimiento se caía entera. */
+function withServiceIds<T extends { service_ids?: number[] }>(document: T): T & { service_ids: number[] } {
+  return { ...document, service_ids: document.service_ids ?? [] }
+}
+
 export async function fetchKnowledgeDocuments(): Promise<KnowledgeDocumentSummary[]> {
-  return (await client.get<ApiResponse<'/api/ai/knowledge', 'get'>>('/api/ai/knowledge')).data
+  return (await client.get<ApiResponse<'/api/ai/knowledge', 'get'>>('/api/ai/knowledge')).data.map(withServiceIds)
 }
 
 export async function fetchKnowledgeDocument(id: string | null): Promise<KnowledgeDocument> {
-  return (await client.get<ApiResponse<'/api/ai/knowledge/{document_id}', 'get'>>(`/api/ai/knowledge/${id}`)).data
+  return withServiceIds((await client.get<ApiResponse<'/api/ai/knowledge/{document_id}', 'get'>>(`/api/ai/knowledge/${id}`)).data)
 }
 
-export async function saveKnowledgeDocument({ id, title, content }: { id: string | null; title: string; content: string }) {
+export async function saveKnowledgeDocument({ id, ...body }: {
+  id: string | null
+  title: string
+  content: string
+  document_type: KnowledgeDocumentType | null
+  service_ids: number[]
+}) {
   return id
-        ? (await client.put<ApiResponse<'/api/ai/knowledge/{document_id}', 'put'>>(`/api/ai/knowledge/${id}`, { title, content })).data
-        : (await client.post<ApiResponse<'/api/ai/knowledge', 'post'>>('/api/ai/knowledge', { title, content })).data
+        ? (await client.put<ApiResponse<'/api/ai/knowledge/{document_id}', 'put'>>(`/api/ai/knowledge/${id}`, body)).data
+        : (await client.post<ApiResponse<'/api/ai/knowledge', 'post'>>('/api/ai/knowledge', body)).data
+}
+
+/** Extrae el texto de un PDF para revisarlo; no guarda nada. */
+export async function importKnowledgePdf({ filename, dataBase64 }: { filename: string; dataBase64: string }): Promise<KnowledgePdfImport> {
+  return (await client.post<ApiResponse<'/api/ai/knowledge/import-pdf', 'post'>>('/api/ai/knowledge/import-pdf', { filename, data_base64: dataBase64 })).data
 }
 
 export async function deleteKnowledgeDocument(id: string) { await client.delete<ApiResponse<'/api/ai/knowledge/{document_id}', 'delete'>>(`/api/ai/knowledge/${id}`) }
 
 export async function setAiResourceDescription({ id, description }: { id: number; description: string }): Promise<MediaAsset> {
   return (await client.patch<ApiResponse<'/api/ai/resources/{asset_id}', 'patch'>>(`/api/ai/resources/${id}`, { ai_description: description })).data
+}
+
+export async function fetchTtsStatus(): Promise<{ configured: boolean }> {
+  const { data } = await client.get<ApiResponse<'/api/tts/status', 'get'>>('/api/tts/status')
+  return data
+}
+
+export async function fetchAiProviders(): Promise<AiProvidersStatus> {
+  const { data } = await client.get<ApiResponse<'/api/ai/providers', 'get'>>('/api/ai/providers')
+  return data
+}
+
+/** Sin `apiKey` prueba la clave guardada; nunca guarda nada. */
+export async function testAiProvider(payload: { provider: string; apiKey?: string | null; model?: string | null }): Promise<AiProviderTestResult> {
+  const { data } = await client.post<ApiResponse<'/api/ai/providers/test', 'post'>>('/api/ai/providers/test', {
+    provider: payload.provider,
+    api_key: payload.apiKey ?? null,
+    model: payload.model ?? null,
+  })
+  return data
+}
+
+export async function fetchKnowledgeTemplates(): Promise<KnowledgeTemplateSummary[]> {
+  return (await client.get<ApiResponse<'/api/ai/knowledge/templates', 'get'>>('/api/ai/knowledge/templates')).data
+}
+
+/** Crea una copia propia del negocio de la plantilla, lista para editar. */
+export async function importKnowledgeTemplate({ templateId, serviceIds }: { templateId: number; serviceIds: number[] }): Promise<KnowledgeDocument> {
+  return (await client.post<ApiResponse<'/api/ai/knowledge/templates/{template_id}/import', 'post'>>(
+    `/api/ai/knowledge/templates/${templateId}/import`, { service_ids: serviceIds },
+  )).data
 }

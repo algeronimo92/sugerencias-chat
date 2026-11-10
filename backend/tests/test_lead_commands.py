@@ -6,6 +6,7 @@ import pytest
 
 from app.modules.leads.application import commands
 from app.modules.leads.domain.errors import (
+    ServiceNotInCatalog,
     InvalidLeadStageError,
     LeadAlreadyExists,
     LeadNotFound,
@@ -261,3 +262,35 @@ async def test_renaming_a_service_follows_on_every_lead(in_memory_leads):
     assert repo.column("b", "servicio_interes") == "Limpieza"
     [record] = repo.audit("a")
     assert record.metadata == {"source": "service_catalog", "service_id": 3}
+
+
+async def test_all_leads_of_a_service_can_be_left_without_one(in_memory_leads):
+    """Para eliminar un servicio que usan decenas de leads: de a uno, desde
+    cada chat, era inviable."""
+    repo = in_memory_leads.repository
+    repo.seed("a", servicio_interes=" Botox ")
+    repo.seed("b", servicio_interes="botox")
+    repo.seed("c", servicio_interes="Limpieza")
+
+    updated = await commands.reassign_service_interest("Botox", None, actor=SELLER)
+
+    assert updated == 2
+    assert repo.column("a", "servicio_interes") is None and repo.column("b", "servicio_interes") is None
+    assert repo.column("c", "servicio_interes") == "Limpieza"
+    [record] = repo.audit("a")
+    assert (record.old_value, record.new_value) == ({"servicio_interes": "Botox"}, {"servicio_interes": None})
+    assert record.metadata == {"source": "bulk_service_reassign"}
+
+
+async def test_leads_can_move_to_another_active_service_but_not_to_an_unknown_one(in_memory_leads):
+    repo = in_memory_leads.repository
+    repo.seed("a", servicio_interes="Botox")
+
+    assert await commands.reassign_service_interest("Botox", "toxina", actor=SELLER) == 1
+    assert repo.column("a", "servicio_interes") == "Toxina"  # el nombre como está en el catálogo
+
+    with pytest.raises(ServiceNotInCatalog):
+        await commands.reassign_service_interest("Toxina", "No existe", actor=SELLER)
+    assert repo.column("a", "servicio_interes") == "Toxina"
+    # A sí mismo: nada que hacer.
+    assert await commands.reassign_service_interest("Toxina", "TOXINA", actor=SELLER) == 0

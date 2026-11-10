@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { CustomFieldDefinition, CustomFieldEntity, LeadService, Tag } from './types'
+import type { CustomFieldDefinition, CustomFieldEntity, ErpSyncStatus, ErpTestResult, LeadService, ServicePackage, ServiceUsageReport, Tag } from './types'
 
 export async function fetchTags(includeInactive: boolean): Promise<Tag[]> {
   if (includeInactive) return (await client.get<ApiResponse<'/api/tags/all', 'get'>>('/api/tags/all')).data
@@ -28,11 +28,63 @@ export async function updateLeadService({ id, ...values }: {
       id: number
       name?: string
       is_active?: boolean
-      description?: string
-      price?: string | null
-      price_notes?: string
     }): Promise<LeadService> {
   return (await client.patch<ApiResponse<'/api/services/{service_id}', 'patch'>>(`/api/services/${id}`, values)).data
+}
+
+export async function fetchServiceUsage(id: number): Promise<ServiceUsageReport> {
+  const { data } = await client.get<ApiResponse<'/api/services/{service_id}/usage', 'get'>>(`/api/services/${id}/usage`)
+  return { usages: data.usages ?? [], notices: data.notices ?? [] }
+}
+
+/** Pasa todos los leads con ese servicio de interés a otro (o a ninguno, con
+ *  null). La ruta es de leads, dueño de esa columna; la llama Catálogos para
+ *  poder eliminar un servicio que usan muchos leads. */
+export async function reassignServiceLeads({ fromService, toService }: { fromService: string; toService: string | null }): Promise<number> {
+  const body = { from_service: fromService, to_service: toService }
+  return (await client.post<ApiResponse<'/api/chats/service-interest/reassign', 'post'>>('/api/chats/service-interest/reassign', body)).data.updated
+}
+
+/** Solo un servicio manual que nadie usa; si algo lo usa, el 409 dice qué. */
+export async function deleteLeadService(id: number): Promise<void> {
+  await client.delete<ApiResponse<'/api/services/{service_id}', 'delete'>>(`/api/services/${id}`)
+}
+
+export interface ServicePackageInput {
+  name: string
+  sessions: number
+  price: string
+  notes?: string
+}
+
+export async function createServicePackage({ serviceId, ...values }: { serviceId: number } & ServicePackageInput): Promise<ServicePackage> {
+  return (await client.post<ApiResponse<'/api/services/{service_id}/packages', 'post'>>(`/api/services/${serviceId}/packages`, values)).data
+}
+
+export async function updateServicePackage({ serviceId, id, ...values }: {
+      serviceId: number
+      id: number
+      name?: string
+      sessions?: number
+      price?: string
+      notes?: string
+      position?: number
+      is_active?: boolean
+    }): Promise<ServicePackage> {
+  return (await client.patch<ApiResponse<'/api/services/{service_id}/packages/{package_id}', 'patch'>>(`/api/services/${serviceId}/packages/${id}`, values)).data
+}
+
+export async function fetchErpSyncStatus(): Promise<ErpSyncStatus> {
+  return (await client.get<ApiResponse<'/api/services/erp-sync', 'get'>>('/api/services/erp-sync')).data
+}
+
+/** En blanco prueba la URL guardada; con valor, la que el admin está escribiendo. */
+export async function testErpConnection(url: string | null): Promise<ErpTestResult> {
+  return (await client.post<ApiResponse<'/api/services/erp-sync/test', 'post'>>('/api/services/erp-sync/test', { url })).data
+}
+
+export async function runErpSync(): Promise<ErpSyncStatus> {
+  return (await client.post<ApiResponse<'/api/services/erp-sync', 'post'>>('/api/services/erp-sync')).data
 }
 
 export async function fetchCustomFields(entityType: CustomFieldEntity, includeInactive: boolean): Promise<CustomFieldDefinition[]> {

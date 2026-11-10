@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -257,4 +257,14 @@ export async function applyStarterPack(organizationId: string): Promise<StarterP
       `/api/platform/organizations/${organizationId}/starter-pack`,
     )
   ).data
+}
+
+export async function fetchKnowledgeTemplates(): Promise<KnowledgeTemplate[]> {
+  return (await client.get<ApiResponse<'/api/platform/knowledge-templates', 'get'>>('/api/platform/knowledge-templates')).data
+}
+
+export async function saveKnowledgeTemplate({ id, ...body }: { id: number | null } & KnowledgeTemplateInput): Promise<KnowledgeTemplate> {
+  return id
+    ? (await client.put<ApiResponse<'/api/platform/knowledge-templates/{template_id}', 'put'>>(`/api/platform/knowledge-templates/${id}`, body)).data
+    : (await client.post<ApiResponse<'/api/platform/knowledge-templates', 'post'>>('/api/platform/knowledge-templates', body)).data
 }

@@ -35,6 +35,8 @@ from app.modules.leads.schemas import (
     LeadStageUpdate,
     LeadUpdate,
     SellerItem,
+    ServiceInterestReassign,
+    ServiceInterestReassignResult,
 )
 from app.modules.leads.updates import lead_column_values
 from app.modules.platform.public import effective_country_code
@@ -133,11 +135,22 @@ async def get_kanban_stage(
     return await fetch_kanban_stage(stage, search.strip() if search else None, offset, limit)
 
 
+# Antes de las rutas con `{chat_id}`: "service-interest" no es un lead.
+@router.post("/service-interest/reassign", response_model=ServiceInterestReassignResult)
+async def reassign_service_interest(body: ServiceInterestReassign, admin: User = Depends(require_admin)):
+    """Pasa todos los leads con ``from_service`` como servicio de interés a
+    ``to_service`` (otro servicio activo) o los deja sin servicio. Lo usa
+    Catálogos para poder eliminar un servicio que usan muchos leads."""
+    to_service = (body.to_service or "").strip() or None
+    updated = await commands.reassign_service_interest(
+        body.from_service, to_service, actor=Actor.user(admin.id),
+    )
+    return {"updated": updated}
+
+
 @router.patch("/{chat_id}/stage", response_model=Chat)
 async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
-    await commands.change_stage(
-        chat_id, body.stage, actor=Actor.user(user.id), lost_reason=body.razon_perdido,
-    )
+    await commands.change_stage(chat_id, body.stage, actor=Actor.user(user.id), lost_reason=body.razon_perdido)
     return await _chat_or_404(chat_id)
 
 

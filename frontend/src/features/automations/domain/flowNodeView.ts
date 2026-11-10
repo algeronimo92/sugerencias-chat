@@ -4,6 +4,7 @@ import {
 AUTOMATION_ACTION_LABELS,AUTOMATION_TRIGGERS,FLOW_CONDITION_LABELS,FlowNodeType,formatWaitDuration,
 isAutomationActionType,isFlowConditionType,WaitAnyConditionKind,
 } from './automationCatalog'
+import { FLOW_TONES } from './flowTones'
 
 export interface FlowNodeSummaryData {
   trigger_type?: AutomationTrigger
@@ -46,13 +47,13 @@ function waitAnySummary(data: FlowNodeSummaryData): string {
 export const FLOW_NODE_VIEW: Record<AutomationFlowNodeType, FlowNodeView> = {
   [FlowNodeType.Trigger]: {
     icon: Zap,
-    iconClass: 'text-wa-primary-strong',
+    iconClass: FLOW_TONES.trigger.icon,
     summary: data => AUTOMATION_TRIGGERS.find(item => item.value === data.trigger_type)?.label ?? 'Disparador',
   },
-  [FlowNodeType.Condition]: { icon: Split, iconClass: 'text-amber-600', summary: conditionSummary },
+  [FlowNodeType.Condition]: { icon: Split, iconClass: FLOW_TONES.condition.icon, summary: conditionSummary },
   [FlowNodeType.Action]: {
     icon: Activity,
-    iconClass: 'text-violet-600',
+    iconClass: FLOW_TONES.action.icon,
     summary: data => {
       const actionType = String(data.action?.type ?? '')
       return isAutomationActionType(actionType) ? AUTOMATION_ACTION_LABELS[actionType] : 'Acción'
@@ -60,26 +61,26 @@ export const FLOW_NODE_VIEW: Record<AutomationFlowNodeType, FlowNodeView> = {
   },
   [FlowNodeType.InvokeFlow]: {
     icon: CirclePlay,
-    iconClass: 'text-indigo-600',
+    iconClass: FLOW_TONES.neutral.icon,
     summary: data => data.invokedFlowName ?? 'Selecciona un flujo',
   },
   [FlowNodeType.Wait]: {
     icon: Timer,
-    iconClass: 'text-cyan-600',
+    iconClass: FLOW_TONES.neutral.icon,
     summary: data => `Esperar ${formatWaitDuration(Number(data.seconds ?? 0))}`,
   },
-  [FlowNodeType.WaitAny]: { icon: Timer, iconClass: 'text-cyan-600', summary: waitAnySummary },
+  [FlowNodeType.WaitAny]: { icon: Timer, iconClass: FLOW_TONES.neutral.icon, summary: waitAnySummary },
   [FlowNodeType.Question]: {
     icon: MessageCircleQuestion,
-    iconClass: 'text-pink-600',
+    iconClass: FLOW_TONES.question.icon,
     summary: data => data.buttons?.length ? data.buttons.map(button => button.label).join(' / ') : 'Sin botones',
   },
   [FlowNodeType.RoundRobin]: {
     icon: Repeat,
-    iconClass: 'text-teal-600',
+    iconClass: FLOW_TONES.roundRobin.icon,
     summary: data => data.outputs?.length ? `Reparto entre ${data.outputs.length} salidas` : 'Sin salidas',
   },
-  [FlowNodeType.End]: { icon: CheckCircle2, iconClass: 'text-wa-muted', summary: data => String(data.label || 'Fin') },
+  [FlowNodeType.End]: { icon: CheckCircle2, iconClass: FLOW_TONES.neutral.icon, summary: data => String(data.label || 'Fin') },
 }
 
 export function flowNodeSummary(type: AutomationFlowNodeType, data: FlowNodeSummaryData): string {

@@ -41,16 +41,18 @@ export function ContactSendDialog({ chatId, targetName, replyTo, onSent, onClose
 
   function toggle(contact: Chat) {
     if (!contact.phone) return
-    setSelected(current => {
-      if (current.some(item => item.chat_id === contact.chat_id)) {
-        return current.filter(item => item.chat_id !== contact.chat_id)
-      }
-      if (current.length >= MAX_CONTACTS) {
-        toast.error(`Podés enviar hasta ${MAX_CONTACTS} contactos a la vez`)
-        return current
-      }
-      return [...current, contact]
-    })
+    const isSelected = selected.some(item => item.chat_id === contact.chat_id)
+    // El aviso sale del handler y no del updater: React puede ejecutar un
+    // updater dos veces, y el toast salía repetido.
+    if (!isSelected && selected.length >= MAX_CONTACTS) {
+      toast.error(`Puedes enviar hasta ${MAX_CONTACTS} contactos a la vez`)
+      return
+    }
+    setSelected(current => (
+      current.some(item => item.chat_id === contact.chat_id)
+        ? current.filter(item => item.chat_id !== contact.chat_id)
+        : current.length >= MAX_CONTACTS ? current : [...current, contact]
+    ))
   }
 
   function submit() {

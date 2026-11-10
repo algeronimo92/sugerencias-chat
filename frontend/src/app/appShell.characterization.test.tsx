@@ -8,7 +8,7 @@
  * router y la fase 6 los permisos: este test tiene que seguir pasando igual.
  */
 
-import { configure, render, screen, waitFor } from '@testing-library/react'
+import { configure, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -32,6 +32,7 @@ configure({ asyncUtilTimeout: 5_000 })
 
 const ADMIN = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin' }
 const SELLER = { id: 2, email: 'vendedor@clinica.test', name: 'Vendedor', role: 'vendedor' }
+const ANALYST = { id: 3, email: 'analista@clinica.test', name: 'Ana', role: 'analista' }
 
 function at(path: string) {
   window.history.replaceState({}, '', path)
@@ -139,7 +140,7 @@ describe('sesión', () => {
 })
 
 describe('autorización de rutas', () => {
-  it.each(['/templates', '/media-library', '/automations', '/catalogs', '/ai-assistant'])(
+  it.each(['/templates', '/media-library', '/automations', '/catalogs', '/integraciones', '/ai-assistant'])(
     'un vendedor que entra a %s vuelve a la bandeja',
     async path => {
       api.current.on('get', '/api/auth/me', { data: SELLER })
@@ -177,6 +178,39 @@ describe('autorización de rutas', () => {
 
     await screen.findByRole('button', { name: 'Cerrar sesión' })
     await waitFor(() => expect(window.location.pathname).toBe('/'))
+  })
+})
+
+describe('analista', () => {
+  it.each(['/', '/kanban', '/tasks', '/templates', '/no-existe'])(
+    'desde %s va al dashboard, la única vista que ve',
+    async path => {
+      api.current.on('get', '/api/auth/me', { data: ANALYST })
+      at(path)
+      render(<App />)
+
+      await screen.findByRole('button', { name: 'Cerrar sesión' })
+      await waitFor(() => expect(window.location.pathname).toBe('/dashboard'))
+      const nav = screen.getByRole('navigation', { name: 'Vista principal' })
+      expect(within(nav).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Dashboard'])
+    },
+  )
+
+  it('no pide chats, no leídos ni notificaciones, y no puede reportar problemas', async () => {
+    api.current.on('get', '/api/auth/me', { data: ANALYST })
+    at('/dashboard')
+    render(<App />)
+
+    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    // El dashboard se carga de forma diferida y trae la librería de gráficos:
+    // con la suite en paralelo tarda más que el resto de las pantallas.
+    await waitFor(() => expect(api.current.calls('get', '/api/dashboard').length).toBeGreaterThan(0), { timeout: 15_000 })
+    expect(screen.getByText('Analista')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reportar un problema' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Configuración' })).not.toBeInTheDocument()
+    expect(api.current.calls('get', '/api/chats')).toEqual([])
+    expect(api.current.calls('get', '/api/chats/unread-count')).toEqual([])
+    expect(api.current.calls('get', '/api/notifications')).toEqual([])
   })
 })
 

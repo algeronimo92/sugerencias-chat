@@ -14,12 +14,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(Text, unique=True)
     name: Mapped[str] = mapped_column(Text)
     password_hash: Mapped[str] = mapped_column(Text)
-    role: Mapped[str] = mapped_column(Text)  # "admin" | "vendedor"
+    role: Mapped[str] = mapped_column(Text)  # "admin" | "vendedor" | "analista"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'vendedor')", name="users_role_check"),
+        CheckConstraint("role IN ('admin', 'vendedor', 'analista')", name="users_role_check"),
     )
 
 

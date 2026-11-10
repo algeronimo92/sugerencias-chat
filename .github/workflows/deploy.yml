@@ -1,0 +1,443 @@
+# Despliegue a producción: cada push a `main` (un merge) corre los mismos
+# checks que el PR (checks.yml) y, si pasan, despliega blue-green por SSH.
+#
+# Es un workflow aparte, y solo de `main`, para que "¿se desplegó?" tenga una
+# sola respuesta: una corrida de "Deploy a producción" en verde, y el entorno
+# `production` en la pestaña Deployments. Antes el deploy era un job más del CI
+# de todas las ramas y aparecía "skipped" en cada PR y en cada rama, y en
+# `main` cuando GitHub mostraba otra corrida del mismo commit.
+name: Deploy a producción
+
+on:
+  push:
+    branches: [main]
+  # Para volver a desplegar `main` sin un commit nuevo (un deploy que falló
+  # por algo del servidor que ya se corrigió).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  deploy:
+    needs: checks
+    # Un "Run workflow" manual desde otra rama chequearía ese código y
+    # desplegaría `main` (el script hace `git reset --hard origin/main`).
+    if: github.ref == 'refs/heads/main'
+    # El entorno registra cada despliegue en la pestaña Deployments (y en la
+    # portada del repo) con su commit y su URL: ahí se ve qué versión está en
+    # producción sin abrir corridas de Actions.
+    environment:
+      name: production
+      url: https://dermicapro.cliniventas.com
+    timeout-minutes: 30
+    # Un solo despliegue a la vez contra el servidor. Dos merges seguidos
+    # lanzaban dos deploys en paralelo: los dos elegían el mismo color libre y
+    # el segundo chocaba al crear sus contenedores con los del primero (pasó el
+    # 2026-11-02 con los PR 70 y 71). No se cancela el que está corriendo: a
+    # medio conmutar dejaría el tráfico en un color a medio levantar. El que
+    # espera hace `git reset --hard origin/main`, así que despliega lo último
+    # aunque GitHub descarte otro que estaba en cola.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -eu
+            cd ${{ secrets.VPS_PROJECT_PATH }}
+
+            COMPOSE_DB="docker compose -f compose.db.yml --env-file db/.env"
+
+            # Se guarda antes de mover nada: es el punto al que se vuelve si el
+            # despliegue no llega a completarse. Con blue-green no hace falta
+            # recrear nada para revertir — el color que servía nunca se toca
+            # mientras el nuevo se prueba (ver deploy-bluegreen.sh) — esto solo
+            # deja el repositorio en el commit conocido-bueno para el próximo
+            # intento.
+            PREVIOUS=$(git rev-parse HEAD)
+            echo "Versión en curso: $PREVIOUS"
+
+            # Comprobaciones previas. Van ANTES del git reset a propósito: lo
+            # que miran no viene del repositorio sino del servidor, así que ya
+            # se puede saber. Si falta algo, producción se queda intacta y con
+            # el repositorio todavía en $PREVIOUS, no a medio camino.
+            #
+            # PostgreSQL arranca con ssl=on sin interruptor, así que sin
+            # certificado entra en bucle de reinicio con "could not load server
+            # certificate file: no start line" — un mensaje que no dice qué
+            # hacer. db/tls/ está en .gitignore: lo genera cada servidor.
+            if [ ! -s db/tls/server.crt ] || [ ! -s db/tls/server.key ]; then
+              echo "ERROR: faltan los certificados TLS de PostgreSQL." >&2
+              echo "La base no arranca sin ellos. Generarlos en el servidor con:" >&2
+              echo "    scripts/gen-db-tls.sh" >&2
+              exit 1
+            fi
+
+            # db/pg_hba.conf rechaza toda conexión de red sin cifrar, incluida
+            # la del propio backend. Si backend/.env se quedó en
+            # DATABASE_SSL=disable, el backend pierde la base en cuanto se
+            # recrea PostgreSQL — y revertir no lo arregla, porque devuelve el
+            # código pero no el pg_hba que la base ya cargó.
+            if ! grep -qE '^[[:space:]]*DATABASE_SSL[[:space:]]*=[[:space:]]*require[[:space:]]*$' backend/.env; then
+              echo "ERROR: backend/.env no tiene DATABASE_SSL=require." >&2
+              echo "pg_hba.conf exige TLS a toda conexión de red; sin esto el" >&2
+              echo "backend no puede conectar. Corregirlo en el servidor." >&2
+              exit 1
+            fi
+
+            # Un cambio de versión MAYOR de PostgreSQL no arranca sobre el
+            # directorio de datos de la anterior: el contenedor nuevo entra en
+            # bucle de reinicio con "database files are incompatible with
+            # server" y revertir el commit no lo arregla, porque el volumen
+            # sigue como estaba pero la aplicación ya lleva abajo desde el
+            # `up -d`. compose.db.yml lo advierte en un comentario; esto es lo
+            # que lo hace cumplir.
+            #
+            # El pin entrante se lee del commit remoto SIN traerlo al árbol de
+            # trabajo, para que un corte aquí deje el repositorio todavía en
+            # $PREVIOUS, igual que el resto de comprobaciones previas.
+            git fetch origin main
+            # La versión la fija el FROM de db/Dockerfile (PostgreSQL oficial +
+            # pgvector), que es lo que compose.db.yml construye.
+            PG_NUEVO=$(git show origin/main:db/Dockerfile \
+              | sed -n 's/^FROM[[:space:]]\{1,\}postgres:\([0-9]\{1,\}\).*/\1/p' \
+              | head -1)
+            # Falla cerrado si el pin dejó de ser legible —una variable, otro
+            # formato—, que es justo cuando conviene que alguien mire. El `head`
+            # final también garantiza salida 0: con un `grep` pelado, `set -e`
+            # mataría el script en esta asignación y sin ningún mensaje.
+            if [ -z "$PG_NUEVO" ]; then
+              echo "ERROR: no se pudo leer la versión de postgres en db/Dockerfile." >&2
+              echo "Se esperaba una línea 'FROM postgres:<mayor>...'. Si cambió" >&2
+              echo "el formato, hay que actualizar esta comprobación en deploy.yml." >&2
+              exit 1
+            fi
+
+            # La versión viva se le pregunta al directorio de datos, que es lo
+            # que de verdad tiene que ser compatible. El tag de la imagen
+            # mentiría si alguien ya subió el pin y el contenedor está
+            # reiniciándose: diría la versión nueva sobre datos viejos. Si el
+            # contenedor no responde se cae al tag, y si no hay contenedor no
+            # hay nada que proteger —primer despliegue, o base apagada— y se
+            # sigue adelante.
+            PG_CID=$($COMPOSE_DB ps -q postgres 2>/dev/null | head -1)
+            PG_VIVO=""
+            if [ -n "$PG_CID" ]; then
+              PG_VIVO=$(docker exec "$PG_CID" cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null \
+                | cut -d. -f1 | tr -dc '0-9')
+              if [ -z "$PG_VIVO" ]; then
+                PG_VIVO=$(docker inspect -f '{{.Config.Image}}' "$PG_CID" 2>/dev/null \
+                  | sed -n 's/^\(cliniventas-\)\{0,1\}postgres:\([0-9]\{1,\}\).*/\2/p' | head -1)
+              fi
+            fi
+
+            if [ -z "$PG_CID" ]; then
+              echo "No hay contenedor de PostgreSQL: no se comprueba compatibilidad."
+            elif [ -z "$PG_VIVO" ]; then
+              # Se distingue de la rama anterior a propósito: decir "no hay
+              # PostgreSQL corriendo" cuando sí lo hay manda a buscar el
+              # problema al lado equivocado.
+              echo "AVISO: hay PostgreSQL corriendo pero no se pudo leer su versión." >&2
+              echo "AVISO: se sigue sin comprobar compatibilidad." >&2
+            elif [ "$PG_NUEVO" != "$PG_VIVO" ]; then
+              echo "ERROR: este despliegue cambiaría PostgreSQL $PG_VIVO -> $PG_NUEVO." >&2
+              echo "El contenedor nuevo NO puede arrancar sobre los datos de $PG_VIVO." >&2
+              echo "Producción se queda intacta y el repositorio en $PREVIOUS." >&2
+              echo "Una actualización mayor se hace a mano y con la app parada:" >&2
+              echo "copia de seguridad (scripts/db-backup.sh), restaurar en la" >&2
+              echo "versión nueva, verificar, y recién entonces subir el pin." >&2
+              exit 1
+            else
+              echo "PostgreSQL $PG_VIVO, sin cambio de versión mayor."
+            fi
+
+            # Con el resolver en DNS-01, traefik pide el wildcard a Hostinger
+            # usando HOSTINGER_API_TOKEN. Sin token arranca igual, pero no
+            # emite nada: cada negocio nuevo cae en el certificado por defecto
+            # y, cuando venzan los certificados por host, también los de hoy.
+            # Como el resto de comprobaciones, mira el commit entrante sin
+            # traerlo al árbol de trabajo.
+            if git show origin/main:traefik/reverse-proxy.docker-compose.yml \
+                | grep -qE '^[[:space:]]*-[[:space:]]*--certificatesresolvers\.letsencrypt\.acme\.dnschallenge=true' \
+              && ! grep -qE '^[[:space:]]*HOSTINGER_API_TOKEN[[:space:]]*=[[:space:]]*[^[:space:]]' traefik/.env; then
+              echo "ERROR: traefik usa DNS-01 pero traefik/.env no tiene HOSTINGER_API_TOKEN." >&2
+              echo "Sin él no se emite el certificado *.cliniventas.com. Generar un" >&2
+              echo "token en hPanel y agregarlo en el servidor a traefik/.env." >&2
+              exit 1
+            fi
+
+            # traefik/dynamic/active.yml está versionado, pero en el servidor
+            # es estado de ejecución: es el interruptor que dice qué color
+            # sirve ahora. Un `git reset --hard` lo devuelve al color que
+            # quedó commiteado, y traefik lo relee en caliente: si ese color
+            # está apagado —lo normal, porque el despliegue anterior lo bajó—
+            # el dominio queda sin backend hasta que el script vuelve a
+            # escribirlo. Pasó con dos pushes seguidos a main.
+            #
+            # Del archivo del servidor solo se conserva el color (puerto y
+            # comentario ACTIVE_COLOR). Copiarlo entero encima también pisaba
+            # las reglas y los dominios del repo: un cambio de enrutado nunca
+            # llegaba a producción.
+            ACTIVE=traefik/dynamic/active.yml
+            conservar_color() {
+              sed -i \
+                -e "s|http://127\.0\.0\.1:[0-9]\+|$(grep -oE 'http://127\.0\.0\.1:[0-9]+' "$1" | head -1)|" \
+                -e "s|^# ACTIVE_COLOR: .*|$(grep -m1 '^# ACTIVE_COLOR:' "$1")|" \
+                "$ACTIVE"
+            }
+            cp "$ACTIVE" /tmp/active.yml.deploy
+
+            # El fetch ya se hizo arriba, para el guard de PostgreSQL.
+            git reset --hard origin/main
+            echo "Desplegando: $(git rev-parse HEAD)"
+
+            conservar_color /tmp/active.yml.deploy
+
+            # Qué va a recrear este despliegue, dicho antes de hacerlo.
+            #
+            # Son avisos, no comprobaciones: no hay nada que impedir aquí. Los
+            # `up -d` de traefik y de la base corren en TODOS los despliegues
+            # —a diferencia del monitoreo, que está detrás de una puerta más
+            # abajo—, así que un commit que cambie esos archivos recrea
+            # infraestructura de producción aunque venga con otro asunto. Pasó
+            # el 2026-08-10: f0c4a8d se anunciaba como una actualización del
+            # stack de monitoreo y traía también los pins de PostgreSQL y de
+            # traefik. Se recrearon los dos, que era lo correcto, pero la
+            # explicación hubo que reconstruirla después a base de
+            # `docker inspect` y marcas de tiempo de los pull.
+            #
+            # Se mira el diff del archivo y no el tag de la imagen porque
+            # cambiar un flag del `command:` o un volumen recrea el contenedor
+            # igual. Un cambio que resulte ser solo de comentarios avisa sin
+            # que haya recreate: en una línea de log el falso positivo no
+            # cuesta nada, y lo caro es el silencio.
+            if ! git diff --quiet "$PREVIOUS" HEAD -- traefik/reverse-proxy.docker-compose.yml; then
+              echo "AVISO: cambió la configuración de traefik; este despliegue lo recrea."
+              echo "AVISO: habrá un corte de ~10 s en :443 mientras vuelve a atar el puerto."
+            fi
+
+            # La base no se corta por esto —el guard de más arriba ya descartó
+            # el único cambio del que no se vuelve, el de versión mayor—, pero
+            # recrearla sí tira las conexiones abiertas del backend.
+            if ! git diff --quiet "$PREVIOUS" HEAD -- compose.db.yml; then
+              echo "AVISO: cambió compose.db.yml; este despliegue recrea PostgreSQL."
+              echo "AVISO: el backend perderá las conexiones abiertas mientras rearranca."
+            fi
+
+            # Traefik, con la configuración de este repositorio. El contenedor
+            # que había se levantó antes del blue-green: sin
+            # --providers.file.directory, de modo que active.yml no enrutaba
+            # nada y el único router del dominio era el del stack heredado, por
+            # etiquetas. Así ningún despliegue llegaba a servirse nunca.
+            #
+            # -p traefik es el proyecto con el que ya está creado: mantiene el
+            # volumen traefik_traefik-letsencrypt y con él el certificado. Sin
+            # ese nombre se crearía un segundo traefik que ni siquiera podría
+            # atar el :443 que tiene el primero.
+            #
+            # `up -d` es idempotente: sólo recrea el contenedor cuando la
+            # imagen o los argumentos cambian.
+            if [ ! -s traefik/.env ]; then
+              echo "ERROR: falta traefik/.env (ACME_EMAIL)." >&2
+              echo "Copiar traefik/.env.example y completarlo en el servidor." >&2
+              exit 1
+            fi
+            docker compose -p traefik \
+              -f traefik/reverse-proxy.docker-compose.yml \
+              --env-file traefik/.env up -d
+
+            # RabbitMQ se retiró del repositorio: existía para la ingesta de
+            # Evolution API (decomisada el 2026-09-16) y el backend nunca tuvo
+            # cliente AMQP. El proyecto `dermicapro-mq` sobrevivía a los
+            # despliegues a propósito, igual que la base, así que el `git reset`
+            # de arriba no lo toca y seguiría corriendo para nadie: se apaga
+            # acá, una vez, con su volumen (las colas están vacías desde que
+            # Evolution dejó de publicar). Cuando ya no exista, esto no hace
+            # nada. Blindado como estaba el bloque anterior: un fallo acá no
+            # debe impedir el despliegue de la aplicación.
+            if docker ps -a --format '{{.Names}}' | grep -qx dermicapro-mq-rabbitmq-1; then
+              echo "Retirando el RabbitMQ heredado (proyecto dermicapro-mq)"
+              if ! docker compose -p dermicapro-mq down -v --remove-orphans; then
+                docker rm -f dermicapro-mq-rabbitmq-1 || true
+                docker volume rm dermicapro-rabbitmq || true
+              fi
+              echo "AVISO: mq/.env sigue en el servidor con las credenciales del broker; borrarlo a mano."
+            fi
+
+            # scripts/deploy-bluegreen.sh levanta el color inactivo al lado del
+            # que sirve, migra (scripts/migrate.py toma un advisory lock, así
+            # que si algún día hay más de una instancia sólo una aplica el DDL)
+            # y comprueba /health/ready + el camino completo traefik -> nginx ->
+            # SPA en el color nuevo, todo ANTES de tocar el tráfico. Si algo
+            # falla ahí, el color activo nunca se enteró y no hace falta
+            # revertir nada del lado de los contenedores.
+            #
+            # La base va aparte porque el script no la administra: crea la red
+            # `dermicapro-data`, que compose.prod.yml declara como external.
+            # Sin ella, levantar la aplicación falla con "network declared as
+            # external, but could not be found". Es idempotente: si ya está
+            # arriba, no hace nada.
+            # La imagen de la base (db/Dockerfile) se construye acá y solo cuando
+            # su tag todavía no existe en el servidor: es el único momento en que
+            # este deploy reemplaza el contenedor que tiene los datos. Antes de
+            # eso, un respaldo; y se construye antes del `up` para que el corte
+            # dure lo que tarda en reiniciar PostgreSQL, no lo que tarda en
+            # compilar pgvector.
+            DB_IMAGE=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(cliniventas-postgres:[^[:space:]]*\).*/\1/p' compose.db.yml | head -1)
+            if [ -z "$DB_IMAGE" ]; then
+              echo "ERROR: compose.db.yml no tiene 'image: cliniventas-postgres:<tag>'." >&2
+              exit 1
+            fi
+            if ! docker image inspect "$DB_IMAGE" >/dev/null 2>&1; then
+              echo "AVISO: imagen de base nueva ($DB_IMAGE): respaldo, construcción y recreación de PostgreSQL."
+              if [ -n "$PG_CID" ]; then
+                ./scripts/db-backup.sh
+              fi
+              $COMPOSE_DB build postgres
+            fi
+
+            # --wait: las extensiones y las migraciones necesitan la base ya
+            # aceptando conexiones, no solo el contenedor arrancado.
+            # db-extensions.sh crea con el administrador de la base lo que el
+            # usuario de la aplicación no puede (pgvector); es idempotente.
+            if $COMPOSE_DB up -d --wait && ./scripts/db-extensions.sh && ./scripts/deploy-bluegreen.sh; then
+              echo "Despliegue verificado"
+
+              # Monitoreo. Va DESPUÉS de que la app quedó servida y dentro de
+              # la rama de éxito a propósito: si algo de acá falla, el script
+              # corta con set -eu y el workflow queda en rojo, pero no entra a
+              # la rama de rollback, así que la app desplegada no se revierte
+              # por un problema del stack que la observa.
+              #
+              # Solo se toca cuando cambió algo suyo: recrear Prometheus o Loki
+              # en cada push de la app dejaría huecos en métricas y logs sin
+              # ninguna razón.
+              if git diff --quiet "$PREVIOUS" HEAD -- monitoring compose.monitoring.yml; then
+                echo "Monitoreo sin cambios, no se toca."
+              else
+                if [ ! -s monitoring/.env ]; then
+                  echo "ERROR: falta monitoring/.env (GRAFANA_ADMIN_PASSWORD," >&2
+                  echo "POSTGRES_EXPORTER_DSN). Ver scripts/monitoring-setup.sh." >&2
+                  exit 1
+                fi
+                COMPOSE_MON="docker compose -f compose.monitoring.yml --env-file monitoring/.env"
+
+                # Cubre lo que cambia de imagen o de argumentos. NO cubre el
+                # contenido de los configs montados: para compose el servicio
+                # sigue igual y no lo recrea. Eso se resuelve abajo, servicio
+                # por servicio, porque cada uno recarga distinto.
+                $COMPOSE_MON up -d
+
+                # Prometheus y Alertmanager releen con SIGHUP, pero si el
+                # config nuevo es inválido lo loguean y SIGUEN sirviendo el
+                # anterior: el SIGHUP no falla y el deploy se iría en verde con
+                # las reglas viejas cargadas. De ahí las dos comprobaciones,
+                # antes y después. La de después mira la métrica que expone el
+                # propio proceso, que es el estado real en memoria y no lo que
+                # haya en el disco.
+                esperar_reload() { # $1=puerto $2=prefijo métrica $3=nombre $4=timestamp previo
+                  i=0
+                  while [ "$i" -lt 15 ]; do
+                    m=$(curl -sf "http://127.0.0.1:$1/metrics" || true)
+                    ok=$(printf '%s\n' "$m" | awk -v p="$2_config_last_reload_successful" '$1==p{print $2}')
+                    ts=$(printf '%s\n' "$m" | awk -v p="$2_config_last_reload_success_timestamp_seconds" '$1==p{print $2}')
+                    if [ "$ok" = "1" ] && [ "$ts" != "$4" ]; then
+                      echo "$3: config nuevo cargado."
+                      return 0
+                    fi
+                    i=$((i + 1))
+                    sleep 1
+                  done
+                  echo "ERROR: $3 no aplicó el config nuevo y sigue con el anterior." >&2
+                  echo "Ver 'docker logs monitoring-$3-1' para el error de parseo." >&2
+                  return 1
+                }
+                leer_ts() { # $1=puerto $2=prefijo métrica
+                  curl -sf "http://127.0.0.1:$1/metrics" |
+                    awk -v p="$2_config_last_reload_success_timestamp_seconds" '$1==p{print $2}'
+                }
+
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/prometheus; then
+                  docker exec monitoring-prometheus-1 promtool check config /etc/prometheus/prometheus.yml
+                  ANTES=$(leer_ts 9090 prometheus)
+                  docker kill -s HUP monitoring-prometheus-1
+                  esperar_reload 9090 prometheus prometheus "$ANTES"
+                fi
+
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/alertmanager; then
+                  docker exec monitoring-alertmanager-1 amtool check-config /etc/alertmanager/alertmanager.yml
+                  ANTES=$(leer_ts 9093 alertmanager)
+                  docker kill -s HUP monitoring-alertmanager-1
+                  esperar_reload 9093 alertmanager alertmanager "$ANTES"
+                fi
+
+                # Loki no recarga en caliente: hay que recrearlo. --force-recreate
+                # porque `up -d` a secas no lo tocaría, ya que para compose no
+                # cambió nada. Es el caso que documenta compose.monitoring.yml:
+                # sin esto los arreglos de config no llegan nunca al proceso.
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/loki; then
+                  $COMPOSE_MON up -d --force-recreate loki
+                  i=0
+                  until curl -sf http://127.0.0.1:3100/ready >/dev/null; do
+                    i=$((i + 1))
+                    if [ "$i" -ge 30 ]; then
+                      echo "ERROR: Loki no volvió a /ready tras recrearlo." >&2
+                      exit 1
+                    fi
+                    sleep 2
+                  done
+                  echo "loki: recreado y listo."
+                fi
+
+                # Alloy y Grafana, por la misma razón que Loki. Los dashboards
+                # de monitoring/dashboards/ no entran acá: Grafana los relee
+                # solo, es el provisioning de datasources el que se aplica al
+                # arrancar. Alloy guarda las posiciones en su volumen, así que
+                # recrearlo no relee logs desde cero.
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/alloy; then
+                  $COMPOSE_MON up -d --force-recreate alloy
+                fi
+                if ! git diff --quiet "$PREVIOUS" HEAD -- monitoring/grafana; then
+                  $COMPOSE_MON up -d --force-recreate grafana
+                fi
+              fi
+
+              # Se conservan las imágenes de la última semana: son las que
+              # permiten revertir sin reconstruir desde cero.
+              docker image prune -f --filter "until=168h"
+            else
+              echo "El despliegue no llegó a conmutar. El color que servía sigue activo sin cambios."
+              echo "Dejando el repositorio en $PREVIOUS para el próximo intento."
+              # El script ya dejó active.yml apuntando al color que sirve; se
+              # vuelve a poner por la misma razón que arriba, para que volver
+              # atrás el código no mueva el tráfico.
+              cp "$ACTIVE" /tmp/active.yml.serving
+              git reset --hard "$PREVIOUS"
+              conservar_color /tmp/active.yml.serving
+              exit 1
+            fi
+
+      # Qué quedó en producción, en la portada de la corrida. El mensaje del
+      # commit entra por variable de entorno y no interpolado en el script:
+      # interpolado, un título con comillas o $() se ejecutaría en el runner.
+      - name: Resumen
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PRODUCTION_URL: https://dermicapro.cliniventas.com
+        run: |
+          {
+            echo "### Desplegado en producción"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA::7}\` $(printf '%s\n' "${COMMIT_MESSAGE:-despliegue manual}" | head -1)"
+            echo "- URL: $PRODUCTION_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

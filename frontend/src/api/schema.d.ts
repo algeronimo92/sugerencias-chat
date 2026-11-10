@@ -630,6 +630,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/knowledge-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Templates */
+        get: operations["get_knowledge_templates_api_platform_knowledge_templates_get"];
+        put?: never;
+        /** Post Knowledge Template */
+        post: operations["post_knowledge_template_api_platform_knowledge_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/knowledge-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Knowledge Template
+         * @description Editar sube la versión; las copias que ya importaron los negocios no cambian.
+         */
+        put: operations["put_knowledge_template_api_platform_knowledge_templates__template_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -782,6 +820,28 @@ export interface paths {
         get: operations["get_kanban_stage_api_chats_kanban__stage__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/service-interest/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reassign Service Interest
+         * @description Pasa todos los leads con ``from_service`` como servicio de interés a
+         *     ``to_service`` (otro servicio activo) o los deja sin servicio. Lo usa
+         *     Catálogos para poder eliminar un servicio que usan muchos leads.
+         */
+        post: operations["reassign_service_interest_api_chats_service_interest_reassign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1348,6 +1408,10 @@ export interface paths {
          * @description Lectura barata de la sugerencia guardada: nunca genera contenido nuevo.
          *     El frontend la usa al abrir un chat (mostrar lo ya generado es gratis) y
          *     al llegar un mensaje del cliente (solo para marcarla como desactualizada).
+         *
+         *     Si el negocio no tiene la IA configurada no se devuelve la guardada (puede
+         *     ser de antes del corte de n8n): se devuelve el motivo para que el panel
+         *     lleve a conectarla.
          */
         get: operations["read_suggestion_status_api_suggestions__chat_id__get"];
         put?: never;
@@ -1369,6 +1433,23 @@ export interface paths {
         put?: never;
         /** Get Suggestions */
         post: operations["get_suggestions_api_suggestions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tts/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tts Status */
+        get: operations["tts_status_api_tts_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1652,6 +1733,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/knowledge/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Knowledge Templates
+         * @description Biblioteca de la plataforma: fichas y guiones modelo para importar.
+         */
+        get: operations["read_knowledge_templates_api_ai_knowledge_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/knowledge/{document_id}": {
         parameters: {
             query?: never;
@@ -1666,6 +1767,46 @@ export interface paths {
         post?: never;
         /** Delete Knowledge Document */
         delete: operations["delete_knowledge_document_api_ai_knowledge__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/knowledge/templates/{template_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Knowledge Template
+         * @description Crea una copia propia del negocio; desde ahí se edita como cualquier documento.
+         */
+        post: operations["import_knowledge_template_api_ai_knowledge_templates__template_id__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/knowledge/import-pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Knowledge Pdf
+         * @description Extrae el texto de un PDF para revisarlo antes de guardar; no guarda nada.
+         */
+        post: operations["import_knowledge_pdf_api_ai_knowledge_import_pdf_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1686,6 +1827,44 @@ export interface paths {
         head?: never;
         /** Update Ai Resource */
         patch: operations["update_ai_resource_api_ai_resources__asset_id__patch"];
+        trace?: never;
+    };
+    "/api/ai/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Providers */
+        get: operations["get_ai_providers_api_ai_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/providers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Ai Provider Test
+         * @description Una llamada mínima al modelo con la clave tipeada (o la guardada):
+         *     comprueba clave y modelo antes de activar el copiloto nativo.
+         */
+        post: operations["post_ai_provider_test_api_ai_providers_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/whatsapp/status": {
@@ -1890,7 +2069,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/services/erp-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Erp Sync Status */
+        get: operations["get_erp_sync_status_api_services_erp_sync_get"];
+        put?: never;
+        /**
+         * Run Erp Sync
+         * @description Sincroniza ahora con el ERP. Si falla, el estado queda anotado igual.
+         */
+        post: operations["run_erp_sync_api_services_erp_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/erp-sync/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Erp Connection
+         * @description Pide el catálogo y lo valida sin guardar nada: para probar una URL
+         *     antes de conectarla.
+         */
+        post: operations["test_erp_connection_api_services_erp_sync_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/services/{service_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Service */
+        delete: operations["remove_service_api_services__service_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Service */
+        patch: operations["patch_service_api_services__service_id__patch"];
+        trace?: never;
+    };
+    "/api/services/{service_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Service Usage
+         * @description Qué usa al servicio (leads, ventas, plantillas, automatizaciones,
+         *     documentos), con algunos de cada uno para ir a revisarlos: lo muestra el
+         *     cuadro de eliminar antes de intentarlo.
+         */
+        get: operations["get_service_usage_api_services__service_id__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/{service_id}/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Service Package */
+        post: operations["post_service_package_api_services__service_id__packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/services/{service_id}/packages/{package_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1903,8 +2181,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch Service */
-        patch: operations["patch_service_api_services__service_id__patch"];
+        /** Patch Service Package */
+        patch: operations["patch_service_package_api_services__service_id__packages__package_id__patch"];
         trace?: never;
     };
     "/api/lead-stages": {
@@ -3267,50 +3545,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/rag-context": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Rag Context Webhook
-         * @description Lead, mensajes y perfil del negocio para un job RAG firmado.
-         *
-         *     ``tenant_config`` y ``resources`` son lo que el negocio cargó en su
-         *     pantalla del asistente: el workflow es el mismo para todos y solo conoce
-         *     al negocio por lo que recibe acá.
-         */
-        get: operations["rag_context_webhook_api_webhooks_rag_context_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/rag-search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rag Search Webhook
-         * @description Retrieval lexical dentro del schema ligado al job RAG.
-         */
-        post: operations["rag_search_webhook_api_webhooks_rag_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/webhooks/catalog": {
         parameters: {
             query?: never;
@@ -3372,6 +3606,26 @@ export interface paths {
          * @description Entrega archivos locales o privados de MinIO conservando URLs históricas.
          */
         head: operations["get_media_file_media__filename__head"];
+        patch?: never;
+        trace?: never;
+    };
+    "/media/{filename}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Media Thumbnail
+         * @description Versión reducida de una imagen o de la primera página de un PDF (WebP, máximo 640 px) para las listas de la biblioteca.
+         */
+        get: operations["get_media_thumbnail_media__filename__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -3481,6 +3735,130 @@ export interface components {
             email: string;
             /** Name */
             name: string;
+        };
+        /**
+         * AiModelParam
+         * @description Un parámetro que el modelo acepta (registro de app.integrations.llm.catalog).
+         */
+        AiModelParam: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "choice" | "float" | "int" | "text_list";
+            /** Label */
+            label: string;
+            /**
+             * Help
+             * @default
+             */
+            help: string;
+            /**
+             * Choices
+             * @default []
+             */
+            choices: string[];
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Default */
+            default?: string | number | null;
+            /**
+             * Requires
+             * @default {}
+             */
+            requires: {
+                [key: string]: string[];
+            };
+        };
+        /** AiModelParams */
+        AiModelParams: {
+            /** Label */
+            label: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Context Window */
+            context_window: number;
+            /** Max Output Tokens */
+            max_output_tokens: number;
+            /** Params */
+            params: components["schemas"]["AiModelParam"][];
+        };
+        /** AiProviderModels */
+        AiProviderModels: {
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /** Models */
+            models: string[];
+            /** Key Configured */
+            key_configured: boolean;
+        };
+        /** AiProviderTestRequest */
+        AiProviderTestRequest: {
+            /** Provider */
+            provider: string;
+            /** Api Key */
+            api_key?: string | null;
+            /** Model */
+            model?: string | null;
+        };
+        /** AiProviderTestResult */
+        AiProviderTestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Models Available */
+            models_available?: number | null;
+        };
+        /**
+         * AiProvidersStatus
+         * @description Lo que la tarjeta "Asistente IA" de Integraciones necesita.
+         */
+        AiProvidersStatus: {
+            /** Providers */
+            providers: components["schemas"]["AiProviderModels"][];
+            /** Primary Model */
+            primary_model: string;
+            /** Fallback Model */
+            fallback_model: string;
+            /** Ready */
+            ready: boolean;
+            /**
+             * Model Params
+             * @default {}
+             */
+            model_params: {
+                [key: string]: components["schemas"]["AiModelParams"];
+            };
+            /**
+             * Primary Params
+             * @default {}
+             */
+            primary_params: {
+                [key: string]: string | number | string[];
+            };
+            /**
+             * Fallback Params
+             * @default {}
+             */
+            fallback_params: {
+                [key: string]: string | number | string[];
+            };
         };
         /** AnalysisRequest */
         AnalysisRequest: {
@@ -3660,6 +4038,12 @@ export interface components {
              * @default false
              */
             rule_deleted: boolean;
+            /** Parent Execution Id */
+            parent_execution_id?: number | null;
+            /** Parent Rule Id */
+            parent_rule_id?: number | null;
+            /** Parent Rule Name */
+            parent_rule_name?: string | null;
             /** Lead Id */
             lead_id?: string | null;
             /** Lead Name */
@@ -4209,6 +4593,23 @@ export interface components {
             by_user: components["schemas"]["DashboardMetricItem"][];
             messages: components["schemas"]["DashboardMessages"];
         };
+        /**
+         * DashboardAppointmentTreatmentDay
+         * @description Citas agendadas de un tratamiento en un día (solo días con citas).
+         *     ``key`` agrupa las variantes de escritura del formulario.
+         */
+        DashboardAppointmentTreatmentDay: {
+            /** Date */
+            date: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+        };
         /** DashboardAppointments */
         DashboardAppointments: {
             /** By Status */
@@ -4219,6 +4620,9 @@ export interface components {
             by_owner: components["schemas"]["DashboardMetricItem"][];
             /** By Treatment */
             by_treatment: components["schemas"]["DashboardMetricItem"][];
+            /** By Treatment Daily */
+            by_treatment_daily: components["schemas"]["DashboardAppointmentTreatmentDay"][];
+            separations: components["schemas"]["DashboardSeparations"];
             /** Trend */
             trend: components["schemas"]["DashboardPoint"][];
             /** Lost Reasons */
@@ -4298,6 +4702,79 @@ export interface components {
             /** Rate */
             rate?: number | null;
         };
+        /**
+         * DashboardLegacySales
+         * @description El bloque de ventas como lo leen las versiones anteriores de la app,
+         *     vacío: sin compras, con la moneda. Las versiones de antes de quitar
+         *     "Registrar compra" leen `totals.count`, `previous` y las listas; con solo
+         *     la moneda su dashboard fallaba (2026-11-10, Safari con la PWA vieja).
+         */
+        DashboardLegacySales: {
+            /** Currency */
+            currency?: string | null;
+            totals?: components["schemas"]["DashboardLegacySalesTotals"];
+            previous?: components["schemas"]["DashboardLegacySalesTotals"] | null;
+            /** Trend */
+            trend?: {
+                [key: string]: unknown;
+            }[];
+            /** Previous Trend */
+            previous_trend?: {
+                [key: string]: unknown;
+            }[];
+            /** By Package */
+            by_package?: {
+                [key: string]: unknown;
+            }[];
+            /** By Service */
+            by_service?: {
+                [key: string]: unknown;
+            }[];
+            /** By Service Daily */
+            by_service_daily?: {
+                [key: string]: unknown;
+            }[];
+            /** By Seller */
+            by_seller?: {
+                [key: string]: unknown;
+            }[];
+            /** Recent */
+            recent?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** DashboardLegacySalesTotals */
+        DashboardLegacySalesTotals: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Revenue
+             * @default 0
+             */
+            revenue: number;
+            /** Avg Ticket */
+            avg_ticket?: number | null;
+            /**
+             * Sessions
+             * @default 0
+             */
+            sessions: number;
+            /**
+             * Discount
+             * @default 0
+             */
+            discount: number;
+            /** Discount Rate */
+            discount_rate?: number | null;
+            /**
+             * Buyers
+             * @default 0
+             */
+            buyers: number;
+        };
         /** DashboardLinkage */
         DashboardLinkage: {
             /** Total */
@@ -4346,6 +4823,9 @@ export interface components {
             /** Funnel */
             funnel: components["schemas"]["DashboardFunnelStep"][];
             pipeline: components["schemas"]["DashboardPipeline"];
+            /** Currency */
+            currency?: string | null;
+            sales: components["schemas"]["DashboardLegacySales"];
             automations: components["schemas"]["DashboardAutomations"];
             tags: components["schemas"]["DashboardTags"];
             appointments: components["schemas"]["DashboardAppointments"];
@@ -4377,6 +4857,81 @@ export interface components {
             date: string;
             /** Value */
             value: number;
+        };
+        /** DashboardSeparationPoint */
+        DashboardSeparationPoint: {
+            /** Date */
+            date: string;
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+        };
+        /** DashboardSeparationRow */
+        DashboardSeparationRow: {
+            /** Id */
+            id: number;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name: string;
+            /** Treatment */
+            treatment: string;
+            /** Amount */
+            amount: number;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Created At */
+            created_at: string;
+            /** Seller Name */
+            seller_name: string;
+        };
+        /** DashboardSeparationSeller */
+        DashboardSeparationSeller: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+            /** With Deposit */
+            with_deposit: number;
+        };
+        /** DashboardSeparationTotals */
+        DashboardSeparationTotals: {
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+            /** With Deposit */
+            with_deposit: number;
+            /** Avg Deposit */
+            avg_deposit?: number | null;
+            /** Clients */
+            clients: number;
+        };
+        /**
+         * DashboardSeparations
+         * @description La venta del negocio medida como separación de cita con adelanto.
+         */
+        DashboardSeparations: {
+            totals: components["schemas"]["DashboardSeparationTotals"];
+            previous?: components["schemas"]["DashboardSeparationTotals"] | null;
+            /** Trend */
+            trend: components["schemas"]["DashboardSeparationPoint"][];
+            /** Previous Trend */
+            previous_trend: components["schemas"]["DashboardSeparationPoint"][];
+            /** By Seller */
+            by_seller: components["schemas"]["DashboardSeparationSeller"][];
+            /**
+             * By Owner
+             * @default []
+             */
+            by_owner: components["schemas"]["DashboardSeparationSeller"][];
+            /** Recent */
+            recent: components["schemas"]["DashboardSeparationRow"][];
         };
         /** DashboardSummary */
         DashboardSummary: {
@@ -4526,6 +5081,108 @@ export interface components {
              * @enum {string}
              */
             source: "tenant" | "platform";
+        };
+        /** ErpSamplePackage */
+        ErpSamplePackage: {
+            /** Label */
+            label: string;
+            /** Sessions */
+            sessions: number;
+            /** Price */
+            price: string;
+        };
+        /** ErpSampleService */
+        ErpSampleService: {
+            /** Name */
+            name: string;
+            /** Packages */
+            packages: components["schemas"]["ErpSamplePackage"][];
+        };
+        /**
+         * ErpSyncStatus
+         * @description Estado de la sincronización con el ERP del negocio.
+         */
+        ErpSyncStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Url */
+            url?: string | null;
+            /** Synced At */
+            synced_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            last_summary?: components["schemas"]["ErpSyncSummary"] | null;
+        };
+        /** ErpSyncSummary */
+        ErpSyncSummary: {
+            /**
+             * Services Total
+             * @default 0
+             */
+            services_total: number;
+            /**
+             * Services Created
+             * @default 0
+             */
+            services_created: number;
+            /**
+             * Services Updated
+             * @default 0
+             */
+            services_updated: number;
+            /**
+             * Services Deactivated
+             * @default 0
+             */
+            services_deactivated: number;
+            /**
+             * Packages Created
+             * @default 0
+             */
+            packages_created: number;
+            /**
+             * Packages Updated
+             * @default 0
+             */
+            packages_updated: number;
+            /**
+             * Packages Deactivated
+             * @default 0
+             */
+            packages_deactivated: number;
+            /** Conflicts */
+            conflicts?: string[];
+        };
+        /** ErpTestRequest */
+        ErpTestRequest: {
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * ErpTestResult
+         * @description Resultado de la prueba de conexión con el ERP.
+         */
+        ErpTestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Url */
+            url?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Services Total
+             * @default 0
+             */
+            services_total: number;
+            /**
+             * Packages Total
+             * @default 0
+             */
+            packages_total: number;
+            /** Services Without Packages */
+            services_without_packages?: string[];
+            /** Sample */
+            sample?: components["schemas"]["ErpSampleService"][];
         };
         /**
          * ExecutionErrorCode
@@ -4896,6 +5553,10 @@ export interface components {
             title: string;
             /** Content */
             content: string;
+            /** Document Type */
+            document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
+            /** Service Ids */
+            service_ids?: number[];
         };
         /** KnowledgeDocumentItem */
         KnowledgeDocumentItem: {
@@ -4905,6 +5566,10 @@ export interface components {
             title: string;
             /** Document Type */
             document_type?: string | null;
+            /** Service Ids */
+            service_ids?: number[];
+            /** Template Id */
+            template_id?: number | null;
             /** Characters */
             characters: number;
             /** Chunk Count */
@@ -4924,6 +5589,10 @@ export interface components {
             title: string;
             /** Document Type */
             document_type?: string | null;
+            /** Service Ids */
+            service_ids?: number[];
+            /** Template Id */
+            template_id?: number | null;
             /** Characters */
             characters: number;
             /** Chunk Count */
@@ -4932,6 +5601,107 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * KnowledgePdfImport
+         * @description Texto extraído para revisar antes de guardarlo como documento.
+         */
+        KnowledgePdfImport: {
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /** Pages */
+            pages: number;
+            /** Characters */
+            characters: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** KnowledgePdfImportRequest */
+        KnowledgePdfImportRequest: {
+            /**
+             * Filename
+             * @default
+             */
+            filename: string;
+            /** Data Base64 */
+            data_base64: string;
+        };
+        /** KnowledgeTemplateBody */
+        KnowledgeTemplateBody: {
+            /** Title */
+            title: string;
+            /** Document Type */
+            document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /** KnowledgeTemplateImport */
+        KnowledgeTemplateImport: {
+            /** Service Ids */
+            service_ids?: number[];
+        };
+        /** KnowledgeTemplateItem */
+        KnowledgeTemplateItem: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Document Type */
+            document_type?: string | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * KnowledgeTemplateSummary
+         * @description Plantilla de la plataforma que el negocio puede importar.
+         */
+        KnowledgeTemplateSummary: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Document Type */
+            document_type?: string | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content: string;
+            /** Version */
+            version: number;
+            /** Characters */
+            characters: number;
+            /** Imported */
+            imported: boolean;
+        };
+        /** KnowledgeTemplateUpdate */
+        KnowledgeTemplateUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Document Type */
+            document_type?: ("ficha" | "politica" | "faq" | "guion" | "otro") | null;
+            /** Service Hint */
+            service_hint?: string | null;
+            /** Content */
+            content?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** LeadActivityItem */
         LeadActivityItem: {
@@ -5099,12 +5869,10 @@ export interface components {
              * @default true
              */
             is_active: boolean;
-            /** Description */
-            description?: string | null;
-            /** Price */
-            price?: string | null;
-            /** Price Notes */
-            price_notes?: string | null;
+            /** Packages */
+            packages?: components["schemas"]["ServicePackageItem"][];
+            /** External Id */
+            external_id?: string | null;
             /** Created By User Id */
             created_by_user_id?: number | null;
             /** Created By Name */
@@ -5118,12 +5886,6 @@ export interface components {
             name?: string | null;
             /** Is Active */
             is_active?: boolean | null;
-            /** Description */
-            description?: string | null;
-            /** Price */
-            price?: number | string | null;
-            /** Price Notes */
-            price_notes?: string | null;
         };
         /** LeadStageAdminItem */
         LeadStageAdminItem: {
@@ -5422,6 +6184,7 @@ export interface components {
             pinned_at?: string | null;
             /** Error Detail */
             error_detail?: string | null;
+            origin?: components["schemas"]["MessageOrigin"] | null;
         };
         /**
          * MessageDirection
@@ -5429,6 +6192,28 @@ export interface components {
          * @enum {string}
          */
         MessageDirection: "inbound" | "outbound";
+        /**
+         * MessageOrigin
+         * @description De dónde salió un mensaje del negocio (ver domain/origin.py).
+         *
+         *     ``user``: una persona desde la app; ``automation``: una ejecución de flujo
+         *     (``execution_id``); ``scheduled``: un programado, acreditado a quien lo
+         *     programó; ``echo``: salió del celular del negocio, no de la app. Los
+         *     mensajes del cliente no traen origen.
+         */
+        MessageOrigin: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "user" | "automation" | "scheduled" | "echo";
+            /** User Id */
+            user_id?: number | null;
+            /** User Name */
+            user_name?: string | null;
+            /** Execution Id */
+            execution_id?: number | null;
+        };
         /**
          * MessageOutboxStatus
          * @description Estado interno de un envío en ``wsp_messages.outbox_status``.
@@ -5763,18 +6548,6 @@ export interface components {
             /** Endpoint */
             endpoint: string;
         };
-        /** RagSearchWebhookBody */
-        RagSearchWebhookBody: {
-            /** Query */
-            query: string;
-            /** Context Revision */
-            context_revision: string;
-            /**
-             * Top K
-             * @default 5
-             */
-            top_k: number;
-        };
         /** ReactionRequest */
         ReactionRequest: {
             /**
@@ -5885,6 +6658,110 @@ export interface components {
             text?: string | null;
             /** Parameters */
             parameters?: string[];
+        };
+        /**
+         * ServiceInterestReassign
+         * @description Pasar a todos los leads de un servicio de interés a otro, o a ninguno.
+         */
+        ServiceInterestReassign: {
+            /** From Service */
+            from_service: string;
+            /** To Service */
+            to_service?: string | null;
+        };
+        /** ServiceInterestReassignResult */
+        ServiceInterestReassignResult: {
+            /** Updated */
+            updated: number;
+        };
+        /** ServicePackageCreate */
+        ServicePackageCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Sessions
+             * @default 1
+             */
+            sessions: number;
+            /** Price */
+            price: number | string;
+            /** Notes */
+            notes?: string | null;
+            /** Position */
+            position?: number | null;
+        };
+        /**
+         * ServicePackageItem
+         * @description Presentación vendible de un servicio (1 sesión, pack x3...).
+         */
+        ServicePackageItem: {
+            /** Id */
+            id: number;
+            /** Service Id */
+            service_id: number;
+            /** Name */
+            name: string;
+            /** Sessions */
+            sessions: number;
+            /** Price */
+            price: string;
+            /** Notes */
+            notes?: string | null;
+            /** Position */
+            position: number;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** External Id */
+            external_id?: string | null;
+        };
+        /** ServicePackageUpdate */
+        ServicePackageUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Sessions */
+            sessions?: number | null;
+            /** Price */
+            price?: number | string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** ServiceUsageGroup */
+        ServiceUsageGroup: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+            /** Items */
+            items?: components["schemas"]["ServiceUsageItem"][];
+            /** Detail */
+            detail?: string | null;
+        };
+        /** ServiceUsageItem */
+        ServiceUsageItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ServiceUsageResponse
+         * @description Lo que nombra a un servicio. ``usages`` vacío: se puede eliminar;
+         *     ``notices`` es lo que cambia al hacerlo (reglas que filtran por su nombre).
+         */
+        ServiceUsageResponse: {
+            /** Usages */
+            usages?: components["schemas"]["ServiceUsageGroup"][];
+            /** Notices */
+            notices?: components["schemas"]["ServiceUsageGroup"][];
         };
         /**
          * SessionAuthMethod
@@ -6019,6 +6896,7 @@ export interface components {
          * @description Estado de la sugerencia guardada de un lead: lectura barata que nunca
          *     dispara la generación. `stale` indica que el cliente escribió después de
          *     generarse — la UI la muestra igual pero avisa que quedó desactualizada.
+         *     Con `unavailable` no hay sugerencia que mostrar: el panel explica qué falta.
          */
         SuggestionStatus: {
             suggestion?: components["schemas"]["SuggestionResponse"] | null;
@@ -6029,6 +6907,18 @@ export interface components {
              * @default false
              */
             stale: boolean;
+            unavailable?: components["schemas"]["SuggestionUnavailable"] | null;
+        };
+        /**
+         * SuggestionUnavailable
+         * @description Por qué el negocio no tiene sugerencias (``ai_key_missing``, ``ai_disabled``,
+         *     ``ai_not_configured``…), con el texto para el vendedor.
+         */
+        SuggestionUnavailable: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
         };
         /** Tag */
         Tag: {
@@ -6484,6 +7374,11 @@ export interface components {
             /** Data Base64 */
             data_base64: string;
         };
+        /** TtsStatus */
+        TtsStatus: {
+            /** Configured */
+            configured: boolean;
+        };
         /** UnreadCount */
         UnreadCount: {
             /** Count */
@@ -6536,7 +7431,7 @@ export interface components {
          * UserRole
          * @enum {string}
          */
-        UserRole: "admin" | "vendedor";
+        UserRole: "admin" | "vendedor" | "analista";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -7851,6 +8746,94 @@ export interface operations {
             };
         };
     };
+    get_knowledge_templates_api_platform_knowledge_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateItem"][];
+                };
+            };
+        };
+    };
+    post_knowledge_template_api_platform_knowledge_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeTemplateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_knowledge_template_api_platform_knowledge_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_users_api_users_get: {
         parameters: {
             query?: never;
@@ -8186,6 +9169,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KanbanPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_service_interest_api_chats_service_interest_reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceInterestReassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceInterestReassignResult"];
                 };
             };
             /** @description Validation Error */
@@ -9289,6 +10305,26 @@ export interface operations {
             };
         };
     };
+    tts_status_api_tts_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TtsStatus"];
+                };
+            };
+        };
+    };
     generate_speech_api_tts_post: {
         parameters: {
             query?: never;
@@ -9826,6 +10862,26 @@ export interface operations {
             };
         };
     };
+    read_knowledge_templates_api_ai_knowledge_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeTemplateSummary"][];
+                };
+            };
+        };
+    };
     read_knowledge_document_api_ai_knowledge__document_id__get: {
         parameters: {
             query?: never;
@@ -9923,6 +10979,74 @@ export interface operations {
             };
         };
     };
+    import_knowledge_template_api_ai_knowledge_templates__template_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeTemplateImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_knowledge_pdf_api_ai_knowledge_import_pdf_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgePdfImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePdfImport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_ai_resource_api_ai_resources__asset_id__patch: {
         parameters: {
             query?: never;
@@ -9945,6 +11069,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MediaAssetItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_providers_api_ai_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProvidersStatus"];
+                };
+            };
+        };
+    };
+    post_ai_provider_test_api_ai_providers_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiProviderTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProviderTestResult"];
                 };
             };
             /** @description Validation Error */
@@ -10281,6 +11458,108 @@ export interface operations {
             };
         };
     };
+    get_erp_sync_status_api_services_erp_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpSyncStatus"];
+                };
+            };
+        };
+    };
+    run_erp_sync_api_services_erp_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpSyncStatus"];
+                };
+            };
+        };
+    };
+    test_erp_connection_api_services_erp_sync_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ErpTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_service_api_services__service_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     patch_service_api_services__service_id__patch: {
         parameters: {
             query?: never;
@@ -10303,6 +11582,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeadServiceItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_service_usage_api_services__service_id__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_service_package_api_services__service_id__packages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServicePackageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePackageItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_service_package_api_services__service_id__packages__package_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: number;
+                package_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServicePackageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePackageItem"];
                 };
             };
             /** @description Validation Error */
@@ -12234,6 +13615,7 @@ export interface operations {
             query?: {
                 days?: number;
                 scope?: string | null;
+                seller_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -13269,85 +14651,6 @@ export interface operations {
             };
         };
     };
-    rag_context_webhook_api_webhooks_rag_context_get: {
-        parameters: {
-            query: {
-                chat_id: string;
-                limit?: number;
-            };
-            header: {
-                "X-Job-Id": string;
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-                "X-Tenant-Context": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rag_search_webhook_api_webhooks_rag_search_post: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-Job-Id": string;
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-                "X-Tenant-Context": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RagSearchWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     ai_catalog_webhook_api_webhooks_catalog_get: {
         parameters: {
             query?: never;
@@ -13465,6 +14768,37 @@ export interface operations {
             header?: {
                 Range?: string | null;
             };
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_media_thumbnail_media__filename__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
             path: {
                 filename: string;
             };

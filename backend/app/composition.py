@@ -15,6 +15,8 @@ from app.integrations.whatsapp.channels import current_channel
 from app.modules.ai.application.ports import AssistantPorts, provide_ai_provider, provide_assistant_ports
 from app.modules.ai.infrastructure.assistant_adapters import PlatformAiAccess, SqlAiJobs, SqlAssistantContext
 from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
+from app.modules.ai.infrastructure.native_provider import NativeAiProvider
+from app.modules.ai.infrastructure.routing_provider import RoutingAiProvider
 from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
 from app.modules.appointments.infrastructure.integrations import GoogleCalendar, N8nAppointmentSync
 from app.modules.appointments.infrastructure.repository import SqlAppointmentRepository, SqlAppointmentLeads
@@ -44,6 +46,7 @@ SUBSCRIBER_MODULES: tuple[str, ...] = (
     "app.modules.conversations.subscribers",
     "app.modules.leads.subscribers",
     "app.modules.automations.subscribers",
+    "app.modules.ai.subscribers",
     "app.modules.tasks.subscribers",
     "app.modules.notifications.subscribers",
 )
@@ -62,7 +65,8 @@ def register_adapters() -> None:
         service_window=get_customer_service_window,
         channel=current_channel,
     ))
-    provide_ai_provider(N8nAiProvider())
+    # Por negocio: n8n (por defecto) o el copiloto nativo con sus propias claves.
+    provide_ai_provider(RoutingAiProvider(N8nAiProvider(), NativeAiProvider()))
     provide_assistant_ports(AssistantPorts(
         access=PlatformAiAccess(),
         jobs=SqlAiJobs(),

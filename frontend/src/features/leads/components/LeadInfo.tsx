@@ -1,6 +1,8 @@
 import { AtSign, CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, FileText, MapPin, MessageCircle, MessageCircleOff, Pencil, Phone, Repeat, Tag, User, UserRound, XCircle, type LucideIcon } from 'lucide-react'
 import { useState, type CSSProperties } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { readEditField, withoutEditField } from '../../../shared/navigation/editFieldLink'
 import { Button } from '../../../shared/ui/Button'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { displayPhone, displayUsername } from '../utils/chat'
@@ -105,14 +107,33 @@ export function LeadInfo({ chat }: Props) {
     { label: 'Último toque', value: formatDateTime(chat.fecha_ultimo_toque), icon: CalendarClock },
   ].filter((f) => f.value)
 
+  // Desde otra pantalla (Catálogos, al eliminar un servicio) se llega con
+  // ?editar=servicio_interes: el editor se abre con ese campo resaltado. La URL
+  // es el estado; al cerrar el editor se quita y recargar no lo reabre.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const editRequest = readEditField(searchParams)
+  const serviceRequest = editRequest?.field === 'servicio_interes' ? editRequest : null
+  const showEditor = isEditing || serviceRequest !== null
+
+  function closeEditor() {
+    setIsEditing(false)
+    if (serviceRequest) setSearchParams(withoutEditField(searchParams), { replace: true })
+  }
+
   function handleUpdate(values: LeadUpdateInput) {
     if (isSaving) return
     setEditError(null)
+    const cameFromCatalog = serviceRequest !== null
     updateLead(values, {
       onSuccess: (updated) => {
-        setIsEditing(false)
+        closeEditor()
         // Cambió el número: el lead vive bajo otro chat_id, hay que seguirlo.
         if (updated.chat_id !== chat.chat_id) navigate(`/chat/${updated.chat_id}`)
+        if (cameFromCatalog) {
+          toast.success('Servicio de interés actualizado', {
+            action: { label: 'Volver a Catálogos', onClick: () => navigate('/catalogs') },
+          })
+        }
       },
       onError: (err) => setEditError(extractErrorMessage(err)),
     })
@@ -159,6 +180,7 @@ export function LeadInfo({ chat }: Props) {
         </div>
       )}
 
+
       {chat.proxima_cita && (
         <div className="mt-3 pt-3 border-t border-wa-border dark:border-wa-border-dark">
           <button type="button"
@@ -175,7 +197,7 @@ export function LeadInfo({ chat }: Props) {
         </div>
       )}
 
-      {isEditing && (
+      {showEditor && (
         <LeadFormDialog
           title="Editar lead"
           submitLabel="Guardar"
@@ -201,7 +223,8 @@ export function LeadInfo({ chat }: Props) {
           isSubmitting={isSaving}
           error={editError}
           onSubmit={handleUpdate}
-          onCancel={() => setIsEditing(false)}
+          onCancel={closeEditor}
+          highlightService={serviceRequest ? { reason: serviceRequest.reason } : undefined}
         />
       )}
     </div>

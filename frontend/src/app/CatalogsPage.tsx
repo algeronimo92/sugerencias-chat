@@ -4,6 +4,7 @@ import { TemplateCategoriesManagementPanel } from '../features/templates/public/
 import { CustomFieldsManagementPanel } from '../features/catalogs/public/CustomFieldsManagementPanel'
 import { LeadStagesManagementPanel } from '../features/leads/public/LeadStagesManagementPanel'
 import { ServicesManagementPanel } from '../features/catalogs/public/ServicesManagementPanel'
+import { ServiceKnowledgeLink } from '../features/ai/public/ServiceKnowledgeLink'
 import { TagsManagementPanel } from '../features/catalogs/public/TagsManagementPanel'
 
 type CatalogTab = 'services' | 'tags' | 'template-categories' | 'stages' | 'custom-fields'
@@ -57,7 +58,7 @@ export function CatalogsPage() {
 
         <section aria-label={TABS.find(item => item.key === tab)?.label} className="mt-5">
           {tab === 'services'
-            ? <ServicesManagementPanel />
+            ? <ServicesManagementPanel renderServiceExtras={service => <ServiceKnowledgeLink serviceId={service.id} serviceName={service.name} />} />
             : tab === 'tags'
               ? <TagsManagementPanel />
               : tab === 'stages'

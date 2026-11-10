@@ -1,10 +1,21 @@
 import asyncio
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import monotonic
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
+from app.integrations.llm.catalog import (
+    PROVIDER_DEFAULT_MODEL,
+    PROVIDER_META,
+    default_models,
+    parse_model_spec,
+    parse_overrides,
+    sanitize_overrides,
+    validate_overrides,
+)
 from app.modules.platform import settings_repository
 from app.core.config import settings as env_settings
 from app.db.models.settings import AppSetting
@@ -105,6 +116,35 @@ SETTING_DEFS: list[SettingDef] = [
         "ElevenLabs (texto a voz)",
         secret=False,
     ),
+    # El negocio que ya tiene su lista de precios en un ERP la sincroniza en
+    # vez de cargarla dos veces (ver app/modules/catalogs/erp_catalog.py).
+    # El estado de la última pasada se guarda acá para que lo vea el admin y
+    # el worker sepa cuándo le toca volver a pedirla.
+    SettingDef(
+        "erp_catalog_url",
+        "URL del catálogo público (servicios y paquetes con precio)",
+        "erp",
+        "ERP del negocio (lista de precios)",
+        secret=False,
+    ),
+    SettingDef("erp_catalog_synced_at", "Última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    # Claves de IA del propio negocio, una por proveedor. Hoy solo las usan
+    # las sugerencias; si otra función de IA las necesita, las comparte.
+    SettingDef("ai_gemini_api_key", "API key de Google Gemini", "ai", "IA del negocio (claves y sugerencias)", secret=True),
+    SettingDef("ai_openai_api_key", "API key de OpenAI", "ai", "IA del negocio (claves y sugerencias)", secret=True),
+    # Solo las sugerencias de respuesta del copiloto (ver
+    # app/modules/ai/infrastructure/native_provider.py): el análisis del lead
+    # y otras funciones de IA tienen su propia configuración. El nombre lo
+    # dice para que una función nueva no herede estos modelos sin querer.
+    SettingDef("ai_suggestions_primary_model", "Sugerencias: modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    SettingDef("ai_suggestions_fallback_model", "Sugerencias: modelo secundario (si el principal falla)", "ai", "IA del negocio (claves y sugerencias)", secret=False),
+    # Lo que el negocio sobrescribe de los parámetros de cada modelo (JSON con
+    # nombres neutrales: reasoning, max_output_tokens…). Lo que no está toma el
+    # default del registro de app.integrations.llm.catalog.
+    SettingDef("ai_suggestions_primary_params", "Sugerencias: parámetros del modelo principal", "ai", "IA del negocio (claves y sugerencias)", secret=False, hidden=True),
+    SettingDef("ai_suggestions_fallback_params", "Sugerencias: parámetros del modelo secundario", "ai", "IA del negocio (claves y sugerencias)", secret=False, hidden=True),
+    SettingDef("erp_catalog_last_error", "Último error", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    SettingDef("erp_catalog_last_summary", "Resumen de la última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
     SettingDef("default_country_code", "Código de país por defecto (sin +)", "leads", "Leads (CRM)", secret=False),
     SettingDef(
         "interactive_default_footer",
@@ -285,6 +325,60 @@ def validate_business_timezone(value: str) -> str:
     return normalized
 
 
+def validate_erp_catalog_url(value: str) -> str:
+    """Solo http(s) con host: el worker la va a pedir a ciegas cada hora."""
+    normalized = value.strip()
+    if not normalized:
+        return ""
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("La URL del catálogo del ERP debe empezar con http:// o https://")
+    return normalized
+
+
+async def _normalize_model_params(values: dict[str, str], slot: str) -> None:
+    """Valida las sobrescrituras de parámetros contra el modelo de esa posición.
+    Si cambia el modelo y no vienen parámetros nuevos, se descarta lo guardado
+    que el modelo nuevo no acepta (temperature al pasar a un gpt-5.x…)."""
+    model_key, params_key = f"ai_suggestions_{slot}_model", f"ai_suggestions_{slot}_params"
+    if params_key not in values and model_key not in values:
+        return
+    keys = {meta["key_setting"]: values.get(meta["key_setting"]) or await get_effective(meta["key_setting"]) for meta in PROVIDER_META.values()}
+    default = default_models(keys)[0 if slot == "primary" else 1]
+    model = values.get(model_key) or (await get_effective(model_key)).strip() or default
+    if params_key in values:
+        clean = validate_overrides(model, parse_overrides(values[params_key]))
+    else:
+        clean, _dropped = sanitize_overrides(model, parse_overrides(await get_effective(params_key)))
+    values[params_key] = json.dumps(clean, sort_keys=True) if clean else ""
+
+
+async def _order_models_on_first_key(values: dict[str, str]) -> None:
+    """La primera clave de IA que carga el negocio define quién procesa. Se
+    guarda el orden en ese momento: si no, al cargar la segunda clave el
+    orden por defecto podía dar vuelta y procesar el proveedor que llegó
+    después. Una elección explícita del negocio no se toca."""
+    new_keys = [provider for provider, meta in PROVIDER_META.items() if (values.get(meta["key_setting"]) or "").strip()]
+    if not new_keys:
+        return
+    if values.get("ai_suggestions_primary_model") or (await get_effective("ai_suggestions_primary_model")).strip():
+        return
+    for provider in new_keys:
+        others = [other for other in PROVIDER_META if other != provider]
+        earlier = [other for other in others if (await get_effective(PROVIDER_META[other]["key_setting"])).strip()]
+        first, second = (earlier[0], provider) if earlier else (provider, others[0])
+        values["ai_suggestions_primary_model"] = PROVIDER_DEFAULT_MODEL[first]
+        values.setdefault("ai_suggestions_fallback_model", PROVIDER_DEFAULT_MODEL[second])
+        return
+
+
+def validate_ai_model(value: str) -> str:
+    """``proveedor:modelo`` del catálogo cerrado de app.integrations.llm."""
+    normalized = value.strip()
+    provider, model = parse_model_spec(normalized)
+    return f"{provider}:{model}"
+
+
 def normalize_user_ids(value: str) -> str:
     """Lista de ids de usuario como texto canónico (ordenada, sin repetir)."""
     parts = [part.strip() for part in value.split(",") if part.strip()]
@@ -419,6 +513,14 @@ async def update_settings(values: dict[str, str]) -> None:
         raise ValueError(f"Configuración desconocida: {', '.join(sorted(unknown))}")
 
     values = dict(values)
+    if "erp_catalog_url" in values:
+        values["erp_catalog_url"] = validate_erp_catalog_url(values["erp_catalog_url"])
+    for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
+        if values.get(key):
+            values[key] = validate_ai_model(values[key])
+    await _order_models_on_first_key(values)
+    for slot in ("primary", "fallback"):
+        await _normalize_model_params(values, slot)
     if "business_timezone" in values:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]

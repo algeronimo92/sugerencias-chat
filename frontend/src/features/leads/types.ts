@@ -34,8 +34,10 @@ export interface MoveLeadStageInput {
   stage: LeadStage
   /** Solo se persiste al pasar a `perdido`; el backend la ignora si no. */
   razonPerdido?: string | null
+  /** Al pasar a una etapa ganada: con qué paquete cerró. Opcional. */
 }
 
+/** Qué compró el lead: un paquete del catálogo y lo cobrado. */
 export interface BulkActionResult {
   succeeded: string[]
   failed: string[]

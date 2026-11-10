@@ -49,6 +49,9 @@
   --color-wa-muted-dark: #8696a0;
   --color-wa-faint: #8696a0; /* metadatos dentro de burbujas (claro) */
   --color-wa-faint-dark: #667781;
+  /* Pie de burbuja (hora, Editado, ticks) a 12 px: wa-faint sobre wa-out da
+     2,75:1 y no pasa WCAG AA; este da 5,06:1. En oscuro basta wa-muted-dark. */
+  --color-wa-faint-strong: #54656f;
 
   /* Gráficos del dashboard. Dos pasos por rol (claro/oscuro), elegidos para
      la superficie de cada modo y validados como conjunto: banda de luminosidad,
@@ -86,6 +89,42 @@
   --color-flow-panel-dark: #1c2027; /* header, sidebar y tarjetas de nodo */
   --color-flow-row-dark: #262b33; /* filas internas dentro de una tarjeta (opciones, condiciones) */
   --color-flow-border-dark: #383f4a; /* bordes neutros del editor */
+  /* Borde de las tarjetas de bloque: 3,3:1 contra el lienzo. Con el borde
+     neutro (#383f4a) la tarjeta casi no se separaba del fondo (1,2:1). */
+  --color-flow-node-border-dark: #5b6574;
+}
+
+/* Paleta categórica para gráficos con varias series a la vez (ventas por
+   tratamiento). Es la paleta de referencia validada como conjunto para series
+   adyacentes (barras apiladas, líneas, torta): separación para daltonismo y
+   visión normal por encima del piso en los dos modos. Va como variable y no en
+   @theme porque Recharts la recibe en atributos SVG y tiene que cambiar sola
+   con el tema. Más de cinco series se agrupan en "Otros", que es neutro. */
+:root {
+  --viz-cat-1: #2a78d6;
+  --viz-cat-2: #eb6834;
+  --viz-cat-3: #1baf7a;
+  --viz-cat-4: #eda100;
+  --viz-cat-5: #e87ba4;
+  --viz-cat-other: #8696a0;
+  /* Fondo de los paneles: separa los segmentos apilados. */
+  --viz-surface: #ffffff;
+  /* Tooltip de los gráficos: sigue al tema como el resto del panel. */
+  --viz-text: #111b21;
+  --viz-muted: #667781;
+  --viz-border: #e9edef;
+}
+.dark {
+  --viz-cat-1: #3987e5;
+  --viz-cat-2: #d95926;
+  --viz-cat-3: #199e70;
+  --viz-cat-4: #c98500;
+  --viz-cat-5: #d55181;
+  --viz-cat-other: #667781;
+  --viz-surface: #111b21;
+  --viz-text: #e9edef;
+  --viz-muted: #8696a0;
+  --viz-border: #222d34;
 }
 
 /* ============================================================
@@ -107,6 +146,40 @@
   --xy-controls-button-color-default: #cbd5e1;
   --xy-controls-button-color-hover-default: #ffffff;
   --xy-controls-button-border-color-default: var(--color-flow-border-dark);
+}
+
+/* Foco al pasar el mouse por un bloque: su recorrido queda y el resto se
+   atenúa. Se hace con una clase en el contenedor y no cambiando el estilo de
+   cada bloque y conexión desde React: con 50 bloques, eso volvía a crear los
+   50 (y las 49 conexiones) dos veces por bloque recorrido, y la pantalla se
+   arrastraba (2026-11-08). Sin `filter`: un saturate() obligaba a rasterizar
+   de nuevo cada bloque con su imagen o video. */
+.react-flow__node { transition: opacity 160ms ease; }
+.react-flow.flow-spotlight .react-flow__node:not(.flow-connected) { opacity: 0.4; }
+.react-flow.flow-spotlight .react-flow__edge:not(.flow-lit) { opacity: 0.16; }
+
+/* Destello del bloque al que se acaba de ir (buscador, "Ver en el lienzo",
+   conexiones, aviso de Catálogos): con el lienzo alejado, el número solo no
+   alcanzaba para encontrarlo. */
+@keyframes flow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+  50% { box-shadow: 0 0 0 12px rgba(251, 191, 36, 0.55); }
+}
+.react-flow__node.flow-pulse > div { animation: flow-pulse 0.85s ease-in-out 3; }
+
+/* Etiqueta de cada conexión ("Sí", "Temporizador"…): fondo y texto según el
+   tema. Antes era una píldora blanca también en oscuro, con texto a 2,9:1. */
+.react-flow { --flow-edge-label-bg: #ffffff; --flow-edge-label-text: #475569; }
+.react-flow.dark { --flow-edge-label-bg: #262b33; --flow-edge-label-text: #cbd5e1; }
+
+/* El número del bloque (#n) mantiene un tamaño legible al alejar el lienzo:
+   se agranda en la misma proporción en que se achica todo (`--flow-number-scale`,
+   lo pone ZoomScale en FlowCanvas). Con 50 bloques el zoom queda en ~0,25 y
+   el #n de 10 px se veía de 2,5 px, justo cuando hacía falta para encontrar
+   uno. Crece hacia arriba y a la izquierda, sin tapar la tarjeta. */
+.react-flow .flow-number {
+  transform: scale(var(--flow-number-scale, 1));
+  transform-origin: bottom right;
 }
 
 /* ============================================================

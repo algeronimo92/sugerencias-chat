@@ -1,5 +1,5 @@
-"""Distribución del pipeline: etapas, orígenes, servicios, embudo y leads frío
-que nadie tocó en días."""
+"""Distribución del pipeline: etapas, orígenes, servicios, embudo y leads
+fríos que nadie tocó en días."""
 
 import asyncio
 from datetime import timedelta

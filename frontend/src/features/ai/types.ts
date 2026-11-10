@@ -12,10 +12,16 @@ export interface AIProfile {
   updated_at?: string | null
 }
 
+export type KnowledgeDocumentType = 'ficha' | 'politica' | 'faq' | 'guion' | 'otro'
+
 export interface KnowledgeDocumentSummary {
   id: string
   title: string
   document_type: string | null
+  /** Servicios del catálogo a los que pertenece; vacío = conocimiento general. */
+  service_ids: number[]
+  /** Plantilla de la plataforma de la que se importó; la copia es del negocio. */
+  template_id: number | null
   characters: number
   chunk_count: number
   created_at: string
@@ -31,7 +37,7 @@ export type AIUsage = Delivered<ApiSchemas['AIUsage']>
 export interface GenerateParams {
   chat_id: string
   phone: string | null
-  // Ignora la sugerencia guardada y pide un juego nuevo ("Generá otras").
+  // Ignora la sugerencia guardada y pide un juego nuevo ("Genera otras").
   force?: boolean
   // Indicación opcional del asesor ("dar precio", "no dar precio"…). El
   // backend la sanea y la pasa al prompt; si viene, siempre genera de nuevo.
@@ -64,10 +70,23 @@ export interface SuggestionResponse {
   sugerencias: Sugerencia[]
 }
 
+/** Por qué el negocio no tiene sugerencias; `ai_key_missing` se resuelve en Integraciones. */
+export type SuggestionUnavailable = ApiSchemas['SuggestionUnavailable']
+
 /** Estado de la sugerencia guardada de un lead — lectura barata que nunca
- * dispara la generación. `stale`: el cliente escribió después de generarse. */
+ * dispara la generación. `stale`: el cliente escribió después de generarse.
+ * Con `unavailable` no hay sugerencia: el panel explica qué falta. */
 export interface SuggestionStatus {
   suggestion: SuggestionResponse | null
   generated_at: string | null
   stale: boolean
+  unavailable?: SuggestionUnavailable | null
 }
+
+export type AiProvidersStatus = ApiSchemas['AiProvidersStatus']
+export type AiProviderTestResult = ApiSchemas['AiProviderTestResult']
+export type AiModelParams = ApiSchemas['AiModelParams']
+export type AiModelParam = ApiSchemas['AiModelParam']
+
+export type KnowledgePdfImport = ApiSchemas['KnowledgePdfImport']
+export type KnowledgeTemplateSummary = ApiSchemas['KnowledgeTemplateSummary']

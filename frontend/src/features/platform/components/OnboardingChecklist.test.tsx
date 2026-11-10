@@ -27,6 +27,7 @@ const pending: OnboardingStatus = {
 
 function renderChecklist(props: Partial<Parameters<typeof OnboardingChecklist>[0]> = {}) {
   const onOpenSettings = vi.fn()
+  const onOpenIntegrations = vi.fn()
   const onNavigate = vi.fn()
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -34,12 +35,13 @@ function renderChecklist(props: Partial<Parameters<typeof OnboardingChecklist>[0
         enabled
         pathname="/"
         onOpenSettings={onOpenSettings}
+        onOpenIntegrations={onOpenIntegrations}
         onNavigate={onNavigate}
         {...props}
       />
     </QueryClientProvider>,
   )
-  return { onOpenSettings, onNavigate }
+  return { onOpenSettings, onNavigate, onOpenIntegrations }
 }
 
 describe('OnboardingChecklist', () => {
@@ -60,7 +62,7 @@ describe('OnboardingChecklist', () => {
   it('lleva cada paso pendiente a su pantalla o pestaña', async () => {
     api.get.mockResolvedValue({ data: pending })
     const user = userEvent.setup()
-    const { onOpenSettings, onNavigate } = renderChecklist()
+    const { onOpenSettings, onNavigate, onOpenIntegrations } = renderChecklist()
 
     await user.click(await screen.findByRole('button', { name: /Primeros pasos/ }))
 
@@ -72,7 +74,8 @@ describe('OnboardingChecklist', () => {
     await user.click(screen.getByRole('button', { name: 'Cargar: Cargar servicios y precios' }))
     await user.click(screen.getByRole('button', { name: 'Revisar: Revisar plantillas' }))
 
-    expect(onOpenSettings.mock.calls).toEqual([['usuarios'], ['calendario']])
+    expect(onOpenSettings.mock.calls).toEqual([['usuarios']])
+    expect(onOpenIntegrations.mock.calls).toEqual([['calendario']])
     expect(onNavigate.mock.calls).toEqual([['/catalogs'], ['/templates']])
     expect(screen.getByText('(opcional)')).toBeInTheDocument()
   })
@@ -106,7 +109,7 @@ describe('OnboardingChecklist', () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <OnboardingReopenButton enabled className="" />
-        <OnboardingChecklist enabled pathname="/" onOpenSettings={vi.fn()} onNavigate={vi.fn()} />
+        <OnboardingChecklist enabled pathname="/" onOpenSettings={vi.fn()} onNavigate={vi.fn()} onOpenIntegrations={vi.fn()} />
       </QueryClientProvider>,
     )
 

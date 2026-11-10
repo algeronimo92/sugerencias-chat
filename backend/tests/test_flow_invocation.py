@@ -35,13 +35,15 @@ class TestInvocationValidation:
             1: {"name": "A", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": definition()},
             2: {"name": "B", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": definition(1)},
         }
-        with pytest.raises(ValueError, match="ciclo"):
+        with pytest.raises(ValueError, match="sin fin"):
             check_invoked_flows(rules, {2}, 1, definition(2))
 
     def test_rejects_an_unpublished_child(self):
         rules = {2: {"name": "B", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": None}}
-        with pytest.raises(ValueError, match="Publica el flujo hijo B"):
+        with pytest.raises(ValueError, match="Publica primero «B»") as error:
             check_invoked_flows(rules, {2}, 1, definition(2))
+        # El editor lleva al bloque que lo inicia, no solo muestra el texto.
+        assert error.value.node_id == "call-2"
 
 
 def _target(**overrides):
@@ -106,5 +108,5 @@ class TestStartInvokedFlow:
             id=100, rule_id=2, lead_id="4316bc30-f78c-57a2-8f98-bff9087678d6",
             event_payload={"flow_ancestry": [1]}, flow_state={}, started_by_user_id=None,
         )
-        with pytest.raises(ValueError, match="ciclo"):
+        with pytest.raises(ValueError, match="sin fin"):
             await start_invoked_flow(parent, 1, "call-1", deps)

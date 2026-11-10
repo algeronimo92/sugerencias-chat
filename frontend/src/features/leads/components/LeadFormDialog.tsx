@@ -1,7 +1,7 @@
-import { AlertTriangle, Loader2, MessageCircle, Plus, X } from 'lucide-react'
+import { AlertTriangle, ArrowDown, Loader2, MessageCircle, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
-import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
+import { DialogPrimitive as Dialog, dialogContentPositionClassOverPanel, dialogOverlayClassOverPanel } from '../../../shared/ui/Dialog'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
 import { toLocalInput } from '../../../shared/utils/datetime'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -36,6 +36,10 @@ interface Props {
   onCancel: () => void
   /** Al detectar que el número ya está cargado, abre ese chat en vez de crear. */
   onOpenExisting?: (chat: Chat) => void
+  /** Llegó desde otra pantalla a cambiar el servicio de interés (p. ej.
+   *  Catálogos, para poder eliminar un servicio): se resalta, recibe el foco
+   *  y muestra para qué. */
+  highlightService?: { reason: string | null }
 }
 
 function emptyToNull(value: string): string | null {
@@ -59,6 +63,7 @@ export function LeadFormDialog({
   onSubmit,
   onCancel,
   onOpenExisting,
+  highlightService,
 }: Props) {
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [secondaryPhone, setSecondaryPhone] = useState(initial?.secondary_phone ?? '')
@@ -107,6 +112,20 @@ export function LeadFormDialog({
   const initialDigits = useMemo(() => (initial?.phone ?? '').replace(/\D/g, ''), [initial?.phone])
   const candidateDigits =
     phoneCheck.status === 'valid' && phoneCheck.digits !== initialDigits ? phoneCheck.digits : null
+
+  // El foco va al servicio cuando las dos cosas están listas: el diálogo
+  // terminó de abrirse (su contenido vive en un portal que se monta después) y
+  // el selector dejó de estar deshabilitado mientras carga el catálogo (un
+  // elemento deshabilitado no recibe el foco). Lo lleva a la vista en
+  // pantallas chicas.
+  const wantsServiceFocus = Boolean(highlightService)
+  const [dialogOpened, setDialogOpened] = useState(false)
+  useEffect(() => {
+    if (!wantsServiceFocus || !dialogOpened || areServicesLoading) return
+    const field = document.getElementById('lead-service')
+    field?.focus()
+    field?.scrollIntoView?.({ block: 'center' })
+  }, [wantsServiceFocus, dialogOpened, areServicesLoading])
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedDigits(candidateDigits), 400)
@@ -204,15 +223,18 @@ export function LeadFormDialog({
   return (
     <Dialog.Root open onOpenChange={open => { if (!open && !isSubmitting) onCancel() }}>
       <Dialog.Portal>
-        <Dialog.Overlay className={dialogOverlayClass} />
+        <Dialog.Overlay className={dialogOverlayClassOverPanel} />
         <Dialog.Content
           asChild
           onEscapeKeyDown={event => { if (isSubmitting) event.preventDefault() }}
           onPointerDownOutside={event => { if (isSubmitting) event.preventDefault() }}
+          // Con un campo pedido, el foco no va al primero del formulario: lo
+          // pone el efecto de arriba en cuanto el selector se puede usar.
+          onOpenAutoFocus={highlightService ? event => { event.preventDefault(); setDialogOpened(true) } : undefined}
         >
         <form
         onSubmit={handleSubmit}
-        className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
+        className={`${dialogContentPositionClassOverPanel} w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-wa-border dark:border-wa-border-dark">
           <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">{title}</Dialog.Title>
@@ -265,9 +287,9 @@ export function LeadFormDialog({
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-xs text-amber-800 dark:text-amber-300">
                   Este chat ya tiene conversación, pero WhatsApp todavía no reveló el teléfono
-                  real detrás de él. Si el número que cargás es incorrecto, los próximos mensajes
+                  real detrás de él. Si el número que cargas es incorrecto, los próximos mensajes
                   se le van a mandar a otra persona, mientras este chat sigue mostrando la
-                  conversación anterior. Confirmalo con el cliente antes de guardar.
+                  conversación anterior. Confírmalo con el cliente antes de guardar.
                 </p>
               </div>
             )}
@@ -337,8 +359,17 @@ export function LeadFormDialog({
             />
           </div>
 
-          <div>
+          <div
+            data-highlighted={highlightService ? 'true' : undefined}
+            className={highlightService ? '-mx-2 rounded-lg bg-amber-50 p-2 ring-2 ring-amber-400 dark:bg-amber-950/30 dark:ring-amber-500' : undefined}
+          >
             <label htmlFor="lead-service" className={LABEL_CLASS}>Servicio de interés</label>
+            {highlightService && (
+              <p className="mb-1.5 flex items-start gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
+                <ArrowDown className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {highlightService.reason || 'Cambia el servicio de interés de este lead.'}
+              </p>
+            )}
             <div className="flex items-center gap-2">
             <Select
               id="lead-service"

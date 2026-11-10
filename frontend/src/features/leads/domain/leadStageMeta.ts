@@ -104,6 +104,7 @@ export interface LeadStageCatalog {
   get: (key: LeadStage) => LeadStageDefinition
   label: (key: LeadStage) => string
   isLost: (key: LeadStage) => boolean
+  isWon: (key: LeadStage) => boolean
 }
 
 export function buildStageCatalog(stages: readonly LeadStageDefinition[]): LeadStageCatalog {
@@ -116,6 +117,7 @@ export function buildStageCatalog(stages: readonly LeadStageDefinition[]): LeadS
     get,
     label: key => get(key).name,
     isLost: key => get(key).kind === 'lost',
+    isWon: key => get(key).kind === 'won',
   }
 }
 

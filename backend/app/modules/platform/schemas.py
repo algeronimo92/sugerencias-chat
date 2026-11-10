@@ -268,3 +268,30 @@ class EmailConnectRequest(BaseModel):
 class EmailTestResult(BaseModel):
     recipient: str
     source: Literal["tenant", "platform"]
+
+
+class KnowledgeTemplateBody(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    document_type: Literal["ficha", "politica", "faq", "guion", "otro"] | None = None
+    service_hint: str | None = Field(default=None, max_length=120)
+    content: str = Field(min_length=1, max_length=100_000)
+    is_active: bool = True
+
+
+class KnowledgeTemplateUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    document_type: Literal["ficha", "politica", "faq", "guion", "otro"] | None = None
+    service_hint: str | None = Field(default=None, max_length=120)
+    content: str | None = Field(default=None, min_length=1, max_length=100_000)
+    is_active: bool | None = None
+
+
+class KnowledgeTemplateItem(BaseModel):
+    id: int
+    title: str
+    document_type: str | None = None
+    service_hint: str | None = None
+    content: str
+    is_active: bool
+    version: int
+    updated_at: str

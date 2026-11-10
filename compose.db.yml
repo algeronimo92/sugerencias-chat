@@ -22,10 +22,20 @@ name: dermicapro-data
 
 services:
   postgres:
-    # Fijada por versión: una actualización mayor de PostgreSQL no arranca
-    # sobre un directorio de datos de la versión anterior, y con `latest` eso
-    # ocurriría en el peor momento, sin avisar.
-    image: postgres:16.14-alpine
+    # postgres:16.14-alpine con pgvector (db/Dockerfile). La versión mayor la
+    # fija el FROM de ese Dockerfile: una actualización mayor de PostgreSQL no
+    # arranca sobre un directorio de datos de la versión anterior, y el deploy
+    # lo vigila leyendo ese FROM.
+    #
+    # El tag nombra las dos versiones y hay que cambiarlo junto con el
+    # Dockerfile: compose construye la imagen solo cuando el tag no existe en el
+    # servidor, así que un Dockerfile nuevo con el tag viejo no se aplicaría
+    # (CI lo comprueba). Construir solo cuando falta es a propósito: rearmarla
+    # en cada deploy daría una imagen nueva (los paquetes de compilación
+    # cambian) y recrearía la base sin motivo.
+    build:
+      context: ./db
+    image: cliniventas-postgres:16.14-pgvector-0.8.7
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB}
@@ -38,7 +48,7 @@ services:
     # Es deliberado que falle cerrado. Un TLS opcional se queda apagado el dia
     # que alguien despliega con prisa, y aqui viajan conversaciones de
     # pacientes. Si falta el certificado, el despliegue se detiene con un
-    # mensaje que dice que ejecutar (ver el paso "certificados" en ci-cd.yml).
+    # mensaje que dice que ejecutar (ver el paso "certificados" en deploy.yml).
     #
     # Los genera scripts/gen-db-tls.sh.
     command: >

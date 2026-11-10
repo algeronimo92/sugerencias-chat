@@ -93,6 +93,6 @@ describe('AlbumBubble', () => {
     renderAlbum(messages)
     // No se afirma el formato exacto (depende del locale del entorno de test),
     // solo que el pie no está vacío y no revienta el render.
-    expect(document.querySelector('.text-wa-faint')).not.toBeNull()
+    expect(document.querySelector('.text-wa-faint-strong')).not.toBeNull()
   })
 })

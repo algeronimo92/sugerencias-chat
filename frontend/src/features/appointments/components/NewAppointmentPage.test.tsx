@@ -6,6 +6,8 @@ import { NewAppointmentPage } from './NewAppointmentPage'
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }))
 
+// El formulario muestra el símbolo de la moneda junto al adelanto.
+vi.mock('../hooks/useBusinessCurrency', () => ({ useBusinessCurrency: () => 'PEN' }))
 vi.mock('../../../shared/auth', () => ({ useMe: () => ({ data: { role: 'admin' } }) }))
 vi.mock('../../platform/hooks/useUsers', () => ({ useSellers: () => ({ data: [{ id: 1, name: 'Asesor' }] }) }))
 vi.mock('../../catalogs/public/useCustomFields', () => ({ useCustomFields: () => ({
@@ -20,6 +22,7 @@ vi.mock('../../catalogs/public/useLeadServices', () => ({
 vi.mock('../queries', () => ({
   useCreateAppointment: () => ({ isPending: false, mutate: mocks.mutate }),
 }))
+vi.mock('../../platform/public/useGoogleCalendar', () => ({ useGoogleCalendarStatus: () => ({ data: { connected: true } }) }))
 vi.mock('./AppointmentHistoryList', () => ({ AppointmentHistoryList: () => null }))
 vi.mock('./AppointmentCalendar', () => ({ AppointmentCalendar: () => null }))
 
@@ -53,14 +56,14 @@ describe('NewAppointmentPage: comprobante por cámara', () => {
 
     fireEvent.change(screen.getByLabelText('Nombre completo *'), { target: { value: 'Ana' } })
     fireEvent.change(screen.getByLabelText('Teléfono *'), { target: { value: '987654321' } })
-    await user.type(screen.getByRole('combobox', { name: 'Servicio o motivo *' }), 'consul')
+    await user.type(screen.getByRole('combobox', { name: 'Tratamiento *' }), 'consul')
     await user.click(screen.getByRole('option', { name: 'Consulta' }))
     await user.click(screen.getByLabelText('Responsable *'))
     await user.click(screen.getByRole('option', { name: 'Asesor' }))
-    fireEvent.change(screen.getByLabelText('Fecha *'), { target: { value: '2026-10-01' } })
+    fireEvent.change(screen.getByLabelText('Fecha de la cita *'), { target: { value: '2026-10-01' } })
     await user.click(screen.getByLabelText('Hora *'))
     await user.click(screen.getByRole('option', { name: '10:00' }))
-    await user.click(screen.getByRole('button', { name: 'Guardar cita' }))
+    await user.click(screen.getByRole('button', { name: 'Separar cita' }))
 
     expect(mocks.mutate).toHaveBeenCalledWith(expect.objectContaining({
       tratamiento: 'Consulta',
@@ -93,5 +96,45 @@ describe('NewAppointmentPage: comprobante por cámara', () => {
     expect(screen.queryByRole('button', { name: 'Disparar' })).not.toBeInTheDocument()
     const clicked = click.mock.contexts[0] as HTMLInputElement
     expect(clicked.getAttribute('capture')).toBe('environment')
+  })
+})
+
+describe('NewAppointmentPage: validación por campo', () => {
+  afterEach(() => {
+    localStorage.clear()
+    mocks.mutate.mockReset()
+  })
+
+  it('nombra lo que falta, marca cada campo y lleva el foco al primero', async () => {
+    const user = userEvent.setup()
+    render(<NewAppointmentPage />)
+
+    await user.click(screen.getByRole('button', { name: 'Separar cita' }))
+
+    expect(mocks.mutate).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Revisa estos datos: Tratamiento, Fecha, Hora, Responsable, Nombre y Teléfono.')
+    const service = screen.getByRole('combobox', { name: 'Tratamiento *' })
+    expect(service).toHaveAttribute('aria-invalid', 'true')
+    expect(service).toHaveAccessibleDescription(/Elige el tratamiento que separó\./)
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    expect(service).toHaveFocus()
+
+    // Corregir el campo borra su error en el momento.
+    fireEvent.change(screen.getByLabelText('Nombre completo *'), { target: { value: 'Ana' } })
+    expect(screen.queryByText('Escribe el nombre de la clienta.')).toBeNull()
+  })
+
+  it('ofrece atajos de fecha y arranca las horas en la mañana', async () => {
+    const user = userEvent.setup()
+    render(<NewAppointmentPage />)
+
+    await user.click(screen.getByRole('button', { name: 'Mañana' }))
+    expect(screen.getByRole('button', { name: 'Mañana' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Fecha de la cita *')).not.toHaveValue('')
+
+    await user.click(screen.getByLabelText('Hora *'))
+    const hours = screen.getAllByRole('option').map(option => option.textContent)
+    expect(hours.slice(0, 2)).toEqual(['Elige la hora', '07:00'])
+    expect(hours).toContain('06:30')
   })
 })

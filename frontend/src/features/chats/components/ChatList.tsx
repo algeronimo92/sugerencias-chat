@@ -309,30 +309,22 @@ export function ChatList({
   // siga apareciendo donde el usuario lo dejó.
   const anchorChatIdRef = useRef<string | null>(null);
   const prevChatsRef = useRef<Chat[]>(chats);
-  const pendingAnchorIndexRef = useRef<number | null>(null);
 
-  if (prevChatsRef.current !== chats) {
-    const anchorId = anchorChatIdRef.current;
-    if (anchorId) {
-      const prevIndex = prevChatsRef.current.findIndex(
-        (chat) => chat.chat_id === anchorId,
-      );
-      const nextIndex = chats.findIndex((chat) => chat.chat_id === anchorId);
-      if (prevIndex !== -1 && nextIndex !== -1 && nextIndex !== prevIndex) {
-        pendingAnchorIndexRef.current = nextIndex;
-      }
-    }
-    prevChatsRef.current = chats;
-  }
-
+  // En un layout effect (después del commit y antes de pintar) y no en el
+  // render: React puede descartar un render, y las refs quedaban apuntando a
+  // una lista que nunca llegó a pantalla.
   useLayoutEffect(() => {
-    if (pendingAnchorIndexRef.current !== null) {
-      rowVirtualizer.scrollToIndex(pendingAnchorIndexRef.current, {
-        align: "start",
-      });
-      pendingAnchorIndexRef.current = null;
+    const prevChats = prevChatsRef.current;
+    if (prevChats === chats) return;
+    prevChatsRef.current = chats;
+    const anchorId = anchorChatIdRef.current;
+    if (!anchorId) return;
+    const prevIndex = prevChats.findIndex((chat) => chat.chat_id === anchorId);
+    const nextIndex = chats.findIndex((chat) => chat.chat_id === anchorId);
+    if (prevIndex !== -1 && nextIndex !== -1 && nextIndex !== prevIndex) {
+      rowVirtualizer.scrollToIndex(nextIndex, { align: "start" });
     }
-  });
+  }, [chats, rowVirtualizer]);
 
   // Mantiene el ancla al día mientras el usuario scrollea. rowVirtualizer no
   // vuelve a renderizar el componente en cada pixel de scroll (con pocos
@@ -705,7 +697,7 @@ export function ChatList({
                   })
                 }
               />
-              Solo con automatización pausada
+              Solo sin automatizaciones nuevas
             </label>
           </div>
         )}
@@ -761,17 +753,17 @@ export function ChatList({
                   : filter === "unread"
                     ? "No hay chats sin leer."
                     : filter === "mine"
-                      ? "No tenés leads asignados."
+                      ? "No tienes leads asignados."
                       : "Sin leads todavía."
               }
             />
             {showConnectWhatsapp && filter === "all" && !search && (
               <div className="mx-4 mt-2 rounded-xl border border-wa-primary/30 bg-wa-primary/10 p-4 text-left dark:border-wa-primary/30 dark:bg-wa-primary/15">
                 <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-wa-primary-strong dark:text-wa-primary">
-                  <Smartphone className="h-4 w-4" /> Conectá tu WhatsApp
+                  <Smartphone className="h-4 w-4" /> Conecta tu WhatsApp
                 </div>
                 <p className="mb-3 text-xs text-wa-primary-strong/80 dark:text-wa-primary/80">
-                  Vinculá tu instancia escaneando el QR para empezar a recibir
+                  Vincula el número del negocio con Meta para empezar a recibir
                   mensajes.
                 </p>
                 <button

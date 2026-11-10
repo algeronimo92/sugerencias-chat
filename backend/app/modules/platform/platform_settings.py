@@ -1,9 +1,10 @@
 """Configuración global compartida por todos los tenants.
 
 Estas claves pertenecen a la app Tech Provider y a los dos sentidos del canal
-con n8n: los workflows de IA son uno solo para todos los negocios (el tenant
-viaja en el token firmado de cada job, no en la URL), así que su dirección y
-su token los administra la plataforma y ningún negocio los ve.
+con n8n: el workflow del analista es uno solo para todos los negocios (el
+tenant viaja en el token firmado de cada job, no en la URL), así que su
+dirección y su token los administra la plataforma y ningún negocio los ve. Las
+sugerencias ya no pasan por n8n: usan las claves de IA de cada negocio.
 Se almacenan cifradas en ``public.platform_settings`` y nunca se buscan dentro
 del schema de un negocio. El entorno queda como respaldo de despliegue.
 """
@@ -37,7 +38,6 @@ PLATFORM_SETTING_DEFS = (
     PlatformSettingDef("meta_app_secret", "Facebook App Secret", True),
     PlatformSettingDef("meta_verify_token", "Verify Token del webhook de Meta", True),
     PlatformSettingDef("inbound_webhook_token", "Token entrante n8n → backend", True),
-    PlatformSettingDef("n8n_webhook_url", "URL del workflow de sugerencias (n8n)", False),
     PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista (n8n)", False),
     PlatformSettingDef("n8n_webhook_token", "Token saliente backend → n8n", True),
     PlatformSettingDef("google_oauth_client_id", "Google OAuth Client ID (Calendar y Gmail)", False),

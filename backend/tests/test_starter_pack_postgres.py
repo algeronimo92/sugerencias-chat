@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 
 from app.db.models.auth import User
 from app.db.models.automations import AutomationRule
-from app.db.models.catalogs import LeadService, LeadTag, MessageTemplate
+from app.db.models.catalogs import LeadService, LeadTag, MessageTemplate, ServicePackage
 from app.db.uow import session_scope
 from app.modules.platform.onboarding import onboarding_status
 from app.modules.platform.starter_pack import (
@@ -96,7 +96,10 @@ async def test_checklist_reads_real_catalog_and_team(tenant) -> None:
         }
 
         async with session_scope() as session:
-            session.add(LeadService(name="Limpieza facial", is_active=True, price=120))
+            service = LeadService(name="Limpieza facial", is_active=True)
+            session.add(service)
+            await session.flush()
+            session.add(ServicePackage(service_id=service.id, name="1 sesión", sessions=1, price=120))
             session.add(User(
                 email=f"vend-{uuid4().hex[:8]}@example.test", name="Vendedora", password_hash="!",
                 role="vendedor", is_active=False, created_at=datetime.now(timezone.utc),

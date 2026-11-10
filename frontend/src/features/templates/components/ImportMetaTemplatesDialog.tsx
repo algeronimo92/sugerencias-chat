@@ -180,7 +180,7 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
                   <div className="grid gap-3 rounded-2xl border border-wa-border bg-[#f9fbfa] p-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
                     <h3 className="text-sm font-bold text-wa-text dark:text-white">Variables del mensaje</h3>
                     <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                      Valor por defecto de cada variable — podés usar texto fijo o un placeholder interno: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}
+                      Valor por defecto de cada variable — puedes usar texto fijo o un placeholder interno: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}
                     </p>
                     {variableNames.map((variableName, index) => (
                       <label key={index} className="templates-field">{`{{${variableName}}}`}<input

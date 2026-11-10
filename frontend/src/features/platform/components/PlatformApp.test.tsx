@@ -35,6 +35,7 @@ describe('PlatformApp', () => {
       if (url === '/api/platform/settings') return Promise.resolve({ data: platformSettings })
       if (url === '/api/platform/organizations/1/ai') return Promise.resolve({ data: { enabled: true, monthly_quota: null, used_this_month: 12 } })
       if (url === '/api/platform/organizations/1/integrations') return Promise.resolve({ data: citasIntegrations })
+      if (url === '/api/platform/knowledge-templates') return Promise.resolve({ data: [] })
       return Promise.resolve({ data: { head: 'abc', items: organizations } })
     })
     api.post.mockResolvedValue({ data: {} })

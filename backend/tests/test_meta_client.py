@@ -266,7 +266,7 @@ def test_describe_send_failure_keeps_window_closed_message_verbatim():
 def test_describe_send_failure_hides_generic_errors_behind_friendly_text():
     exc = meta_service.MetaApiError("Meta Graph API respondió 400: ...")
     assert describe_send_failure(exc, "enviar el mensaje") == \
-        "No se pudo enviar el mensaje. Probá de nuevo en unos segundos."
+        "No se pudo enviar el mensaje. Prueba de nuevo en unos segundos."
 
 
 def test_describe_template_error_prefers_error_user_msg():

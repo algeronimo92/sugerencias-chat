@@ -1,6 +1,6 @@
 import {
 AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Loader2,Pause,PauseCircle,Play,
-Workflow,
+Workflow,ZapOff,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -11,10 +11,14 @@ ACTIVE_EXECUTION_STATUSES,AUTOMATION_TRIGGERS,AutomationExecutionStatus,automati
 import {
 useAutomationExecutions,useCancelExecution,usePauseExecution,useResumeExecution,
 } from '../queries'
+import { followedBranchText } from '../domain/flowBranches'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 
 interface Props {
   chatId: string
+  /** El cliente tiene apagadas las automatizaciones nuevas (interruptor de
+   *  la cabecera). Eso no detiene lo que ya está en marcha, y el panel lo dice. */
+  botDisabled?: boolean
 }
 
 /** Reloj compartido por todas las cuentas regresivas del panel. Solo late
@@ -76,26 +80,26 @@ function pendingLabel(execution: AutomationExecution, now: number) {
 
 function stepDetail(step: AutomationActionResult) {
   if (step.seconds) return `espera ${formatDuration(step.seconds * 1000)}`
-  if (step.branch) return `siguió por "${step.branch}"`
+  if (step.branch) return followedBranchText(step.branch)
   if (step.error) return step.error
   if (step.conditions?.length) return 'espera un mensaje, el temporizador o el horario'
   return ''
 }
 
-/** Congela o reanuda esta ejecución sola, sin tocar el resto de lo que el
+/** Pausa o reanuda esta ejecución sola, sin tocar el resto de lo que el
  *  sistema tiene en marcha sobre el lead. No es lo mismo que cancelar: guarda
  *  lo que el flujo ya avanzó y el tiempo que le faltaba para el próximo paso.
+ *  Es la única forma de detener algo que ya corre: el interruptor de la
+ *  cabecera solo impide que arranquen automatizaciones nuevas.
  *
- *  Hay dos situaciones que no se pueden operar desde acá, y el botón las
- *  explica en vez de fallar: una ejecución que está enviando un paso en este
- *  instante (se pausa cuando llegue a su próxima espera) y una congelada junto
- *  con el chat entero, que reanuda el botón del bot de la cabecera. */
+ *  Una ejecución que está enviando un paso en este instante no se puede
+ *  pausar; el botón lo explica en vez de fallar. Las que quedaron pausadas
+ *  "junto con el chat" por la regla anterior se reanudan desde acá igual. */
 function PauseToggleButton({ execution }: { execution: AutomationExecution }) {
   const pause = usePauseExecution()
   const resume = useResumeExecution()
   const isPaused = execution.status === AutomationExecutionStatus.Paused
   const isRunning = execution.status === AutomationExecutionStatus.Running
-  const pausedWithChat = isPaused && execution.pause_scope === 'lead'
   const isPending = pause.isPending || resume.isPending
   const label = isPaused ? 'Reanudar' : 'Pausar'
 
@@ -103,24 +107,22 @@ function PauseToggleButton({ execution }: { execution: AutomationExecution }) {
     <button
       type="button"
       title={isPaused
-        ? pausedWithChat
-          ? 'Pausada junto con todo el chat — reanudala con el botón del bot de la cabecera'
-          : 'Reanudar: sigue con el tiempo que le faltaba'
+        ? 'Reanudar: sigue con el tiempo que le faltaba'
         : isRunning
-          ? 'Está ejecutando un paso; se puede pausar cuando llegue a su próxima espera'
-          : 'Pausar sin perder lo que ya avanzó'}
+          ? 'Está enviando un paso; podrás pausarla en su próxima espera'
+          : 'Pausar aquí: guarda lo avanzado y el tiempo que le falta'}
       aria-label={`${label} ${execution.rule_name}`}
-      disabled={isPending || isRunning || pausedWithChat}
+      disabled={isPending || isRunning}
       onClick={() => (isPaused ? resume : pause).mutate(execution.id, {
         onSuccess: () => toast.success(
-          isPaused ? 'Automatización reanudada' : 'Automatización pausada para este chat'
+          isPaused ? 'Automatización reanudada: sigue desde donde quedó' : 'Automatización pausada: sigue cuando la reanudes'
         ),
         onError: error => toast.error(extractErrorMessage(error)),
       })}
-      className={`flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`flex h-6 shrink-0 items-center gap-1 rounded-lg border px-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         isPaused
           ? 'border-wa-primary-strong text-wa-primary-strong hover:bg-green-50 dark:border-wa-primary dark:text-wa-primary dark:hover:bg-green-950/30'
-          : 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+          : 'border-amber-600 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-400 dark:hover:bg-amber-950/30'
       }`}
     >
       {isPending
@@ -147,13 +149,15 @@ function StepIcon({ status }: { status?: string }) {
  * Lo que el sistema tiene en marcha sobre este lead, dentro del propio chat:
  * cada automatización activa (las que dispara el sistema y las que arranca el
  * vendedor), los pasos que ya dio, en qué espera está parada y cuánto le falta
- * para seguir — con botones para congelarla o cancelarla antes de que le
+ * para seguir — con botones para pausarla o cancelarla antes de que le
  * escriba al cliente.
  *
- * Sin esto el vendedor solo veía sus propios flujos manuales y su única forma
- * de frenar al sistema era pausar el lead entero.
+ * Sin esto el vendedor solo veía sus propios flujos manuales y no tenía cómo
+ * frenar una automatización concreta: el interruptor de la cabecera solo
+ * impide que arranquen nuevas, y eso hay que decirlo acá, donde se ve lo que
+ * sigue.
  */
-export function LeadAutomationPanel({ chatId }: Props) {
+export function LeadAutomationPanel({ chatId, botDisabled = false }: Props) {
   const { data: executions = [] } = useAutomationExecutions({ chatId })
   const cancelExecution = useCancelExecution()
   const [open, setOpen] = useState(false)
@@ -163,9 +167,17 @@ export function LeadAutomationPanel({ chatId }: Props) {
   if (active.length === 0) return null
 
   const paused = active.filter(execution => execution.status === AutomationExecutionStatus.Paused).length
+  const moving = active.length - paused
   const summary = active.length === 1
     ? active[0].rule_name
-    : `${active.length} automatizaciones en curso`
+    : paused === 0
+      ? `${active.length} automatizaciones en marcha`
+      : paused === active.length
+        ? `${active.length} automatizaciones en pausa`
+        : `${active.length} automatizaciones`
+  const pausedNote = active.length === 1
+    ? paused === 1 ? ' · en pausa' : ''
+    : paused > 0 && paused < active.length ? ` · ${paused} en pausa` : ''
 
   return (
     <div className="border-t border-wa-border bg-wa-field text-xs dark:border-wa-border-dark dark:bg-wa-field-dark">
@@ -180,7 +192,16 @@ export function LeadAutomationPanel({ chatId }: Props) {
           : <Workflow className="h-3.5 w-3.5 shrink-0 text-wa-primary-strong" />}
         <span className="min-w-0 flex-1 truncate">
           <span className="font-semibold text-wa-text dark:text-wa-text-dark">{summary}</span>
-          {paused > 0 && <span className="text-amber-600 dark:text-amber-400"> · {paused} en pausa</span>}
+          {pausedNote && <span className="text-amber-700 dark:text-amber-400">{pausedNote}</span>}
+          {/* El único sitio donde conviven los dos estados: automatizaciones
+              nuevas apagadas y algo que sigue en marcha. Sin esta frase parece
+              que el interruptor falló. */}
+          {botDisabled && moving > 0 && (
+            <span className="text-amber-700 dark:text-amber-400">
+              {' · '}
+              <ZapOff className="inline h-3 w-3 align-[-2px]" aria-hidden="true" /> Sin automatizaciones nuevas: {moving === 1 ? 'esta sigue' : 'estas siguen'} en marcha
+            </span>
+          )}
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -204,14 +225,14 @@ export function LeadAutomationPanel({ chatId }: Props) {
                 <PauseToggleButton execution={execution} />
                 <button
                   type="button"
-                  title="Cancelar esta automatización"
+                  title="Cancelar: termina aquí; no se puede reanudar"
                   aria-label={`Cancelar ${execution.rule_name}`}
                   disabled={cancelExecution.isPending}
                   onClick={() => cancelExecution.mutate(execution.id, {
-                    onSuccess: () => toast.success('Automatización cancelada para este chat'),
+                    onSuccess: () => toast.success('Automatización cancelada'),
                     onError: error => toast.error(extractErrorMessage(error)),
                   })}
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-red-500 px-2 py-1 text-[10px] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-wait disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/30"
+                  className="flex h-6 shrink-0 items-center gap-1 rounded-lg border border-red-500 px-2 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-wait disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/30"
                 >
                   {cancelExecution.isPending && cancelExecution.variables === execution.id
                     ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -241,7 +262,7 @@ export function LeadAutomationPanel({ chatId }: Props) {
 
               <p className={`mt-2 flex items-center gap-1.5 text-[11px] font-semibold ${
                 execution.status === AutomationExecutionStatus.Paused
-                  ? 'text-amber-600 dark:text-amber-400'
+                  ? 'text-amber-700 dark:text-amber-400'
                   : 'text-wa-primary-strong dark:text-wa-primary'
               }`}>
                 {execution.status === AutomationExecutionStatus.Running

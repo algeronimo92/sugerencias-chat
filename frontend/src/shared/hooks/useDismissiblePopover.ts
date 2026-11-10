@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 
 /**
  * Cierra un popover al pulsar fuera de él o presionar Escape. El listener usa
@@ -15,7 +15,11 @@ export function useDismissiblePopover<T extends HTMLElement>(
 ) {
   const containerRef = useRef<T>(null)
   const dismissRef = useRef(onDismiss)
-  dismissRef.current = onDismiss
+  // Se actualiza después del commit, no en el render (React puede descartar
+  // un render); los eventos llegan siempre después, así que ven el último.
+  useLayoutEffect(() => {
+    dismissRef.current = onDismiss
+  })
 
   useEffect(() => {
     if (!open) return

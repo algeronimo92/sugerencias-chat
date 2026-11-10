@@ -17,6 +17,7 @@ CONTROL_TABLES = {
     "platform_users",
     "platform_sessions",
     "webhook_inbox",
+    "knowledge_templates",
 }
 PUBLIC_FKS = {
     ("organization_branding", "organization_id", "organizations"),
@@ -29,7 +30,7 @@ PUBLIC_FKS = {
 
 def test_registry_loads_control_and_tenant_models_once():
     tables = list(Base.metadata.tables.values())
-    assert len(tables) == 57
+    assert len(tables) == 60
     assert {table.name for table in tables if table.schema == "public"} == CONTROL_TABLES
     assert all(table.schema is None for table in tables if table.name not in CONTROL_TABLES)
     for child, column, parent in PUBLIC_FKS:

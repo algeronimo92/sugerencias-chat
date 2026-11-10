@@ -10,7 +10,7 @@ los flujos por `started_by_user_id` y las citas por `created_by_user_id`.
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import func, true
+from sqlalchemy import Date, func, true
 from app.db.uow import session_scope
 
 
@@ -39,6 +39,12 @@ class DashboardScope:
     def is_mine(self) -> bool:
         return self.scope == SCOPE_MINE
 
+    @property
+    def previous_start(self) -> datetime:
+        """Inicio de la ventana anterior de la misma duración, contra la que se
+        comparan las ventas: 30 días frente a los 30 de antes."""
+        return self.start - timedelta(days=self.days)
+
     def mine(self, column):
         """Condición que acota una consulta al usuario, o `true()` cuando el
         scope es del equipo. Se pasa siempre a `.where(...)`, así la misma
@@ -61,8 +67,9 @@ def build_scope(days: int, scope: str, user_id: int) -> DashboardScope:
 
 
 def local_day(column):
-    """Fecha local del negocio para agrupar series por día."""
-    return func.date(func.timezone(BUSINESS_TZ_NAME, column))
+    """Fecha local del negocio para agrupar series por día. Declara el tipo
+    para que la fila traiga un ``date`` y no un valor sin tipo."""
+    return func.date(func.timezone(BUSINESS_TZ_NAME, column), type_=Date)
 
 
 async def execute_mapping(stmt):

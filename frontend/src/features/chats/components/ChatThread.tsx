@@ -1,10 +1,13 @@
-import { ArrowLeft, Bot, BotOff, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, PanelRight, X, Zap, ZapOff } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useActivityHold } from '../../../shared/activity'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
 import { LeadAutomationPanel } from '../../automations/public/LeadAutomationPanel'
+import { FlowPicker } from '../../automations/public/FlowPicker'
+import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {
@@ -23,12 +26,15 @@ import { formatDayLabel, formatMessageTime, parseContent } from '../../whatsapp/
 import { messageMediaFilename } from '../utils/messageMedia'
 import { AlbumBubble } from './AlbumBubble'
 import { ChatComposer } from './ChatComposer'
+import { ChatHeaderMoreMenu } from './ChatHeaderMoreMenu'
 import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
+import { FlowEventCard } from './FlowEventCard'
 import { StageChangeCard } from './StageChangeCard'
+import { originGroupKey, originLabel } from '../domain/messageOrigin'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const ForwardMessageDialog = lazy(() => import('./ForwardMessageDialog').then(m => ({ default: m.ForwardMessageDialog })))
@@ -71,6 +77,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   const {
     messages,
     timeline,
+    flowNames,
     daySections,
     sentMessageHistory,
     chatMediaItems,
@@ -92,10 +99,16 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
     updateLead(
       { automatizacion_pausada: next },
       {
+        // El toast dice lo que la gente no espera: este interruptor no
+        // detiene lo que ya está en marcha. Antes decía "queda congelado" y
+        // la tarjeta de al lado seguía contando, así que parecía un fallo.
+        // Sin la palabra "bot": para una vendedora un bot ES una
+        // automatización, y "bot desactivado, las automatizaciones siguen"
+        // sonaba a contradicción.
         onSuccess: () => toast.success(
           next
-            ? 'Automatización en pausa: lo pendiente queda congelado'
-            : 'Automatización reanudada desde donde había quedado'
+            ? 'Sin automatizaciones nuevas para este cliente. Las que están en curso siguen'
+            : 'Este cliente vuelve a recibir automatizaciones nuevas'
         ),
         onError: (err) => toast.error(extractErrorMessage(err)),
       }
@@ -159,6 +172,10 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   // descargar varios mensajes a la vez.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const isSelecting = selectedIds.size > 0
+  // Una respuesta citada o una selección a medias frenan la recarga
+  // automática de la app (ver app/pwaUpdateGuard.ts).
+  useActivityHold('reply', replyTo !== null)
+  useActivityHold('selection', isSelecting)
   // Mensajes a reenviar: la selección múltiple, o el mensaje suelto desde el
   // botón de su burbuja. null = el diálogo está cerrado.
   const [messageIdsToForward, setMessageIdsToForward] = useState<number[] | null>(null)
@@ -243,7 +260,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       // ("Imagen", "Audio"), como el "<multimedia omitido>" de WhatsApp.
       const body = parsed.text.trim() || parsed.label || 'Mensaje'
       if (selectedMessages.length === 1) return body
-      const author = message.sender === 'vendedor' ? 'Vos' : displayName(chat)
+      const author = message.sender === 'vendedor' ? 'Tú' : displayName(chat)
       return `[${formatMessageTime(message.sent_at)}] ${author}: ${body}`
     })
     try {
@@ -355,7 +372,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-xs shrink-0">
             {avatarInitial(chat)}
           </div>
-          <div className="min-w-0">
+          {/* overflow-hidden: el aviso de las 24 h no puede dibujarse encima de
+              los botones cuando el nombre queda angosto en el celular. */}
+          <div className="min-w-0 overflow-hidden">
             <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">{displayName(chat)}</p>
             <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
           </div>
@@ -366,8 +385,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             onClick={toggleConversation}
             disabled={isUpdatingLead}
             aria-label={chat.conversacion_abierta ? 'Cerrar conversación' : 'Abrir conversación'}
-            title={chat.conversacion_abierta ? 'Conversación abierta — tocá para cerrarla' : 'Conversación cerrada — tocá para abrirla'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+            title={chat.conversacion_abierta ? 'Conversación abierta — toca para cerrarla' : 'Conversación cerrada — toca para abrirla'}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 max-sm:hidden ${
               chat.conversacion_abierta
                 ? 'text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30'
                 : 'text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30'
@@ -375,30 +394,60 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           >
             {chat.conversacion_abierta ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
           </button>
+          {/* "Iniciar flujo" va junto al interruptor de automatizaciones y no
+              en la fila de composición: ver FlowPicker. */}
+          <FlowPicker chatId={chat.chat_id} />
           <button
             type="button"
             onClick={toggleAutomation}
             disabled={isUpdatingLead}
-            aria-label={chat.automatizacion_pausada ? 'Reanudar automatización de este chat' : 'Pausar automatización de este chat'}
+            // Es un interruptor del cliente, no una pausa: solo impide que
+            // arranquen automatizaciones nuevas. Por eso no habla de "pausar"
+            // (ese verbo es de las tarjetas del panel) ni de "bot" (el icono
+            // de robot hacía pensar que apagaba las automatizaciones en
+            // curso). Apagado va en ámbar de alerta, igual que en la lista y
+            // en el panel: es un estado fuera de lo normal que hay que ver
+            // de un vistazo. amber-700 y no amber-500, que sobre wa-head
+            // daba 1,9:1 de contraste.
+            aria-label={chat.automatizacion_pausada
+              ? 'Volver a iniciar automatizaciones nuevas con este cliente'
+              : 'No iniciar automatizaciones nuevas con este cliente'}
             title={chat.automatizacion_pausada
-              ? 'En pausa — tocá para reanudar: lo congelado sigue desde donde quedó'
-              : 'Automatización activa — tocá para congelar lo pendiente de este chat'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+              ? 'Sin automatizaciones nuevas para este cliente. Toca para reactivarlas'
+              : 'Automatizaciones nuevas activas. Toca para que no se inicien más'}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 max-sm:hidden ${
               chat.automatizacion_pausada
-                ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200/70 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
                 : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
             }`}
           >
-            {chat.automatizacion_pausada ? <BotOff className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+            {chat.automatizacion_pausada ? <ZapOff className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
           </button>
+          {/* Separar la cita es la venta: se llega en un toque desde la
+              conversación, sin pasar por la ficha. */}
+          <LeadAppointmentAction chat={chat} variant="header" />
+          <div className="sm:hidden">
+            <ChatHeaderMoreMenu
+              conversationOpen={chat.conversacion_abierta}
+              automationPaused={chat.automatizacion_pausada}
+              disabled={isUpdatingLead}
+              onToggleConversation={toggleConversation}
+              onToggleAutomation={toggleAutomation}
+            />
+          </div>
           {onOpenSuggestions && (
             <button
               type="button"
               onClick={onOpenSuggestions}
-              aria-label="Ver sugerencias del lead"
+              // Abre la ficha del lead, que además trae el copiloto. Antes era
+              // un ícono de estrellas: prometía IA y abría sobre todo la ficha,
+              // así que nadie lo buscaba para agendar. Las estrellas quedan
+              // para la IA, dentro del panel.
+              aria-label="Abrir ficha del lead"
+              title="Ficha del lead"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
             >
-              <Sparkles className="h-5 w-5" />
+              <PanelRight className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -482,6 +531,20 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   </Fragment>
                 )
               }
+              if (item.kind === 'flow') {
+                return (
+                  <Fragment key={item.key}>
+                    <FlowEventCard execution={item.execution} />
+                  </Fragment>
+                )
+              }
+              // Un grupo de burbujas comparte remitente y origen: lo que mandó
+              // una persona no se pega a lo que mandó un flujo.
+              const opensGroup =
+                isFirstOfSection ||
+                !prevItem ||
+                prevItem.kind !== 'message' ||
+                originGroupKey(prevItem.message) !== originGroupKey(item.message)
               const group = albumGroups.get(item.message.id)
               if (group) {
                 const groupIds = group.map(m => m.id)
@@ -489,12 +552,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   <Fragment key={item.key}>
                     <AlbumBubble
                       messages={group}
-                      isFirstOfGroup={
-                        isFirstOfSection ||
-                        !prevItem ||
-                        prevItem.kind !== 'message' ||
-                        prevItem.message.sender !== item.message.sender
-                      }
+                      isFirstOfGroup={opensGroup}
+                      originLabel={originLabel(item.message.origin, flowNames)}
                       failedMediaIds={failedMediaIds}
                       onMediaFailed={(id) => setFailedMediaIds((prev) => new Set(prev).add(id))}
                       onOpenMedia={setOpenMedia}
@@ -514,12 +573,8 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                   <MessageBubble
                     chat={chat}
                     message={item.message}
-                    isFirstOfGroup={
-                      isFirstOfSection ||
-                      !prevItem ||
-                      prevItem.kind !== 'message' ||
-                      prevItem.message.sender !== item.message.sender
-                    }
+                    isFirstOfGroup={opensGroup}
+                    originLabel={originLabel(item.message.origin, flowNames)}
                     isFlashing={flashMessageId === item.message.id}
                     threadWidth={threadWidth}
                     hasFailedMedia={failedMediaIds.has(item.message.id)}
@@ -574,7 +629,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       </div>
 
       {/* Compose */}
-      <LeadAutomationPanel chatId={chat.chat_id} />
+      <LeadAutomationPanel chatId={chat.chat_id} botDisabled={chat.automatizacion_pausada} />
       {!isNoteMode && <CustomerServiceWindowNotice data={customerWindow} />}
       {isNoteMode ? (
         <InternalNoteComposer

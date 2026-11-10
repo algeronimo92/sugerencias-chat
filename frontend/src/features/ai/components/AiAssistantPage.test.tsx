@@ -88,6 +88,8 @@ describe('AiAssistantPage', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/ai/knowledge', {
       title: 'Ficha botox',
       content: 'Dura 4 meses.',
+      document_type: null,
+      service_ids: [],
     }))
   })
 })

@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import type { DashboardMetrics } from '../types'
+import { who, type DashboardSubject } from './subject'
 import { AUTOMATION_TRIGGERS } from '../../automations/public/automationCatalog'
 import { formatNumber, formatShortDateTime } from './format'
 import { BarList, NoData, Panel, StatGrid, StackedBarList, TrendChart } from './primitives'
@@ -8,7 +9,7 @@ import type { StackSegment } from './primitives'
 interface Props {
   data: DashboardMetrics
   days: number
-  isMine: boolean
+  subject: DashboardSubject
   onOpenFlows: () => void
 }
 
@@ -32,7 +33,7 @@ function formatLastRun(iso: string | null): string | undefined {
   return `Último: ${formatShortDateTime(iso)}`
 }
 
-export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
+export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
   const { automations } = data
   const period = `Últimos ${days} días`
   const active = automations.active_now
@@ -40,9 +41,9 @@ export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Panel
+      <Panel anchor="flujos-por-tipo"
         title="Flujos activados por tipo"
-        subtitle={isMine ? `Los que yo disparé · ${period}` : `Todo el equipo · ${period}`}
+        subtitle={`${who(subject, { me: 'Los que yo disparé', team: 'Todo el equipo', seller: (name) => `Los que disparó ${name}` })} · ${period}`}
         className="lg:col-span-2"
         action={
           <button
@@ -72,30 +73,30 @@ export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
         />
       </Panel>
 
-      <Panel title="Quién activó flujos a mano" subtitle={`Ranking del equipo · ${period}`}>
+      <Panel anchor="quien-activa-flujos" title="Quién activó flujos a mano" subtitle={`Ranking del equipo · ${period}`}>
         <BarList items={automations.by_actor} emptyLabel="Nadie disparó flujos a mano" />
       </Panel>
 
-      <Panel title="Cómo arrancaron" subtitle="A mano, por piloto automático o desde otro flujo">
+      <Panel anchor="como-arrancaron" title="Cómo arrancaron" subtitle="A mano, por piloto automático o desde otro flujo">
         <BarList items={automations.by_source} emptyLabel="Sin ejecuciones en el período" />
       </Panel>
 
-      <Panel title="Flujos por día" className="lg:col-span-2">
+      <Panel anchor="flujos-por-dia" title="Flujos por día" className="lg:col-span-2">
         <TrendChart points={automations.trend} label="Ejecuciones" />
       </Panel>
 
-      <Panel title="Pendientes ahora mismo" subtitle="Sin ventana de tiempo: una espera larga puede venir de antes">
+      <Panel anchor="pendientes-ahora" title="Pendientes ahora mismo" subtitle="Sin ventana de tiempo: una espera larga puede venir de antes">
         <StatGrid
           stats={[
             { label: 'Programados', value: formatNumber(active.scheduled ?? 0), hint: 'Esperando su turno' },
             { label: 'En curso', value: formatNumber(active.running ?? 0) },
-            { label: 'Pausados', value: formatNumber(active.paused ?? 0), hint: 'Congelados a mano' },
+            { label: 'Pausados', value: formatNumber(active.paused ?? 0), hint: 'Pausados desde su tarjeta' },
           ]}
         />
         {activeTotal === 0 && <p className="mt-3 text-[11px] text-wa-muted">No hay nada en cola.</p>}
       </Panel>
 
-      <Panel
+      <Panel anchor="fallos"
         title="Fallos"
         subtitle={
           automations.failures.rate != null
@@ -116,7 +117,7 @@ export function FlowsTab({ data, days, isMine, onOpenFlows }: Props) {
         )}
       </Panel>
 
-      <Panel title="Qué los dispara" subtitle="Evento que originó cada ejecución" className="lg:col-span-2">
+      <Panel anchor="que-los-dispara" title="Qué los dispara" subtitle="Evento que originó cada ejecución" className="lg:col-span-2">
         <BarList items={automations.by_trigger} labels={TRIGGER_LABELS} emptyLabel="Sin ejecuciones en el período" />
       </Panel>
     </div>
