@@ -75,3 +75,72 @@ export function OpenAIMark({ className = 'h-5 w-5' }: MarkProps) {
     </svg>
   )
 }
+
+/** Infinito de Meta, en su azul #0081FB. */
+export function MetaMark({ className = 'h-5 w-5' }: MarkProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
+      <path
+        d="M12 12c-1.9-3.1-3.6-5-5.6-5C4.4 7 2.5 9.2 2.5 12.2c0 2.6 1.4 4.3 3.4 4.3 2.2 0 3.9-2.2 6.1-5.6 2.2-3.4 3.9-3.9 5.2-3.9 2.2 0 4.3 2.4 4.3 5.4 0 2.6-1.4 4.1-3.3 4.1-2 0-3.7-2-6.2-4.5Z"
+        fill="none"
+        stroke="#0081FB"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** "G" de cuatro colores de Google. */
+export function GoogleMark({ className = 'h-5 w-5' }: MarkProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
+      <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82Z" />
+      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24Z" />
+      <path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09Z" />
+      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96Z" />
+    </svg>
+  )
+}
+
+/** Los cuatro cuadrados de Microsoft. */
+export function MicrosoftMark({ className = 'h-5 w-5' }: MarkProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
+      <rect x="2" y="2" width="9.5" height="9.5" fill="#F25022" />
+      <rect x="12.5" y="2" width="9.5" height="9.5" fill="#7FBA00" />
+      <rect x="2" y="12.5" width="9.5" height="9.5" fill="#00A4EF" />
+      <rect x="12.5" y="12.5" width="9.5" height="9.5" fill="#FFB900" />
+    </svg>
+  )
+}
+
+/** Los cuatro bloques de colores de Zoho. */
+export function ZohoMark({ className = 'h-5 w-5' }: MarkProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
+      <rect x="1" y="8" width="5" height="8" rx="1" fill="#E42527" transform="rotate(-8 3.5 12)" />
+      <rect x="7" y="8" width="5" height="8" rx="1" fill="#089949" transform="rotate(6 9.5 12)" />
+      <rect x="12.5" y="8" width="5" height="8" rx="1" fill="#226DB4" transform="rotate(-6 15 12)" />
+      <rect x="18" y="8" width="5" height="8" rx="1" fill="#F9B21D" transform="rotate(8 20.5 12)" />
+    </svg>
+  )
+}
+
+/** Nodos conectados de n8n, en su rosa #EA4B71. */
+export function N8nMark({ className = 'h-5 w-5' }: MarkProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
+      <path
+        d="M6.6 12h3.2c1.8 0 1.9-5 4.2-5h1.6M9.8 12c1.8 0 1.9 5 4.2 5h1.6"
+        fill="none"
+        stroke="#EA4B71"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="4.3" cy="12" r="2.3" fill="#EA4B71" />
+      <circle cx="18.2" cy="7" r="2.3" fill="#EA4B71" />
+      <circle cx="18.2" cy="17" r="2.3" fill="#EA4B71" />
+    </svg>
+  )
+}

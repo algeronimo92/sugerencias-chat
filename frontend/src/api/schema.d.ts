@@ -6606,6 +6606,8 @@ export interface components {
             key: string;
             /** Label */
             label: string;
+            /** Group */
+            group: string;
             /** Secret */
             secret: boolean;
             /** Configured */

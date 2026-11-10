@@ -16,8 +16,8 @@ const organizations = [
 ]
 
 const platformSettings = [
-  { key: 'meta_app_id', label: 'Facebook App ID (Tech Provider)', secret: false, configured: true, source: 'platform', value: 'APP123' },
-  { key: 'meta_app_secret', label: 'Facebook App Secret', secret: true, configured: true, source: 'platform', value: null },
+  { key: 'meta_app_id', label: 'App ID', group: 'meta', secret: false, configured: true, source: 'platform', value: 'APP123' },
+  { key: 'meta_app_secret', label: 'App Secret', group: 'meta', secret: true, configured: true, source: 'platform', value: null },
 ]
 
 const citasIntegrations = [
@@ -26,6 +26,8 @@ const citasIntegrations = [
 
 describe('PlatformApp', () => {
   beforeEach(() => {
+    // La pestaña elegida queda en el hash: cada prueba arranca en Negocios.
+    window.history.replaceState(null, '', '/')
     api.get.mockReset()
     api.post.mockReset()
     api.put.mockReset()
@@ -78,17 +80,20 @@ describe('PlatformApp', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/platform/organizations/2/suspend'))
   })
 
-  it('reemplaza secretos globales sin recibir el valor guardado', async () => {
+  it('agrupa las credenciales por app y reemplaza secretos sin recibir el valor guardado', async () => {
     const user = userEvent.setup()
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PlatformApp /></QueryClientProvider>)
 
+    await user.click(await screen.findByRole('tab', { name: 'Integraciones' }))
     await screen.findByDisplayValue('APP123')
-    const secret = screen.getByLabelText(/Facebook App Secret/, { selector: 'input' })
+    expect(screen.getByRole('heading', { name: 'Meta · Tech Provider' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Correo de la plataforma' })).toBeInTheDocument()
+    const secret = screen.getByLabelText('App Secret', { selector: 'input' })
     expect(secret).toHaveValue('')
     expect(secret).toHaveAttribute('placeholder', '•••• sin cambios')
 
     await user.type(secret, 'rotated-secret')
-    await user.click(screen.getByRole('button', { name: 'Guardar credenciales' }))
+    await user.click(screen.getByRole('button', { name: 'Guardar Meta · Tech Provider' }))
 
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/api/platform/settings', {
       values: { meta_app_id: 'APP123', meta_app_secret: 'rotated-secret' },

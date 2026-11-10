@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
+import { IntegrationCard, type IntegrationState } from '../../../shared/ui/IntegrationCard'
 import { Input, Select, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { clearPlatformEmail, fetchPlatformEmail, savePlatformEmail, sendPlatformEmailTest } from '../api'
@@ -34,14 +35,10 @@ function draftFrom(status: PlatformEmailStatus): Draft {
   }
 }
 
-function SourceBadge({ status }: { status: PlatformEmailStatus }) {
-  const [label, tone] =
-    status.source === 'platform'
-      ? ['Configurado aquí', 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300']
-      : status.source === 'environment'
-        ? ['Desde entorno (.env)', 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300']
-        : ['Sin configurar', 'bg-wa-field text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark']
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{label}</span>
+function stateOf(status: PlatformEmailStatus | undefined): { state: IntegrationState; label?: string } {
+  if (status?.source === 'platform') return { state: 'connected', label: 'Configurado aquí' }
+  if (status?.source === 'environment') return { state: 'connected', label: 'Desde entorno (.env)' }
+  return { state: 'unconfigured' }
 }
 
 function PlatformEmailForm({ status }: { status: PlatformEmailStatus }) {
@@ -100,7 +97,7 @@ function PlatformEmailForm({ status }: { status: PlatformEmailStatus }) {
   const busy = save.isPending || clear.isPending
 
   return (
-    <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_7rem_9rem]">
         <div>
           <label htmlFor={id('host')} className={labelClass}>Servidor SMTP</label>
@@ -195,22 +192,20 @@ function PlatformEmailForm({ status }: { status: PlatformEmailStatus }) {
 /** Remitente de respaldo de todos los negocios: antes solo se cambiaba en el .env. */
 export function PlatformEmailPanel() {
   const query = useQuery({ queryKey: platformKeys.email, queryFn: fetchPlatformEmail })
+  const { state, label } = stateOf(query.data)
 
   return (
-    <section className="mt-8 rounded-xl border border-wa-border bg-white p-5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-      <div className="flex flex-wrap items-center gap-2">
-        <Mail className="h-4.5 w-4.5 text-wa-primary" aria-hidden="true" />
-        <h2 className="text-lg font-bold text-wa-text dark:text-white">Correo de la plataforma</h2>
-        {query.data && <SourceBadge status={query.data} />}
-      </div>
-      <p className="mt-1 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-        Desde aquí salen las invitaciones, los cambios de contraseña y los avisos de los negocios que no conectaron su propio
-        correo. La prueba llega a tu correo de operador.
-      </p>
-
-      {query.isLoading && <p className="mt-4 text-sm text-wa-muted">Cargando correo…</p>}
-      {query.isError && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{extractErrorMessage(query.error)}</p>}
+    <IntegrationCard
+      id="plataforma-correo"
+      icon={Mail}
+      title="Correo de la plataforma"
+      description="Desde aquí salen las invitaciones, los cambios de contraseña y los avisos de los negocios que no conectaron su propio correo. La prueba llega a tu correo de operador."
+      state={state}
+      stateLabel={label}
+    >
+      {query.isLoading && <p className="text-sm text-wa-muted dark:text-wa-muted-dark">Cargando correo…</p>}
+      {query.isError && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{extractErrorMessage(query.error)}</p>}
       {query.data && <PlatformEmailForm status={query.data} />}
-    </section>
+    </IntegrationCard>
   )
 }

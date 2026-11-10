@@ -1,4 +1,4 @@
-import { removeOrganizationLogo, removeOrganizationDomain, fetchOperator, fetchOrganizations, fetchOrganizationAi, fetchOrganizationBranding, fetchOrganizationIntegrations, fetchPlatformSettings, loginOperator, logoutOperator, createOrganization, setOrganizationStatus, addOrganizationDomain, saveOrganizationAi, saveOrganizationBranding, uploadOrganizationLogo, saveOrganizationIntegrations, savePlatformSettings } from '../api';
+import { removeOrganizationLogo, removeOrganizationDomain, fetchOperator, fetchOrganizations, fetchOrganizationAi, fetchOrganizationBranding, fetchOrganizationIntegrations, loginOperator, logoutOperator, createOrganization, setOrganizationStatus, addOrganizationDomain, saveOrganizationAi, saveOrganizationBranding, uploadOrganizationLogo, saveOrganizationIntegrations } from '../api';
 import type { OperadorActual, Organization } from '../types';
 /**
  * Panel de plataforma: alta y administración de negocios.
@@ -14,6 +14,7 @@ import {
 Activity,
 AlertTriangle,
 ArrowRight,
+BookText,
 Building2,
 CheckCircle2,
 Globe2,
@@ -25,6 +26,7 @@ LogOut,
 Mail,
 Moon,
 Palette,
+Plug,
 Plus,
 Search,
 ShieldCheck,
@@ -43,7 +45,7 @@ import { Input } from "../../../shared/ui/Input";
 import { platformKeys } from '../keys'
 import { StarterPackAction } from './StarterPackAction'
 import { KnowledgeTemplatesPanel } from './KnowledgeTemplatesPanel'
-import { PlatformEmailPanel } from './PlatformEmailPanel'
+import { PlatformCredentials } from './PlatformCredentials'
 
 
 function mensajeDeError(error: unknown): string {
@@ -970,128 +972,36 @@ function Negocio({ organizacion }: { organizacion: Organization }) {
   );
 }
 
-function CredencialesPlataforma() {
-  const formId = useId();
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [saved, setSaved] = useState(false);
-  const settingsQuery = useQuery({
-    queryKey: platformKeys.settings,
-    queryFn: fetchPlatformSettings,
-  });
+// El panel juntaba negocios, credenciales y plantillas en una sola página
+// larga. Cada cosa tiene su pestaña, y la elegida queda en el enlace (#...).
+const PESTANAS = [
+  { id: "negocios", label: "Negocios", icon: Building2 },
+  { id: "integraciones", label: "Integraciones", icon: Plug },
+  { id: "plantillas", label: "Plantillas de IA", icon: BookText },
+] as const;
+type Pestana = (typeof PESTANAS)[number]["id"];
 
-  useEffect(() => {
-    if (!settingsQuery.data) return;
-    setDraft((previous) => {
-      const next = { ...previous };
-      for (const item of settingsQuery.data) {
-        if (!item.secret) next[item.key] = item.value ?? "";
-      }
-      return next;
-    });
-  }, [settingsQuery.data]);
-
-  const save = useMutation({
-    mutationFn: async () => {
-      const values: Record<string, string> = {};
-      for (const item of settingsQuery.data ?? []) {
-        const value = draft[item.key] ?? "";
-        if (!item.secret || value) values[item.key] = value;
-      }
-      return await savePlatformSettings(values);
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData(platformKeys.settings, data);
-      setDraft((previous) => {
-        const next = { ...previous };
-        for (const item of data) if (item.secret) delete next[item.key];
-        return next;
-      });
-      setSaved(true);
-    },
-  });
-
-  return (
-    <section className="mt-8 rounded-xl border border-wa-border bg-white p-5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <KeyRound className="h-4.5 w-4.5 text-wa-primary" aria-hidden="true" />
-            <h2 className="text-lg font-bold text-wa-text dark:text-white">Credenciales globales</h2>
-          </div>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            App Tech Provider de Cliniventas y workflows de IA en n8n. Se comparten con todos los negocios; las WABA y sus tokens permanecen dentro de cada tenant, y cada job de IA viaja firmado con su negocio.
-          </p>
-        </div>
-        {saved && !save.isPending && (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-wa-primary-strong dark:text-wa-primary">
-            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Guardado
-          </span>
-        )}
-      </div>
-
-      {settingsQuery.isLoading && <p className="mt-4 text-sm text-wa-muted">Cargando credenciales…</p>}
-      {settingsQuery.isError && <div className="mt-4"><AvisoError mensaje={mensajeDeError(settingsQuery.error)} /></div>}
-
-      {settingsQuery.data && (
-        <form
-          className="mt-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setSaved(false);
-            save.mutate();
-          }}
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            {settingsQuery.data.map((item) => {
-              const inputId = `${formId}-${item.key}`;
-              return (
-                <div key={item.key}>
-                  <label htmlFor={inputId} className="flex items-center gap-2 text-xs font-semibold text-wa-text dark:text-wa-text-dark">
-                    {item.label}
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.configured ? "bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300" : "bg-wa-field text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark"}`}>
-                      {item.configured ? (item.source === "environment" ? "Desde entorno" : "Configurada") : "Pendiente"}
-                    </span>
-                  </label>
-                  <Input
-                    id={inputId}
-                    type={item.secret ? "password" : "text"}
-                    value={draft[item.key] ?? ""}
-                    onChange={(event) => {
-                      setSaved(false);
-                      setDraft((previous) => ({ ...previous, [item.key]: event.target.value }));
-                    }}
-                    autoComplete="off"
-                    placeholder={item.secret && item.configured ? "•••• sin cambios" : "Sin configurar"}
-                    className="mt-1.5 h-10 border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-head-dark"
-                  />
-                </div>
-              );
-            })}
-          </div>
-          {save.isError && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{mensajeDeError(save.error)}</p>}
-          <div className="mt-5 flex justify-end">
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-              Guardar credenciales
-            </Button>
-          </div>
-        </form>
-      )}
-    </section>
-  );
+function pestanaDeLaUrl(): Pestana {
+  const hash = window.location.hash.replace("#", "");
+  return PESTANAS.find((p) => p.id === hash)?.id ?? "negocios";
 }
 
 function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () => void }) {
   const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
   const [busqueda, setBusqueda] = useState("");
+  const [pestana, setPestana] = useState<Pestana>(pestanaDeLaUrl);
   const refrescar = () => queryClient.invalidateQueries({ queryKey: platformKeys.organizations });
 
   const negocios = useQuery({
     queryKey: platformKeys.organizations,
     queryFn: fetchOrganizations,
   });
+
+  function elegirPestana(id: Pestana) {
+    setPestana(id);
+    window.history.replaceState(null, "", id === "negocios" ? window.location.pathname : `#${id}`);
+  }
 
   const salir = useMutation({
     mutationFn: async () => {
@@ -1130,7 +1040,29 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <nav className="border-b border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark" aria-label="Secciones del panel">
+        <div role="tablist" className="mx-auto flex max-w-[1240px] gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+          {PESTANAS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`pestana-${id}`}
+              aria-selected={pestana === id}
+              aria-controls={`panel-${id}`}
+              onClick={() => elegirPestana(id)}
+              className={`inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary ${pestana === id ? "border-wa-primary text-wa-primary-strong dark:text-wa-primary" : "border-transparent text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark"}`}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <div role="tabpanel" id={`panel-${pestana}`} aria-labelledby={`pestana-${pestana}`} className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        {pestana === "negocios" && (
+          <>
         <section className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-[-0.03em] text-wa-text dark:text-white">Negocios</h1>
@@ -1147,12 +1079,6 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
           <Metrica label="Suspendidos" value={negocios.isLoading ? "—" : suspendidas} />
           <Metrica label="Por actualizar" value={negocios.isLoading ? "—" : pendientes} />
         </section>
-
-        <CredencialesPlataforma />
-
-        <PlatformEmailPanel />
-
-        <KnowledgeTemplatesPanel />
 
         <section className="mt-8">
           <div className="flex flex-col gap-4 border-b border-wa-border pb-4 sm:flex-row sm:items-end sm:justify-between dark:border-wa-border-dark">
@@ -1183,6 +1109,20 @@ function Panel({ operador, onSalir }: { operador: OperadorActual; onSalir: () =>
           )}
           {negocios.data?.head && <p className="mt-6 text-xs text-wa-muted dark:text-wa-muted-dark">Revisión de plataforma: <span className="font-mono">{negocios.data.head}</span></p>}
         </section>
+          </>
+        )}
+
+        {pestana === "integraciones" && (
+          <>
+            <h1 className="text-3xl font-bold tracking-[-0.03em] text-wa-text dark:text-white">Integraciones</h1>
+            <p className="mt-2 mb-6 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
+              Credenciales que la plataforma comparte con todos los negocios, ordenadas por app. Cada tarjeta se guarda por separado.
+            </p>
+            <PlatformCredentials />
+          </>
+        )}
+
+        {pestana === "plantillas" && <KnowledgeTemplatesPanel />}
       </div>
     </main>
   );

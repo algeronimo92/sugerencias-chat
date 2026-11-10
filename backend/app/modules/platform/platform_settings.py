@@ -30,48 +30,53 @@ class PlatformSettingDef:
     key: str
     label: str
     secret: bool
+    # App a la que pertenece: el panel agrupa las credenciales por app (Meta,
+    # n8n, Google…) en vez de mostrarlas en una sola lista mezclada.
+    group: str = ""
     # Las que tienen su propio formulario en el panel (el correo de la
-    # plataforma): no salen en "Credenciales globales" ni se guardan por ahí,
+    # plataforma): no salen en la lista genérica ni se guardan por ahí,
     # donde se editarían sueltas, sin la validación de su formulario.
     hidden: bool = False
 
 
 PLATFORM_SETTING_DEFS = (
-    PlatformSettingDef("meta_app_id", "Facebook App ID (Tech Provider)", False),
-    PlatformSettingDef("meta_config_id", "Configuration ID de Embedded Signup", False),
-    PlatformSettingDef("meta_app_secret", "Facebook App Secret", True),
-    PlatformSettingDef("meta_verify_token", "Verify Token del webhook de Meta", True),
-    PlatformSettingDef("inbound_webhook_token", "Token entrante n8n → backend", True),
-    PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista (n8n)", False),
-    PlatformSettingDef("n8n_webhook_token", "Token saliente backend → n8n", True),
-    PlatformSettingDef("google_oauth_client_id", "Google OAuth Client ID (Calendar y Gmail)", False),
-    PlatformSettingDef("google_oauth_client_secret", "Google OAuth Client Secret (Calendar y Gmail)", True),
+    PlatformSettingDef("meta_app_id", "App ID", False, "meta"),
+    PlatformSettingDef("meta_config_id", "Configuration ID (Embedded Signup)", False, "meta"),
+    PlatformSettingDef("meta_app_secret", "App Secret", True, "meta"),
+    PlatformSettingDef("meta_verify_token", "Verify Token del webhook", True, "meta"),
+    PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista", False, "n8n"),
+    PlatformSettingDef("n8n_webhook_token", "Token saliente (backend → n8n)", True, "n8n"),
+    PlatformSettingDef("inbound_webhook_token", "Token entrante (n8n → backend)", True, "n8n"),
+    PlatformSettingDef("google_oauth_client_id", "Client ID", False, "google"),
+    PlatformSettingDef("google_oauth_client_secret", "Client Secret", True, "google"),
     PlatformSettingDef(
         "google_oauth_redirect_uri",
-        "Redirect URI de Google (…/api/integrations/google/callback)",
+        "Redirect URI de Calendar (…/api/integrations/google/callback)",
         False,
+        "google",
     ),
+    PlatformSettingDef("microsoft_oauth_client_id", "Client ID", False, "microsoft"),
+    PlatformSettingDef("microsoft_oauth_client_secret", "Client Secret", True, "microsoft"),
+    PlatformSettingDef("zoho_oauth_client_id", "Client ID", False, "zoho"),
+    PlatformSettingDef("zoho_oauth_client_secret", "Client Secret", True, "zoho"),
     # "Conectar con…" de la pestaña Correo. Una sola URL de vuelta para los
     # tres proveedores: hay que registrarla en la app de cada uno (en Google,
     # además de la de Calendar).
     PlatformSettingDef(
         "email_oauth_redirect_uri",
-        "Redirect URI del correo (…/api/integrations/email/callback)",
+        "Redirect URI (…/api/integrations/email/callback)",
         False,
+        "email_oauth",
     ),
-    PlatformSettingDef("microsoft_oauth_client_id", "Microsoft OAuth Client ID (correo)", False),
-    PlatformSettingDef("microsoft_oauth_client_secret", "Microsoft OAuth Client Secret (correo)", True),
-    PlatformSettingDef("zoho_oauth_client_id", "Zoho OAuth Client ID (correo)", False),
-    PlatformSettingDef("zoho_oauth_client_secret", "Zoho OAuth Client Secret (correo)", True),
     # Correo de envío de la plataforma (ver platform_email.py). Sin respaldo
     # clave por clave en el entorno: el .env se usa entero o no se usa.
-    PlatformSettingDef("platform_smtp_host", "Servidor SMTP de la plataforma", False, hidden=True),
-    PlatformSettingDef("platform_smtp_port", "Puerto SMTP de la plataforma", False, hidden=True),
-    PlatformSettingDef("platform_smtp_security", "Seguridad SMTP de la plataforma", False, hidden=True),
-    PlatformSettingDef("platform_smtp_username", "Usuario SMTP de la plataforma", False, hidden=True),
-    PlatformSettingDef("platform_smtp_password", "Contraseña SMTP de la plataforma", True, hidden=True),
-    PlatformSettingDef("platform_email_from_address", "Remitente de la plataforma", False, hidden=True),
-    PlatformSettingDef("platform_email_from_name", "Nombre del remitente de la plataforma", False, hidden=True),
+    PlatformSettingDef("platform_smtp_host", "Servidor SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_port", "Puerto SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_security", "Seguridad SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_username", "Usuario SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_password", "Contraseña SMTP", True, "smtp", hidden=True),
+    PlatformSettingDef("platform_email_from_address", "Remitente", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_email_from_name", "Nombre del remitente", False, "smtp", hidden=True),
 )
 _DEFS_BY_KEY = {definition.key: definition for definition in PLATFORM_SETTING_DEFS}
 PLATFORM_KEYS = frozenset(_DEFS_BY_KEY)
@@ -176,6 +181,7 @@ async def list_platform_settings() -> list[dict]:
         {
             "key": definition.key,
             "label": definition.label,
+            "group": definition.group,
             "secret": definition.secret,
             "configured": bool(values[definition.key]),
             "source": sources[definition.key],

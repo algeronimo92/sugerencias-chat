@@ -26,6 +26,8 @@ class NewOrganizationBody(BaseModel):
 class PlatformSettingItem(BaseModel):
     key: str
     label: str
+    # App a la que pertenece (meta, n8n, google, microsoft, zoho, email_oauth).
+    group: str
     secret: bool
     configured: bool
     # Lo calcula platform_settings: de dónde sale el valor efectivo.
