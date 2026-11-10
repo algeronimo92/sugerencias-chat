@@ -321,7 +321,7 @@ describe('DashboardPage', () => {
 
   it('separa quién registró la separación de la vendedora asignada a la clienta', async () => {
     const user = userEvent.setup()
-    renderDashboard(true)
+    renderDashboard('admin')
     await user.click(screen.getByRole('tab', { name: 'Ventas' }))
 
     const registro = screen.getByRole('region', { name: 'Quién registró la separación' })
