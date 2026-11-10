@@ -38,7 +38,9 @@ interface Props {
  * interesa ver es el hueco entre una y otra en la misma celda.
  */
 export function HoursHeatmap({ hours, days, readings, label }: Props) {
-  const [readingKey, setReadingKey] = useState<HoursReading>(readings[0].key)
+  // null = la primera lectura. No se copia `readings[0]` al estado: si la lista
+  // cambia (del equipo a una persona), la elegida puede dejar de existir.
+  const [readingKey, setReadingKey] = useState<HoursReading | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
   const readoutId = useId()
   const reading = readings.find(item => item.key === readingKey) ?? readings[0]
