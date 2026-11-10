@@ -82,11 +82,3 @@ class LeadChangedOutside(DomainEvent):
 class LeadStagesChanged(DomainEvent):
     """Cambió el catálogo de etapas del negocio (alta, edición, orden o
     baja): kanban, filtros y fichas rotulan con él."""
-
-
-@dataclass(frozen=True, kw_only=True)
-class LeadSaleChanged(LeadEvent):
-    """Se registró o se eliminó una compra del lead."""
-
-    sale_id: int
-    deleted: bool = False

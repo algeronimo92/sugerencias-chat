@@ -22,14 +22,14 @@ from app.modules.leads.dashboard import (
     appointments_queries as appointments,
     automations_queries as automations,
     leads_queries as leads,
-    sales_queries as sales,
     summary_queries as summary,
     tags_queries as tags,
 )
+from app.modules.leads.dashboard import currency
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, build_scope
 
 
-BLOCKS = (summary, leads, automations, tags, appointments, activity, sales)
+BLOCKS = (summary, leads, automations, tags, appointments, activity)
 
 
 def _sample_value(column):
@@ -65,18 +65,13 @@ def compiled_sql(monkeypatch):
         statements.append(str(stmt.compile(dialect=postgresql.dialect())))
         return [{name: _sample_value(column) for name, column in stmt.selected_columns.items()}]
 
-    async def fake_user_names(user_ids):
-        return {user_id: f"Usuario {user_id}" for user_id in user_ids if user_id is not None}
-
     async def fake_currency():
         return "PEN"
 
     for block in BLOCKS:
         monkeypatch.setattr(block, "execute_mapping", fake_execute_mapping)
-    # Las ventas resuelven nombres y moneda por los contratos de auth y de IA,
-    # que abrirían una sesión real.
-    monkeypatch.setattr(sales, "user_names", fake_user_names)
-    monkeypatch.setattr(sales, "business_currency", fake_currency)
+    # La moneda sale del perfil IA, que abriría una sesión real.
+    monkeypatch.setattr(currency, "_profile_currency", fake_currency)
     return statements
 
 
@@ -107,7 +102,7 @@ async def test_payload_carries_every_panel(compiled_sql):
     assert data["scope"] == SCOPE_MINE
     assert data["period_days"] == 30
     for key in ("summary", "stages", "origins", "services", "sellers", "new_leads_trend",
-                "funnel", "pipeline", "sales", "automations", "tags", "appointments", "activity"):
+                "funnel", "pipeline", "automations", "tags", "appointments", "activity", "currency"):
         assert key in data, f"falta el bloque {key}"
     for key in ("total_leads", "new_leads", "awaiting_reply", "overdue_tasks", "completed_tasks",
                 "avg_response_minutes", "appointments_created", "flows_started", "flows_active",
@@ -122,9 +117,6 @@ async def test_payload_carries_every_panel(compiled_sql):
         assert key in data["appointments"], f"falta el panel de citas {key}"
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
-    for key in ("currency", "totals", "previous", "trend", "previous_trend", "by_package",
-                "by_service", "by_service_daily", "by_seller", "recent"):
-        assert key in data["sales"], f"falta el panel de ventas {key}"
 
 
 @pytest.mark.asyncio
@@ -140,11 +132,9 @@ async def test_own_scope_filters_by_user_and_team_scope_does_not(compiled_sql):
     assert "appointments.created_by_user_id = " in mine
     assert "lead_activity.actor_user_id = " in mine
     assert "wsp_messages.sent_by_user_id = " in mine
-    assert "lead_sales.sold_by_user_id = " in mine
 
     assert "leads.vendedor_id = " not in team
     assert "appointments.created_by_user_id = " not in team
-    assert "lead_sales.sold_by_user_id = " not in team
 
 
 @pytest.mark.asyncio
@@ -157,7 +147,7 @@ async def test_team_rankings_are_shared_in_both_scopes(compiled_sql):
     assert data["automations"]["by_actor"]
     assert data["tags"]["by_user"]
     assert data["appointments"]["by_user"]
-    assert data["sales"]["by_seller"]
+    assert data["appointments"]["separations"]["by_seller"]
 
 
 @pytest.mark.asyncio
@@ -171,8 +161,8 @@ async def test_series_covers_every_day_of_the_period(compiled_sql):
         ("citas", data["appointments"]["trend"]),
         ("actividad", data["activity"]["trend"]),
         ("mensajes", data["activity"]["messages"]["trend"]),
-        ("ventas", data["sales"]["trend"]),
-        ("ventas del período anterior", data["sales"]["previous_trend"]),
+        ("separaciones", data["appointments"]["separations"]["trend"]),
+        ("separaciones del período anterior", data["appointments"]["separations"]["previous_trend"]),
     ):
         assert len(points) == 7, f"la serie de {name} debe traer un punto por día"
         assert [point["date"] for point in points] == sorted(point["date"] for point in points)
@@ -245,71 +235,21 @@ def test_funnel_rates_are_relative_to_the_cohort():
 
 
 @pytest.mark.asyncio
-async def test_sales_compare_against_the_previous_window(compiled_sql):
-    """La ventana anterior termina donde empieza el período: si se solapan, una
-    venta contaría en las dos y el delta se achicaría solo."""
-    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
-    scope = build_scope(30, SCOPE_TEAM, user_id=7)
-
-    sales_sql = [sql for sql in compiled_sql if "FROM lead_sales" in sql]
-    assert any("lead_sales.sold_at < " in sql for sql in sales_sql), "falta el tope de la ventana anterior"
-    assert scope.previous_start == scope.start - timedelta(days=30)
-    previous_days = [point["date"] for point in data["sales"]["previous_trend"]]
-    current_days = [point["date"] for point in data["sales"]["trend"]]
-    assert previous_days[-1] < current_days[0]
-    assert data["sales"]["currency"] == "PEN"
-
-
-def test_sales_totals_never_report_a_negative_discount():
-    """Cobrar por encima de la lista no es un descuento negativo que reste del
-    que dieron otros."""
-    totals = sales._totals({"count": 2, "revenue": Decimal("500"), "list_total": Decimal("450"),
-                            "sessions": 4, "buyers": 2})
-    assert totals["discount"] == 0.0
-    assert totals["discount_rate"] == 0.0
-    assert totals["avg_ticket"] == 250.0
-    empty = sales._totals({"count": 0, "revenue": 0, "list_total": 0, "sessions": 0, "buyers": 0})
-    assert (empty["avg_ticket"], empty["discount_rate"]) == (None, None)
-
-
-@pytest.mark.asyncio
-async def test_sales_currency_only_passes_iso_codes(monkeypatch):
+async def test_currency_only_passes_iso_codes(monkeypatch):
     """El perfil acepta texto libre; el navegador solo formatea códigos ISO."""
     for stored, expected in (("PEN", "PEN"), ("S/", None), ("SOLES", None), (None, None)):
         async def fake(value=stored):
             return value
-        monkeypatch.setattr(sales, "business_currency", fake)
-        assert await sales._currency() == expected
-
-
-def test_packages_match_the_previous_window_by_catalog_id_or_copied_names():
-    """Un paquete borrado del catálogo queda con package_id NULL: se compara por
-    los nombres que la venta copió, no se mezcla con otros huérfanos."""
-    current = [
-        {"package_id": 3, "service_name": "Láser", "package_name": "x6", "sessions": 6, "count": 2, "revenue": Decimal("1200")},
-        {"package_id": None, "service_name": "Peeling", "package_name": "Viejo", "sessions": 1, "count": 1, "revenue": Decimal("90")},
-    ]
-    previous = [
-        {"package_id": 3, "service_name": "Láser", "package_name": "x6 (antes)", "sessions": 6, "count": 5, "revenue": 0},
-        {"package_id": None, "service_name": "Peeling", "package_name": "Otro", "sessions": 1, "count": 4, "revenue": 0},
-    ]
-    rows = sales._packages(current, previous)
-    assert [(r["package_name"], r["previous_count"], r["avg_ticket"]) for r in rows] == [
-        ("x6", 5, 600.0),
-        ("Viejo", 0, 90.0),
-    ]
+        monkeypatch.setattr(currency, "_profile_currency", fake)
+        assert await currency.business_currency() == expected
 
 
 @pytest.mark.asyncio
-async def test_sales_by_service_per_day_stay_in_the_period_and_scope(compiled_sql):
-    """La serie por tratamiento suma lo mismo que el período: misma ventana y,
-    en el scope propio, solo lo que vendió el usuario."""
-    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+async def test_payload_carries_the_business_currency(compiled_sql):
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+    assert data["currency"] == "PEN"
+    assert "sales" not in data
 
-    daily_sql = [sql for sql in compiled_sql if "lead_sales.service_id" in sql and "GROUP BY date(" in sql]
-    assert daily_sql, "falta la consulta diaria por servicio"
-    assert all("lead_sales.sold_by_user_id = " in sql for sql in daily_sql)
-    assert set(data["sales"]["by_service_daily"][0]) == {"date", "service_id", "name", "count", "revenue"}
 
 
 @pytest.mark.asyncio

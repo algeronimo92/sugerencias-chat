@@ -65,45 +65,7 @@ function metrics(): DashboardMetrics {
       stale: [{ name: '+7 días', value: 4 }],
       conversations_open: 5, conversations_closed: 7, avg_close_hours: 20.5,
     },
-    sales: {
-      currency: 'PEN',
-      totals: { count: 3, revenue: 1250, avg_ticket: 416.67, sessions: 7, discount: 40, discount_rate: 3.1, buyers: 3 },
-      previous: { count: 2, revenue: 1000, avg_ticket: 500, sessions: 4, discount: 0, discount_rate: 0, buyers: 2 },
-      trend: [
-        { date: '2026-09-20', count: 1, revenue: 400 },
-        { date: '2026-09-21', count: 2, revenue: 850 },
-      ],
-      previous_trend: [
-        { date: '2026-08-21', count: 1, revenue: 500 },
-        { date: '2026-08-22', count: 1, revenue: 500 },
-      ],
-      by_package: [
-        {
-          package_id: 4, service_name: 'Hollywood Peel - Rostro', package_name: 'x3', sessions: 3,
-          count: 2, revenue: 850, avg_ticket: 425, previous_count: 1,
-        },
-        {
-          package_id: 5, service_name: 'Láser', package_name: 'x10', sessions: 10,
-          count: 1, revenue: 400, avg_ticket: 400, previous_count: 0,
-        },
-      ],
-      by_service: [
-        { service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 },
-        { service_id: 2, name: 'Láser', count: 1, revenue: 400 },
-      ],
-      by_service_daily: [
-        { date: '2026-09-20', service_id: 2, name: 'Láser', count: 1, revenue: 400 },
-        { date: '2026-09-21', service_id: 1, name: 'Hollywood Peel - Rostro', count: 2, revenue: 850 },
-      ],
-      by_seller: [
-        { user_id: 2, name: 'Lucía Ramos', count: 2, revenue: 850, avg_ticket: 425, discount_rate: 4.5 },
-        { user_id: 3, name: 'Marco Díaz', count: 1, revenue: 400, avg_ticket: 400, discount_rate: 11.1 },
-      ],
-      recent: [{
-        id: 31, lead_id: 'lead-7', lead_name: 'Rosa Quispe', service_name: 'Láser', package_name: 'x6',
-        amount: 400, list_price: 450, sold_at: '2026-09-21T15:00:00Z', seller_name: 'Marco Díaz',
-      }],
-    },
+    currency: 'PEN',
     automations: {
       by_flow: [{
         name: 'Recordatorio de Yape', rule_id: 12, trigger_type: 'manual', value: 8,

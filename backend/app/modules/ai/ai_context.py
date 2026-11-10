@@ -17,7 +17,6 @@ from app.integrations.meta.text import message_text
 from app.core.serialization import json_safe_row as _json_safe_row
 from app.core.time_format import iso_utc_micros as _fmt_ts
 from app.db.uow import session_scope
-from app.modules.leads.public import lead_purchases_for_ai
 
 # Raíces de Meta que no son mensajes del cliente ni del negocio.
 NON_CONVERSATIONAL_TYPES = frozenset({"system"})
@@ -156,8 +155,6 @@ async def fetch_analysis_context(chat_id: str, limit: int = 500) -> dict | None:
         lead_row["updated_at"], int(latest["id"]) if latest is not None else None
     )
     lead = _json_safe_row(dict(lead_row))
-    # Lo que ya compró: el analista no debe volver a cotizarlo.
-    lead["compras"] = await lead_purchases_for_ai(chat_id)
     lead.pop("updated_at", None)
     return {
         "context_revision": revision,

@@ -149,23 +149,6 @@ class InMemoryLeadRepository:
         self.merged.append((source_id, target_id))
         self.leads.pop(source_id, None)
 
-    async def add_sale(self, lead_id, values):
-        self.sales = getattr(self, "sales", [])
-        row = {"id": len(self.sales) + 1, "lead_id": lead_id, "created_at": datetime.now(timezone.utc), **values}
-        self.sales.append(row)
-        return dict(row)
-
-    async def get_sale(self, lead_id, sale_id):
-        for row in getattr(self, "sales", []):
-            if row["id"] == sale_id and row["lead_id"] == lead_id:
-                return dict(row)
-        return None
-
-    async def delete_sale(self, lead_id, sale_id):
-        before = len(getattr(self, "sales", []))
-        self.sales = [row for row in getattr(self, "sales", []) if not (row["id"] == sale_id and row["lead_id"] == lead_id)]
-        return len(self.sales) != before
-
     async def active_service_name(self, name):
         return next((service for service in self.active_services if service.lower() == name.strip().lower()), None)
 

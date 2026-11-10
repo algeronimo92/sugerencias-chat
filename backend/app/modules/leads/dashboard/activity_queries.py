@@ -27,8 +27,6 @@ EVENT_LABELS = {
     "internal_note_updated": "Notas editadas",
     "internal_note_deleted": "Notas borradas",
     "no_show_registered": "No-shows registrados",
-    "sale_recorded": "Compras registradas",
-    "sale_deleted": "Compras eliminadas",
     "conversation_opened": "Conversaciones abiertas",
     "conversation_closed": "Conversaciones cerradas",
     "conversation_started": "Conversaciones iniciadas por el cliente",

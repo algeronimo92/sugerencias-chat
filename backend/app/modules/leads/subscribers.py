@@ -18,7 +18,6 @@ from app.modules.leads.domain.events import (
     LeadCreated,
     LeadDeleted,
     LeadNoShowRegistered,
-    LeadSaleChanged,
     LeadStageChanged,
     LeadStagesChanged,
     LeadTagged,
@@ -58,11 +57,6 @@ async def no_show_registered(event: LeadNoShowRegistered) -> None:
     await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"})
 
 
-@subscribe(LeadSaleChanged, phase=Phase.AFTER_COMMIT)
-async def sale_changed(event: LeadSaleChanged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "sale_changed"})
-
-
 @subscribe(LeadTagged, phase=Phase.AFTER_COMMIT)
 async def tag_changed(event: LeadTagged) -> None:
     await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "tag_changed"})
@@ -92,10 +86,6 @@ async def report_service_usage(event: ServiceDeletionRequested) -> None:
     usage = await service_usage(event.service_id, event.name, USAGE_ITEMS)
     if usage["leads"]:
         event.usages.append(describe_usage("leads", usage["leads"], "lead", "leads", usage["lead_items"]))
-    if usage["sales"]:
-        event.usages.append(describe_usage(
-            "ventas", usage["sales"], "venta registrada", "ventas registradas", usage["sale_items"],
-        ))
 
 
 @subscribe(InternalNoteWritten, phase=Phase.TRANSACTION)

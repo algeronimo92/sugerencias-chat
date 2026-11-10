@@ -44,70 +44,11 @@ export interface DashboardUpcomingAppointment {
   treatment: string | null
 }
 
-export interface DashboardSalesTotals {
-  count: number
-  /** Lo cobrado, no el precio de lista. */
-  revenue: number
-  avg_ticket: number | null
-  sessions: number
-  discount: number
-  /** Porcentaje del descuento sobre el precio de lista. */
-  discount_rate: number | null
-  buyers: number
-}
-
-export interface DashboardSalesPoint {
+/** Un punto de una serie diaria con cantidad y monto (separaciones). */
+export interface DashboardAmountPoint {
   date: string
   count: number
   revenue: number
-}
-
-export interface DashboardSalesPackage {
-  /** null cuando el paquete ya no está en el catálogo. */
-  package_id: number | null
-  service_name: string
-  package_name: string
-  sessions: number
-  count: number
-  revenue: number
-  avg_ticket: number | null
-  /** Compras del mismo paquete en la ventana anterior; 0 si no vendía. */
-  previous_count: number
-}
-
-export interface DashboardSales {
-  /** Código ISO 4217 del negocio, o null si no lo configuró. */
-  currency: string | null
-  totals: DashboardSalesTotals
-  /** null si en la ventana anterior no hubo ventas. */
-  previous: DashboardSalesTotals | null
-  trend: DashboardSalesPoint[]
-  /** Alineada con `trend` por posición. */
-  previous_trend: DashboardSalesPoint[]
-  by_package: DashboardSalesPackage[]
-  by_service: { service_id: number | null; name: string; count: number; revenue: number }[]
-  /** Lo mismo que by_service, por día; solo los días con ventas. */
-  by_service_daily: { date: string; service_id: number | null; name: string; count: number; revenue: number }[]
-  /** Ranking del equipo: llega igual en los dos scopes. */
-  by_seller: {
-    user_id: number | null
-    name: string
-    count: number
-    revenue: number
-    avg_ticket: number | null
-    discount_rate: number | null
-  }[]
-  recent: {
-    id: number
-    lead_id: string
-    lead_name: string
-    service_name: string
-    package_name: string
-    amount: number
-    list_price: number
-    sold_at: string
-    seller_name: string
-  }[]
 }
 
 export interface DashboardSeparationTotals {
@@ -172,9 +113,9 @@ export interface DashboardMetrics {
     conversations_closed: number
     avg_close_hours: number | null
   }
-  /** Compras registradas en el período (por fecha de venta), contra la
-   *  ventana anterior de la misma duración. */
-  sales: DashboardSales
+  /** Código ISO 4217 del negocio, o null si no lo configuró: los importes
+   *  (adelantos) van entonces sin moneda. */
+  currency: string | null
   automations: {
     by_flow: DashboardFlowRow[]
     by_actor: DashboardMetricItem[]

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis,
 } from 'recharts'
-import type { DashboardSalesPoint } from '../types'
+import type { DashboardAmountPoint } from '../types'
 import { formatDayLabel, formatMoney, formatNumber } from './format'
 import type { Change } from './salesFormat'
 import { compareSeries } from './salesFormat'
@@ -82,8 +82,8 @@ export function StatTile({ label, value, change, upIsBad, hint, trend }: StatTil
 }
 
 interface TrendProps {
-  current: DashboardSalesPoint[]
-  previous: DashboardSalesPoint[]
+  current: DashboardAmountPoint[]
+  previous: DashboardAmountPoint[]
   days: number
   currency: string | null
   /** Cómo se llaman las dos medidas: "Monto" y "Separaciones" para citas. */
