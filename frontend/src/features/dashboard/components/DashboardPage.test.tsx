@@ -69,8 +69,9 @@ function metrics(): DashboardMetrics {
     automations: {
       by_flow: [{
         name: 'Recordatorio de Yape', rule_id: 12, trigger_type: 'manual', value: 8,
-        completed: 5, failed: 1, skipped: 1, active: 1, manual: 6, automatic: 2, last_at: '2026-09-20T15:00:00Z',
+        completed: 5, failed: 1, skipped: 1, active: 1, manual: 6, automatic: 2, manual_chained: 1, automatic_chained: 0, last_at: '2026-09-20T15:00:00Z',
       }],
+      origin_totals: { manual: 6, automatic: 2, manual_chained: 1, automatic_chained: 0 },
       by_actor: [{ name: 'Antonella', value: 8 }],
       by_source: [{ name: 'Iniciado a mano', value: 8 }],
       by_trigger: [{ name: 'manual', value: 8 }],
@@ -297,7 +298,10 @@ describe('DashboardPage', () => {
     // El resumen sale del total del período, no de sumar las filas visibles.
     expect(panel.getByText(/De 8 flujos iniciados/)).toHaveTextContent('6 a mano (75%) y 2 automáticos (25%)')
     const row = panel.getByRole('button', { name: /Recordatorio de Yape/ })
-    expect(row).toHaveTextContent('6 a mano')
+    // Lo que inició otro flujo es parte de "a mano", no una tercera cifra: 5 + 1 = 6.
+    expect(panel.getByText(/De 8 flujos iniciados/)).toHaveTextContent('1 lo inició otro flujo: 1 a partir de uno a mano y 0 de uno automático')
+    expect(row).toHaveTextContent('5 a mano')
+    expect(row).toHaveTextContent('1 a mano, por otro flujo')
     expect(row).toHaveTextContent('2 automáticos')
 
     await user.click(panel.getByRole('button', { name: 'Cómo terminaron' }))

@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
-import type { DashboardMetrics, DashboardPoint } from '../types'
+import type { DashboardMetrics } from '../types'
 import { who, type DashboardSubject } from './subject'
 import { AUTOMATION_TRIGGERS } from '../../automations/public/automationCatalog'
 import { formatNumber } from './format'
@@ -28,10 +28,6 @@ const FLOW_READINGS: HoursReadingOption[] = [
   { key: 'flows_manual', label: 'A mano', hint: 'Flujos que alguien inició desde un chat, en promedio por día de la semana.' },
   { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que se iniciaron solos, por su disparador, en promedio por día de la semana.' },
 ]
-
-function sum(points: DashboardPoint[]): number {
-  return points.reduce((total, point) => total + point.value, 0)
-}
 
 export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
   const { automations } = data
@@ -64,7 +60,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
       >
         <FlowsByFlowPanel
           flows={automations.by_flow}
-          totals={split && { manual: sum(split.manual), automatic: sum(split.automatic) }}
+          totals={split ? automations.origin_totals ?? null : null}
           onSelect={onOpenFlows}
         />
       </Panel>

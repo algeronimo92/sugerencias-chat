@@ -109,7 +109,7 @@ async def test_payload_carries_every_panel(compiled_sql):
                 "avg_response_minutes", "appointments_created", "flows_started", "flows_active",
                 "messages_sent", "tagged_leads"):
         assert key in data["summary"], f"falta el KPI {key}"
-    for key in ("by_flow", "by_actor", "by_source", "by_trigger", "trend", "trend_manual",
+    for key in ("by_flow", "origin_totals", "by_actor", "by_source", "by_trigger", "trend", "trend_manual",
                 "trend_automatic", "failures", "active_now"):
         assert key in data["automations"], f"falta el panel de flujos {key}"
     for key in ("coverage", "top", "by_user", "trend"):
@@ -338,6 +338,14 @@ async def test_each_flow_splits_into_manual_and_automatic_that_add_up(compiled_s
     for flow in flows:
         assert flow["manual"] >= 0 and flow["automatic"] >= 0
         assert flow["manual"] + flow["automatic"] == flow["value"]
+        # Lo que inició otro flujo es parte de cada origen, no un tercero.
+        assert 0 <= flow["manual_chained"] <= flow["manual"]
+        assert 0 <= flow["automatic_chained"] <= flow["automatic"]
+    totals = data["automations"]["origin_totals"]
+    # El doble devuelve una fila con un flujo automático que inició otro flujo.
+    assert totals == {"manual": 0, "automatic": 1, "manual_chained": 0, "automatic_chained": 1}
+    assert 0 <= totals["manual_chained"] <= totals["manual"]
+    assert 0 <= totals["automatic_chained"] <= totals["automatic"]
     by_flow_sql = [sql for sql in compiled_sql if "automation_rules.name" in sql and "GROUP BY" in sql]
     # El mismo corte que la serie por día: sin usuario y no iniciado a mano.
     assert any(

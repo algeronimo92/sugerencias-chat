@@ -4587,6 +4587,7 @@ export interface components {
         DashboardAutomations: {
             /** By Flow */
             by_flow: components["schemas"]["DashboardFlowRow"][];
+            origin_totals: components["schemas"]["DashboardFlowOrigins"];
             /** By Actor */
             by_actor: components["schemas"]["DashboardMetricItem"][];
             /** By Source */
@@ -4627,6 +4628,17 @@ export interface components {
             /** Top Errors */
             top_errors: components["schemas"]["DashboardMetricItem"][];
         };
+        /** DashboardFlowOrigins */
+        DashboardFlowOrigins: {
+            /** Manual */
+            manual: number;
+            /** Automatic */
+            automatic: number;
+            /** Manual Chained */
+            manual_chained: number;
+            /** Automatic Chained */
+            automatic_chained: number;
+        };
         /** DashboardFlowRow */
         DashboardFlowRow: {
             /** Name */
@@ -4649,6 +4661,10 @@ export interface components {
             manual: number;
             /** Automatic */
             automatic: number;
+            /** Manual Chained */
+            manual_chained: number;
+            /** Automatic Chained */
+            automatic_chained: number;
             /** Last At */
             last_at?: string | null;
         };
