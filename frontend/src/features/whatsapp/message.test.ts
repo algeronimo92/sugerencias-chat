@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDayLabel, formatMoney, groupByDay, isKnownMessageType, messageAdReferral, messageContacts,
   messageCoords, messageFlowReply, messageOrder, messageProducts, messageReply, messageSystemNotice,
-  messageUnsupported, metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, splitOnMatch,
+  highlightSegments, messageUnsupported, metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, searchTerms, splitOnMatch,
   TEMPLATE_FALLBACK_TEXT,
 } from './message'
 
@@ -457,5 +457,44 @@ describe('groupByDay', () => {
 
   it('sin ítems no arma ninguna sección', () => {
     expect(groupByDay([])).toEqual([])
+  })
+})
+
+// Con la frase exacta, "limpieza facial" no encontraba "limpiezas faciales";
+// el servidor ahora busca por palabras y el resaltado tiene que seguirlo.
+describe('búsqueda por palabras', () => {
+  it('parte lo buscado en palabras sin repetir, ignorando mayúsculas y acentos', () => {
+    expect(searchTerms('  Limpieza   FACIAL limpieza ')).toEqual(['Limpieza', 'FACIAL'])
+    expect(searchTerms('   ')).toEqual([])
+  })
+
+  it('resalta cada palabra donde aparezca, aunque no estén juntas', () => {
+    expect(highlightSegments('Incluye limpieza profunda facial', 'LIMPIEZA FACIAL')).toEqual([
+      { text: 'Incluye ', match: false },
+      { text: 'limpieza', match: true },
+      { text: ' profunda ', match: false },
+      { text: 'facial', match: true },
+    ])
+  })
+
+  it('resalta dentro de un plural y sin importar los acentos', () => {
+    const marked = highlightSegments('precios de las limpiezas faciales y depilación', 'limpieza facial depilacion')
+    expect(marked.filter(segment => segment.match).map(segment => segment.text)).toEqual(['limpieza', 'facial', 'depilación'])
+  })
+
+  it('une los tramos que se pisan en vez de cortar una palabra en dos', () => {
+    expect(highlightSegments('botox', 'bot otox')).toEqual([{ text: 'botox', match: true }])
+  })
+
+  it('devuelve el texto entero si no hay nada que resaltar', () => {
+    expect(highlightSegments('hola', 'botox')).toEqual([{ text: 'hola', match: false }])
+    expect(highlightSegments('hola', '')).toEqual([{ text: 'hola', match: false }])
+  })
+
+  it('el recorte arranca cerca de la primera palabra encontrada', () => {
+    const text = 'Buenas tardes, le escribo de la clínica para contarle que tenemos una promoción de limpieza profunda facial'
+    const snippet = searchSnippet(text, 'facial limpieza')
+    expect(snippet.startsWith('… ')).toBe(true)
+    expect(snippet.indexOf('limpieza')).toBeLessThan(30)
   })
 })

@@ -11,6 +11,8 @@ import type { Chat } from '../../leads/types'
 import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../../leads/public/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../../whatsapp/public/message'
 import { useChatDraft } from '../draftStore'
+import { contactMatchReason } from '../searchMatch'
+import { Highlighted } from './MessageSearchRow'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
 const MergeLeadDialog = lazy(() => import('../../leads/public/MergeLeadDialog').then(m => ({ default: m.MergeLeadDialog })))
@@ -22,6 +24,9 @@ interface Props {
   /** Término de búsqueda activo: centra el preview en la coincidencia y la
    * resalta cuando el chat matcheó por un mensaje del historial. */
   search?: string
+  /** En la sección "Contactos" del buscador: resalta lo buscado en el nombre
+   * y, si el nombre no lo explica, dice por qué campo matcheó el lead. */
+  showMatchReason?: boolean
   onClick: () => void
   onPreview: () => void
   onMarkUnread: () => void
@@ -55,7 +60,7 @@ const TIER_TITLE: Record<string, string> = {
   urgent: 'Esperando respuesta hace bastante — se puede estar enfriando',
 }
 
-export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick, onPreview, onMarkUnread, isMarkingUnread = false }: Props) {
+export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMatchReason = false, onClick, onPreview, onMarkUnread, isMarkingUnread = false }: Props) {
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef({ x: 0, y: 0 })
@@ -182,6 +187,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
   // deja visible al inicio del preview y el split lo resalta en negrita.
   const previewText = isMessageMatch ? searchSnippet(rawPreviewText, search) : rawPreviewText
   const matchParts = isMessageMatch ? splitOnMatch(previewText, search) : null
+  const matchReason = showMatchReason ? contactMatchReason(chat, search) : null
   // Como WhatsApp: un chat con texto a medio escribir lo avisa en la lista,
   // salvo el abierto (su borrador ya está a la vista en el compositor).
   const [draft] = useChatDraft(chat.chat_id)
@@ -249,7 +255,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
               chat.unread_count > 0 ? 'font-semibold' : 'font-medium'
             }`}
           >
-            {displayName(chat)}
+            {showMatchReason ? <Highlighted text={displayName(chat)} search={search} /> : displayName(chat)}
           </span>
           {awaitingReply ? (
             <span
@@ -311,6 +317,11 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             </span>
           )}
         </div>
+        {matchReason && (
+          <p className="mt-0.5 truncate text-[11px] text-wa-muted dark:text-wa-muted-dark">
+            {matchReason.label}: <Highlighted text={matchReason.value} search={search} />
+          </p>
+        )}
         {chat.tags.length > 0 && (
           <div className="mt-1 flex gap-1 overflow-hidden">
             {chat.tags.slice(0, 2).map((tag) => (

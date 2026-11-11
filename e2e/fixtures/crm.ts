@@ -185,7 +185,7 @@ export function crmDefaults(api: MockApi) {
     .on('get', '/api/branding', { name: 'Clínica Demo', primary_color: '#00a884', logo_url: null, icon_url: null })
     .on('get', '/api/auth/me', ADMIN)
     .on('get', '/api/auth/pin/status', { available: false, user_name: null, masked_email: null, device_name: null, locked_seconds: 0 })
-    .on('get', '/api/chats', { items: [lead], has_more: false })
+    .on('get', '/api/chats', { items: [lead], has_more: false, total: null })
     .on('get', '/api/chats/unread-count', { count: 0 })
     .on('get', '/api/chats/{chat_id}', lead)
     .on('get', '/api/notifications', { items: [], unread_count: 0, has_more: false })

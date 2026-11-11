@@ -89,6 +89,35 @@ class LeadActivityItem(BaseModel):
 class ChatPage(BaseModel):
     items: list[Chat]
     has_more: bool
+    # Solo en la primera página de una búsqueda de contactos
+    # (`search_in=contacts`): cuántos leads matchean en total.
+    total: int | None = None
+
+
+class MessageSearchHit(BaseModel):
+    """Un mensaje que contiene la búsqueda, con lo justo del lead para
+    nombrarlo en la lista de resultados."""
+    message_id: int
+    chat_id: str
+    name: str | None = None
+    username: str | None = None
+    phone: str | None = None
+    # El texto donde está el match: el del mensaje o, en un adjunto sin texto,
+    # el resumen que generó la IA.
+    text: str | None = None
+    # "cliente" o "vendedor" (todo lo que mandó el negocio).
+    sender: str
+    message_type: str | None = None
+    sent_at: str | None = None
+
+
+class MessageSearchPage(BaseModel):
+    items: list[MessageSearchHit]
+    has_more: bool
+    # Solo en la primera página. Con `total_capped` el número es un piso
+    # ("1000+"): no se cuenta el historial entero.
+    total: int | None = None
+    total_capped: bool = False
 
 
 class KanbanPage(BaseModel):

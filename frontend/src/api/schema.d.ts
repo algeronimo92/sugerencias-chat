@@ -776,6 +776,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chats/message-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Message Search
+         * @description Los mensajes que contienen la búsqueda, uno por fila y del más nuevo al
+         *     más viejo: la sección "Mensajes" del buscador.
+         */
+        get: operations["get_message_search_api_chats_message_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats/unread-count": {
         parameters: {
             query?: never;
@@ -4402,6 +4423,8 @@ export interface components {
             items: components["schemas"]["Chat"][];
             /** Has More */
             has_more: boolean;
+            /** Total */
+            total?: number | null;
         };
         /** CompleteActionRequest */
         CompleteActionRequest: {
@@ -6226,6 +6249,45 @@ export interface components {
             items: components["schemas"]["Message"][];
             /** Has More */
             has_more: boolean;
+        };
+        /**
+         * MessageSearchHit
+         * @description Un mensaje que contiene la búsqueda, con lo justo del lead para
+         *     nombrarlo en la lista de resultados.
+         */
+        MessageSearchHit: {
+            /** Message Id */
+            message_id: number;
+            /** Chat Id */
+            chat_id: string;
+            /** Name */
+            name?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Sender */
+            sender: string;
+            /** Message Type */
+            message_type?: string | null;
+            /** Sent At */
+            sent_at?: string | null;
+        };
+        /** MessageSearchPage */
+        MessageSearchPage: {
+            /** Items */
+            items: components["schemas"]["MessageSearchHit"][];
+            /** Has More */
+            has_more: boolean;
+            /** Total */
+            total?: number | null;
+            /**
+             * Total Capped
+             * @default false
+             */
+            total_capped: boolean;
         };
         /** MetaEmbeddedSignupRequest */
         MetaEmbeddedSignupRequest: {
@@ -9023,6 +9085,8 @@ export interface operations {
                 cursor_ts?: string | null;
                 cursor_id?: string | null;
                 limit?: number;
+                cursor_rank?: number | null;
+                search_in?: string;
                 unread_only?: boolean;
                 stages?: string | null;
                 tag_ids?: string | null;
@@ -9033,7 +9097,6 @@ export interface operations {
                 last_sender?: string | null;
                 inactive_days?: number | null;
                 waiting_time?: string | null;
-                cursor_rank?: number | null;
                 automation_paused?: boolean;
             };
             header?: never;
@@ -9082,6 +9145,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_message_search_api_chats_message_search_get: {
+        parameters: {
+            query: {
+                search: string;
+                cursor_ts?: string | null;
+                cursor_id?: number | null;
+                limit?: number;
+                unread_only?: boolean;
+                stages?: string | null;
+                tag_ids?: string | null;
+                tag_mode?: string;
+                service?: string | null;
+                seller_id?: number | null;
+                origin?: string | null;
+                last_sender?: string | null;
+                inactive_days?: number | null;
+                waiting_time?: string | null;
+                automation_paused?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSearchPage"];
                 };
             };
             /** @description Validation Error */
