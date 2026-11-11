@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
+import { Tooltip } from '../../../shared/ui/Tooltip'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import { SERVICE_WINDOW_ERROR_CODE } from '../../automations/public/automationCatalog'
@@ -157,11 +158,11 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
 
   return (
     <div ref={rootRef} className="relative">
+      <Tooltip content="Notificaciones">
       <button
         type="button"
         onClick={() => setOpen(current => !current)}
         aria-label="Centro de notificaciones"
-        title="Notificaciones"
         className={`relative flex h-9 w-9 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${open ? 'bg-wa-primary/10 text-wa-primary-strong dark:bg-white/10 dark:text-wa-text-dark' : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'}`}
       >
         <Bell className="h-4 w-4" />
@@ -171,6 +172,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
           </span>
         )}
       </button>
+      </Tooltip>
 
       {open && (
         <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark sm:absolute sm:inset-x-auto sm:right-0 sm:top-9 sm:w-96 sm:max-w-[calc(100vw-2rem)]">

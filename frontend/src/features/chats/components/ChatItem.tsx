@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
+import { Tooltip } from '../../../shared/ui/Tooltip'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import { useDeleteLead, useMarkNoShow } from '../../leads/public/queries'
@@ -209,6 +210,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
 
   return (
     <>
+    <Tooltip content="Mantén pulsado o usa clic derecho para vista rápida" side="bottom">
     <button type="button"
       onClick={(event) => {
         if (suppressClickRef.current) {
@@ -230,7 +232,6 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
           onPreview()
         }
       }}
-      title="Mantén pulsado o usa clic derecho para vista rápida"
       className={`mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wa-primary/60 ${
         isSelected
           ? 'bg-wa-primary/10 shadow-sm ring-1 ring-inset ring-wa-primary/15 dark:bg-wa-primary/15 dark:ring-wa-primary/20'
@@ -252,13 +253,14 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             {displayName(chat)}
           </span>
           {awaitingReply ? (
+            <Tooltip content={`${TIER_TITLE[tier]}: ${formatElapsedShort(elapsedMs)}`} side="top">
             <span
-              title={`${TIER_TITLE[tier]}: ${formatElapsedShort(elapsedMs)}`}
               className={`flex items-center gap-1 text-[11px] font-medium ml-2 shrink-0 ${TIER_TEXT_CLASS[tier]}`}
             >
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${TIER_DOT_CLASS[tier]}`} />
               {formatElapsedShort(elapsedMs)}
             </span>
+            </Tooltip>
           ) : (
             <span
               className={`text-[11px] ml-2 shrink-0 ${
@@ -290,18 +292,22 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             )}
           </p>
           {chat.automatizacion_pausada && (
-            <span title="Sin automatizaciones nuevas para este cliente" className="shrink-0 text-amber-700 dark:text-amber-400">
+            <Tooltip content="Sin automatizaciones nuevas para este cliente" side="top">
+            <span aria-label="Automatizaciones pausadas" className="shrink-0 text-amber-700 dark:text-amber-400">
               <ZapOff className="h-3.5 w-3.5" />
             </span>
+            </Tooltip>
           )}
           {!isCustomerWindowOpen && (
-            <span title="Ventana de 24 horas cerrada" className="shrink-0 text-red-500 dark:text-red-400">
+            <Tooltip content="Ventana de 24 horas cerrada" side="top">
+            <span aria-label="Ventana de 24 horas cerrada" className="shrink-0 text-red-500 dark:text-red-400">
               <LockKeyhole className="h-3.5 w-3.5" />
             </span>
+            </Tooltip>
           )}
           {chat.unread_count > 0 && (
+            <Tooltip content={botAttended ? 'Pendiente de lectura; un bot ya respondió' : 'Chat no leído'} side="top">
             <span
-              title={botAttended ? 'Pendiente de lectura; un bot ya respondió' : 'Chat no leído'}
               aria-label={`${chat.unread_count} mensaje${chat.unread_count === 1 ? '' : 's'} sin leer`}
               className={`shrink-0 min-w-5 h-5 px-1.5 rounded-full text-white text-[11px] font-semibold flex items-center justify-center ${
                 botAttended ? 'bg-amber-500 dark:bg-amber-600' : 'bg-wa-primary'
@@ -309,6 +315,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
             >
               {chat.unread_count > 99 ? '99+' : chat.unread_count}
             </span>
+            </Tooltip>
           )}
         </div>
         {chat.tags.length > 0 && (
@@ -329,6 +336,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', onClick
         )}
       </div>
     </button>
+    </Tooltip>
     {contextMenu && createPortal(
       <div
         ref={menuRef}

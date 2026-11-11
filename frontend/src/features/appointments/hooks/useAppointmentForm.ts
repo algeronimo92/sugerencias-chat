@@ -198,7 +198,7 @@ export function useAppointmentForm(draftKey: string) {
    *  y fuera de la vista de quien acababa de tocar "Guardar" abajo. */
   function validate(): string | null {
     if (customFieldsQuery.isLoading || customFieldsQuery.isError) return 'Espera a que se carguen los campos del negocio.'
-    // En el orden en que se ven: reserva, separación, clienta.
+    // En el orden en que se ven: reserva, separación, cliente.
     const checks: { key: string; id: string; label: string; message: string | null }[] = []
     const duration = Number(form.durationMinutes)
     checks.push(
@@ -223,7 +223,7 @@ export function useAppointmentForm(draftKey: string) {
     const deposit = ordered.filter(field => field.key === DEPOSIT_FIELD_KEY).map(customCheck)
     checks.push(...deposit)
     checks.push(
-      { key: 'nombreCompleto', id: FIELD_IDS.nombreCompleto, label: 'Nombre', message: form.nombreCompleto.trim() ? null : 'Escribe el nombre de la clienta.' },
+      { key: 'nombreCompleto', id: FIELD_IDS.nombreCompleto, label: 'Nombre', message: form.nombreCompleto.trim() ? null : 'Escribe el nombre del cliente.' },
       { key: 'telefono', id: FIELD_IDS.telefono, label: 'Teléfono', message: form.telefono.trim() ? null : 'Escribe el teléfono.' },
     )
     checks.push(...ordered.filter(field => field.key !== DEPOSIT_FIELD_KEY).map(customCheck))

@@ -378,6 +378,30 @@ html.dark {
 .ui-select-content[data-state="open"] { animation: ui-popover-in 140ms ease-out; }
 .ui-select-content[data-state="closed"] { animation: ui-popover-out 100ms ease-in; }
 
+.ui-tooltip-content {
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+}
+.ui-tooltip-content[data-side="top"] { --tooltip-y: 3px; }
+.ui-tooltip-content[data-side="bottom"] { --tooltip-y: -3px; }
+.ui-tooltip-content[data-side="left"] { --tooltip-x: 3px; }
+.ui-tooltip-content[data-side="right"] { --tooltip-x: -3px; }
+
+@keyframes ui-tooltip-in {
+  from { opacity: 0; transform: translate(var(--tooltip-x, 0px), var(--tooltip-y, 0px)) scale(0.97); }
+  to { opacity: 1; transform: translate(0, 0) scale(1); }
+}
+@keyframes ui-tooltip-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.ui-tooltip-content[data-state="delayed-open"],
+.ui-tooltip-content[data-state="instant-open"] { animation: ui-tooltip-in 140ms ease-out; }
+.ui-tooltip-content[data-state="closed"] { animation: ui-tooltip-out 90ms ease-in; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-tooltip-content { animation: none !important; }
+}
+
 /* Picker de emojis (emoji-picker-react) fundido con la paleta WhatsApp: el
    borde/sombra/radio los pone el wrapper (.rounded-xl), acá solo se mapean las
    CSS vars internas del picker a los tokens wa-*. */

@@ -157,7 +157,7 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
     <CatalogPanel
       icon={Sparkles}
       title="Administrar servicios"
-      description="Un servicio es el problema que el cliente quiere resolver; lo que se vende son sus paquetes (1 sesión, pack x3…). Los servicios aparecen al crear o editar un lead y en las automatizaciones; el asistente IA cotiza con los paquetes y explica el servicio con sus fichas. Los inactivos permanecen en el historial; un servicio manual que todavía nadie usa se puede eliminar."
+      description="Administra servicios, paquetes y fichas para tu equipo y el asistente IA."
       items={visibleServices}
       toolbar={erpCount > 0 ? <OriginFilter value={origin} counts={counts} onChange={setOrigin} /> : undefined}
       getId={service => service.id}

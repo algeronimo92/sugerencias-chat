@@ -121,6 +121,16 @@ def _display_username(username: str | None) -> str | None:
     return "@" + username.lstrip("@") if username else None
 
 
+def _contact_name(current: str | None, incoming: str | None, phone: str | None) -> str | None:
+    """Guarda solo nombres recibidos; el respaldo con teléfono es de la UI."""
+    current_name = _clean(current)
+    if current_name and current_name != phone:
+        return current_name
+    # Permite reparar un teléfono provisional previo cuando llega el perfil.
+    # Un eco sin perfil no borra ni inventa nombres.
+    return _clean(incoming) or current_name
+
+
 def _alias_filter(identity: ContactIdentity):
     return or_(*(
         and_(WhatsAppIdentity.kind == kind, WhatsAppIdentity.identifier == value)
@@ -170,7 +180,7 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
                 return None
             lead = Lead(
                 telefono=identity.wa_id,
-                nombre=identity.profile_name,
+                nombre=_contact_name(None, identity.profile_name, identity.wa_id),
                 nombre_usuario=_display_username(identity.username),
                 created_at=now,
                 updated_at=now,
@@ -183,12 +193,14 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
         if identity.wa_id and not lead.telefono:
             lead.telefono = identity.wa_id
             lead.updated_at = now
-        if identity.profile_name and not lead.nombre:
-            lead.nombre = identity.profile_name
-            lead.updated_at = now
         username = _display_username(identity.username)
         if username and not lead.nombre_usuario:
             lead.nombre_usuario = username
+            lead.updated_at = now
+
+        name = _contact_name(lead.nombre, identity.profile_name, lead.telefono)
+        if name != lead.nombre:
+            lead.nombre = name
             lead.updated_at = now
 
         known = {(alias.kind, alias.identifier): alias for alias in aliases}

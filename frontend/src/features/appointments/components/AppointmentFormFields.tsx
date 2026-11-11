@@ -22,7 +22,7 @@ const HOURS = [...ALL_HOURS.slice(14), ...ALL_HOURS.slice(0, 14)]
 // Ayudas de campos personalizados conocidos. La de cualquier otro campo
 // debería venir de su definición en el catálogo (pendiente: help_text).
 const CUSTOM_HINTS: Record<string, string> = {
-  [DEPOSIT_FIELD_KEY]: 'Monto que la clienta ya pagó para separar. Escribe 0 si aún no paga.',
+  [DEPOSIT_FIELD_KEY]: 'Monto que el cliente ya pagó para separar. Escribe 0 si aún no paga.',
   dni: '8 dígitos.',
 }
 
@@ -41,7 +41,7 @@ interface Props {
 /**
  * Formulario de separación de cita, en el orden de la tarea: primero lo que
  * se acaba de pactar en el chat (tratamiento, fecha, hora), después el pago
- * (adelanto y su comprobante juntos), luego la clienta (casi siempre viene
+ * (adelanto y su comprobante juntos), luego el cliente (casi siempre viene
  * del lead) y al final las notas.
  */
 export function AppointmentFormFields({ state, prefilled, phoneLocked = false, compact = false }: Props) {
@@ -81,7 +81,7 @@ function BookingSection({ state, fromLead }: { state: AppointmentFormState; from
   const { form, busy, update, fieldErrors } = state
   const sellerNames = useSellerNames(form.vendedor)
   return (
-    <FormSection icon={CalendarClock} title="Reserva" description="Lo que acordaste con la clienta">
+    <FormSection icon={CalendarClock} title="Reserva" description="Lo que acordaste con el cliente">
       <Field id={FIELD_IDS.servicio} label="Tratamiento" required fromLead={fromLead('servicio')} hint="Busca en el catálogo o escribe el motivo." error={fieldErrors.servicio}>
         {described => <ServiceCombobox id={FIELD_IDS.servicio} value={form.servicio} onChange={value => update('servicio', value)} disabled={busy} className={fieldClass} aria-describedby={described} invalid={Boolean(fieldErrors.servicio)} />}
       </Field>
@@ -144,7 +144,7 @@ function ClientSection({ state, fromLead, phoneLocked, compact }: { state: Appoi
   const { form, busy, update, fieldErrors } = state
   const others = state.definitions.filter(field => field.key !== DEPOSIT_FIELD_KEY)
   return (
-    <FormSection icon={UserRound} title="Clienta" description="Casi siempre viene del chat: revisa que esté bien">
+    <FormSection icon={UserRound} title="Cliente" description="Casi siempre viene del chat: revisa que esté bien">
       <Field id={FIELD_IDS.nombreCompleto} label="Nombre completo" required fromLead={fromLead('nombreCompleto')} hint="Como figura en su DNI." error={fieldErrors.nombreCompleto}>
         {described => <Input id={FIELD_IDS.nombreCompleto} value={form.nombreCompleto} onChange={event => update('nombreCompleto', event.target.value)} disabled={busy} className={fieldClass} autoComplete="off" aria-describedby={described} aria-invalid={fieldErrors.nombreCompleto ? true : undefined} />}
       </Field>

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { AnimatePresence, m } from "motion/react";
-import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, ShieldCheck, Moon, Sun, X } from "lucide-react";
+import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, Moon, Sun, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useBrand } from "../shared/branding";
@@ -160,13 +160,13 @@ export function MainLayout() {
           <button
             type="button"
             onClick={() => setIsAccountSecurityOpen(true)}
-            className="mr-1 hidden items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 text-left transition-colors hover:border-wa-border hover:bg-wa-hover lg:flex dark:hover:border-wa-border-dark dark:hover:bg-wa-head-dark"
+            className="mr-1 flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 text-left transition-colors hover:border-wa-border hover:bg-wa-hover dark:hover:border-wa-border-dark dark:hover:bg-wa-head-dark"
             aria-label="Abrir acceso y seguridad"
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-wa-primary/12 text-[11px] font-bold uppercase text-wa-primary-strong dark:bg-wa-primary/15 dark:text-wa-primary">
               {me.name.trim().charAt(0) || "U"}
             </span>
-            <span>
+            <span className="hidden lg:block">
               <span className="block max-w-36 truncate text-xs font-semibold leading-tight text-wa-text dark:text-wa-text-dark">
                 {me.name}
               </span>
@@ -204,16 +204,6 @@ export function MainLayout() {
             </button>
           </Tooltip>
         )}
-        <Tooltip content="Acceso y seguridad">
-          <button
-            type="button"
-            onClick={() => setIsAccountSecurityOpen(true)}
-            aria-label="Acceso y seguridad"
-            className={headerIconButtonClass}
-          >
-            <ShieldCheck className="h-4 w-4" />
-          </button>
-        </Tooltip>
         {!isAnalyst && (
           <NotificationCenter
             browserPermission={notificationPermission}

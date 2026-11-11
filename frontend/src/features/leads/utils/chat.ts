@@ -1,14 +1,21 @@
 import type { Chat } from '../types'
 
+function usefulInitial(value: string | null | undefined): string | undefined {
+  return value?.replace(/[0-9#*]\uFE0F?\u20E3/gu, '').match(/[\p{L}\p{N}]/u)?.[0]
+}
+
 export function displayUsername(chat: Chat): string | null {
   const username = chat.username?.trim()
-  if (!username) return null
+  if (!username || !usefulInitial(username)) return null
   return username.startsWith('@') ? username : `@${username}`
 }
 
-/** Identidad principal del chat: username, pushname y UUID interno. */
+/** Identidad principal: username, nombre útil, teléfono y UUID interno. */
 export function displayName(chat: Chat): string {
-  return displayUsername(chat) ?? (chat.name?.trim() || `Lead #${chat.chat_id}`)
+  const name = chat.name?.trim()
+  return displayUsername(chat)
+    ?? (name && usefulInitial(name) ? name : null)
+    ?? (chat.phone?.trim() || `Lead #${chat.chat_id}`)
 }
 
 export function displayPhone(chat: Chat): string {
@@ -16,9 +23,9 @@ export function displayPhone(chat: Chat): string {
 }
 
 export function avatarInitial(chat: Chat): string {
-  const username = displayUsername(chat)
-  if (username) return username[1]?.toUpperCase() ?? '#'
-  return chat.name?.trim()[0]?.toUpperCase() ?? '#'
+  // Conserva la prioridad del username y busca caracteres Unicode completos.
+  const initial = usefulInitial(displayUsername(chat)) ?? usefulInitial(chat.name) ?? usefulInitial(chat.phone)
+  return initial?.toUpperCase() ?? '#'
 }
 
 export type WaitingTier = 'fresh' | 'warning' | 'urgent'
