@@ -18,7 +18,7 @@ from app.db.models.leads import Lead, LeadActivity
 
 from app.modules.conversations.public import AUTOMATION_KEY_PREFIX, SCHEDULED_KEY_PREFIX
 from app.modules.leads.dashboard.scope import (
-    DashboardScope, execute_mapping, items, local_day, local_slot, local_weekday, series,
+    DashboardScope, execute_mapping, items, local_day, local_slot, local_weekday, message_went_out, series,
 )
 
 
@@ -57,9 +57,10 @@ async def _messages(scope: DashboardScope) -> dict:
     """
     day = local_day(WspMessage.sent_at)
     authored = WspMessage.sent_by_user_id.is_not(None)
+    went_out = message_went_out(WspMessage.outbox_status, WspMessage.meta_status)
     trend_stmt = (
         select(day.label("day"), func.count(WspMessage.id).label("total"))
-        .where(WspMessage.sent_at >= scope.start, authored, scope.mine(WspMessage.sent_by_user_id))
+        .where(WspMessage.sent_at >= scope.start, authored, went_out, scope.mine(WspMessage.sent_by_user_id))
         .group_by(day)
         .order_by(day)
     )
@@ -67,7 +68,7 @@ async def _messages(scope: DashboardScope) -> dict:
     by_user_stmt = (
         select(author.label("name"), func.count(WspMessage.id).label("value"))
         .outerjoin(User, User.id == WspMessage.sent_by_user_id)
-        .where(WspMessage.sent_at >= scope.start, authored)
+        .where(WspMessage.sent_at >= scope.start, authored, went_out)
         .group_by(author)
         .order_by(func.count(WspMessage.id).desc())
         .limit(12)
@@ -113,7 +114,11 @@ def _by_origin_stmt(scope: DashboardScope):
     stmt = (
         select(day.label("day"), origin.label("origin"), func.count(WspMessage.id).label("total"))
         .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
-        .where(WspMessage.sent_at >= scope.start, WspMessage.sender == "vendedor")
+        .where(
+            WspMessage.sent_at >= scope.start,
+            WspMessage.sender == "vendedor",
+            message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
+        )
         .group_by(day, origin)
     )
     if scope.is_mine:

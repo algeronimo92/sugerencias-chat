@@ -16,7 +16,7 @@ from app.db.models.conversations import WspMessage
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
 
-from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping
+from app.modules.leads.dashboard.scope import DashboardScope, execute_mapping, message_went_out
 
 
 def _latest_sender():
@@ -116,6 +116,7 @@ async def collect(scope: DashboardScope) -> dict:
         .where(
             WspMessage.sent_at >= scope.start,
             WspMessage.sent_by_user_id.is_not(None),
+            message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
             scope.mine(WspMessage.sent_by_user_id),
         )
         .scalar_subquery()

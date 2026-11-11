@@ -60,9 +60,9 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
         <MetricCard label="Citas registradas" value={summary.appointments_created} hint={period} icon={CalendarCheck} />
         <MetricCard label={who(subject, { me: 'Flujos que activé', team: 'Flujos activados', seller: (name) => `Flujos que activó ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} siguen activos`} icon={Send} onClick={onOpenFlows} />
         <MetricCard
-          label="Mensajes enviados"
+          label="Mensajes escritos en el CRM"
           value={summary.messages_sent}
-          hint={`Desde la app · ${period}`}
+          hint={`Los envió una persona desde el CRM, no un flujo ni WhatsApp · ${period}`}
           icon={MessagesSquare}
         />
         <MetricCard label="Leads etiquetados" value={summary.tagged_leads} hint={data.tags.coverage.rate != null ? `${data.tags.coverage.rate}% de cobertura` : 'Sin leads'} icon={Tag} />
@@ -103,7 +103,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
         </Panel>
 
         <Panel anchor="mensajes-por-dia"
-          title="Mensajes enviados por día"
+          title={days >= 90 ? 'Mensajes enviados por semana' : 'Mensajes enviados por día'}
           subtitle={`${who(subject, { me: 'Lo que mandó el negocio en mis chats', team: 'Todo lo que mandó el negocio', seller: (name) => `Lo que mandó el negocio en los chats de ${name}` })}, según de dónde salió · ${period}`}
           className="lg:col-span-2"
         >
@@ -117,8 +117,8 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <BarList items={activity.by_type} emptyLabel="Sin actividad registrada" />
         </Panel>
 
-        <Panel anchor="quien-manda-mensajes" title="Quién manda más mensajes" subtitle={`Desde la app, que es donde se sabe quién escribió · ranking del equipo · ${period}`}>
-          <BarList items={activity.messages.by_user} emptyLabel="Nadie envió mensajes desde la app" />
+        <Panel anchor="quien-manda-mensajes" title="Quién escribe más en el CRM" subtitle={`Solo los mensajes escritos en el CRM: lo que sale desde WhatsApp llega sin autor · ranking del equipo · ${period}`}>
+          <BarList items={activity.messages.by_user} emptyLabel="Nadie escribió mensajes en el CRM en el período" />
         </Panel>
 
         <Panel anchor="ventas"

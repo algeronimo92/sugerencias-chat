@@ -2,12 +2,35 @@ import type { DashboardMessagesByOrigin } from '../types'
 
 export type MessageOrigin = 'app' | 'automation' | 'scheduled' | 'phone'
 
-/** Orden fijo y color por origen: el color sigue al origen, no a su tamaño. */
-export const MESSAGE_ORIGINS: { key: MessageOrigin; label: string; short: string; color: string }[] = [
-  { key: 'app', label: 'Desde la app', short: 'App', color: 'var(--viz-cat-1)' },
-  { key: 'phone', label: 'Desde el celular (fuera de la app)', short: 'Celular', color: 'var(--viz-cat-2)' },
-  { key: 'automation', label: 'Flujos automáticos', short: 'Flujos', color: 'var(--viz-cat-3)' },
-  { key: 'scheduled', label: 'Programados', short: 'Programados', color: 'var(--viz-cat-4)' },
+/**
+ * Orden fijo y color por origen: el color sigue al origen, no a su tamaño.
+ *
+ * Los nombres dicen "CRM" y "WhatsApp", no "la app" y "el celular": "la app"
+ * se leía como la app de WhatsApp, y lo de fuera también sale de WhatsApp Web.
+ * `hint` explica cada origen donde hay lugar (la lista junto a la torta);
+ * "Programados" sonaba a campaña y por eso aclara que va a un solo chat.
+ */
+export const MESSAGE_ORIGINS: { key: MessageOrigin; label: string; short: string; hint: string; phrase: string; color: string }[] = [
+  {
+    key: 'app', label: 'Escritos en el CRM', short: 'CRM', color: 'var(--viz-cat-1)',
+    hint: 'Alguien del equipo los escribió en el chat del CRM. Son los únicos que guardan quién los envió.',
+    phrase: 'se escribió en el CRM',
+  },
+  {
+    key: 'phone', label: 'Desde WhatsApp, fuera del CRM', short: 'WhatsApp', color: 'var(--viz-cat-2)',
+    hint: 'Salieron del WhatsApp Business del celular o de WhatsApp Web. Incluye respuestas rápidas y listas de difusión.',
+    phrase: 'salió desde WhatsApp por fuera del CRM',
+  },
+  {
+    key: 'automation', label: 'Flujos automáticos', short: 'Flujos', color: 'var(--viz-cat-3)',
+    hint: 'Los mandó una automatización del CRM, sin que nadie escriba.',
+    phrase: 'lo mandaron los flujos automáticos',
+  },
+  {
+    key: 'scheduled', label: 'Programados en el CRM', short: 'Programados', color: 'var(--viz-cat-4)',
+    hint: 'Alguien los escribió en el CRM para que salgan más tarde, a un solo chat. No es una difusión.',
+    phrase: 'eran mensajes programados',
+  },
 ]
 
 export type OriginBucket = Record<MessageOrigin, number> & { date: string; end: string; total: number }
@@ -34,4 +57,16 @@ export function originShares(points: DashboardMessagesByOrigin[]) {
   return totals
     .filter((item) => item.value > 0)
     .map((item) => ({ ...item, share: total ? Math.round((item.value / total) * 100) : 0 }))
+}
+
+/** "1,2 y 3" en castellano. */
+function joinList(parts: string[]): string {
+  if (parts.length <= 1) return parts.join('')
+  return `${parts.slice(0, -1).join(', ')} y ${parts.at(-1)}`
+}
+
+/** El titular del panel: el total y qué parte fue cada origen, en palabras. */
+export function originHeadline(total: string, shares: ReturnType<typeof originShares>): string {
+  const parts = shares.map((item) => (item.share < 1 ? `menos del 1% ${item.phrase}` : `el ${item.share}% ${item.phrase}`))
+  return `${total} mensajes del negocio: ${joinList(parts)}.`
 }
