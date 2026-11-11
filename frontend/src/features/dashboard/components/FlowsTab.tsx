@@ -20,6 +20,11 @@ interface Props {
 const TRIGGER_LABELS: Record<string, string> = Object.fromEntries(
   AUTOMATION_TRIGGERS.map((trigger) => [trigger.value, trigger.label]),
 )
+// "Lead nuevo" y "Conversación nueva" se leían como lo mismo: el nombre solo
+// no dice que uno pasa una vez por contacto y el otro cada vez que vuelve a escribir.
+const TRIGGER_HINTS: Record<string, string> = Object.fromEntries(
+  AUTOMATION_TRIGGERS.map((trigger) => [trigger.value, trigger.description]),
+)
 
 // Un solo vocabulario en toda la pestaña: un flujo "se inicia" (el botón del
 // chat dice "Iniciar flujo"), "a mano" o "automático". Convivían disparar,
@@ -95,7 +100,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
       </Panel>
 
       <Panel anchor="que-los-dispara" title="Qué los inicia" subtitle={`El disparador de cada flujo · ${period}`}>
-        <BarList items={automations.by_trigger} labels={TRIGGER_LABELS} emptyLabel="Ningún flujo en el período" />
+        <BarList items={automations.by_trigger} labels={TRIGGER_LABELS} hints={TRIGGER_HINTS} emptyLabel="Ningún flujo en el período" />
       </Panel>
 
       <Panel anchor="flujos-por-dia" title="Flujos por día" subtitle={`${whose} · ${period}`} className="lg:col-span-2">
