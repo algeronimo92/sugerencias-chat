@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import type { DashboardHours } from '../types'
 import { NoData } from './primitives'
 import { ReadingToggle } from './ReadingToggle'
-import { MIN_DAYS_FOR_PATTERN, buildHoursGrid, formatAverage, type HoursReading } from './hoursGrid'
+import { MIN_DAYS_FOR_PATTERN, buildHoursGrid, formatAverage, personPeak, type HoursReading } from './hoursGrid'
 
 export interface HoursReadingOption {
   key: HoursReading
@@ -30,6 +30,10 @@ interface Props {
   readings: HoursReadingOption[]
   /** Nombre accesible del mapa; el título visible lo pone el Panel. */
   label: string
+  /** Pinta contra la franja más cargada de la persona más activa del equipo,
+   *  no contra el máximo propio: para mapas de una persona, que se comparan
+   *  con los de otra. */
+  teamScale?: boolean
 }
 
 /**
@@ -38,7 +42,7 @@ interface Props {
  * lectura: el ojo compara mal intensidades entre dos cuadrículas, y lo que
  * interesa ver es el hueco entre una y otra en la misma celda.
  */
-export function HoursHeatmap({ hours, days, readings, label }: Props) {
+export function HoursHeatmap({ hours, days, readings, label, teamScale = false }: Props) {
   // null = la primera lectura. No se copia `readings[0]` al estado: si la lista
   // cambia (del equipo a una persona), la elegida puede dejar de existir.
   const [readingKey, setReadingKey] = useState<HoursReading | null>(null)
@@ -56,7 +60,8 @@ export function HoursHeatmap({ hours, days, readings, label }: Props) {
     )
   }
 
-  const grid = buildHoursGrid(hours, reading.key)
+  const sharedMax = teamScale ? personPeak(hours, reading.key) : undefined
+  const grid = buildHoursGrid(hours, reading.key, sharedMax)
 
   return (
     <div>
@@ -116,6 +121,7 @@ export function HoursHeatmap({ hours, days, readings, label }: Props) {
                 </span>
                 {grid.isRate ? `${Math.round(grid.max)} %` : `${formatAverage(grid.max)} por franja`}
               </span>
+              {sharedMax !== undefined && <span>Misma escala para todas las personas</span>}
               {grid.isRate && (
                 <span className="flex items-center gap-1.5">
                   <span className={`h-3 w-3 rounded-[2px] ${FEW_CASES_CLASS}`} aria-hidden="true" />

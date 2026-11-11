@@ -183,6 +183,78 @@ async def collect(scope: DashboardScope) -> dict:
     }
 
 
+def _hand_written_by_hour(*extra_columns):
+    """Mensajes que una persona escribió y mandó en el momento desde el CRM.
+
+    Es la lectura de "a qué hora trabaja alguien en la app", así que deja
+    fuera todo lo que no ocurrió a esa hora por mano de esa persona: los
+    programados (tienen autora, pero salieron solos a la hora que ella eligió
+    antes), los flujos y los ecos del celular, que llegan sin autor.
+    """
+    weekday, slot = local_weekday(WspMessage.sent_at), local_slot(WspMessage.sent_at)
+    scheduled = MessageOutbox.dedupe_key.startswith(SCHEDULED_KEY_PREFIX)
+    return (
+        select(*extra_columns, weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("messages"))
+        .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
+        .where(
+            WspMessage.sent_by_user_id.is_not(None),
+            # Sin fila de outbox la clave es NULL y `NOT LIKE` daría NULL: hay
+            # que dejar pasar ese caso a propósito.
+            MessageOutbox.dedupe_key.is_(None) | ~scheduled,
+            message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
+        )
+        .group_by(*extra_columns, weekday, slot)
+    )
+
+
+def messages_by_hour_stmt(scope: DashboardScope):
+    return _hand_written_by_hour().where(
+        WspMessage.sent_at >= scope.start, scope.mine(WspMessage.sent_by_user_id),
+    )
+
+
+def messages_by_author_hour_stmt(scope: DashboardScope):
+    """Lo mismo, de todo el equipo y partido por autora: de acá sale la escala
+    común con que se pintan los mapas de cada persona."""
+    return _hand_written_by_hour(WspMessage.sent_by_user_id.label("person")).where(
+        WspMessage.sent_at >= scope.start,
+    )
+
+
+def _phone_by_hour(*extra_columns):
+    """Lo que el negocio mandó desde WhatsApp sin pasar por el CRM.
+
+    Es la mitad que el mapa de lo escrito en el CRM no ve: quien atiende desde
+    el celular salía en blanco aunque trabajara. Estos mensajes llegan como
+    eco, sin autora, así que se atribuyen a la vendedora dueña del chat; y
+    WhatsApp tampoco avisa si los escribió una persona, de modo que entran sus
+    respuestas automáticas y difusiones.
+    """
+    weekday, slot = local_weekday(WspMessage.sent_at), local_slot(WspMessage.sent_at)
+    return (
+        select(*extra_columns, weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("phone_messages"))
+        .join(Lead, Lead.id == WspMessage.chat_id)
+        .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
+        .where(
+            WspMessage.sender == "vendedor",
+            MessageOutbox.id.is_(None),
+            message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
+        )
+        .group_by(*extra_columns, weekday, slot)
+    )
+
+
+def phone_by_hour_stmt(scope: DashboardScope):
+    return _phone_by_hour().where(WspMessage.sent_at >= scope.start, scope.mine(Lead.vendedor_id))
+
+
+def phone_by_owner_hour_stmt(scope: DashboardScope):
+    """Del equipo entero y partido por dueña del chat: da la escala común."""
+    return _phone_by_hour(Lead.vendedor_id.label("person")).where(
+        WspMessage.sent_at >= scope.start, Lead.vendedor_id.is_not(None),
+    )
+
+
 # Ventana fija para "siguió conversando": sin ella, una conversación de hace un
 # mes tendría más oportunidad de contar que una de ayer y las celdas no serían
 # comparables. Coincide con la ventana de servicio de WhatsApp.

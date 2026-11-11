@@ -4693,6 +4693,19 @@ export interface components {
             flows_manual: number;
             /** Flows Automatic */
             flows_automatic: number;
+            /** Messages */
+            messages: number;
+            /** Phone Messages */
+            phone_messages: number;
+        };
+        /** DashboardHourPeaks */
+        DashboardHourPeaks: {
+            /** Messages */
+            messages: number;
+            /** Flows Manual */
+            flows_manual: number;
+            /** Phone Messages */
+            phone_messages: number;
         };
         /** DashboardHours */
         DashboardHours: {
@@ -4702,6 +4715,7 @@ export interface components {
             engagement_window_hours: number;
             /** Weekday Occurrences */
             weekday_occurrences: number[];
+            person_peaks: components["schemas"]["DashboardHourPeaks"];
             /** Cells */
             cells: components["schemas"]["DashboardHourCell"][];
         };

@@ -13,7 +13,7 @@ const HOURS: DashboardHours = {
   slot_hours: 2,
   engagement_window_hours: 24,
   weekday_occurrences: [5, 5, 4, 4, 4, 4, 4],
-  cells: [{ weekday: 0, slot: 10, conversations: 10, settled: 10, engaged: 6, flows_manual: 0, flows_automatic: 0 }],
+  cells: [{ weekday: 0, slot: 10, conversations: 10, settled: 10, engaged: 6, flows_manual: 0, flows_automatic: 0, messages: 0, phone_messages: 0 }],
 }
 
 describe('HoursHeatmap', () => {
@@ -29,6 +29,19 @@ describe('HoursHeatmap', () => {
     expect(screen.getByRole('button', { name: 'Siguieron conversando' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Lun 20–22 h: 60 % siguió conversando' })).toBeInTheDocument()
     expect(screen.getByText('Muy pocos casos')).toBeInTheDocument()
+  })
+
+  it('en el mapa de una persona usa la escala del equipo y lo dice', () => {
+    const hours: DashboardHours = {
+      ...HOURS,
+      person_peaks: { messages: 10, flows_manual: 0 },
+      cells: [{ ...HOURS.cells[0], messages: 10 }],
+    }
+    const readings: HoursReadingOption[] = [{ key: 'messages', label: 'Mensajes escritos', hint: 'Escritos en el CRM.' }]
+    render(<HoursHeatmap hours={hours} days={30} readings={readings} label="A qué hora se escribe" teamScale />)
+
+    expect(screen.getByText(/10 por franja/)).toBeInTheDocument()
+    expect(screen.getByText('Misma escala para todas las personas')).toBeInTheDocument()
   })
 
   // Con una semana cada celda es una sola muestra: se vería patrón donde hay azar.

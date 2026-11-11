@@ -36,12 +36,24 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return pathname === item.path
 }
 
+/**
+ * El dashboard compara al equipo por nombre, así que por ahora lo leen solo
+ * quienes dirigen: admin y analista. El backend le niega la ruta al vendedor
+ * (app/modules/leads/dashboard/api.py); esto solo evita mostrarle una entrada
+ * que termina en error.
+ */
+export function canSeeDashboard(role: string | undefined): boolean {
+  return role === 'admin' || role === 'analista'
+}
+
 /** `role` es el de la sesión tal como llega del backend (texto). */
 export function visibleNavItems(role: string | undefined): NavItem[] {
   // El analista existe para mirar el dashboard: ninguna otra vista le sirve y
   // el backend se las niega (app/modules/auth/role_policy.py).
   if (role === 'analista') return NAV_ITEMS.filter((item) => item.path === '/dashboard')
-  return NAV_ITEMS.filter((item) => !item.adminOnly || role === 'admin')
+  return NAV_ITEMS.filter((item) => (
+    (!item.adminOnly || role === 'admin') && (item.path !== '/dashboard' || canSeeDashboard(role))
+  ))
 }
 
 /** A dónde va "/" y cualquier ruta que el rol no puede ver. */

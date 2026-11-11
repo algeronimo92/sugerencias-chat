@@ -186,7 +186,9 @@ async def test_cache_reuses_the_payload_per_scope_and_user(compiled_sql):
 
 
 @pytest.mark.asyncio
-async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
+async def test_admin_and_analyst_open_the_team_and_a_seller_is_refused(monkeypatch):
+    """El panel compara al equipo por nombre: por ahora lo leen solo quienes
+    dirigen. Un vendedor no entra ni a lo suyo ni al total, pida lo que pida."""
     received = []
 
     async def fake_metrics(days, scope, user_id):
@@ -195,13 +197,17 @@ async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
 
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
-    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
     await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
-    # Un vendedor sí puede pedir el total del equipo: ya ve todos los chats, así
-    # que no es información nueva y le da contexto a sus propios números.
-    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=2, role="analista"))
+    await dashboard_router.dashboard(days=30, scope=SCOPE_MINE, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
+    assert received == [(30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 2), (30, SCOPE_MINE, 1)]
 
-    assert received == [(30, SCOPE_MINE, 3), (30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 3)]
+    seller = SimpleNamespace(id=3, role="vendedor")
+    for scope, seller_id in ((None, None), (SCOPE_MINE, None), (SCOPE_TEAM, None), (None, 3)):
+        with pytest.raises(HTTPException) as exc:
+            await dashboard_router.dashboard(days=30, scope=scope, seller_id=seller_id, user=seller)
+        assert exc.value.status_code == 403
+    assert len(received) == 3
 
 
 @pytest.mark.asyncio
@@ -297,9 +303,9 @@ async def test_separations_read_the_deposit_from_either_field_and_compare_window
 
 
 @pytest.mark.asyncio
-async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(monkeypatch):
+async def test_only_an_admin_can_open_another_persons_dashboard(monkeypatch):
     """Filtrar por vendedora es mirar "lo suyo" de otra persona: el admin
-    puede, un vendedor no (ya ve los rankings del equipo)."""
+    puede, el analista no."""
     received = []
 
     async def fake_metrics(days, scope, user_id):
@@ -309,11 +315,11 @@ async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(mo
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
     await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=1, role="admin"))
-    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=3, user=SimpleNamespace(id=3, role="vendedor"))
-    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 3)]
+    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=1, user=SimpleNamespace(id=1, role="admin"))
+    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 1)]
 
     with pytest.raises(HTTPException) as exc:
-        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=3, role="vendedor"))
+        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=2, role="analista"))
     assert exc.value.status_code == 403
 
 
@@ -362,10 +368,15 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
     assert sum(hours["weekday_occurrences"]) == 30
     assert len(hours["weekday_occurrences"]) == 7
     assert hours["slot_hours"] == 2 and hours["engagement_window_hours"] == 24
-    # Conversaciones y flujos caen en la misma celda y se funden en una fila.
+    # Una fila de muestra en lunes: el tope es su conteo entre los lunes del período.
+    mondays = hours["weekday_occurrences"][0]
+    assert hours["person_peaks"] == {
+        "messages": 1 / mondays, "flows_manual": 1 / mondays, "phone_messages": 1 / mondays,
+    }
+    # Conversaciones, flujos y mensajes caen en la misma celda y se funden en una fila.
     assert hours["cells"] == [{
         "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
-        "flows_manual": 1, "flows_automatic": 1,
+        "flows_manual": 1, "flows_automatic": 1, "messages": 1, "phone_messages": 1,
     }]
 
 
@@ -387,6 +398,12 @@ async def test_hours_follow_the_scope(compiled_sql):
     await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
     by_hour = [statement for statement in compiled_sql if "isodow" in statement]
 
-    assert len(by_hour) == 2
-    assert any("leads.vendedor_id = " in statement for statement in by_hour)
+    # Cuatro acotadas a la persona y tres del equipo entero, que dan la escala común.
+    assert len(by_hour) == 7
+    # Conversaciones y celular van por dueña del chat: el eco no trae autora.
+    assert sum("leads.vendedor_id = " in statement for statement in by_hour) == 2
     assert any("automation_executions.started_by_user_id = " in statement for statement in by_hour)
+    # Los mensajes van por quien los escribió, no por de quién es el chat: lo
+    # que una vendedora escribe en el chat de otra es trabajo suyo.
+    assert sum("wsp_messages.sent_by_user_id = " in statement for statement in by_hour) == 1
+    assert sum("automation_executions.started_by_user_id = " in statement for statement in by_hour) == 1

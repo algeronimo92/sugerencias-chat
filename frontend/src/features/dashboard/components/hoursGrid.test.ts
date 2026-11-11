@@ -13,7 +13,7 @@ function hours(cells: Partial<DashboardHours['cells'][number]>[]): DashboardHour
     // Cinco lunes y martes, cuatro del resto: un período de 30 días.
     weekday_occurrences: [5, 5, 4, 4, 4, 4, 4],
     cells: cells.map(cell => ({
-      weekday: 0, slot: 0, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, ...cell,
+      weekday: 0, slot: 0, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0, phone_messages: 0, ...cell,
     })),
   }
 }
@@ -54,6 +54,24 @@ describe('buildHoursGrid', () => {
     expect(grid.rows[1].cells[6].value).toBe(40)
     expect(grid.rows[1].cells[6].description).toBe('Mar 12–14 h: 40 % siguió conversando')
     expect(grid.isRate).toBe(true)
+  })
+
+  it('con un tope común, la misma cantidad se pinta igual en el mapa de cualquier persona', () => {
+    // Antonella escribe 2 por franja; la que más escribe del equipo, 10.
+    const own = buildHoursGrid(hours([{ weekday: 2, slot: 5, messages: 8 }]), 'messages')
+    const shared = buildHoursGrid(hours([{ weekday: 2, slot: 5, messages: 8 }]), 'messages', 10)
+
+    expect(own.rows[2].cells[5].level).toBe(5)
+    expect(shared.rows[2].cells[5].level).toBe(1)
+    expect(shared.max).toBe(10)
+    expect(shared.rows[2].cells[5].description).toBe('Mié 10–12 h: 2 mensajes escritos en el CRM en promedio')
+  })
+
+  it('un tope menor que lo propio no saca ninguna celda de la escala', () => {
+    const grid = buildHoursGrid(hours([{ weekday: 2, slot: 5, messages: 8 }]), 'messages', 1)
+
+    expect(grid.max).toBe(2)
+    expect(grid.rows[2].cells[5].level).toBe(5)
   })
 
   it('avisa que no hay nada que dibujar', () => {

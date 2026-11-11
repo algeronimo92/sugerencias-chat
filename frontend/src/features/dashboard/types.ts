@@ -222,6 +222,10 @@ export interface DashboardHourCell {
   engaged: number
   flows_manual: number
   flows_automatic: number
+  /** Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular. */
+  messages: number
+  /** Salieron desde WhatsApp fuera del CRM. Sin autora: van por dueña del chat. */
+  phone_messages: number
 }
 
 export interface DashboardHours {
@@ -229,6 +233,9 @@ export interface DashboardHours {
   engagement_window_hours: number
   /** Cuántas veces cayó cada día de la semana en el período (0 = lunes). */
   weekday_occurrences: number[]
+  /** La franja más cargada de la persona más activa del equipo, en promedio por
+   *  día de la semana: tope de color común para los mapas por persona. */
+  person_peaks?: { messages: number; flows_manual: number; phone_messages?: number }
   /** Solo las celdas con algún movimiento. */
   cells: DashboardHourCell[]
 }

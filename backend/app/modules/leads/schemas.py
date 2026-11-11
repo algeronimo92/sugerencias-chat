@@ -451,6 +451,18 @@ class DashboardHourCell(BaseModel):
     engaged: int
     flows_manual: int
     flows_automatic: int
+    # Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular.
+    messages: int
+    # Salieron desde WhatsApp fuera del CRM. Sin autora: van por dueña del chat.
+    phone_messages: int
+
+
+class DashboardHourPeaks(BaseModel):
+    # La franja más cargada de la persona más activa del equipo, en promedio
+    # por día de la semana. Es el tope de color de los mapas por persona.
+    messages: float
+    flows_manual: float
+    phone_messages: float
 
 
 class DashboardHours(BaseModel):
@@ -458,6 +470,7 @@ class DashboardHours(BaseModel):
     engagement_window_hours: int
     # Cuántas veces cayó cada día de la semana en el período (0 = lunes).
     weekday_occurrences: list[int]
+    person_peaks: DashboardHourPeaks
     # Solo las celdas con algún movimiento.
     cells: list[DashboardHourCell]
 

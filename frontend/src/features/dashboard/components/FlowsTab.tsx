@@ -120,6 +120,8 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
           days={days}
           readings={split ? FLOW_READINGS : FLOW_READINGS.slice(0, 1)}
           label="A qué hora se inician los flujos"
+          // El mapa de una persona se compara con el de otra: mismo tope de color.
+          teamScale={subject.kind !== 'team'}
         />
       </Panel>
 

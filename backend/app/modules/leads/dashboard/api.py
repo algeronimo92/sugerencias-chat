@@ -11,24 +11,22 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 @router.get("", response_model=DashboardMetrics)
 async def dashboard(
     days: int = Query(default=30, ge=7, le=365),
-    # Sin `scope` cada rol ve lo que le sirve de entrada: el vendedor sus leads
-    # y sus flujos, el admin el total. Los rankings comparativos del equipo van
-    # en el payload en los dos casos, así que un vendedor no necesita cambiar
-    # de scope para saber cómo va respecto a los demás.
     scope: str | None = Query(default=None, pattern=f"^({SCOPE_MINE}|{SCOPE_TEAM})$"),
     # Las métricas de una persona del equipo, como si ella mirara "lo suyo":
     # el admin las usa para revisar o compartir el reporte de una vendedora.
-    # Un vendedor solo puede pedir las propias; para comparar con los demás ya
-    # tiene los rankings del equipo en el payload.
     seller_id: int | None = Query(default=None, ge=1),
     user: User = Depends(get_current_user),
 ):
+    # El panel compara al equipo por nombre (rankings, mapas de horas en una
+    # escala común). La dueña decidió el 2026-11-11 que por ahora lo lean solo
+    # quienes dirigen; antes un vendedor veía lo suyo y los rankings del equipo.
+    # Se niega acá y no solo en el menú: la ruta se puede pedir a mano.
+    if user.role == "vendedor":
+        raise HTTPException(403, "El dashboard está disponible solo para administradores y analistas")
     if seller_id is not None and seller_id != user.id:
         if user.role != "admin":
             raise HTTPException(403, "Solo un administrador puede ver el dashboard de otra persona")
         return await get_dashboard_metrics(days, SCOPE_MINE, seller_id)
     if seller_id is not None:
         return await get_dashboard_metrics(days, SCOPE_MINE, user.id)
-    # El analista no tiene leads propios: "lo mío" sería una pantalla vacía.
-    default_scope = SCOPE_MINE if user.role == "vendedor" else SCOPE_TEAM
-    return await get_dashboard_metrics(days, scope or default_scope, user.id)
+    return await get_dashboard_metrics(days, scope or SCOPE_TEAM, user.id)
