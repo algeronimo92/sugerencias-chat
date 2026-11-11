@@ -119,6 +119,7 @@ async def test_payload_carries_every_panel(compiled_sql):
         assert key in data["appointments"], f"falta el panel de citas {key}"
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
+    assert set(data["activity"]["messages"]["by_origin"][0]) == {"date", "app", "automation", "scheduled", "phone"}
 
 
 @pytest.mark.asyncio

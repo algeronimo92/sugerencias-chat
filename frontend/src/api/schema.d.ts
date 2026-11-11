@@ -4775,6 +4775,24 @@ export interface components {
             trend: components["schemas"]["DashboardPoint"][];
             /** By User */
             by_user: components["schemas"]["DashboardMetricItem"][];
+            /**
+             * By Origin
+             * @default []
+             */
+            by_origin: components["schemas"]["DashboardMessagesByOrigin"][];
+        };
+        /** DashboardMessagesByOrigin */
+        DashboardMessagesByOrigin: {
+            /** Date */
+            date: string;
+            /** App */
+            app: number;
+            /** Automation */
+            automation: number;
+            /** Scheduled */
+            scheduled: number;
+            /** Phone */
+            phone: number;
         };
         /** DashboardMetricItem */
         DashboardMetricItem: {

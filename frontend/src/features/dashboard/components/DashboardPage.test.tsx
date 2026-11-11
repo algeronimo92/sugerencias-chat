@@ -129,6 +129,10 @@ function metrics(): DashboardMetrics {
       messages: {
         trend: [{ date: '2026-09-20', value: 34 }],
         by_user: [{ name: 'Antonella', value: 34 }],
+        by_origin: [
+          { date: '2026-09-20', app: 34, automation: 40, scheduled: 0, phone: 26 },
+          { date: '2026-09-21', app: 0, automation: 36, scheduled: 4, phone: 40 },
+        ],
       },
     },
     generated_at: '2026-09-21T12:00:00Z',
@@ -381,6 +385,18 @@ describe('DashboardPage', () => {
     // vendedor llegan sin autor y no se cuentan.
     expect(screen.getByText('Desde la app · Últimos 30 días')).toBeInTheDocument()
     expect(screen.getByText('Quién manda más mensajes')).toBeInTheDocument()
+  })
+
+  it('reparte los mensajes del negocio por origen, con los del celular aparte', () => {
+    renderDashboard()
+
+    const panel = screen.getByRole('region', { name: 'Mensajes enviados por día' })
+    expect(within(panel).getByText('180 mensajes del negocio: el 37% salió desde el celular, fuera de la app.')).toBeInTheDocument()
+    const reparto = within(panel).getByRole('list', { name: 'Mensajes por origen' })
+    expect(within(reparto).getByText('Desde el celular (fuera de la app)').closest('li')).toHaveTextContent('6637%')
+    expect(within(reparto).getByText('Flujos automáticos').closest('li')).toHaveTextContent('7642%')
+    expect(within(reparto).getByText('Desde la app').closest('li')).toHaveTextContent('3419%')
+    expect(within(reparto).getByText('Programados').closest('li')).toHaveTextContent('42%')
   })
 
   it('avisa cuántas citas no llegaron a un lead', async () => {
