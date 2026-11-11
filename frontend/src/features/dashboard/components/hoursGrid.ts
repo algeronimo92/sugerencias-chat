@@ -2,7 +2,7 @@ import type { DashboardHours } from '../types'
 
 /** Qué se lee sobre la cuadrícula. Los conteos van como promedio por día de
  *  la semana; `engaged` es un porcentaje. */
-export type HoursReading = 'conversations' | 'engaged' | 'flows_manual' | 'flows_automatic' | 'messages'
+export type HoursReading = 'conversations' | 'engaged' | 'flows_manual' | 'flows_automatic' | 'messages' | 'phone_messages'
 
 export const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const
 
@@ -38,6 +38,7 @@ const UNITS: Record<Exclude<HoursReading, 'engaged'>, [string, string]> = {
   flows_manual: ['flujo a mano', 'flujos a mano'],
   flows_automatic: ['flujo automático', 'flujos automáticos'],
   messages: ['mensaje escrito en el CRM', 'mensajes escritos en el CRM'],
+  phone_messages: ['mensaje desde WhatsApp', 'mensajes desde WhatsApp'],
 }
 
 export function formatAverage(value: number): string {
@@ -55,7 +56,7 @@ function describe(reading: HoursReading, value: number | null): string {
 
 /** Tope común del equipo para una lectura, si la lectura lo tiene. */
 export function personPeak(hours: DashboardHours, reading: HoursReading): number | undefined {
-  if (reading !== 'messages' && reading !== 'flows_manual') return undefined
+  if (reading !== 'messages' && reading !== 'flows_manual' && reading !== 'phone_messages') return undefined
   const peak = hours.person_peaks?.[reading]
   return peak && peak > 0 ? peak : undefined
 }

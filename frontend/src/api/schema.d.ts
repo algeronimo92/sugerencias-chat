@@ -4675,6 +4675,8 @@ export interface components {
             flows_automatic: number;
             /** Messages */
             messages: number;
+            /** Phone Messages */
+            phone_messages: number;
         };
         /** DashboardHourPeaks */
         DashboardHourPeaks: {
@@ -4682,6 +4684,8 @@ export interface components {
             messages: number;
             /** Flows Manual */
             flows_manual: number;
+            /** Phone Messages */
+            phone_messages: number;
         };
         /** DashboardHours */
         DashboardHours: {

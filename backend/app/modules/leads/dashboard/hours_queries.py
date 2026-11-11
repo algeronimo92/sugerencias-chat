@@ -36,20 +36,24 @@ def _person_peak(rows, field: str, occurrences: list[int]) -> float:
     return peak
 
 
-CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_automatic", "messages")
+CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_automatic", "messages", "phone_messages")
 
 
 async def collect(scope: DashboardScope) -> dict:
-    conversations, flows, messages, messages_by_author, flows_by_starter = await asyncio.gather(
+    (
+        conversations, flows, messages, phone, messages_by_author, flows_by_starter, phone_by_owner,
+    ) = await asyncio.gather(
         execute_mapping(activity.conversations_by_hour_stmt(scope)),
         execute_mapping(automations.by_hour_stmt(scope)),
         execute_mapping(activity.messages_by_hour_stmt(scope)),
+        execute_mapping(activity.phone_by_hour_stmt(scope)),
         execute_mapping(activity.messages_by_author_hour_stmt(scope)),
         execute_mapping(automations.manual_by_starter_hour_stmt(scope)),
+        execute_mapping(activity.phone_by_owner_hour_stmt(scope)),
     )
     occurrences = _weekday_occurrences(scope)
     cells: dict[tuple[int, int], dict] = {}
-    for row in (*conversations, *flows, *messages):
+    for row in (*conversations, *flows, *messages, *phone):
         weekday, slot = int(row["weekday"]) - 1, int(row["slot"])
         if not (0 <= weekday < 7 and 0 <= slot < SLOTS_PER_DAY):
             continue
@@ -70,6 +74,7 @@ async def collect(scope: DashboardScope) -> dict:
         "person_peaks": {
             "messages": _person_peak(messages_by_author, "messages", occurrences),
             "flows_manual": _person_peak(flows_by_starter, "flows_manual", occurrences),
+            "phone_messages": _person_peak(phone_by_owner, "phone_messages", occurrences),
         },
         # Solo las celdas con algo: el resto de la cuadrícula es cero.
         "cells": [cells[key] for key in sorted(cells)],

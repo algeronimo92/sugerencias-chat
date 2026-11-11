@@ -438,6 +438,8 @@ class DashboardHourCell(BaseModel):
     flows_automatic: int
     # Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular.
     messages: int
+    # Salieron desde WhatsApp fuera del CRM. Sin autora: van por dueña del chat.
+    phone_messages: int
 
 
 class DashboardHourPeaks(BaseModel):
@@ -445,6 +447,7 @@ class DashboardHourPeaks(BaseModel):
     # por día de la semana. Es el tope de color de los mapas por persona.
     messages: float
     flows_manual: float
+    phone_messages: float
 
 
 class DashboardHours(BaseModel):

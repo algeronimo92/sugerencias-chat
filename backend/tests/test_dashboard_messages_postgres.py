@@ -133,3 +133,32 @@ async def test_hours_count_only_what_a_person_wrote_and_sent_right_then(tenant) 
         # La escala es la de quien más escribió, también al mirar a otra
         # persona: así el mapa de Antonella se ve más claro que el de Grecia.
         assert of_antonella["person_peaks"]["messages"] == 2
+
+
+async def test_hours_count_phone_messages_by_owner_of_the_chat(tenant) -> None:
+    """Quien atiende desde el celular salía en blanco en el mapa de lo escrito
+    en el CRM. El eco no trae autora: se atribuye a la dueña del chat."""
+    with tenant_context(tenant):
+        grecia = await _user("Grecia")
+        antonella = await _user("Antonella")
+        de_grecia = await _lead(grecia)
+        de_antonella = await _lead(antonella)
+        sin_duena = await _lead(None)
+        await _message(de_grecia)                                    # eco
+        await _message(de_grecia)
+        await _message(de_grecia, meta_status="failed")              # no salió
+        await _message(de_antonella)
+        await _message(sin_duena)                                    # del equipo, de nadie
+        await _message(de_grecia, author=grecia, outbox=True)        # CRM
+        await _message(de_grecia, dedupe_key="automation:7:0:0:0")   # flujo
+        await _message(de_grecia, sender="cliente")
+
+        def total(hours: dict) -> int:
+            return sum(cell["phone_messages"] for cell in hours["cells"])
+
+        team = await hours_queries.collect(build_scope(7, "team", grecia))
+        assert total(team) == 4
+        assert total(await hours_queries.collect(build_scope(7, "mine", grecia))) == 2
+        of_antonella = await hours_queries.collect(build_scope(7, "mine", antonella))
+        assert total(of_antonella) == 1
+        assert of_antonella["person_peaks"]["phone_messages"] == 2

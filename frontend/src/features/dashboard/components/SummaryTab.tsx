@@ -23,13 +23,20 @@ const CONVERSATION_READINGS: HoursReadingOption[] = [
   },
 ]
 
-// Una sola lectura: lo que se escribe a mano. Los programados, los flujos y el
-// celular no dicen a qué hora estuvo alguien trabajando en el CRM.
+// Las dos mitades del trabajo de escribir, sobre la misma cuadrícula: quien
+// atiende desde el celular sale en blanco en la primera y aparece en la segunda.
+// Los programados y los flujos no entran en ninguna: no dicen a qué hora
+// estuvo alguien atendiendo.
 const WRITING_READINGS: HoursReadingOption[] = [
   {
     key: 'messages',
-    label: 'Mensajes escritos',
-    hint: 'Mensajes escritos y enviados en el momento desde el CRM, en promedio por día de la semana. No cuenta programados, flujos ni lo que sale desde WhatsApp.',
+    label: 'En el CRM',
+    hint: 'Mensajes escritos y enviados en el momento desde el CRM, por quien los escribió y en cualquier chat. En promedio por día de la semana.',
+  },
+  {
+    key: 'phone_messages',
+    label: 'Desde el celular',
+    hint: 'Mensajes que salieron desde WhatsApp sin pasar por el CRM. Llegan sin autor: se cuentan por la vendedora asignada al chat, e incluyen respuestas automáticas y difusiones de WhatsApp.',
   },
 ]
 
@@ -122,11 +129,11 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
 
         <Panel
           anchor="a-que-hora-se-escribe"
-          title="A qué hora se escribe en el CRM"
-          subtitle={`${who(subject, { me: 'Lo que escribí yo', team: 'Lo que escribió el equipo', seller: (name) => `Lo que escribió ${name}` })}, en cualquier chat · ${period}`}
+          title="A qué hora se escribe a los clientes"
+          subtitle={`${who(subject, { me: 'Yo', team: 'Todo el equipo', seller: (name) => name })} · ${period} · por día de la semana y franja de ${data.hours?.slot_hours ?? 2} horas`}
           className="lg:col-span-2"
         >
-          <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe en el CRM" teamScale={isPersonal(subject)} />
+          <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe a los clientes" teamScale={isPersonal(subject)} />
         </Panel>
 
         <Panel anchor="actividad"
