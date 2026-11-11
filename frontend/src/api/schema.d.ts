@@ -4727,8 +4727,6 @@ export interface components {
             messages: number;
             /** Flows Manual */
             flows_manual: number;
-            /** Phone Messages */
-            phone_messages: number;
         };
         /** DashboardHours */
         DashboardHours: {
@@ -4916,8 +4914,6 @@ export interface components {
             messages: number;
             /** Flows Manual */
             flows_manual: number;
-            /** Phone Messages */
-            phone_messages: number;
         };
         /** DashboardPersonHours */
         DashboardPersonHours: {

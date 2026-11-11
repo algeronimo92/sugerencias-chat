@@ -135,9 +135,11 @@ async def test_hours_count_only_what_a_person_wrote_and_sent_right_then(tenant) 
         assert of_antonella["person_peaks"]["messages"] == 2
 
 
-async def test_hours_count_phone_messages_by_owner_of_the_chat(tenant) -> None:
-    """Quien atiende desde el celular salía en blanco en el mapa de lo escrito
-    en el CRM. El eco no trae autora: se atribuye a la dueña del chat."""
+async def test_hours_count_whatsapp_messages_for_the_business_not_for_a_person(tenant) -> None:
+    """Lo que sale por WhatsApp fuera del CRM llega sin autora. Se atribuía a
+    la dueña del chat, y dos vendedoras salían casi idénticas: era el reparto
+    de los chats, no quién escribió. Va entero al negocio, también lo de chats
+    sin asignar, y no aparece en lo de ninguna persona."""
     with tenant_context(tenant):
         grecia = await _user("Grecia")
         antonella = await _user("Antonella")
@@ -148,7 +150,7 @@ async def test_hours_count_phone_messages_by_owner_of_the_chat(tenant) -> None:
         await _message(de_grecia)
         await _message(de_grecia, meta_status="failed")              # no salió
         await _message(de_antonella)
-        await _message(sin_duena)                                    # del equipo, de nadie
+        await _message(sin_duena)                                    # de un chat sin asignar
         await _message(de_grecia, author=grecia, outbox=True)        # CRM
         await _message(de_grecia, dedupe_key="automation:7:0:0:0")   # flujo
         await _message(de_grecia, sender="cliente")
@@ -158,10 +160,10 @@ async def test_hours_count_phone_messages_by_owner_of_the_chat(tenant) -> None:
 
         team = await hours_queries.collect(build_scope(7, "team", grecia))
         assert total(team) == 4
-        assert total(await hours_queries.collect(build_scope(7, "mine", grecia))) == 2
-        of_antonella = await hours_queries.collect(build_scope(7, "mine", antonella))
-        assert total(of_antonella) == 1
-        assert of_antonella["person_peaks"]["phone_messages"] == 2
+        assert "phone_messages" not in team["person_peaks"]
+        assert all("phone_messages" not in cell for person in team["people"] for cell in person["cells"])
+        # Al mirar a una persona no se sabe qué parte es suya: no se le cuenta ninguna.
+        assert total(await hours_queries.collect(build_scope(7, "mine", grecia))) == 0
 
 
 async def test_hours_show_each_person_of_the_team_even_the_ones_who_did_nothing(tenant) -> None:
@@ -194,8 +196,9 @@ async def test_hours_show_each_person_of_the_team_even_the_ones_who_did_nothing(
         def total(name: str, field: str) -> int:
             return sum(cell[field] for cell in people[name]["cells"])
 
-        assert total("Grecia", "messages") == 2 and total("Grecia", "phone_messages") == 0
-        assert total("Antonella", "messages") == 0 and total("Antonella", "phone_messages") == 1
+        assert total("Grecia", "messages") == 2
+        # El eco del chat de Antonella no cuenta como trabajo suyo: no trae autora.
+        assert people["Antonella"]["cells"] == []
         assert total("Admin", "messages") == 1 and total("Baja", "messages") == 1
         # Las celdas de una persona caben en la escala común del equipo.
         assert hours["person_peaks"]["messages"] == 2

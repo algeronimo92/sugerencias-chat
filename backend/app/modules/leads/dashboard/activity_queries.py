@@ -221,37 +221,30 @@ def messages_by_author_hour_stmt(scope: DashboardScope):
     )
 
 
-def _phone_by_hour(*extra_columns):
-    """Lo que el negocio mandó desde WhatsApp sin pasar por el CRM.
+def phone_by_hour_stmt(scope: DashboardScope):
+    """Lo que el negocio mandó desde WhatsApp sin pasar por el CRM, de todos
+    los chats.
 
-    Es la mitad que el mapa de lo escrito en el CRM no ve: quien atiende desde
-    el celular salía en blanco aunque trabajara. Estos mensajes llegan como
-    eco, sin autora, así que se atribuyen a la vendedora dueña del chat; y
-    WhatsApp tampoco avisa si los escribió una persona, de modo que entran sus
-    respuestas automáticas y difusiones.
+    Es la mitad que el mapa de lo escrito en el CRM no ve: sin esto, un equipo
+    que atiende desde el celular salía en blanco aunque trabajara. Estos
+    mensajes llegan como eco, sin autora, y WhatsApp tampoco avisa si los
+    escribió una persona: entran sus respuestas automáticas y difusiones.
+
+    No se filtra ni se parte por vendedora. Atribuírselos a la dueña del chat
+    mostraba cómo se reparten los chats, no quién escribió, y dejaba fuera los
+    de chats sin asignar.
     """
     weekday, slot = local_weekday(WspMessage.sent_at), local_slot(WspMessage.sent_at)
     return (
-        select(*extra_columns, weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("phone_messages"))
-        .join(Lead, Lead.id == WspMessage.chat_id)
+        select(weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("phone_messages"))
         .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
         .where(
+            WspMessage.sent_at >= scope.start,
             WspMessage.sender == "vendedor",
             MessageOutbox.id.is_(None),
             message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
         )
-        .group_by(*extra_columns, weekday, slot)
-    )
-
-
-def phone_by_hour_stmt(scope: DashboardScope):
-    return _phone_by_hour().where(WspMessage.sent_at >= scope.start, scope.mine(Lead.vendedor_id))
-
-
-def phone_by_owner_hour_stmt(scope: DashboardScope):
-    """Del equipo entero y partido por dueña del chat: da la escala común."""
-    return _phone_by_hour(Lead.vendedor_id.label("person")).where(
-        WspMessage.sent_at >= scope.start, Lead.vendedor_id.is_not(None),
+        .group_by(weekday, slot)
     )
 
 

@@ -33,6 +33,18 @@ export const LEVEL_CLASS = [
   'bg-wa-primary-strong dark:bg-wa-primary',
 ]
 
+// Lo que sale por WhatsApp fuera del CRM va en el naranja que ya tiene ese
+// origen en "Mensajes enviados por día": no es de una persona y se pinta con
+// escala propia, así que no puede parecerse al degradado de las personas.
+export const WHATSAPP_LEVEL_CLASS = [
+  'bg-wa-field dark:bg-white/5',
+  'bg-(--viz-cat-2)/20 dark:bg-(--viz-cat-2)/30',
+  'bg-(--viz-cat-2)/40 dark:bg-(--viz-cat-2)/45',
+  'bg-(--viz-cat-2)/60',
+  'bg-(--viz-cat-2)/80',
+  'bg-(--viz-cat-2)',
+]
+
 export interface HoursCell {
   /** null = muy pocos casos para un porcentaje. */
   value: number | null
@@ -77,7 +89,7 @@ function describe(reading: HoursReading, value: number | null): string {
 
 /** Tope común del equipo para una lectura, si la lectura lo tiene. */
 export function personPeak(hours: DashboardHours, reading: HoursReading): number | undefined {
-  if (reading !== 'messages' && reading !== 'flows_manual' && reading !== 'phone_messages') return undefined
+  if (reading !== 'messages' && reading !== 'flows_manual') return undefined
   const peak = hours.person_peaks?.[reading]
   return peak && peak > 0 ? peak : undefined
 }
