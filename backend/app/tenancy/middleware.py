@@ -26,6 +26,8 @@ DEFAULT_EXEMPT_PATHS = frozenset(
         # Callback OAuth de Google: llega por una URL común y resuelve el
         # negocio desde su state firmado.
         "/api/integrations/google/callback",
+        # Igual para "Conectar con…" del correo (Google, Microsoft, Zoho).
+        "/api/integrations/email/callback",
     }
 )
 DEFAULT_EXEMPT_PREFIXES = ("/api/webhooks/",)

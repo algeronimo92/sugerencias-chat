@@ -4,3 +4,4 @@ export { GoogleCalendarIntegrationCard } from '../components/GoogleCalendarInteg
 export { ElevenLabsIntegrationCard } from '../components/ElevenLabsIntegrationCard'
 export { ErpIntegrationCard } from '../components/ErpIntegrationCard'
 export { useIntegrationStatuses } from '../hooks/useIntegrationStatuses'
+export { EmailIntegrationCard } from '../components/EmailIntegrationCard'

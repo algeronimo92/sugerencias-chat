@@ -30,26 +30,57 @@ class PlatformSettingDef:
     key: str
     label: str
     secret: bool
+    # App a la que pertenece: el panel agrupa las credenciales por app (Meta,
+    # n8n, Google…) en vez de mostrarlas en una sola lista mezclada.
+    group: str = ""
+    # Las que tienen su propio formulario en el panel (el correo de la
+    # plataforma): no salen en la lista genérica ni se guardan por ahí,
+    # donde se editarían sueltas, sin la validación de su formulario.
+    hidden: bool = False
 
 
 PLATFORM_SETTING_DEFS = (
-    PlatformSettingDef("meta_app_id", "Facebook App ID (Tech Provider)", False),
-    PlatformSettingDef("meta_config_id", "Configuration ID de Embedded Signup", False),
-    PlatformSettingDef("meta_app_secret", "Facebook App Secret", True),
-    PlatformSettingDef("meta_verify_token", "Verify Token del webhook de Meta", True),
-    PlatformSettingDef("inbound_webhook_token", "Token entrante n8n → backend", True),
-    PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista (n8n)", False),
-    PlatformSettingDef("n8n_webhook_token", "Token saliente backend → n8n", True),
-    PlatformSettingDef("google_oauth_client_id", "Google OAuth Client ID (Calendar)", False),
-    PlatformSettingDef("google_oauth_client_secret", "Google OAuth Client Secret (Calendar)", True),
+    PlatformSettingDef("meta_app_id", "App ID", False, "meta"),
+    PlatformSettingDef("meta_config_id", "Configuration ID (Embedded Signup)", False, "meta"),
+    PlatformSettingDef("meta_app_secret", "App Secret", True, "meta"),
+    PlatformSettingDef("meta_verify_token", "Verify Token del webhook", True, "meta"),
+    PlatformSettingDef("n8n_analyst_webhook_url", "URL del workflow analista", False, "n8n"),
+    PlatformSettingDef("n8n_webhook_token", "Token saliente (backend → n8n)", True, "n8n"),
+    PlatformSettingDef("inbound_webhook_token", "Token entrante (n8n → backend)", True, "n8n"),
+    PlatformSettingDef("google_oauth_client_id", "Client ID", False, "google"),
+    PlatformSettingDef("google_oauth_client_secret", "Client Secret", True, "google"),
     PlatformSettingDef(
         "google_oauth_redirect_uri",
-        "Redirect URI de Google (…/api/integrations/google/callback)",
+        "Redirect URI de Calendar (…/api/integrations/google/callback)",
         False,
+        "google",
     ),
+    PlatformSettingDef("microsoft_oauth_client_id", "Client ID", False, "microsoft"),
+    PlatformSettingDef("microsoft_oauth_client_secret", "Client Secret", True, "microsoft"),
+    PlatformSettingDef("zoho_oauth_client_id", "Client ID", False, "zoho"),
+    PlatformSettingDef("zoho_oauth_client_secret", "Client Secret", True, "zoho"),
+    # "Conectar con…" de la pestaña Correo. Una sola URL de vuelta para los
+    # tres proveedores: hay que registrarla en la app de cada uno (en Google,
+    # además de la de Calendar).
+    PlatformSettingDef(
+        "email_oauth_redirect_uri",
+        "Redirect URI (…/api/integrations/email/callback)",
+        False,
+        "email_oauth",
+    ),
+    # Correo de envío de la plataforma (ver platform_email.py). Sin respaldo
+    # clave por clave en el entorno: el .env se usa entero o no se usa.
+    PlatformSettingDef("platform_smtp_host", "Servidor SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_port", "Puerto SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_security", "Seguridad SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_username", "Usuario SMTP", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_smtp_password", "Contraseña SMTP", True, "smtp", hidden=True),
+    PlatformSettingDef("platform_email_from_address", "Remitente", False, "smtp", hidden=True),
+    PlatformSettingDef("platform_email_from_name", "Nombre del remitente", False, "smtp", hidden=True),
 )
 _DEFS_BY_KEY = {definition.key: definition for definition in PLATFORM_SETTING_DEFS}
 PLATFORM_KEYS = frozenset(_DEFS_BY_KEY)
+_HIDDEN_KEYS = frozenset(d.key for d in PLATFORM_SETTING_DEFS if d.hidden)
 _CACHE_TTL_SECONDS = 30.0
 _cache: tuple[float, dict[str, str], dict[str, str]] | None = None
 _cache_lock = asyncio.Lock()
@@ -150,6 +181,7 @@ async def list_platform_settings() -> list[dict]:
         {
             "key": definition.key,
             "label": definition.label,
+            "group": definition.group,
             "secret": definition.secret,
             "configured": bool(values[definition.key]),
             "source": sources[definition.key],
@@ -157,11 +189,13 @@ async def list_platform_settings() -> list[dict]:
             "value": None if definition.secret else values[definition.key],
         }
         for definition in PLATFORM_SETTING_DEFS
+        if not definition.hidden
     ]
 
 
-async def update_platform_settings(values: dict[str, str]) -> None:
-    unknown = set(values) - PLATFORM_KEYS
+async def update_platform_settings(values: dict[str, str], *, include_hidden: bool = False) -> None:
+    allowed = PLATFORM_KEYS if include_hidden else PLATFORM_KEYS - _HIDDEN_KEYS
+    unknown = set(values) - allowed
     if unknown:
         raise ValueError(f"Configuración global desconocida: {', '.join(sorted(unknown))}")
 

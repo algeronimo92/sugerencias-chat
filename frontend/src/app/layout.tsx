@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { AnimatePresence, m } from "motion/react";
-import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, ShieldCheck, Moon, Sun, X } from "lucide-react";
+import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, Moon, Sun, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useBrand } from "../shared/branding";
@@ -23,6 +23,7 @@ import { createAppRealtimeBus } from "./realtime";
 import { useNotifications } from '../features/notifications/public/useNotifications';
 import { useTheme } from "../shared/hooks/useTheme";
 import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
+import { readEmailConnectReturn } from '../features/platform/public/emailConnectReturn';
 import { OnboardingChecklist, OnboardingReopenButton } from '../features/platform/public/OnboardingChecklist';
 import { Tooltip } from "../shared/ui/Tooltip";
 
@@ -89,7 +90,7 @@ export function MainLayout() {
     setIsSettingsOpen(true);
   }
 
-  // Las conexiones con terceros (WhatsApp, calendario, ERP, voz) tienen su
+  // Las conexiones con terceros (WhatsApp, calendario, ERP, voz, correo) tienen su
   // página: el diálogo de Configuración queda para los ajustes del CRM.
   function openIntegrations(anchor?: IntegrationAnchor) {
     setIsSettingsOpen(false);
@@ -100,11 +101,17 @@ export function MainLayout() {
   // /?settings=calendar&google=... Se avisa el resultado, se abre la pestaña y
   // se limpia la URL para que recargar no repita el aviso.
   useEffect(() => {
-    const result = readGoogleCalendarReturn(location.search);
+    // Lo mismo con "Conectar con…" del correo (/?settings=email&email=...).
+    const calendar = readGoogleCalendarReturn(location.search);
+    const email = calendar ? null : readEmailConnectReturn(location.search);
+    const result = calendar ?? email;
     if (!result) return;
     if (result.ok) toast.success(result.message);
     else toast.error(result.message);
-    navigate({ pathname: "/integraciones", search: "", hash: "#calendario" }, { replace: true });
+    navigate(
+      { pathname: "/integraciones", search: "", hash: calendar ? "#calendario" : "#correo" },
+      { replace: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
   const { data: unreadCount = 0 } = useUnreadCount(!isAnalyst);
@@ -160,13 +167,13 @@ export function MainLayout() {
           <button
             type="button"
             onClick={() => setIsAccountSecurityOpen(true)}
-            className="mr-1 hidden items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 text-left transition-colors hover:border-wa-border hover:bg-wa-hover lg:flex dark:hover:border-wa-border-dark dark:hover:bg-wa-head-dark"
+            className="mr-1 flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 text-left transition-colors hover:border-wa-border hover:bg-wa-hover dark:hover:border-wa-border-dark dark:hover:bg-wa-head-dark"
             aria-label="Abrir acceso y seguridad"
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-wa-primary/12 text-[11px] font-bold uppercase text-wa-primary-strong dark:bg-wa-primary/15 dark:text-wa-primary">
               {me.name.trim().charAt(0) || "U"}
             </span>
-            <span>
+            <span className="hidden lg:block">
               <span className="block max-w-36 truncate text-xs font-semibold leading-tight text-wa-text dark:text-wa-text-dark">
                 {me.name}
               </span>
@@ -204,16 +211,6 @@ export function MainLayout() {
             </button>
           </Tooltip>
         )}
-        <Tooltip content="Acceso y seguridad">
-          <button
-            type="button"
-            onClick={() => setIsAccountSecurityOpen(true)}
-            aria-label="Acceso y seguridad"
-            className={headerIconButtonClass}
-          >
-            <ShieldCheck className="h-4 w-4" />
-          </button>
-        </Tooltip>
         {!isAnalyst && (
           <NotificationCenter
             browserPermission={notificationPermission}

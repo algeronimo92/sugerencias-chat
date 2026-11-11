@@ -47,10 +47,17 @@ async def add_user(body: CreateUserRequest):
         return user
     except EmailAlreadyExistsError:
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
-    except (EmailNotConfiguredError, EmailDeliveryError):
+    except EmailNotConfiguredError:
         raise HTTPException(
             status_code=503,
             detail="No se pudo enviar la invitación. Revisa la configuración de correo.",
+        )
+    except EmailDeliveryError as exc:
+        # El motivo es un texto fijo de email_service, nunca la respuesta
+        # del servidor SMTP: sirve para corregir el correo en Integraciones.
+        raise HTTPException(
+            status_code=503,
+            detail=f"No se pudo enviar la invitación. Revisa la configuración de correo: {exc}",
         )
 
 
@@ -108,10 +115,17 @@ async def resend_invitation(user_id: int):
         raise HTTPException(status_code=409, detail="El usuario ya activó su cuenta")
     try:
         return await invite_user(email=user.email, name=user.name, role=user.role)
-    except (EmailNotConfiguredError, EmailDeliveryError):
+    except EmailNotConfiguredError:
         raise HTTPException(
             status_code=503,
             detail="No se pudo reenviar la invitación. Revisa la configuración de correo.",
+        )
+    except EmailDeliveryError as exc:
+        # El motivo es un texto fijo de email_service, nunca la respuesta
+        # del servidor SMTP: sirve para corregir el correo en Integraciones.
+        raise HTTPException(
+            status_code=503,
+            detail=f"No se pudo reenviar la invitación. Revisa la configuración de correo: {exc}",
         )
 
 

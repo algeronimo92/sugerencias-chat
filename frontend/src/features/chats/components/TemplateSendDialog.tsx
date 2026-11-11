@@ -1,3 +1,4 @@
+import { avatarInitial } from '../../leads/public/chat'
 import { AlertTriangle, BadgeCheck, CheckCircle2, FileAudio, FileText, Image, Loader2, Maximize2, MessageSquareText, Send, Video, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { MediaLightbox } from '../../../shared/ui/MediaLightbox'
@@ -602,7 +603,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
             <section className="flex min-h-105 flex-col border-t border-wa-border bg-wa-chat dark:border-wa-border-dark dark:bg-wa-chat-dark lg:min-h-0 lg:border-l lg:border-t-0">
               <div className="flex items-center gap-2 bg-wa-head px-4 py-3 dark:bg-wa-head-dark">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-wa-primary text-xs font-semibold text-white">
-                  {(chat.name || chat.phone || "C").charAt(0).toUpperCase()}
+                  {avatarInitial(chat)}
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-gray-800 dark:text-wa-text-dark">

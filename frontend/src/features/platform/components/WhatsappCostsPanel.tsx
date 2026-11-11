@@ -2,6 +2,7 @@ import { Loader2, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
+import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useSyncWhatsappCosts, useWhatsappCosts } from '../hooks/useWhatsapp'
 
@@ -72,16 +73,16 @@ export function WhatsappCostsPanel() {
         <h3 className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Costos de WhatsApp (Meta)</h3>
         <div className="flex items-center gap-2">
           <label className="sr-only" htmlFor="whatsapp-costs-month">Mes</label>
-          <select
+          <Select
             id="whatsapp-costs-month"
             value={month}
-            onChange={(event) => setMonth(event.target.value)}
-            className="h-7 rounded-md border border-wa-border bg-white px-2 text-xs text-wa-text dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
+            onValueChange={setMonth}
+            className="w-auto rounded-lg border border-wa-border bg-white text-xs text-wa-text dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
           >
             {months.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
           <Button variant="secondary" size="sm" onClick={handleSync} disabled={isSyncing}>
             {isSyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
             Actualizar

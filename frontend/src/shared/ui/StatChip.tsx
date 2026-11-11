@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '../utils/cn'
 import { Skeleton } from './Skeleton'
+import { Tooltip } from './Tooltip'
 import { STAT_TONE_ICON, STAT_TONE_SELECTED, type StatTone } from './tones'
 
 interface Props {
@@ -12,7 +13,7 @@ interface Props {
   loading?: boolean
   /** Presentación de una línea para filtros de listas. */
   compact?: boolean
-  /** Qué responde este grupo, en una línea, para el tooltip nativo. */
+  /** Qué responde este grupo, en una línea, para su ayuda contextual. */
   hint?: string
   onSelect: () => void
   className?: string
@@ -22,12 +23,11 @@ interface Props {
  *  ser la forma de llegar a esos registros (un clic en vez de dos controles
  *  distintos que decían lo mismo). */
 export function StatChip({ icon: Icon, label, count, tone, selected, loading = false, compact = false, hint, onSelect, className = '' }: Props) {
-  return (
+  const button = (
     <button
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      title={hint}
       className={cn(
         compact
           ? 'inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2 text-left outline-none transition-colors duration-150'
@@ -56,4 +56,6 @@ export function StatChip({ icon: Icon, label, count, tone, selected, loading = f
       </span>
     </button>
   )
+
+  return hint ? <Tooltip content={hint} side="top">{button}</Tooltip> : button
 }

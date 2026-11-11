@@ -75,6 +75,17 @@ beforeEach(() => {
 })
 
 describe('ChatItem vista rápida', () => {
+  it('muestra la ayuda diseñada al enfocar la fila y permite cerrarla con Escape', async () => {
+    renderItem()
+    const item = screen.getByRole('button', { name: /Ana Torres/ })
+
+    expect(item).not.toHaveAttribute('title')
+    fireEvent.focus(item)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Mantén pulsado o usa clic derecho para vista rápida')
+    fireEvent.keyDown(item, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
   it('muestra el username antes que el pushname', () => {
     renderItem(vi.fn(), vi.fn(), vi.fn(), { ...CHAT, username: '@gporta.21' } as Chat)
 

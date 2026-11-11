@@ -86,7 +86,10 @@ async def test_update_rejects_unknown_key() -> None:
 async def test_single_tenant_migrates_only_missing_global_values(monkeypatch) -> None:
     monkeypatch.setattr(platform_settings.settings, "multitenancy_enabled", False)
     for key in platform_settings.PLATFORM_KEYS:
-        monkeypatch.setattr(platform_settings.settings, key, "")
+        # El correo de la plataforma no tiene respaldo clave por clave en el
+        # entorno (ver platform_email.py): no hay atributo que vaciar.
+        if hasattr(platform_settings.settings, key):
+            monkeypatch.setattr(platform_settings.settings, key, "")
     monkeypatch.setattr(
         platform_settings,
         "_raw_database_values",
@@ -120,3 +123,11 @@ async def test_tenant_public_config_only_exposes_non_secret_ids(monkeypatch) -> 
     assert result == {"app_id": "APP123", "config_id": "CONFIG456"}
     assert "secret" not in result
     reader.assert_awaited_once_with(("meta_app_id", "meta_config_id"))
+
+
+def test_every_platform_credential_belongs_to_an_app() -> None:
+    # El panel arma una tarjeta por app: una clave sin grupo quedaría fuera
+    # de todas y no se podría editar.
+    groups = {"meta", "n8n", "google", "microsoft", "zoho", "email_oauth", "smtp"}
+    for definition in platform_settings.PLATFORM_SETTING_DEFS:
+        assert definition.group in groups, definition.key
