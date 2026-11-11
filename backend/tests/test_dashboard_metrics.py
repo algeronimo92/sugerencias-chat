@@ -186,7 +186,9 @@ async def test_cache_reuses_the_payload_per_scope_and_user(compiled_sql):
 
 
 @pytest.mark.asyncio
-async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
+async def test_admin_and_analyst_open_the_team_and_a_seller_is_refused(monkeypatch):
+    """El panel compara al equipo por nombre: por ahora lo leen solo quienes
+    dirigen. Un vendedor no entra ni a lo suyo ni al total, pida lo que pida."""
     received = []
 
     async def fake_metrics(days, scope, user_id):
@@ -195,13 +197,17 @@ async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
 
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
-    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
     await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
-    # Un vendedor sí puede pedir el total del equipo: ya ve todos los chats, así
-    # que no es información nueva y le da contexto a sus propios números.
-    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=2, role="analista"))
+    await dashboard_router.dashboard(days=30, scope=SCOPE_MINE, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
+    assert received == [(30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 2), (30, SCOPE_MINE, 1)]
 
-    assert received == [(30, SCOPE_MINE, 3), (30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 3)]
+    seller = SimpleNamespace(id=3, role="vendedor")
+    for scope, seller_id in ((None, None), (SCOPE_MINE, None), (SCOPE_TEAM, None), (None, 3)):
+        with pytest.raises(HTTPException) as exc:
+            await dashboard_router.dashboard(days=30, scope=scope, seller_id=seller_id, user=seller)
+        assert exc.value.status_code == 403
+    assert len(received) == 3
 
 
 @pytest.mark.asyncio
@@ -297,9 +303,9 @@ async def test_separations_read_the_deposit_from_either_field_and_compare_window
 
 
 @pytest.mark.asyncio
-async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(monkeypatch):
+async def test_only_an_admin_can_open_another_persons_dashboard(monkeypatch):
     """Filtrar por vendedora es mirar "lo suyo" de otra persona: el admin
-    puede, un vendedor no (ya ve los rankings del equipo)."""
+    puede, el analista no."""
     received = []
 
     async def fake_metrics(days, scope, user_id):
@@ -309,11 +315,11 @@ async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(mo
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
     await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=1, role="admin"))
-    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=3, user=SimpleNamespace(id=3, role="vendedor"))
-    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 3)]
+    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=1, user=SimpleNamespace(id=1, role="admin"))
+    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 1)]
 
     with pytest.raises(HTTPException) as exc:
-        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=3, role="vendedor"))
+        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=2, role="analista"))
     assert exc.value.status_code == 403
 
 
