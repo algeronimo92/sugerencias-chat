@@ -812,6 +812,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chats/message-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Message Search
+         * @description Los mensajes que contienen la búsqueda, uno por fila y del más nuevo al
+         *     más viejo: la sección "Mensajes" del buscador.
+         */
+        get: operations["get_message_search_api_chats_message_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats/unread-count": {
         parameters: {
             query?: never;
@@ -4508,6 +4529,8 @@ export interface components {
             items: components["schemas"]["Chat"][];
             /** Has More */
             has_more: boolean;
+            /** Total */
+            total?: number | null;
         };
         /** CompleteActionRequest */
         CompleteActionRequest: {
@@ -4693,6 +4716,7 @@ export interface components {
         DashboardAutomations: {
             /** By Flow */
             by_flow: components["schemas"]["DashboardFlowRow"][];
+            origin_totals: components["schemas"]["DashboardFlowOrigins"];
             /** By Actor */
             by_actor: components["schemas"]["DashboardMetricItem"][];
             /** By Source */
@@ -4701,6 +4725,10 @@ export interface components {
             by_trigger: components["schemas"]["DashboardMetricItem"][];
             /** Trend */
             trend: components["schemas"]["DashboardPoint"][];
+            /** Trend Manual */
+            trend_manual: components["schemas"]["DashboardPoint"][];
+            /** Trend Automatic */
+            trend_automatic: components["schemas"]["DashboardPoint"][];
             failures: components["schemas"]["DashboardFlowFailures"];
             /** Active Now */
             active_now: {
@@ -4729,6 +4757,17 @@ export interface components {
             /** Top Errors */
             top_errors: components["schemas"]["DashboardMetricItem"][];
         };
+        /** DashboardFlowOrigins */
+        DashboardFlowOrigins: {
+            /** Manual */
+            manual: number;
+            /** Automatic */
+            automatic: number;
+            /** Manual Chained */
+            manual_chained: number;
+            /** Automatic Chained */
+            automatic_chained: number;
+        };
         /** DashboardFlowRow */
         DashboardFlowRow: {
             /** Name */
@@ -4747,6 +4786,14 @@ export interface components {
             skipped: number;
             /** Active */
             active: number;
+            /** Manual */
+            manual: number;
+            /** Automatic */
+            automatic: number;
+            /** Manual Chained */
+            manual_chained: number;
+            /** Automatic Chained */
+            automatic_chained: number;
             /** Last At */
             last_at?: string | null;
         };
@@ -4758,6 +4805,53 @@ export interface components {
             value: number;
             /** Rate */
             rate?: number | null;
+        };
+        /** DashboardHourCell */
+        DashboardHourCell: {
+            /** Weekday */
+            weekday: number;
+            /** Slot */
+            slot: number;
+            /** Conversations */
+            conversations: number;
+            /** Settled */
+            settled: number;
+            /** Engaged */
+            engaged: number;
+            /** Flows Manual */
+            flows_manual: number;
+            /** Flows Automatic */
+            flows_automatic: number;
+            /** Messages */
+            messages: number;
+            /** Phone Messages */
+            phone_messages: number;
+        };
+        /** DashboardHourPeaks */
+        DashboardHourPeaks: {
+            /** Messages */
+            messages: number;
+            /** Flows Manual */
+            flows_manual: number;
+        };
+        /** DashboardHours */
+        DashboardHours: {
+            /** Slot Hours */
+            slot_hours: number;
+            /** Engagement Window Hours */
+            engagement_window_hours: number;
+            /** Weekday Occurrences */
+            weekday_occurrences: number[];
+            /** Start Date */
+            start_date: string;
+            person_peaks: components["schemas"]["DashboardHourPeaks"];
+            /**
+             * People
+             * @default []
+             */
+            people: components["schemas"]["DashboardPersonHours"][];
+            /** Cells */
+            cells: components["schemas"]["DashboardHourCell"][];
         };
         /**
          * DashboardLegacySales
@@ -4849,6 +4943,24 @@ export interface components {
             trend: components["schemas"]["DashboardPoint"][];
             /** By User */
             by_user: components["schemas"]["DashboardMetricItem"][];
+            /**
+             * By Origin
+             * @default []
+             */
+            by_origin: components["schemas"]["DashboardMessagesByOrigin"][];
+        };
+        /** DashboardMessagesByOrigin */
+        DashboardMessagesByOrigin: {
+            /** Date */
+            date: string;
+            /** App */
+            app: number;
+            /** Automation */
+            automation: number;
+            /** Scheduled */
+            scheduled: number;
+            /** Phone */
+            phone: number;
         };
         /** DashboardMetricItem */
         DashboardMetricItem: {
@@ -4887,6 +4999,7 @@ export interface components {
             tags: components["schemas"]["DashboardTags"];
             appointments: components["schemas"]["DashboardAppointments"];
             activity: components["schemas"]["DashboardActivity"];
+            hours: components["schemas"]["DashboardHours"];
             /** Generated At */
             generated_at: string;
         };
@@ -4896,6 +5009,26 @@ export interface components {
             leads: number;
             /** Total */
             total: number;
+        };
+        /** DashboardPersonHourCell */
+        DashboardPersonHourCell: {
+            /** Weekday */
+            weekday: number;
+            /** Slot */
+            slot: number;
+            /** Messages */
+            messages: number;
+            /** Flows Manual */
+            flows_manual: number;
+        };
+        /** DashboardPersonHours */
+        DashboardPersonHours: {
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name: string;
+            /** Cells */
+            cells: components["schemas"]["DashboardPersonHourCell"][];
         };
         /** DashboardPipeline */
         DashboardPipeline: {
@@ -6296,6 +6429,45 @@ export interface components {
             items: components["schemas"]["Message"][];
             /** Has More */
             has_more: boolean;
+        };
+        /**
+         * MessageSearchHit
+         * @description Un mensaje que contiene la búsqueda, con lo justo del lead para
+         *     nombrarlo en la lista de resultados.
+         */
+        MessageSearchHit: {
+            /** Message Id */
+            message_id: number;
+            /** Chat Id */
+            chat_id: string;
+            /** Name */
+            name?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Sender */
+            sender: string;
+            /** Message Type */
+            message_type?: string | null;
+            /** Sent At */
+            sent_at?: string | null;
+        };
+        /** MessageSearchPage */
+        MessageSearchPage: {
+            /** Items */
+            items: components["schemas"]["MessageSearchHit"][];
+            /** Has More */
+            has_more: boolean;
+            /** Total */
+            total?: number | null;
+            /**
+             * Total Capped
+             * @default false
+             */
+            total_capped: boolean;
         };
         /** MetaEmbeddedSignupRequest */
         MetaEmbeddedSignupRequest: {
@@ -9240,6 +9412,8 @@ export interface operations {
                 cursor_ts?: string | null;
                 cursor_id?: string | null;
                 limit?: number;
+                cursor_rank?: number | null;
+                search_in?: string;
                 unread_only?: boolean;
                 stages?: string | null;
                 tag_ids?: string | null;
@@ -9250,7 +9424,6 @@ export interface operations {
                 last_sender?: string | null;
                 inactive_days?: number | null;
                 waiting_time?: string | null;
-                cursor_rank?: number | null;
                 automation_paused?: boolean;
             };
             header?: never;
@@ -9299,6 +9472,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_message_search_api_chats_message_search_get: {
+        parameters: {
+            query: {
+                search: string;
+                cursor_ts?: string | null;
+                cursor_id?: number | null;
+                limit?: number;
+                unread_only?: boolean;
+                stages?: string | null;
+                tag_ids?: string | null;
+                tag_mode?: string;
+                service?: string | null;
+                seller_id?: number | null;
+                origin?: string | null;
+                last_sender?: string | null;
+                inactive_days?: number | null;
+                waiting_time?: string | null;
+                automation_paused?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSearchPage"];
                 };
             };
             /** @description Validation Error */
@@ -14316,6 +14534,8 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 mine?: boolean;
+                started_by?: number | null;
+                team?: boolean;
                 limit?: number;
             };
             header?: never;

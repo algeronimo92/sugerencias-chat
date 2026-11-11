@@ -2,7 +2,7 @@
 
 Antes era un módulo plano admin-only. Se partió cuando el dashboard se abrió a
 los vendedores: cada bloque (`summary`, `leads`, `automations`, `tags`,
-`appointments`, `activity`) resuelve sus consultas en paralelo y el orquestador
+`appointments`, `activity`, `hours`) resuelve sus consultas en paralelo y el orquestador
 las une en un payload único, porque el panel las muestra todas de una y pedirlas
 por separado multiplicaría los round-trips y el trabajo de caché.
 """
@@ -14,6 +14,7 @@ from app.modules.leads.dashboard import (
     activity_queries as activity,
     appointments_queries as appointments,
     automations_queries as automations,
+    hours_queries as hours,
     leads_queries as leads,
     summary_queries as summary,
     tags_queries as tags,
@@ -33,7 +34,7 @@ _cache_lock = asyncio.Lock()
 
 
 async def _compute(scope: DashboardScope) -> dict:
-    summary_block, leads_block, automations_block, tags_block, appointments_block, activity_block, currency = (
+    summary_block, leads_block, automations_block, tags_block, appointments_block, activity_block, hours_block, currency = (
         await asyncio.gather(
             summary.collect(scope),
             leads.collect(scope),
@@ -41,6 +42,7 @@ async def _compute(scope: DashboardScope) -> dict:
             tags.collect(scope),
             appointments.collect(scope),
             activity.collect(scope),
+            hours.collect(scope),
             business_currency(),
         )
     )
@@ -56,6 +58,7 @@ async def _compute(scope: DashboardScope) -> dict:
         "tags": tags_block,
         "appointments": appointments_block,
         "activity": activity_block,
+        "hours": hours_block,
         "currency": currency,
         # Para las versiones anteriores de la app: el bloque de ventas vacío,
         # con la forma que leen. Ver DashboardLegacySales.

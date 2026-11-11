@@ -3,11 +3,16 @@ insensible a acentos, sobre todo el historial de mensajes y tolerante al
 formato de los teléfonos. Se verifica compilando el SQL generado (no hay
 PostgreSQL en la suite)."""
 
+import re
+
 import pytest
 from sqlalchemy.dialects import postgresql
 
 import app.modules.conversations.chat_queries as _domain_app_modules_conversations_chat_queries
-from app.modules.conversations.chat_queries import _chat_search_condition, _escape_like, _matched_message_subquery, _search_rank_expression
+from app.modules.conversations.chat_queries import (
+    MAX_SEARCH_TERMS, _chat_search_condition, _contact_search_condition, _escape_like, _matched_message_subquery,
+    _message_text_match, _search_rank_expression, search_terms,
+)
 
 
 def _compile(search: str) -> str:
@@ -74,6 +79,39 @@ class TestCondicionDeBusqueda:
         sql = _compile("jose")
         assert "f_unaccent" not in sql
         assert "leads.nombre ILIKE" in sql
+
+
+class TestBusquedaPorPalabras:
+    """Con la frase exacta, "limpieza facial" no encontraba "limpiezas
+    faciales" ni "limpieza profunda facial"; WhatsApp sí."""
+
+    def test_parte_la_busqueda_en_palabras_sin_repetir(self):
+        assert search_terms("  Limpieza   facial limpieza ") == ["Limpieza", "facial"]
+        assert len(search_terms(" ".join(f"p{i}" for i in range(30)))) == MAX_SEARCH_TERMS
+
+    def test_un_mensaje_tiene_que_traer_todas_las_palabras(self):
+        sql = _compile_expr(_message_text_match("limpieza facial")).replace("%%", "%")
+        # Las dos palabras sobre el mismo campo, unidas por AND; nunca la frase.
+        content = "f_unaccent(wsp_messages.content) ILIKE f_unaccent"
+        assert re.search(re.escape(f"{content}('%limpieza%')") + r" ESCAPE \S+ AND " + re.escape(f"{content}('%facial%')"), sql)
+        assert "'%limpieza facial%'" not in sql
+
+    def test_las_palabras_pueden_repartirse_entre_campos_del_lead(self):
+        # "grecia botox": la vendedora y el servicio de interés.
+        sql = _compile_expr(_contact_search_condition("grecia botox")).replace("%%", "%")
+        assert sql.count("f_unaccent(leads.servicio_interes) ILIKE") == 2
+        assert "'%grecia botox%'" not in sql
+
+    def test_los_contactos_no_miran_los_mensajes(self):
+        # La sección "Contactos" son los leads que matchean por sus datos: los
+        # que matchean por un mensaje van en "Mensajes", uno por mensaje.
+        sql = _compile_expr(_contact_search_condition("botox"))
+        assert "wsp_messages" not in sql
+        assert "leads.servicio_interes" in sql
+
+    def test_un_telefono_con_espacios_sigue_siendo_un_solo_numero(self):
+        sql = _compile_expr(_contact_search_condition("983 049 189")).replace("%%", "%")
+        assert "'%983049189%'" in sql
 
 
 def _compile_expr(expr) -> str:

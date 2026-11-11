@@ -55,7 +55,13 @@ export function FlowPicker({ chatId }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    // `sm:relative` y no `relative`: en el celular el botón queda en el medio
+    // de la cabecera (a su derecha van cita, "más" y ficha), así que un menú
+    // de 288 px anclado a su borde derecho se salía ~60 px por la izquierda
+    // de la pantalla y cortaba los nombres. Sin contenedor posicionado, el
+    // menú se ancla al hilo del chat (`relative` en ChatThread) y cuelga bajo
+    // la cabecera (h-16) pegado al borde derecho de la pantalla.
+    <div ref={containerRef} className="sm:relative">
       <button
         type="button"
         aria-label="Iniciar un flujo para este lead"
@@ -70,7 +76,7 @@ export function FlowPicker({ chatId }: Props) {
         <Workflow className="h-5 w-5" />
       </button>
       {open && (
-        <div className="absolute right-0 top-12 z-30 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
+        <div className="absolute right-2 top-[4.25rem] z-30 w-72 sm:right-0 sm:top-12 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
           <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">
             Iniciar flujo
           </p>

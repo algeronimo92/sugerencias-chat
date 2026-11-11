@@ -11,7 +11,7 @@ import { useMe } from '../features/auth/public/queries';
 import { asApiError } from "../shared/http/errors";
 import { extractErrorMessage } from "../shared/utils/errors";
 import { MainLayout } from "./layout";
-import { homePathFor } from "./navigation";
+import { canSeeDashboard, homePathFor } from "./navigation";
 import { AccountActionProviders, CrmProviders, DataProviders } from "./providers";
 import { RouteError } from "./RouteError";
 // Fuera del bundle del CRM: con sesión activa el login no se usa (y arrastra
@@ -140,6 +140,9 @@ function DashboardRoute() {
   const role = useRole();
   const navigate = useNavigate();
   const { chatFilters } = useLayoutContext();
+  // Un enlace guardado o compartido no puede dejar al vendedor frente a un
+  // error: el backend le niega el dashboard, así que vuelve a su bandeja.
+  if (!canSeeDashboard(role)) return <HomeRedirect />;
   return (
     <DashboardPage
       role={role}

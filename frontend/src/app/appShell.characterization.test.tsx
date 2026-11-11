@@ -109,6 +109,19 @@ describe('sesión', () => {
     expect(await screen.findByLabelText('Correo electrónico')).toBeInTheDocument()
   })
 
+  // El dashboard compara al equipo por nombre: por ahora lo leen solo admin y
+  // analista. Un enlace guardado no puede dejar al vendedor frente a un error.
+  it('un vendedor que abre /dashboard vuelve a sus chats sin pedir las métricas', async () => {
+    api.current.on('get', '/api/auth/me', { data: SELLER })
+    at('/dashboard')
+    render(<App />)
+
+    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(screen.queryByRole('button', { name: 'Dashboard' })).not.toBeInTheDocument()
+    expect(api.current.calls('get', '/api/dashboard')).toEqual([])
+  })
+
   it('cerrar sesión avisa al servidor y vuelve al login', async () => {
     api.current.on('get', '/api/auth/me', { data: SELLER })
     api.current.on('post', '/api/auth/logout', () => {

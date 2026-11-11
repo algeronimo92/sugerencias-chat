@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MoveLeadStageInput, PageParam } from './types'
+import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MessagePageParam, MessageSearchPage, MoveLeadStageInput, PageParam } from './types'
 
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
@@ -103,9 +103,10 @@ async function runBulk<T>(chatIds: string[], run: (chatId: string) => Promise<T>
   return { succeeded, failed }
 }
 
-export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters): Promise<ChatsPage> {
+/** Los filtros de la bandeja como parámetros: los comparten la lista de
+ * chats y la búsqueda por mensaje. */
+function filterParams(filters?: ChatFilters): Record<string, string> {
   const params: Record<string, string> = {}
-  if (search) params.search = search
   if (filters?.unreadOnly) params.unread_only = 'true'
   if (filters?.stages.length) params.stages = filters.stages.join(',')
   if (filters?.tagIds.length) params.tag_ids = filters.tagIds.join(',')
@@ -117,12 +118,31 @@ export async function fetchChatsPage(search: string, pageParam: PageParam, filte
   if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
   if (filters?.waitingTime) params.waiting_time = filters.waitingTime
   if (filters?.automationPaused) params.automation_paused = 'true'
+  return params
+}
+
+/** `contactsOnly` pide solo los leads que matchean por sus datos: los que
+ * matchean por un mensaje los trae `fetchMessageSearchPage`, uno por mensaje. */
+export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters, contactsOnly = false): Promise<ChatsPage> {
+  const params = filterParams(filters)
+  if (search) params.search = search
+  if (search && contactsOnly) params.search_in = 'contacts'
   if (pageParam) {
     params.cursor_id = String(pageParam.cursorId)
     if (pageParam.cursorTs) params.cursor_ts = pageParam.cursorTs
     if (search) params.cursor_rank = String(pageParam.cursorRank ?? 2)
   }
   const { data } = await client.get<ApiResponse<'/api/chats', 'get'>>('/api/chats', { params })
+  return data
+}
+
+export async function fetchMessageSearchPage(search: string, pageParam: MessagePageParam, filters?: ChatFilters): Promise<MessageSearchPage> {
+  const params: Record<string, string> = { ...filterParams(filters), search }
+  if (pageParam) {
+    params.cursor_id = String(pageParam.cursorId)
+    params.cursor_ts = pageParam.cursorTs
+  }
+  const { data } = await client.get<ApiResponse<'/api/chats/message-search', 'get'>>('/api/chats/message-search', { params })
   return data
 }
 

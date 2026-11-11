@@ -89,6 +89,35 @@ class LeadActivityItem(BaseModel):
 class ChatPage(BaseModel):
     items: list[Chat]
     has_more: bool
+    # Solo en la primera página de una búsqueda de contactos
+    # (`search_in=contacts`): cuántos leads matchean en total.
+    total: int | None = None
+
+
+class MessageSearchHit(BaseModel):
+    """Un mensaje que contiene la búsqueda, con lo justo del lead para
+    nombrarlo en la lista de resultados."""
+    message_id: int
+    chat_id: str
+    name: str | None = None
+    username: str | None = None
+    phone: str | None = None
+    # El texto donde está el match: el del mensaje o, en un adjunto sin texto,
+    # el resumen que generó la IA.
+    text: str | None = None
+    # "cliente" o "vendedor" (todo lo que mandó el negocio).
+    sender: str
+    message_type: str | None = None
+    sent_at: str | None = None
+
+
+class MessageSearchPage(BaseModel):
+    items: list[MessageSearchHit]
+    has_more: bool
+    # Solo en la primera página. Con `total_capped` el número es un piso
+    # ("1000+"): no se cuenta el historial entero.
+    total: int | None = None
+    total_capped: bool = False
 
 
 class KanbanPage(BaseModel):
@@ -233,6 +262,12 @@ class DashboardFlowRow(DashboardMetricItem):
     failed: int
     skipped: int
     active: int
+    # Las dos suman `value`.
+    manual: int
+    automatic: int
+    # Parte de `manual` y de `automatic` que inició otro flujo.
+    manual_chained: int
+    automatic_chained: int
     last_at: str | None = None
 
 
@@ -280,12 +315,24 @@ class DashboardFlowFailures(BaseModel):
     top_errors: list[DashboardMetricItem]
 
 
+class DashboardFlowOrigins(BaseModel):
+    manual: int
+    automatic: int
+    # Parte de cada una que inició otro flujo; no se suman aparte.
+    manual_chained: int
+    automatic_chained: int
+
+
 class DashboardAutomations(BaseModel):
     by_flow: list[DashboardFlowRow]
+    origin_totals: DashboardFlowOrigins
     by_actor: list[DashboardMetricItem]
     by_source: list[DashboardMetricItem]
     by_trigger: list[DashboardMetricItem]
     trend: list[DashboardPoint]
+    # `trend` partida en dos series que suman lo mismo.
+    trend_manual: list[DashboardPoint]
+    trend_automatic: list[DashboardPoint]
     failures: DashboardFlowFailures
     active_now: dict[str, int]
 
@@ -394,9 +441,23 @@ class DashboardAppointments(BaseModel):
     linkage: DashboardLinkage
 
 
+class DashboardMessagesByOrigin(BaseModel):
+    date: str
+    # Desde la app por una persona.
+    app: int
+    # Por un flujo de automatización.
+    automation: int
+    # Programados: los escribió una persona y salieron solos a su hora.
+    scheduled: int
+    # Escritos en el celular del negocio: llegan como eco, sin autor.
+    phone: int
+
+
 class DashboardMessages(BaseModel):
+    # Solo los de la app (con autor); by_origin trae todos los del negocio.
     trend: list[DashboardPoint]
     by_user: list[DashboardMetricItem]
+    by_origin: list[DashboardMessagesByOrigin] = []
 
 
 class DashboardActivity(BaseModel):
@@ -404,6 +465,63 @@ class DashboardActivity(BaseModel):
     by_type: list[DashboardMetricItem]
     by_user: list[DashboardMetricItem]
     messages: DashboardMessages
+
+
+class DashboardHourCell(BaseModel):
+    # 0 = lunes … 6 = domingo, en la hora local del negocio.
+    weekday: int
+    # Franja del día: 0 = primeras `slot_hours` horas.
+    slot: int
+    # Leads creados en esa franja.
+    conversations: int
+    # De esos, los que ya tuvieron su ventana completa: denominador de `engaged`.
+    settled: int
+    # Volvieron a escribir tras nuestra primera respuesta, dentro de la ventana.
+    engaged: int
+    flows_manual: int
+    flows_automatic: int
+    # Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular.
+    messages: int
+    # Salieron desde WhatsApp fuera del CRM, en todos los chats. Sin autora:
+    # no se atribuyen a nadie, y al mirar a una sola persona van en cero.
+    phone_messages: int
+
+
+class DashboardHourPeaks(BaseModel):
+    # La franja más cargada de la persona más activa del equipo, en promedio
+    # por día de la semana. Es el tope de color de los mapas por persona.
+    messages: float
+    flows_manual: float
+
+
+class DashboardPersonHourCell(BaseModel):
+    weekday: int
+    slot: int
+    # Lo que la persona escribió en el CRM, en cualquier chat.
+    messages: int
+    # Flujos que inició a mano.
+    flows_manual: int
+
+
+class DashboardPersonHours(BaseModel):
+    user_id: int
+    name: str
+    # Solo las celdas con algo; vacía si no hizo nada en el período.
+    cells: list[DashboardPersonHourCell]
+
+
+class DashboardHours(BaseModel):
+    slot_hours: int
+    engagement_window_hours: int
+    # Cuántas veces cayó cada día de la semana en el período (0 = lunes).
+    weekday_occurrences: list[int]
+    # Primer día del período, en la fecha local del negocio (AAAA-MM-DD).
+    start_date: str
+    person_peaks: DashboardHourPeaks
+    # El equipo persona por persona; vacío al mirar a una sola.
+    people: list[DashboardPersonHours] = []
+    # Solo las celdas con algún movimiento.
+    cells: list[DashboardHourCell]
 
 
 class DashboardLegacySalesTotals(BaseModel):
@@ -456,4 +574,5 @@ class DashboardMetrics(BaseModel):
     tags: DashboardTags
     appointments: DashboardAppointments
     activity: DashboardActivity
+    hours: DashboardHours
     generated_at: str

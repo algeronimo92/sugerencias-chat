@@ -4,7 +4,7 @@ function usefulInitial(value: string | null | undefined): string | undefined {
   return value?.replace(/[0-9#*]\uFE0F?\u20E3/gu, '').match(/[\p{L}\p{N}]/u)?.[0]
 }
 
-export function displayUsername(chat: Chat): string | null {
+export function displayUsername(chat: Pick<Chat, 'username'>): string | null {
   const username = chat.username?.trim()
   if (!username || !usefulInitial(username)) return null
   return username.startsWith('@') ? username : `@${username}`
@@ -22,7 +22,8 @@ export function displayPhone(chat: Chat): string {
   return chat.phone ?? 'Sin teléfono asociado'
 }
 
-export function avatarInitial(chat: Chat): string {
+// El teléfono es opcional porque los resultados del buscador de mensajes no lo traen.
+export function avatarInitial(chat: Pick<Chat, 'username' | 'name'> & { phone?: Chat['phone'] }): string {
   // Conserva la prioridad del username y busca caracteres Unicode completos.
   const initial = usefulInitial(displayUsername(chat)) ?? usefulInitial(chat.name) ?? usefulInitial(chat.phone)
   return initial?.toUpperCase() ?? '#'

@@ -549,19 +549,69 @@ function foldText(value: string): string {
   return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-/** Recorta el texto para que el término buscado quede visible al inicio del
- * preview (como WhatsApp): si el match está más adelante, se antepone "… "
- * y se arranca un poco antes de la coincidencia. Insensible a acentos. */
+/** Las palabras de una búsqueda, sin repetir. El servidor busca igual: cada
+ * palabra por separado, no la frase exacta. */
+export function searchTerms(search: string): string[] {
+  const terms: string[] = [];
+  const seen = new Set<string>();
+  for (const term of search.split(/\s+/)) {
+    const key = foldText(term);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    terms.push(term);
+  }
+  return terms;
+}
+
+/** Dónde cae cada palabra de la búsqueda dentro del texto, como tramos
+ * [inicio, fin) ordenados y sin solaparse. Insensible a acentos. */
+function matchRanges(text: string, search: string): [number, number][] {
+  const folded = foldText(text);
+  // Si quitar los acentos cambió el largo, los índices ya no corresponden al
+  // texto original: mejor no resaltar que resaltar corrido.
+  if (folded.length !== text.length) return [];
+  const ranges: [number, number][] = [];
+  for (const term of searchTerms(search)) {
+    const needle = foldText(term);
+    for (let index = folded.indexOf(needle); index >= 0; index = folded.indexOf(needle, index + needle.length)) {
+      ranges.push([index, index + needle.length]);
+    }
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const range of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]);
+    else merged.push([...range]);
+  }
+  return merged;
+}
+
+/** Recorta el texto para que lo buscado quede visible al inicio del
+ * preview (como WhatsApp): si la primera palabra encontrada está más adelante,
+ * se antepone "… " y se arranca un poco antes. Insensible a acentos. */
 export function searchSnippet(
   text: string,
   term: string,
   context = 20,
 ): string {
-  const needle = foldText(term.trim());
-  if (!needle) return text;
-  const index = foldText(text).indexOf(needle);
+  const index = matchRanges(text, term)[0]?.[0] ?? -1;
   if (index <= context) return text;
   return "… " + text.slice(index - context).trimStart();
+}
+
+/** El texto partido en tramos, marcando los que coinciden con alguna palabra
+ * de la búsqueda: es lo que se pinta resaltado en los resultados. */
+export function highlightSegments(text: string, search: string): { text: string; match: boolean }[] {
+  const segments: { text: string; match: boolean }[] = [];
+  let cursor = 0;
+  for (const [from, to] of matchRanges(text, search)) {
+    if (from > cursor) segments.push({ text: text.slice(cursor, from), match: false });
+    segments.push({ text: text.slice(from, to), match: true });
+    cursor = to;
+  }
+  if (cursor < text.length || segments.length === 0) segments.push({ text: text.slice(cursor), match: false });
+  return segments;
 }
 
 /** Parte el texto en [antes, match, después] para resaltar la coincidencia,

@@ -8,6 +8,41 @@ import { isPersonal, who, type DashboardSubject } from './subject'
 import { formatChange, formatDuration, formatMoney, formatNumber } from './format'
 import { fromAppointments } from './serviceBreakdown'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
+import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
+import { MessagesByOriginPanel } from './MessagesByOriginPanel'
+import { TeamHoursPanel } from './TeamHoursPanel'
+
+// "Cuántas llegan" dice cuándo escribe la gente (y cuándo Meta muestra los
+// anuncios); "Siguieron conversando" es lo que responde a qué hora reaccionan
+// mejor. Van juntas para no leer el volumen como si fuera calidad.
+const CONVERSATION_READINGS: HoursReadingOption[] = [
+  { key: 'conversations', label: 'Cuántas llegan', hint: 'Conversaciones nuevas, en promedio por día de la semana.' },
+  {
+    key: 'engaged',
+    label: 'Siguieron conversando',
+    hint: '% que volvió a escribir después de nuestra primera respuesta, humana o automática, dentro de las 24 h. Las de hoy aún no cuentan.',
+  },
+]
+
+// Las dos mitades del trabajo de escribir, sobre la misma cuadrícula: un
+// equipo que atiende desde WhatsApp sale en blanco en la primera y aparece en
+// la segunda. Los programados y los flujos no entran en ninguna: no dicen a
+// qué hora estuvo alguien atendiendo. La segunda solo existe al mirar al
+// equipo: esos mensajes no traen autor y no se pueden mostrar como de alguien.
+const WRITING_READINGS: HoursReadingOption[] = [
+  {
+    key: 'messages',
+    label: 'En el CRM',
+    hint: 'Mensajes escritos y enviados en el momento desde el CRM, por quien los escribió y en cualquier chat. En promedio por día de la semana.',
+  },
+  {
+    key: 'phone_messages',
+    // El mismo nombre que en "Mensajes enviados por día": "desde el celular"
+    // dejaba afuera WhatsApp Web, que también sale por acá.
+    label: 'Desde WhatsApp, fuera del CRM',
+    hint: 'Mensajes que salieron por WhatsApp sin pasar por el CRM, de todos los chats. No traen autor, e incluyen respuestas automáticas y difusiones de WhatsApp.',
+  },
+]
 
 interface Props {
   data: DashboardMetrics
@@ -44,11 +79,11 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Citas registradas" value={summary.appointments_created} hint={period} icon={CalendarCheck} />
-        <MetricCard label={who(subject, { me: 'Flujos que activé', team: 'Flujos activados', seller: (name) => `Flujos que activó ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} siguen activos`} icon={Send} onClick={onOpenFlows} />
+        <MetricCard label={who(subject, { me: 'Flujos que inicié', team: 'Flujos iniciados', seller: (name) => `Flujos que inició ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} sin terminar`} icon={Send} onClick={onOpenFlows} />
         <MetricCard
-          label="Mensajes enviados"
+          label="Mensajes escritos en el CRM"
           value={summary.messages_sent}
-          hint={`Desde la app · ${period}`}
+          hint={`Los envió una persona desde el CRM, no un flujo ni WhatsApp · ${period}`}
           icon={MessagesSquare}
         />
         <MetricCard label="Leads etiquetados" value={summary.tagged_leads} hint={data.tags.coverage.rate != null ? `${data.tags.coverage.rate}% de cobertura` : 'Sin leads'} icon={Tag} />
@@ -79,13 +114,50 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <TrendChart points={data.new_leads_trend} label="Leads" />
         </Panel>
 
-        <Panel anchor="mensajes-por-dia"
-          title="Mensajes enviados por día"
-          subtitle="Solo los que salieron de la app: un mensaje escrito desde el celular llega sin autor"
+        <Panel
+          anchor="horas-de-mas-movimiento"
+          title="Horas de más movimiento"
+          subtitle={`${who(subject, { me: 'Mis leads', team: 'Todo el equipo', seller: (name) => `Leads de ${name}` })} · ${period} · por día de la semana y franja de ${data.hours?.slot_hours ?? 2} horas`}
           className="lg:col-span-2"
         >
-          <TrendChart points={activity.messages.trend} label="Mensajes" />
+          <HoursHeatmap hours={data.hours} days={days} readings={CONVERSATION_READINGS} label="Horas de más movimiento" />
         </Panel>
+
+        <Panel anchor="mensajes-por-dia"
+          title={days >= 90 ? 'Mensajes enviados por semana' : 'Mensajes enviados por día'}
+          subtitle={`${who(subject, { me: 'Lo que mandó el negocio en mis chats', team: 'Todo lo que mandó el negocio', seller: (name) => `Lo que mandó el negocio en los chats de ${name}` })}, según de dónde salió · ${period}`}
+          className="lg:col-span-2"
+        >
+          <MessagesByOriginPanel points={activity.messages.by_origin ?? []} days={days} />
+        </Panel>
+
+        <Panel
+          anchor="a-que-hora-se-escribe"
+          title="A qué hora se escribe a los clientes"
+          subtitle={`${who(subject, { me: 'Yo', team: 'Todo el equipo', seller: (name) => name })} · ${period} · por día de la semana y franja de ${data.hours?.slot_hours ?? 2} horas`}
+          className="lg:col-span-2"
+        >
+          <HoursHeatmap
+            hours={data.hours}
+            days={days}
+            readings={isPersonal(subject) ? WRITING_READINGS.slice(0, 1) : WRITING_READINGS}
+            label="A qué hora se escribe a los clientes"
+            teamScale={isPersonal(subject)}
+          />
+        </Panel>
+
+        {/* Solo al mirar al equipo: con una persona elegida no hay con quién
+            compararla, y su mapa ya es el panel de arriba. */}
+        {subject.kind === 'team' && (
+          <Panel
+            anchor="horas-por-persona"
+            title="Quién atiende y a qué hora"
+            subtitle={`Lo que cada persona hizo en el CRM y, aparte, lo que salió por WhatsApp · ${period} · franjas de ${data.hours?.slot_hours ?? 2} horas`}
+            className="lg:col-span-2"
+          >
+            <TeamHoursPanel hours={data.hours} />
+          </Panel>
+        )}
 
         <Panel anchor="actividad"
           title={who(subject, { me: 'Mi actividad', team: 'Actividad del equipo', seller: (name) => `Actividad de ${name}` })}
@@ -94,8 +166,8 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <BarList items={activity.by_type} emptyLabel="Sin actividad registrada" />
         </Panel>
 
-        <Panel anchor="quien-manda-mensajes" title="Quién manda más mensajes" subtitle={`Ranking del equipo · ${period}`}>
-          <BarList items={activity.messages.by_user} emptyLabel="Nadie envió mensajes desde la app" />
+        <Panel anchor="quien-manda-mensajes" title="Quién escribe más en el CRM" subtitle={`Solo los mensajes escritos en el CRM: lo que sale desde WhatsApp llega sin autor · ranking del equipo · ${period}`}>
+          <BarList items={activity.messages.by_user} emptyLabel="Nadie escribió mensajes en el CRM en el período" />
         </Panel>
 
         <Panel anchor="ventas"

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import {
-  Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis,
+  Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis,
 } from 'recharts'
 import type { DashboardAmountPoint } from '../types'
 import { formatDayLabel, formatMoney, formatNumber } from './format'
 import type { Change } from './salesFormat'
-import { compareSeries } from './salesFormat'
+import { compareSeries, isSunday, monthStartIn } from './salesFormat'
 
 // El período anterior va en gris: es contexto, no una segunda serie que
 // compita con la actual. Es el mismo neutro en claro y oscuro (--color-viz-idle).
@@ -104,6 +104,15 @@ export function SalesTrendChart({ current, previous, days, currency, labels = DE
   const rangeLabel = (start: string, end?: string) =>
     end && end !== start ? `${formatDayLabel(start)} – ${formatDayLabel(end)}` : formatDayLabel(start)
   const metricLabel = labels[metric]
+  // Separadores verticales: en la vista diaria, cada domingo (cierre de
+  // semana); en la semanal (90 días o más) cada punto ya es una semana, así
+  // que la línea marca la semana en la que empieza un mes.
+  const markers = points.flatMap((point) => {
+    if (!weekly) return isSunday(point.date) ? [{ date: point.date, label: `dom ${Number(point.date.slice(8, 10))}` }] : []
+    const month = monthStartIn(point.date, point.endDate ?? point.date)
+    return month ? [{ date: point.date, label: month }] : []
+  })
+  const markerLegend = weekly ? 'Inicio de mes' : 'Domingo (cierre de semana)'
 
   return (
     <div>
@@ -117,6 +126,12 @@ export function SalesTrendChart({ current, previous, days, currency, labels = DE
             <span className="h-0.5 w-3.5 rounded-full bg-viz-idle" aria-hidden="true" />
             {days} días anteriores
           </li>
+          {markers.length > 0 && (
+            <li className="flex items-center gap-1.5">
+              <span className="h-3 border-l border-dashed border-viz-idle" aria-hidden="true" />
+              {markerLegend}
+            </li>
+          )}
         </ul>
         <div role="group" aria-label="Métrica de la tendencia" className="inline-flex rounded-lg bg-wa-field p-0.5 dark:bg-wa-head-dark">
           {(['revenue', 'count'] as const).map((option) => (
@@ -139,7 +154,7 @@ export function SalesTrendChart({ current, previous, days, currency, labels = DE
 
       <div className="h-56 w-full text-viz-1 dark:text-viz-1-dark" role="img" aria-label={`${metricLabel} ${weekly ? 'por semana' : 'por día'} frente al período anterior`}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} accessibilityLayer>
+          <ComposedChart data={points} margin={{ top: markers.length ? 18 : 8, right: 8, bottom: 0, left: 0 }} accessibilityLayer>
             <CartesianGrid vertical={false} stroke={PREVIOUS_STROKE} strokeOpacity={0.2} />
             <XAxis dataKey="date" hide />
             <YAxis
@@ -150,6 +165,17 @@ export function SalesTrendChart({ current, previous, days, currency, labels = DE
               tickFormatter={tickFormat}
               allowDecimals={false}
             />
+            {markers.map((marker) => (
+              <ReferenceLine
+                key={marker.date}
+                x={marker.date}
+                stroke={PREVIOUS_STROKE}
+                strokeOpacity={0.55}
+                strokeDasharray="3 4"
+                ifOverflow="extendDomain"
+                label={{ value: marker.label, position: 'top', fontSize: 10, fill: PREVIOUS_STROKE }}
+              />
+            ))}
             <ChartTooltip
               cursor={{ stroke: PREVIOUS_STROKE }}
               // Colores del tema (index.css): con un fondo blanco fijo el

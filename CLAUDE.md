@@ -25,6 +25,7 @@ Fuente completa: [docs/arquitectura-modular.md](docs/arquitectura-modular.md).
 | `backend/alembic/versions/` | **Única fuente del esquema** (un solo head) | [backend/migrations/README.md](backend/migrations/README.md): los `.sql` están congelados |
 | `backend/tests/test_layering.py` · `frontend/src/test/architecture.test.ts` | Reglas de arquitectura como tests | ver abajo |
 | `frontend/src/{app,features/<15>,shared,realtime}` | Composición; una carpeta por feature; piezas sin reglas de negocio; bus de tiempo real | [frontend/src/app/README.md](frontend/src/app/README.md), [frontend/src/shared/README.md](frontend/src/shared/README.md) |
+| `e2e/` | Pruebas de pantalla: la app compilada en un navegador real, con el backend simulado | [e2e/README.md](e2e/README.md) |
 | `frontend/src/api/schema.d.ts` | Tipos generados del OpenAPI; CI falla si se desincronizan | `scripts/generate-api-types.sh` |
 | `scripts/` · `backend/scripts/` | Operación del VPS (deploy, backup, TLS) · `python -m scripts.<x>` (dry-run salvo `--apply`) | |
 | `compose.yml` · `compose.db.yml` + `compose.prod.yml` + `compose.bluegreen.yml` | Desarrollo · producción (la base vive aparte, una vez por servidor) | [README.md](README.md) (despliegue) |
@@ -58,6 +59,9 @@ cd backend && DATABASE_URL=... SECRET_KEY=dev alembic revision --autogenerate -m
 
 # Frontend (lint = oxlint, test = vitest).
 cd frontend && npm run lint && npm test && npm run build
+
+# Pruebas de pantalla (Playwright, backend simulado): compila el frontend y lo abre en escritorio y celular.
+cd e2e && npm ci && npx playwright install chromium && npm run typecheck && npm test
 
 # Tipos de API: regenerar y comprobar que no cambió nada (CI falla si hay diff).
 scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema.d.ts
@@ -120,3 +124,6 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
   `experto-negocio-clinicas`, `experto-anuncios-meta`, `analista-datos` y `moderador-producto`, que sintetiza.
   Se corren juntos con `Workflow({ name: 'debate-expertos', args: { tema, contexto } })`
   (`.claude/workflows/debate-expertos.js`). Ejemplo de resultado: `docs/analisis/16-debate-dashboard-analitica.md`.
+- Debate con contrapartes: `desarrollador-frontend` se suma al panel y `contraparte-agnostica` se instancia una vez
+  por especialista para intentar tumbar su propuesta antes de la réplica y la síntesis.
+  `Workflow({ name: 'debate-contrapartes', args: { tema, contexto } })` (`.claude/workflows/debate-contrapartes.js`).

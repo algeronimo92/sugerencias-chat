@@ -21,6 +21,7 @@ from app.modules.leads.dashboard import (
     activity_queries as activity,
     appointments_queries as appointments,
     automations_queries as automations,
+    hours_queries as hours,
     leads_queries as leads,
     summary_queries as summary,
     tags_queries as tags,
@@ -29,7 +30,7 @@ from app.modules.leads.dashboard import currency
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, build_scope
 
 
-BLOCKS = (summary, leads, automations, tags, appointments, activity)
+BLOCKS = (summary, leads, automations, tags, appointments, activity, hours)
 
 
 def _sample_value(column):
@@ -102,13 +103,14 @@ async def test_payload_carries_every_panel(compiled_sql):
     assert data["scope"] == SCOPE_MINE
     assert data["period_days"] == 30
     for key in ("summary", "stages", "origins", "services", "sellers", "new_leads_trend",
-                "funnel", "pipeline", "automations", "tags", "appointments", "activity", "currency"):
+                "funnel", "pipeline", "automations", "tags", "appointments", "activity", "hours", "currency"):
         assert key in data, f"falta el bloque {key}"
     for key in ("total_leads", "new_leads", "awaiting_reply", "overdue_tasks", "completed_tasks",
                 "avg_response_minutes", "appointments_created", "flows_started", "flows_active",
                 "messages_sent", "tagged_leads"):
         assert key in data["summary"], f"falta el KPI {key}"
-    for key in ("by_flow", "by_actor", "by_source", "by_trigger", "trend", "failures", "active_now"):
+    for key in ("by_flow", "origin_totals", "by_actor", "by_source", "by_trigger", "trend", "trend_manual",
+                "trend_automatic", "failures", "active_now"):
         assert key in data["automations"], f"falta el panel de flujos {key}"
     for key in ("coverage", "top", "by_user", "trend"):
         assert key in data["tags"], f"falta el panel de etiquetas {key}"
@@ -117,6 +119,7 @@ async def test_payload_carries_every_panel(compiled_sql):
         assert key in data["appointments"], f"falta el panel de citas {key}"
     for key in ("trend", "by_type", "by_user", "messages"):
         assert key in data["activity"], f"falta el panel de actividad {key}"
+    assert set(data["activity"]["messages"]["by_origin"][0]) == {"date", "app", "automation", "scheduled", "phone"}
 
 
 @pytest.mark.asyncio
@@ -183,7 +186,9 @@ async def test_cache_reuses_the_payload_per_scope_and_user(compiled_sql):
 
 
 @pytest.mark.asyncio
-async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
+async def test_admin_and_analyst_open_the_team_and_a_seller_is_refused(monkeypatch):
+    """El panel compara al equipo por nombre: por ahora lo leen solo quienes
+    dirigen. Un vendedor no entra ni a lo suyo ni al total, pida lo que pida."""
     received = []
 
     async def fake_metrics(days, scope, user_id):
@@ -192,13 +197,17 @@ async def test_seller_defaults_to_own_scope_and_admin_to_the_team(monkeypatch):
 
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
-    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
     await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
-    # Un vendedor sí puede pedir el total del equipo: ya ve todos los chats, así
-    # que no es información nueva y le da contexto a sus propios números.
-    await dashboard_router.dashboard(days=30, scope=SCOPE_TEAM, seller_id=None, user=SimpleNamespace(id=3, role="vendedor"))
+    await dashboard_router.dashboard(days=30, scope=None, seller_id=None, user=SimpleNamespace(id=2, role="analista"))
+    await dashboard_router.dashboard(days=30, scope=SCOPE_MINE, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
+    assert received == [(30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 2), (30, SCOPE_MINE, 1)]
 
-    assert received == [(30, SCOPE_MINE, 3), (30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 3)]
+    seller = SimpleNamespace(id=3, role="vendedor")
+    for scope, seller_id in ((None, None), (SCOPE_MINE, None), (SCOPE_TEAM, None), (None, 3)):
+        with pytest.raises(HTTPException) as exc:
+            await dashboard_router.dashboard(days=30, scope=scope, seller_id=seller_id, user=seller)
+        assert exc.value.status_code == 403
+    assert len(received) == 3
 
 
 @pytest.mark.asyncio
@@ -294,9 +303,9 @@ async def test_separations_read_the_deposit_from_either_field_and_compare_window
 
 
 @pytest.mark.asyncio
-async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(monkeypatch):
+async def test_only_an_admin_can_open_another_persons_dashboard(monkeypatch):
     """Filtrar por vendedora es mirar "lo suyo" de otra persona: el admin
-    puede, un vendedor no (ya ve los rankings del equipo)."""
+    puede, el analista no."""
     received = []
 
     async def fake_metrics(days, scope, user_id):
@@ -306,9 +315,112 @@ async def test_admin_can_open_a_sellers_dashboard_and_a_seller_only_their_own(mo
     monkeypatch.setattr(dashboard_router, "get_dashboard_metrics", fake_metrics)
 
     await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=1, role="admin"))
-    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=3, user=SimpleNamespace(id=3, role="vendedor"))
-    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 3)]
+    await dashboard_router.dashboard(days=7, scope=SCOPE_TEAM, seller_id=1, user=SimpleNamespace(id=1, role="admin"))
+    assert received == [(7, SCOPE_MINE, 5), (7, SCOPE_MINE, 1)]
 
     with pytest.raises(HTTPException) as exc:
-        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=3, role="vendedor"))
+        await dashboard_router.dashboard(days=7, scope=None, seller_id=5, user=SimpleNamespace(id=2, role="analista"))
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_flow_trend_splits_into_manual_and_automatic_that_add_up(compiled_sql):
+    data = await dashboard_service.get_dashboard_metrics(7, SCOPE_TEAM, user_id=7)
+    flows = data["automations"]
+
+    assert len(flows["trend_manual"]) == len(flows["trend_automatic"]) == 7
+    for total, manual, automatic in zip(flows["trend"], flows["trend_manual"], flows["trend_automatic"]):
+        assert manual["value"] + automatic["value"] == total["value"]
+
+
+@pytest.mark.asyncio
+async def test_each_flow_splits_into_manual_and_automatic_that_add_up(compiled_sql):
+    """La dueña pregunta, flujo por flujo, cuántos inició alguien y cuántos
+    arrancaron solos: las dos partes tienen que sumar el total de la fila."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+
+    flows = data["automations"]["by_flow"]
+    assert flows
+    for flow in flows:
+        assert flow["manual"] >= 0 and flow["automatic"] >= 0
+        assert flow["manual"] + flow["automatic"] == flow["value"]
+        # Lo que inició otro flujo es parte de cada origen, no un tercero.
+        assert 0 <= flow["manual_chained"] <= flow["manual"]
+        assert 0 <= flow["automatic_chained"] <= flow["automatic"]
+    totals = data["automations"]["origin_totals"]
+    # El doble devuelve una fila con un flujo automático que inició otro flujo.
+    assert totals == {"manual": 0, "automatic": 1, "manual_chained": 0, "automatic_chained": 1}
+    assert 0 <= totals["manual_chained"] <= totals["manual"]
+    assert 0 <= totals["automatic_chained"] <= totals["automatic"]
+    by_flow_sql = [sql for sql in compiled_sql if "automation_rules.name" in sql and "GROUP BY" in sql]
+    # El mismo corte que la serie por día: sin usuario y no iniciado a mano.
+    assert any(
+        "started_by_user_id IS NULL AND automation_executions.start_source != " in sql for sql in by_flow_sql
+    )
+
+
+@pytest.mark.asyncio
+async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compiled_sql):
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+    hours = data["hours"]
+
+    # Sin esto, un período con cinco lunes haría ver al lunes más cargado.
+    assert sum(hours["weekday_occurrences"]) == 30
+    assert len(hours["weekday_occurrences"]) == 7
+    assert hours["slot_hours"] == 2 and hours["engagement_window_hours"] == 24
+    # Una fila de muestra en lunes: el tope es su conteo entre los lunes del período.
+    mondays = hours["weekday_occurrences"][0]
+    assert hours["person_peaks"] == {"messages": 1 / mondays, "flows_manual": 1 / mondays}
+    # Conversaciones, flujos y mensajes caen en la misma celda y se funden en una fila.
+    assert hours["cells"] == [{
+        "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
+        "flows_manual": 1, "flows_automatic": 1, "messages": 1, "phone_messages": 1,
+    }]
+    # El equipo persona por persona: lo escrito, los flujos a mano y el
+    # celular de la misma persona se funden en su celda.
+    assert hours["people"] == [{
+        "user_id": 1, "name": "valor",
+        "cells": [{"weekday": 0, "slot": 1, "messages": 1, "flows_manual": 1}],
+    }]
+    assert hours["start_date"] == build_scope(30, SCOPE_TEAM, 7).start_date.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_engagement_counts_turns_after_our_first_reply_within_the_window(compiled_sql):
+    """Tres mensajes seguidos del cliente antes de que nadie conteste no son
+    avance: cuenta que escriba de nuevo después de nuestra respuesta."""
+    await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+    sql = next(statement for statement in compiled_sql if "AS engaged" in statement and "isodow" in statement)
+
+    assert "sender != " in sql and "min(" in sql
+    assert "EXISTS" in sql
+    assert "leads.created_at + " in sql
+    assert "America/Lima" not in sql or "timezone(" in sql
+
+
+@pytest.mark.asyncio
+async def test_hours_follow_the_scope(compiled_sql):
+    await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+    by_hour = [statement for statement in compiled_sql if "isodow" in statement]
+
+    # Tres acotadas a la persona y dos del equipo entero, que dan la escala
+    # común. Lo de WhatsApp no se pide: no trae autora y no es de una persona.
+    assert len(by_hour) == 5
+    # Las conversaciones van por dueña del chat.
+    assert sum("leads.vendedor_id = " in statement for statement in by_hour) == 1
+    assert not any("phone_messages" in statement for statement in by_hour)
+    assert any("automation_executions.started_by_user_id = " in statement for statement in by_hour)
+    # Los mensajes van por quien los escribió, no por de quién es el chat: lo
+    # que una vendedora escribe en el chat de otra es trabajo suyo.
+    assert sum("wsp_messages.sent_by_user_id = " in statement for statement in by_hour) == 1
+    assert sum("automation_executions.started_by_user_id = " in statement for statement in by_hour) == 1
+
+
+@pytest.mark.asyncio
+async def test_hours_list_the_team_person_by_person_only_for_the_team(compiled_sql):
+    """Al mirar a una persona no hay con quién compararla en el mismo panel:
+    no se pide la lista del equipo ni se sirven las celdas de las demás."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    assert data["hours"]["people"] == []
+    assert not any("users.is_active" in statement for statement in compiled_sql)

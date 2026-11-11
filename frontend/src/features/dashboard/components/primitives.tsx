@@ -104,13 +104,15 @@ export function NoData({ label = 'Sin datos todavía' }: { label?: string }) {
 interface BarListProps {
   items: DashboardMetricItem[]
   labels?: Record<string, string>
+  /** Qué significa cada fila, cuando el nombre solo no alcanza para distinguirlas. */
+  hints?: Record<string, string>
   /** Color propio de cada barra, como el de las etapas que define el negocio. */
   colors?: Record<string, string>
   onSelect?: (name: string) => void
   emptyLabel?: string
 }
 
-export function BarList({ items, labels, colors, onSelect, emptyLabel }: BarListProps) {
+export function BarList({ items, labels, hints, colors, onSelect, emptyLabel }: BarListProps) {
   if (items.length === 0) return <NoData label={emptyLabel} />
 
   const max = Math.max(...items.map((item) => item.value), 1)
@@ -156,6 +158,7 @@ export function BarList({ items, labels, colors, onSelect, emptyLabel }: BarList
           <div key={item.name}>
             {header}
             {bar}
+            {hints?.[item.name] && <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">{hints[item.name]}</p>}
           </div>
         )
       })}
@@ -228,7 +231,7 @@ export function StackedBarList({
   segments: StackSegment[]
   onSelect?: (key: string) => void
 }) {
-  if (rows.length === 0) return <NoData label="Ningún flujo se activó en el período" />
+  if (rows.length === 0) return <NoData label="Ningún flujo se inició en el período" />
 
   const max = Math.max(...rows.map((row) => row.total), 1)
 
@@ -252,9 +255,11 @@ export function StackedBarList({
                 <span className="flex shrink-0 items-baseline gap-2">
                   {segments.map((segment) =>
                     row.parts[segment.key] ? (
-                      <span key={segment.key} className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
+                      <span key={segment.key} title={segment.label} className="text-[11px] tabular-nums text-wa-muted dark:text-wa-muted-dark">
                         <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-sm ${segment.color}`} aria-hidden="true" />
                         {formatNumber(row.parts[segment.key])}
+                        {/* La cifra sola dependía del color del punto para saber de qué era. */}
+                        <span className="sr-only"> {segment.label.toLowerCase()}</span>
                       </span>
                     ) : null,
                   )}

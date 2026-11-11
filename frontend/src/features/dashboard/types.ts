@@ -24,7 +24,23 @@ export interface DashboardFlowRow extends DashboardMetricItem {
   failed: number
   skipped: number
   active: number
+  /** Las dos suman `value`. Opcionales: una respuesta guardada de la versión
+   *  anterior no las trae. */
+  manual?: number
+  automatic?: number
+  /** Parte de `manual` y de `automatic` que inició otro flujo. */
+  manual_chained?: number
+  automatic_chained?: number
   last_at: string | null
+}
+
+/** Reparto del período entero. Lo que inició otro flujo es parte de cada
+ *  origen, no un tercero: `manual + automatic` ya es el total. */
+export interface DashboardFlowOrigins {
+  manual: number
+  automatic: number
+  manual_chained: number
+  automatic_chained: number
 }
 
 export interface DashboardTagRow extends DashboardMetricItem {
@@ -42,6 +58,16 @@ export interface DashboardUpcomingAppointment {
   /** Tal como se registró en el formulario; es texto, no un timestamp. */
   time: string
   treatment: string | null
+}
+
+/** Mensajes del negocio de un día, por de dónde salieron. */
+export interface DashboardMessagesByOrigin {
+  date: string
+  app: number
+  automation: number
+  scheduled: number
+  /** Escritos en el celular del negocio, fuera de la app. */
+  phone: number
 }
 
 /** Un punto de una serie diaria con cantidad y monto (separaciones). */
@@ -127,10 +153,16 @@ export interface DashboardMetrics {
   currency: string | null
   automations: {
     by_flow: DashboardFlowRow[]
+    /** Opcional: una respuesta guardada de la versión anterior no lo trae. */
+    origin_totals?: DashboardFlowOrigins
     by_actor: DashboardMetricItem[]
     by_source: DashboardMetricItem[]
     by_trigger: DashboardMetricItem[]
     trend: DashboardPoint[]
+    /** `trend` partida en dos series que suman lo mismo. Opcionales: una
+     *  respuesta guardada de la versión anterior no las trae. */
+    trend_manual?: DashboardPoint[]
+    trend_automatic?: DashboardPoint[]
     failures: {
       total: number
       failed: number
@@ -169,7 +201,63 @@ export interface DashboardMetrics {
     trend: DashboardPoint[]
     by_type: DashboardMetricItem[]
     by_user: DashboardMetricItem[]
-    messages: { trend: DashboardPoint[]; by_user: DashboardMetricItem[] }
+    /** `trend` y `by_user`: solo los enviados desde la app (con autor).
+     *  `by_origin`: todo lo que mandó el negocio, por día y origen. */
+    messages: { trend: DashboardPoint[]; by_user: DashboardMetricItem[]; by_origin: DashboardMessagesByOrigin[] }
   }
+  /** Opcional por lo mismo que las series de arriba: sin él, el mapa de
+   *  horas muestra "Sin datos" en vez de romper la pestaña. */
+  hours?: DashboardHours
   generated_at: string
+}
+
+export interface DashboardHourCell {
+  /** 0 = lunes … 6 = domingo, en la hora local del negocio. */
+  weekday: number
+  slot: number
+  conversations: number
+  /** Las que ya tuvieron sus 24 h completas: denominador de `engaged`. */
+  settled: number
+  /** Volvieron a escribir tras nuestra primera respuesta, dentro de la ventana. */
+  engaged: number
+  flows_manual: number
+  flows_automatic: number
+  /** Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular. */
+  messages: number
+  /** Salieron desde WhatsApp fuera del CRM, en todos los chats. Sin autora:
+   *  no se atribuyen a nadie, y al mirar a una sola persona van en cero. */
+  phone_messages: number
+}
+
+/** Lo que hizo una persona en una franja, con autor conocido: lo que
+ *  escribió en el CRM y los flujos que inició a mano. */
+export interface DashboardPersonHourCell {
+  weekday: number
+  slot: number
+  messages: number
+  flows_manual: number
+}
+
+export interface DashboardPersonHours {
+  user_id: number
+  name: string
+  /** Solo las celdas con algo; vacía si no hizo nada en el período. */
+  cells: DashboardPersonHourCell[]
+}
+
+export interface DashboardHours {
+  slot_hours: number
+  engagement_window_hours: number
+  /** Cuántas veces cayó cada día de la semana en el período (0 = lunes). */
+  weekday_occurrences: number[]
+  /** Primer día del período (AAAA-MM-DD). Opcional, igual que `people`: un
+   *  backend de antes del cambio no los manda durante el despliegue. */
+  start_date?: string
+  /** El equipo persona por persona; vacío al mirar a una sola. */
+  people?: DashboardPersonHours[]
+  /** La franja más cargada de la persona más activa del equipo, en promedio por
+   *  día de la semana: tope de color común para los mapas por persona. */
+  person_peaks?: { messages: number; flows_manual: number }
+  /** Solo las celdas con algún movimiento. */
+  cells: DashboardHourCell[]
 }

@@ -162,8 +162,11 @@ export function ChatWorkspace() {
     hasNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
-  } = useInfiniteChats(debouncedSearch, effectiveFilters);
+    // Con una búsqueda, la lista trae solo los contactos: los mensajes los
+    // pide el propio resultado, uno por fila.
+  } = useInfiniteChats(debouncedSearch, effectiveFilters, { contactsOnly: true });
   const chats = data?.pages.flatMap((page) => page.items) ?? [];
+  const contactsTotal = data?.pages[0]?.total ?? null;
 
   // Estado de la conexión de WhatsApp — solo admin (el endpoint es admin-only).
   // Alimenta el CTA del estado vacío cuando la instancia no está vinculada.
@@ -336,6 +339,12 @@ export function ChatWorkspace() {
             error={!!error}
             search={search}
             onSearchChange={setSearch}
+            searchTerm={debouncedSearch}
+            searchFilters={effectiveFilters}
+            contactsTotal={contactsTotal}
+            onOpenMessage={(hit) =>
+              navigate(`/chat/${hit.chat_id}`, { state: { highlightMessageId: hit.message_id } })
+            }
             filter={chatFilter}
             onFilterChange={setChatFilter}
             unreadCount={unreadCount}

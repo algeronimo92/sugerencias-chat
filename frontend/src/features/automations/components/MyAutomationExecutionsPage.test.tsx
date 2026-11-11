@@ -7,6 +7,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MyAutomationExecutionsPage } from './MyAutomationExecutionsPage'
@@ -14,7 +15,10 @@ import type { AutomationExecution } from '../types'
 
 const navigate = vi.fn()
 
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigate,
+  Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
+}))
 
 vi.mock('../queries', () => ({
   useManualFlows: vi.fn(),
@@ -22,7 +26,12 @@ vi.mock('../queries', () => ({
   useCancelExecution: vi.fn(),
 }))
 
+vi.mock('../../auth/public/queries', () => ({ useMe: vi.fn() }))
+vi.mock('../../platform/public/useUsers', () => ({ useUsers: vi.fn() }))
+
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
+import { useMe } from '../../auth/public/queries'
+import { useUsers } from '../../platform/public/useUsers'
 
 function execution(overrides: Partial<AutomationExecution> & { id: number }): AutomationExecution {
   const now = new Date().toISOString()
@@ -52,7 +61,11 @@ function execution(overrides: Partial<AutomationExecution> & { id: number }): Au
   } as AutomationExecution
 }
 
-function mockQuery(value: Record<string, unknown>) {
+function mockQuery(value: Record<string, unknown>, role: 'admin' | 'vendedor' = 'vendedor') {
+  vi.mocked(useMe).mockReturnValue({ data: { id: 1, name: 'Yo', role } } as never)
+  vi.mocked(useUsers).mockReturnValue({
+    data: role === 'admin' ? [{ id: 1, name: 'Yo' }, { id: 2, name: 'Marta' }] : [],
+  } as never)
   vi.mocked(useManualFlows).mockReturnValue({ data: [] } as never)
   vi.mocked(useCancelExecution).mockReturnValue({ mutate: vi.fn(), isPending: false } as never)
   vi.mocked(useAutomationExecutions).mockReturnValue({
@@ -112,6 +125,49 @@ describe('MyAutomationExecutionsPage', () => {
     const lastArgs = vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]
     const firstArgs = vi.mocked(useAutomationExecutions).mock.calls[callsBefore - 1]?.[0]
     expect(lastArgs).toEqual(firstArgs)
+  })
+
+  it('a la vendedora le muestra solo lo suyo, sin selector de persona', () => {
+    mockQuery({})
+    render(<MyAutomationExecutionsPage />)
+
+    expect(screen.queryByLabelText('Enviado por')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver flujos automáticos' })).not.toBeInTheDocument()
+    expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith(false)
+    expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined, team: undefined })
+  })
+
+  // Incidente: la dueña abría la pantalla como admin, veía "0 envíos" y creía
+  // que ese día no había salido ningún flujo, cuando los mandaban las vendedoras.
+  it('al admin le muestra todo el equipo por defecto y deja acotar a una persona', async () => {
+    mockQuery({
+      data: [execution({ id: 1, started_by_user_id: 2, started_by_name: 'Marta' })],
+    }, 'admin')
+    const user = userEvent.setup()
+    render(<MyAutomationExecutionsPage />)
+
+    expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: false, team: true })
+    expect(screen.getAllByText(/Marta/).length).toBeGreaterThan(1)
+    expect(screen.getByText('Lo inició Marta desde el chat')).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Enviado por'))
+    await user.click(screen.getByRole('option', { name: 'Marta' }))
+    expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: false, startedBy: 2, team: undefined })
+
+    await user.click(screen.getByLabelText('Enviado por'))
+    await user.click(screen.getByRole('option', { name: 'Yo' }))
+    expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined })
+  })
+
+  // El título dice "enviados" pero la lista solo trae lo iniciado a mano: sin
+  // esta salida, ver pocos envíos se leía como "los automáticos no salieron".
+  it('le dice al admin que los automáticos viven en el historial de Automatizaciones', () => {
+    mockQuery({}, 'admin')
+    render(<MyAutomationExecutionsPage />)
+
+    expect(screen.getByText('Tu equipo no inició ningún flujo a mano hoy')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ver flujos automáticos' })).toHaveAttribute('href', '/automations?tab=history')
+    expect(screen.queryByRole('option', { name: /Automáticos/ })).not.toBeInTheDocument()
   })
 
   it('muestra esqueletos mientras carga', () => {

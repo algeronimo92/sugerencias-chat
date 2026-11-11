@@ -13,6 +13,10 @@ export const leadKeys = {
   all: ['chats'] as const,
   lists: ['chats', 'list'] as const,
   list: (search: string, filters: ChatFilters) => ['chats', 'list', search, filters] as const,
+  /** Las dos secciones del buscador de la bandeja. Cuelgan de `all`: un
+   *  mensaje nuevo o un cambio en un lead las refresca como a la lista. */
+  contactSearch: (search: string, filters: ChatFilters) => ['chats', 'search', 'contacts', search, filters] as const,
+  messageSearch: (search: string, filters: ChatFilters) => ['chats', 'search', 'messages', search, filters] as const,
   detailAll: ['chat'] as const,
   detail: (chatId: string | null) => ['chat', chatId] as const,
   phoneConfig: ['phone-config'] as const,

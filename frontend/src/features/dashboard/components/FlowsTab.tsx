@@ -2,9 +2,11 @@ import { AlertTriangle } from 'lucide-react'
 import type { DashboardMetrics } from '../types'
 import { who, type DashboardSubject } from './subject'
 import { AUTOMATION_TRIGGERS } from '../../automations/public/automationCatalog'
-import { formatNumber, formatShortDateTime } from './format'
-import { BarList, NoData, Panel, StatGrid, StackedBarList, TrendChart } from './primitives'
-import type { StackSegment } from './primitives'
+import { formatNumber } from './format'
+import { BarList, NoData, Panel, StatGrid, TrendChart } from './primitives'
+import { FlowsByFlowPanel } from './FlowsByFlowPanel'
+import { FlowTrendChart } from './FlowTrendChart'
+import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
 
 interface Props {
   data: DashboardMetrics
@@ -18,19 +20,44 @@ interface Props {
 const TRIGGER_LABELS: Record<string, string> = Object.fromEntries(
   AUTOMATION_TRIGGERS.map((trigger) => [trigger.value, trigger.label]),
 )
+// "Lead nuevo" y "Conversación nueva" se leían como lo mismo: el nombre solo
+// no dice que uno pasa una vez por contacto y el otro cada vez que vuelve a escribir.
+const TRIGGER_HINTS: Record<string, string> = Object.fromEntries(
+  AUTOMATION_TRIGGERS.map((trigger) => [trigger.value, trigger.description]),
+)
 
-// El orden es el del ciclo de vida de una ejecución, no el del tamaño: leerlo
-// de izquierda a derecha cuenta qué pasó con los envíos.
-const SEGMENTS: StackSegment[] = [
-  { key: 'completed', label: 'Completados', color: 'bg-viz-done dark:bg-viz-done-dark' },
-  { key: 'active', label: 'Activos', color: 'bg-viz-active dark:bg-viz-active-dark' },
-  { key: 'skipped', label: 'Omitidos', color: 'bg-viz-idle dark:bg-viz-idle-dark' },
-  { key: 'failed', label: 'Fallidos', color: 'bg-viz-failed dark:bg-viz-failed-dark' },
+// Un solo vocabulario en toda la pestaña: un flujo "se inicia" (el botón del
+// chat dice "Iniciar flujo"), "a mano" o "automático". Convivían disparar,
+// activar, arrancar y "ejecuciones", y se leían como cosas distintas.
+const FLOW_READINGS: HoursReadingOption[] = [
+  { key: 'flows_manual', label: 'A mano', hint: 'Flujos que alguien inició desde un chat, en promedio por día de la semana.' },
+  { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que se iniciaron solos, por su disparador, en promedio por día de la semana.' },
 ]
 
-function formatLastRun(iso: string | null): string | undefined {
-  if (!iso) return undefined
-  return `Último: ${formatShortDateTime(iso)}`
+function FailuresPanel({ failures, period }: { failures: DashboardMetrics['automations']['failures']; period: string }) {
+  const { failed, total, rate } = failures
+  return (
+    <Panel anchor="fallos"
+      title="Fallos"
+      subtitle={
+        rate != null
+          ? `${rate}% de ${formatNumber(total)} ${total === 1 ? 'flujo iniciado' : 'flujos iniciados'} · ${period}`
+          : 'Ningún flujo en el período'
+      }
+    >
+      {failed === 0 ? (
+        <NoData label="Ningún flujo falló" />
+      ) : (
+        <>
+          <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {failed === 1 ? '1 flujo no llegó a enviarse' : `${formatNumber(failed)} flujos no llegaron a enviarse`}
+          </div>
+          <BarList items={failures.top_errors} />
+        </>
+      )}
+    </Panel>
+  )
 }
 
 export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
@@ -38,12 +65,18 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
   const period = `Últimos ${days} días`
   const active = automations.active_now
   const activeTotal = Object.values(active).reduce((total, value) => total + value, 0)
+  const whose = who(subject, { me: 'Los que inicié yo', team: 'Todo el equipo', seller: (name) => `Los que inició ${name}` })
+  // Lo propio de alguien solo tiene flujos a mano: un automático no lo inicia
+  // nadie, y partirlo dejaría una serie siempre en cero.
+  const split = subject.kind === 'team' && automations.trend_manual && automations.trend_automatic
+    ? { manual: automations.trend_manual, automatic: automations.trend_automatic }
+    : null
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel anchor="flujos-por-tipo"
-        title="Flujos activados por tipo"
-        subtitle={`${who(subject, { me: 'Los que yo disparé', team: 'Todo el equipo', seller: (name) => `Los que disparó ${name}` })} · ${period}`}
+        title="Flujos iniciados"
+        subtitle={`${whose} · ${period}`}
         className="lg:col-span-2"
         action={
           <button
@@ -51,41 +84,48 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
             onClick={onOpenFlows}
             className="shrink-0 text-[11px] font-medium text-wa-primary-strong hover:underline dark:text-wa-primary"
           >
-            Ver detalle
+            Ver flujos enviados
           </button>
         }
       >
-        <StackedBarList
-          segments={SEGMENTS}
-          rows={automations.by_flow.map((flow) => ({
-            key: String(flow.rule_id),
-            label: flow.name,
-            sublabel: formatLastRun(flow.last_at),
-            total: flow.value,
-            parts: {
-              completed: flow.completed,
-              active: flow.active,
-              skipped: flow.skipped,
-              failed: flow.failed,
-            },
-          }))}
+        <FlowsByFlowPanel
+          flows={automations.by_flow}
+          totals={split ? automations.origin_totals ?? null : null}
           onSelect={onOpenFlows}
         />
       </Panel>
 
-      <Panel anchor="quien-activa-flujos" title="Quién activó flujos a mano" subtitle={`Ranking del equipo · ${period}`}>
-        <BarList items={automations.by_actor} emptyLabel="Nadie disparó flujos a mano" />
+      <Panel anchor="quien-activa-flujos" title="Quién inició flujos a mano" subtitle={`Ranking del equipo · ${period}`}>
+        <BarList items={automations.by_actor} emptyLabel="Nadie inició flujos a mano" />
       </Panel>
 
-      <Panel anchor="como-arrancaron" title="Cómo arrancaron" subtitle="A mano, por piloto automático o desde otro flujo">
-        <BarList items={automations.by_source} emptyLabel="Sin ejecuciones en el período" />
+      <Panel anchor="que-los-dispara" title="Qué los inicia" subtitle={`El disparador de cada flujo · ${period}`}>
+        <BarList items={automations.by_trigger} labels={TRIGGER_LABELS} hints={TRIGGER_HINTS} emptyLabel="Ningún flujo en el período" />
       </Panel>
 
-      <Panel anchor="flujos-por-dia" title="Flujos por día" className="lg:col-span-2">
-        <TrendChart points={automations.trend} label="Ejecuciones" />
+      <Panel anchor="flujos-por-dia" title="Flujos por día" subtitle={`${whose} · ${period}`} className="lg:col-span-2">
+        {split
+          ? <FlowTrendChart manual={split.manual} automatic={split.automatic} />
+          : <TrendChart points={automations.trend} label="Flujos" />}
       </Panel>
 
-      <Panel anchor="pendientes-ahora" title="Pendientes ahora mismo" subtitle="Sin ventana de tiempo: una espera larga puede venir de antes">
+      <Panel
+        anchor="a-que-hora-salen"
+        title="A qué hora se inician los flujos"
+        subtitle={`${whose} · ${period} · por día de la semana`}
+        className="lg:col-span-2"
+      >
+        <HoursHeatmap
+          hours={data.hours}
+          days={days}
+          readings={split ? FLOW_READINGS : FLOW_READINGS.slice(0, 1)}
+          label="A qué hora se inician los flujos"
+          // El mapa de una persona se compara con el de otra: mismo tope de color.
+          teamScale={subject.kind !== 'team'}
+        />
+      </Panel>
+
+      <Panel anchor="pendientes-ahora" title="Pendientes ahora mismo" subtitle="Todo lo que falta enviar, aunque se haya iniciado antes del período">
         <StatGrid
           stats={[
             { label: 'Programados', value: formatNumber(active.scheduled ?? 0), hint: 'Esperando su turno' },
@@ -96,30 +136,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
         {activeTotal === 0 && <p className="mt-3 text-[11px] text-wa-muted">No hay nada en cola.</p>}
       </Panel>
 
-      <Panel anchor="fallos"
-        title="Fallos"
-        subtitle={
-          automations.failures.rate != null
-            ? `${automations.failures.rate}% de ${formatNumber(automations.failures.total)} ejecuciones`
-            : 'Sin ejecuciones en el período'
-        }
-      >
-        {automations.failures.failed === 0 ? (
-          <NoData label="Ninguna ejecución falló" />
-        ) : (
-          <>
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-400">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              {formatNumber(automations.failures.failed)} ejecuciones no llegaron a enviarse
-            </div>
-            <BarList items={automations.failures.top_errors} />
-          </>
-        )}
-      </Panel>
-
-      <Panel anchor="que-los-dispara" title="Qué los dispara" subtitle="Evento que originó cada ejecución" className="lg:col-span-2">
-        <BarList items={automations.by_trigger} labels={TRIGGER_LABELS} emptyLabel="Sin ejecuciones en el período" />
-      </Panel>
+      <FailuresPanel failures={automations.failures} period={period} />
     </div>
   )
 }

@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
-import { homePathFor, roleLabel, visibleNavItems } from './navigation'
+import { canSeeDashboard, homePathFor, roleLabel, visibleNavItems } from './navigation'
 
 describe('navegación por rol', () => {
   it('el vendedor ve las vistas de operación y ninguna de administración', () => {
     const labels = visibleNavItems('vendedor').map((item) => item.label)
     expect(labels).toContain('Chats')
-    expect(labels).toContain('Dashboard')
     expect(labels).not.toContain('Automatizaciones')
+  })
+
+  it('el dashboard lo leen solo quienes dirigen: el vendedor no lo tiene en el menú', () => {
+    expect(visibleNavItems('vendedor').map((item) => item.label)).not.toContain('Dashboard')
+    expect(visibleNavItems('admin').map((item) => item.label)).toContain('Dashboard')
+    expect(canSeeDashboard('vendedor')).toBe(false)
+    // Mientras la sesión carga no hay rol: no se muestra lo que quizá no le toca.
+    expect(canSeeDashboard(undefined)).toBe(false)
   })
 
   it('el admin ve todo', () => {

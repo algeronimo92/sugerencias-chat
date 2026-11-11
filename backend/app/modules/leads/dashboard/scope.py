@@ -10,7 +10,7 @@ los flujos por `started_by_user_id` y las citas por `created_by_user_id`.
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import Date, func, true
+from sqlalchemy import Date, Integer, and_, cast, func, or_, true
 from app.db.uow import session_scope
 
 
@@ -72,9 +72,40 @@ def local_day(column):
     return func.date(func.timezone(BUSINESS_TZ_NAME, column), type_=Date)
 
 
+# Con celdas de una hora quedan 168, casi todas con muy pocos casos para
+# sacarles un porcentaje, y en el celular no se pueden tocar.
+SLOT_HOURS = 2
+SLOTS_PER_DAY = 24 // SLOT_HOURS
+
+
+def local_weekday(column):
+    """Lunes = 1 … domingo = 7, en la hora local del negocio."""
+    return cast(func.extract("isodow", func.timezone(BUSINESS_TZ_NAME, column)), Integer)
+
+
+def local_slot(column):
+    hour = func.extract("hour", func.timezone(BUSINESS_TZ_NAME, column))
+    return cast(func.floor(hour / SLOT_HOURS), Integer)
+
+
 async def execute_mapping(stmt):
     async with session_scope() as session:
         return (await session.execute(stmt)).mappings().all()
+
+
+def message_went_out(outbox_status, meta_status):
+    """Un mensaje que salió, o que todavía puede salir.
+
+    "Enviados" no puede contar lo que nunca llegó al cliente: el envío que
+    agotó sus reintentos o se descartó (`outbox_status`) y el que Meta rechazó
+    después de aceptarlo (`meta_status = 'failed'`, por ejemplo fuera de la
+    ventana de 24 h). Los ecos del celular no tienen estado de outbox y pasan.
+    Recibe las columnas para que este módulo no dependa de los modelos.
+    """
+    return and_(
+        or_(outbox_status.is_(None), outbox_status.not_in(("failed", "discarded"))),
+        or_(meta_status.is_(None), meta_status != "failed"),
+    )
 
 
 def series(rows, scope: DashboardScope) -> list[dict]:

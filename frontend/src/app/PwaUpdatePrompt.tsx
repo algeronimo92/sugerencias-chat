@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { publishActivityLease } from '../shared/activity'
 import { currentBrandName } from '../shared/branding'
 import {
+  applyPwaUpdate,
   registerPwaUpdater,
   setPwaUpdatePending,
   usePwaCurrentChatId,
@@ -12,6 +13,7 @@ import {
 import { useChatSocketConnected } from '../realtime/useRealtime'
 import { usePendingSends } from '../features/chats/public/usePendingSends'
 import { describeUpdateBlocker, updateBlocker } from './pwaUpdateGuard'
+import { reloadWhenActivated } from './pwaReload'
 
 // Id fijo para que el aviso no se apile si el efecto vuelve a correr.
 const UPDATE_TOAST_ID = 'pwa-update'
@@ -26,6 +28,13 @@ export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 // el socket reconecta cada 3 s y un deploy produce reconexiones en ráfaga:
 // este tope evita pedir sw.js decenas de veces en un minuto.
 export const MIN_UPDATE_CHECK_GAP_MS = 5 * 60 * 1000
+
+// El aviso se retira solo. Fijo (sin duración) quedaba encima de la cabecera
+// hasta que alguien lo cerrara: tapaba el chip "Versión nueva · Actualizar" y,
+// en pantallas angostas, los íconos; un toque al chip caía en el aviso y no
+// hacía nada (2026-11-10). El chip es el indicador fijo; el aviso vuelve al
+// volver a la pestaña o al cambiar de chat.
+export const UPDATE_TOAST_MS = 20_000
 
 // Si el worker nuevo no toma el control en este tiempo, algo falló: se quita
 // el velo de "Actualizando…" y se le pide a la persona que recargue a mano.
@@ -118,23 +127,29 @@ export function PwaUpdatePrompt() {
     toast.dismiss(UPDATE_TOAST_ID)
     setApplying(true)
     rememberUpdateApplied()
-    // `true` recarga la página una vez que el worker nuevo toma el control.
+    // `true` recarga la página una vez que el worker nuevo toma el control,
+    // pero solo si la página ya estaba controlada al cargar; el respaldo
+    // recarga igual cuando el worker queda activo.
+    reloadWhenActivated(registration)
     void updateServiceWorker(true)
     return true
-  }, [pendingSends, updateServiceWorker])
+  }, [pendingSends, registration, updateServiceWorker])
 
   const offerUpdate = useCallback(() => {
     toast(`Hay una versión nueva de ${currentBrandName()}`, {
       id: UPDATE_TOAST_ID,
       description: 'Actualiza para aplicar los cambios.',
-      duration: Infinity,
-      action: { label: 'Actualizar', onClick: () => void tryApplyUpdate('manual') },
+      duration: UPDATE_TOAST_MS,
+      // Por el store y no por `tryApplyUpdate`: el aviso puede seguir en
+      // pantalla cuando cambian los envíos en vuelo, y tiene que aplicar con
+      // el estado de ese momento, no con el de cuando se mostró.
+      action: { label: 'Actualizar', onClick: applyPwaUpdate },
       // "Ahora no" solo esconde el aviso. El build sigue pendiente (lo dice
       // el chip de la cabecera) y el toast vuelve al volver a la pestaña o al
       // cambiar de chat.
       cancel: { label: 'Ahora no', onClick: () => {} },
     })
-  }, [tryApplyUpdate])
+  }, [])
 
   // Sondeo horario.
   useEffect(() => {
@@ -184,16 +199,21 @@ export function PwaUpdatePrompt() {
   const chatId = usePwaCurrentChatId()
   const previousChatIdRef = useRef(chatId)
   const armedRef = useRef(false)
+  // Effect Event: el efecto corre al aparecer la versión, al cambiar de chat
+  // y al soltarse el velo, no cada vez que cambia `tryApplyUpdate` (cambia
+  // con cada envío en vuelo). Con el aviso fijo eso no se notaba; ahora que
+  // se retira solo, lo haría reaparecer con cada mensaje enviado.
+  const applyOnNavigation = useEffectEvent(() => tryApplyUpdate('navigation'))
   useEffect(() => {
     const changed = previousChatIdRef.current !== chatId
     previousChatIdRef.current = chatId
     if (!needRefresh || applying) return
-    if (changed && armedRef.current && tryApplyUpdate('navigation')) return
+    if (changed && armedRef.current && applyOnNavigation()) return
     // Primera oferta, o re-oferta al cambiar de chat. `toast` con el mismo
     // id actualiza el aviso si está en pantalla y lo vuelve a mostrar si se
-    // había descartado.
+    // había descartado o retirado.
     offerUpdate()
-  }, [needRefresh, chatId, applying, tryApplyUpdate, offerUpdate])
+  }, [needRefresh, chatId, applying, offerUpdate])
   useEffect(() => {
     armedRef.current = needRefresh
   }, [needRefresh])

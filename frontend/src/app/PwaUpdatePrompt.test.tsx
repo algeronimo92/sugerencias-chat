@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hold, LEASE_FRESH_MS, resetActivity } from '../shared/activity'
 import { resetPwaUpdateStore, setPwaCurrentChatId, usePwaUpdatePending } from '../shared/pwaUpdate'
-import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS } from './PwaUpdatePrompt'
+import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS, UPDATE_TOAST_MS } from './PwaUpdatePrompt'
 
 // Doble de `useRegisterSW`: el test decide cuándo "aparece" un worker nuevo
 // (setNeedRefresh) y entrega el registro para que el prompt pueda sondear.
@@ -58,8 +58,28 @@ vi.mock('../features/chats/public/usePendingSends', () => ({
 const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { dismiss: vi.fn(), info: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toastMock }))
 
-function makeRegistration() {
-  return { update: vi.fn(() => Promise.resolve()) } as unknown as ServiceWorkerRegistration & { update: ReturnType<typeof vi.fn> }
+const reload = vi.hoisted(() => ({ page: vi.fn() }))
+vi.mock('./pwaReload', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pwaReload')>()
+  return { ...actual, reloadWhenActivated: (registration: ServiceWorkerRegistration | null) => actual.reloadWhenActivated(registration, reload.page) }
+})
+
+/** Worker en `waiting` que el test puede pasar a otro estado. */
+function makeWorker() {
+  const worker = new EventTarget() as EventTarget & { state: ServiceWorkerState; activate: () => void }
+  worker.state = 'installed'
+  worker.activate = () => {
+    worker.state = 'activated'
+    worker.dispatchEvent(new Event('statechange'))
+  }
+  return worker
+}
+
+function makeRegistration(waiting: ReturnType<typeof makeWorker> | null = makeWorker()) {
+  return { update: vi.fn(() => Promise.resolve()), waiting } as unknown as ServiceWorkerRegistration & {
+    update: ReturnType<typeof vi.fn>
+    waiting: ReturnType<typeof makeWorker> | null
+  }
 }
 
 function setVisibility(state: DocumentVisibilityState) {
@@ -82,10 +102,9 @@ function PendingProbe() {
   return <span data-testid="pending">{pending ? 'pendiente' : 'al día'}</span>
 }
 
-function mount() {
+function mount(registration = makeRegistration()) {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-11-09T10:00:00Z'))
-  const registration = makeRegistration()
   const view = render(
     <>
       <PwaUpdatePrompt />
@@ -116,6 +135,7 @@ describe('PwaUpdatePrompt', () => {
     toastMock.info.mockClear()
     toastMock.error.mockClear()
     sw.updateServiceWorker.mockClear()
+    reload.page.mockClear()
     vi.spyOn(console, 'info').mockImplementation(() => {})
     setVisibility('visible')
   })
@@ -182,6 +202,20 @@ describe('PwaUpdatePrompt', () => {
       })
       expect(view.getByTestId('pending')).toHaveTextContent('pendiente')
       expect(sw.updateServiceWorker).not.toHaveBeenCalled()
+    })
+
+    it('el aviso se retira solo para no quedar encima de la cabecera, y no reaparece con cada envío', () => {
+      const { view } = mount()
+      act(() => sw.setNeedRefresh(true))
+      expect(offers()).toBe(1)
+      expect(toastMock.mock.calls.at(-1)?.[1]).toMatchObject({ duration: UPDATE_TOAST_MS })
+      // Un envío en vuelo cambia cómo se aplicaría, pero no vuelve a mostrar el aviso.
+      sends.pending = 1
+      view.rerender(<><PwaUpdatePrompt /><PendingProbe /></>)
+      sends.pending = 0
+      view.rerender(<><PwaUpdatePrompt /><PendingProbe /></>)
+      expect(offers()).toBe(1)
+      expect(screen.getByTestId('pending')).toHaveTextContent('pendiente')
     })
 
     it('vuelve a ofrecer la versión nueva al volver a primer plano', () => {
@@ -302,6 +336,22 @@ describe('PwaUpdatePrompt', () => {
       act(() => lastOfferOptions().action.onClick())
       expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
       expect(sessionStorage.getItem('pwa-update-applied')).toBe('1')
+    })
+
+    it('recarga cuando el worker nuevo queda activo, aunque la página no estuviera controlada al cargar', () => {
+      const registration = mount().registration
+      act(() => sw.setNeedRefresh(true))
+      act(() => lastOfferOptions().action.onClick())
+      expect(reload.page).not.toHaveBeenCalled()
+      act(() => registration.waiting!.activate())
+      expect(reload.page).toHaveBeenCalledTimes(1)
+    })
+
+    it('recarga ya mismo si otra pestaña ya activó la versión nueva', () => {
+      mount(makeRegistration(null))
+      act(() => sw.setNeedRefresh(true))
+      act(() => lastOfferOptions().action.onClick())
+      expect(reload.page).toHaveBeenCalledTimes(1)
     })
 
     it('"Actualizar" pasa por el mismo filtro y explica qué lo frena', () => {

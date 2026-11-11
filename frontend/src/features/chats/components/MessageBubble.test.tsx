@@ -216,6 +216,23 @@ describe('MessageBubble', () => {
     expect(screen.getByLabelText(label)).toBeInTheDocument()
   })
 
+  describe('lo enviado desde WhatsApp, fuera de la app', () => {
+    const ECHO = { kind: 'echo', user_id: null, user_name: null, execution_id: null } as const
+
+    it('no lleva tique mientras Meta no informe su entrega', () => {
+      // Para los ecos el acuse no llega: el tique simple que nunca avanzaba se
+      // leía como "no le llegó" de mensajes que el cliente ya había recibido.
+      renderBubble({ meta_status: null, origin: ECHO })
+      expect(screen.queryByLabelText('Enviado')).not.toBeInTheDocument()
+      expect(screen.getByText('Enviado desde WhatsApp; su entrega se ve allí')).toBeInTheDocument()
+    })
+
+    it('si Meta sí informa la entrega, se muestra como cualquier otro', () => {
+      renderBubble({ meta_status: 'delivered', origin: ECHO })
+      expect(screen.getByLabelText('Entregado')).toBeInTheDocument()
+    })
+  })
+
   it('un fallo de entrega informado por Meta muestra el motivo y no ofrece reintento', () => {
     renderBubble({
       meta_status: 'failed',
