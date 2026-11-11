@@ -24,10 +24,11 @@ const CONVERSATION_READINGS: HoursReadingOption[] = [
   },
 ]
 
-// Las dos mitades del trabajo de escribir, sobre la misma cuadrícula: quien
-// atiende desde el celular sale en blanco en la primera y aparece en la segunda.
-// Los programados y los flujos no entran en ninguna: no dicen a qué hora
-// estuvo alguien atendiendo.
+// Las dos mitades del trabajo de escribir, sobre la misma cuadrícula: un
+// equipo que atiende desde WhatsApp sale en blanco en la primera y aparece en
+// la segunda. Los programados y los flujos no entran en ninguna: no dicen a
+// qué hora estuvo alguien atendiendo. La segunda solo existe al mirar al
+// equipo: esos mensajes no traen autor y no se pueden mostrar como de alguien.
 const WRITING_READINGS: HoursReadingOption[] = [
   {
     key: 'messages',
@@ -36,8 +37,10 @@ const WRITING_READINGS: HoursReadingOption[] = [
   },
   {
     key: 'phone_messages',
-    label: 'Desde el celular',
-    hint: 'Mensajes que salieron desde WhatsApp sin pasar por el CRM. Llegan sin autor: se cuentan por la vendedora asignada al chat, e incluyen respuestas automáticas y difusiones de WhatsApp.',
+    // El mismo nombre que en "Mensajes enviados por día": "desde el celular"
+    // dejaba afuera WhatsApp Web, que también sale por acá.
+    label: 'Desde WhatsApp, fuera del CRM',
+    hint: 'Mensajes que salieron por WhatsApp sin pasar por el CRM, de todos los chats. No traen autor, e incluyen respuestas automáticas y difusiones de WhatsApp.',
   },
 ]
 
@@ -134,7 +137,13 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           subtitle={`${who(subject, { me: 'Yo', team: 'Todo el equipo', seller: (name) => name })} · ${period} · por día de la semana y franja de ${data.hours?.slot_hours ?? 2} horas`}
           className="lg:col-span-2"
         >
-          <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe a los clientes" teamScale={isPersonal(subject)} />
+          <HoursHeatmap
+            hours={data.hours}
+            days={days}
+            readings={isPersonal(subject) ? WRITING_READINGS.slice(0, 1) : WRITING_READINGS}
+            label="A qué hora se escribe a los clientes"
+            teamScale={isPersonal(subject)}
+          />
         </Panel>
 
         {/* Solo al mirar al equipo: con una persona elegida no hay con quién
@@ -142,8 +151,8 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
         {subject.kind === 'team' && (
           <Panel
             anchor="horas-por-persona"
-            title="A qué hora trabaja cada persona"
-            subtitle={`Todo el equipo, una cuadrícula por persona en la misma escala · ${period} · franjas de ${data.hours?.slot_hours ?? 2} horas`}
+            title="Quién atiende y a qué hora"
+            subtitle={`Lo que cada persona hizo en el CRM y, aparte, lo que salió por WhatsApp · ${period} · franjas de ${data.hours?.slot_hours ?? 2} horas`}
             className="lg:col-span-2"
           >
             <TeamHoursPanel hours={data.hours} />

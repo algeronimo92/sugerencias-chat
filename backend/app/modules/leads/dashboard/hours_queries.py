@@ -16,9 +16,13 @@ from datetime import timedelta
 from app.modules.leads.dashboard import activity_queries as activity, automations_queries as automations
 from app.modules.leads.dashboard.scope import SLOT_HOURS, SLOTS_PER_DAY, DashboardScope, execute_mapping
 
-# Lo que se sabe de cada persona por franja: lo que escribió en el CRM, los
-# flujos que inició a mano y lo que salió del celular en sus chats.
-PERSON_FIELDS = ("messages", "flows_manual", "phone_messages")
+# Lo que se sabe de cada persona por franja: lo que escribió en el CRM y los
+# flujos que inició a mano, las dos cosas con autor. Lo que sale por WhatsApp
+# fuera del CRM no entra: llega sin autor. Se lo repartía por la vendedora
+# asignada al chat y dos vendedoras salían casi idénticas (1,176 y 1,132
+# mensajes en una semana): el reparto de los chats, no quién escribió. Ese
+# total va entero en `cells`, sin persona.
+PERSON_FIELDS = ("messages", "flows_manual")
 
 
 def _weekday_occurrences(scope: DashboardScope) -> list[int]:
@@ -77,22 +81,23 @@ CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_aut
 
 
 async def collect(scope: DashboardScope) -> dict:
-    async def no_members() -> list:
+    async def no_rows() -> list:
         return []
 
     (
-        conversations, flows, messages, phone, messages_by_author, flows_by_starter, phone_by_owner, members,
+        conversations, flows, messages, phone, messages_by_author, flows_by_starter, members,
     ) = await asyncio.gather(
         execute_mapping(activity.conversations_by_hour_stmt(scope)),
         execute_mapping(automations.by_hour_stmt(scope)),
         execute_mapping(activity.messages_by_hour_stmt(scope)),
-        execute_mapping(activity.phone_by_hour_stmt(scope)),
+        # Lo de WhatsApp es del negocio entero: al mirar a una persona no hay
+        # forma de saber qué parte es suya, así que no se sirve.
+        no_rows() if scope.is_mine else execute_mapping(activity.phone_by_hour_stmt(scope)),
         execute_mapping(activity.messages_by_author_hour_stmt(scope)),
         execute_mapping(automations.manual_by_starter_hour_stmt(scope)),
-        execute_mapping(activity.phone_by_owner_hour_stmt(scope)),
         # El equipo junto solo se muestra al mirar al equipo: en el scope
         # propio no se pide la lista de personas.
-        no_members() if scope.is_mine else execute_mapping(activity.team_members_stmt()),
+        no_rows() if scope.is_mine else execute_mapping(activity.team_members_stmt()),
     )
     occurrences = _weekday_occurrences(scope)
     cells: dict[tuple[int, int], dict] = {}
@@ -121,9 +126,8 @@ async def collect(scope: DashboardScope) -> dict:
         "person_peaks": {
             "messages": _person_peak(messages_by_author, "messages", occurrences),
             "flows_manual": _person_peak(flows_by_starter, "flows_manual", occurrences),
-            "phone_messages": _person_peak(phone_by_owner, "phone_messages", occurrences),
         },
-        "people": _people(members, messages_by_author, flows_by_starter, phone_by_owner),
+        "people": _people(members, messages_by_author, flows_by_starter),
         # Solo las celdas con algo: el resto de la cuadrícula es cero.
         "cells": [cells[key] for key in sorted(cells)],
     }

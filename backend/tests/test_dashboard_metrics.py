@@ -370,9 +370,7 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
     assert hours["slot_hours"] == 2 and hours["engagement_window_hours"] == 24
     # Una fila de muestra en lunes: el tope es su conteo entre los lunes del período.
     mondays = hours["weekday_occurrences"][0]
-    assert hours["person_peaks"] == {
-        "messages": 1 / mondays, "flows_manual": 1 / mondays, "phone_messages": 1 / mondays,
-    }
+    assert hours["person_peaks"] == {"messages": 1 / mondays, "flows_manual": 1 / mondays}
     # Conversaciones, flujos y mensajes caen en la misma celda y se funden en una fila.
     assert hours["cells"] == [{
         "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
@@ -382,7 +380,7 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
     # celular de la misma persona se funden en su celda.
     assert hours["people"] == [{
         "user_id": 1, "name": "valor",
-        "cells": [{"weekday": 0, "slot": 1, "messages": 1, "flows_manual": 1, "phone_messages": 1}],
+        "cells": [{"weekday": 0, "slot": 1, "messages": 1, "flows_manual": 1}],
     }]
     assert hours["start_date"] == build_scope(30, SCOPE_TEAM, 7).start_date.isoformat()
 
@@ -405,10 +403,12 @@ async def test_hours_follow_the_scope(compiled_sql):
     await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
     by_hour = [statement for statement in compiled_sql if "isodow" in statement]
 
-    # Cuatro acotadas a la persona y tres del equipo entero, que dan la escala común.
-    assert len(by_hour) == 7
-    # Conversaciones y celular van por dueña del chat: el eco no trae autora.
-    assert sum("leads.vendedor_id = " in statement for statement in by_hour) == 2
+    # Tres acotadas a la persona y dos del equipo entero, que dan la escala
+    # común. Lo de WhatsApp no se pide: no trae autora y no es de una persona.
+    assert len(by_hour) == 5
+    # Las conversaciones van por dueña del chat.
+    assert sum("leads.vendedor_id = " in statement for statement in by_hour) == 1
+    assert not any("phone_messages" in statement for statement in by_hour)
     assert any("automation_executions.started_by_user_id = " in statement for statement in by_hour)
     # Los mensajes van por quien los escribió, no por de quién es el chat: lo
     # que una vendedora escribe en el chat de otra es trabajo suyo.
