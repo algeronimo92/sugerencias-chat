@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import type { DashboardHours } from '../types'
 import { NoData } from './primitives'
 import { ReadingToggle } from './ReadingToggle'
-import { MIN_DAYS_FOR_PATTERN, buildHoursGrid, formatAverage, personPeak, type HoursReading } from './hoursGrid'
+import { LEVEL_CLASS, MIN_DAYS_FOR_PATTERN, buildHoursGrid, formatAverage, personPeak, type HoursReading } from './hoursGrid'
 
 export interface HoursReadingOption {
   key: HoursReading
@@ -11,16 +11,6 @@ export interface HoursReadingOption {
   hint: string
 }
 
-// Un solo tono en degradado: la intensidad se lee sola y no compite con los
-// colores de estado del resto del panel. El nivel 0 es el neutro del fondo.
-const LEVEL_CLASS = [
-  'bg-wa-field dark:bg-wa-field-dark',
-  'bg-wa-primary/15',
-  'bg-wa-primary/35',
-  'bg-wa-primary/55',
-  'bg-wa-primary/80',
-  'bg-wa-primary-strong dark:bg-wa-primary',
-]
 // Muy pocos casos: borde punteado y sin relleno, para que no se lea como "0 %".
 const FEW_CASES_CLASS = 'border border-dashed border-wa-muted/60 dark:border-wa-muted-dark/60'
 

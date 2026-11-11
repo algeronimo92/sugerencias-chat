@@ -228,11 +228,33 @@ export interface DashboardHourCell {
   phone_messages: number
 }
 
+/** Lo que hizo una persona en una franja: lo que escribió en el CRM, los
+ *  flujos que inició a mano y lo que salió del celular en sus chats. */
+export interface DashboardPersonHourCell {
+  weekday: number
+  slot: number
+  messages: number
+  flows_manual: number
+  phone_messages: number
+}
+
+export interface DashboardPersonHours {
+  user_id: number
+  name: string
+  /** Solo las celdas con algo; vacía si no hizo nada en el período. */
+  cells: DashboardPersonHourCell[]
+}
+
 export interface DashboardHours {
   slot_hours: number
   engagement_window_hours: number
   /** Cuántas veces cayó cada día de la semana en el período (0 = lunes). */
   weekday_occurrences: number[]
+  /** Primer día del período (AAAA-MM-DD). Opcional, igual que `people`: un
+   *  backend de antes del cambio no los manda durante el despliegue. */
+  start_date?: string
+  /** El equipo persona por persona; vacío al mirar a una sola. */
+  people?: DashboardPersonHours[]
   /** La franja más cargada de la persona más activa del equipo, en promedio por
    *  día de la semana: tope de color común para los mapas por persona. */
   person_peaks?: { messages: number; flows_manual: number; phone_messages?: number }

@@ -465,12 +465,34 @@ class DashboardHourPeaks(BaseModel):
     phone_messages: float
 
 
+class DashboardPersonHourCell(BaseModel):
+    weekday: int
+    slot: int
+    # Lo que la persona escribió en el CRM, en cualquier chat.
+    messages: int
+    # Flujos que inició a mano.
+    flows_manual: int
+    # Lo que salió del celular en los chats que tiene asignados.
+    phone_messages: int
+
+
+class DashboardPersonHours(BaseModel):
+    user_id: int
+    name: str
+    # Solo las celdas con algo; vacía si no hizo nada en el período.
+    cells: list[DashboardPersonHourCell]
+
+
 class DashboardHours(BaseModel):
     slot_hours: int
     engagement_window_hours: int
     # Cuántas veces cayó cada día de la semana en el período (0 = lunes).
     weekday_occurrences: list[int]
+    # Primer día del período, en la fecha local del negocio (AAAA-MM-DD).
+    start_date: str
     person_peaks: DashboardHourPeaks
+    # El equipo persona por persona; vacío al mirar a una sola.
+    people: list[DashboardPersonHours] = []
     # Solo las celdas con algún movimiento.
     cells: list[DashboardHourCell]
 

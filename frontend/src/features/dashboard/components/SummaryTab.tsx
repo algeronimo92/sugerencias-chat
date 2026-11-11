@@ -10,6 +10,7 @@ import { fromAppointments } from './serviceBreakdown'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
 import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
 import { MessagesByOriginPanel } from './MessagesByOriginPanel'
+import { TeamHoursPanel } from './TeamHoursPanel'
 
 // "Cuántas llegan" dice cuándo escribe la gente (y cuándo Meta muestra los
 // anuncios); "Siguieron conversando" es lo que responde a qué hora reaccionan
@@ -135,6 +136,19 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
         >
           <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe a los clientes" teamScale={isPersonal(subject)} />
         </Panel>
+
+        {/* Solo al mirar al equipo: con una persona elegida no hay con quién
+            compararla, y su mapa ya es el panel de arriba. */}
+        {subject.kind === 'team' && (
+          <Panel
+            anchor="horas-por-persona"
+            title="A qué hora trabaja cada persona"
+            subtitle={`Todo el equipo, una cuadrícula por persona en la misma escala · ${period} · franjas de ${data.hours?.slot_hours ?? 2} horas`}
+            className="lg:col-span-2"
+          >
+            <TeamHoursPanel hours={data.hours} />
+          </Panel>
+        )}
 
         <Panel anchor="actividad"
           title={who(subject, { me: 'Mi actividad', team: 'Actividad del equipo', seller: (name) => `Actividad de ${name}` })}

@@ -4715,7 +4715,14 @@ export interface components {
             engagement_window_hours: number;
             /** Weekday Occurrences */
             weekday_occurrences: number[];
+            /** Start Date */
+            start_date: string;
             person_peaks: components["schemas"]["DashboardHourPeaks"];
+            /**
+             * People
+             * @default []
+             */
+            people: components["schemas"]["DashboardPersonHours"][];
             /** Cells */
             cells: components["schemas"]["DashboardHourCell"][];
         };
@@ -4875,6 +4882,28 @@ export interface components {
             leads: number;
             /** Total */
             total: number;
+        };
+        /** DashboardPersonHourCell */
+        DashboardPersonHourCell: {
+            /** Weekday */
+            weekday: number;
+            /** Slot */
+            slot: number;
+            /** Messages */
+            messages: number;
+            /** Flows Manual */
+            flows_manual: number;
+            /** Phone Messages */
+            phone_messages: number;
+        };
+        /** DashboardPersonHours */
+        DashboardPersonHours: {
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name: string;
+            /** Cells */
+            cells: components["schemas"]["DashboardPersonHourCell"][];
         };
         /** DashboardPipeline */
         DashboardPipeline: {

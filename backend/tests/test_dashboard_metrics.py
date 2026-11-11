@@ -378,6 +378,13 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
         "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
         "flows_manual": 1, "flows_automatic": 1, "messages": 1, "phone_messages": 1,
     }]
+    # El equipo persona por persona: lo escrito, los flujos a mano y el
+    # celular de la misma persona se funden en su celda.
+    assert hours["people"] == [{
+        "user_id": 1, "name": "valor",
+        "cells": [{"weekday": 0, "slot": 1, "messages": 1, "flows_manual": 1, "phone_messages": 1}],
+    }]
+    assert hours["start_date"] == build_scope(30, SCOPE_TEAM, 7).start_date.isoformat()
 
 
 @pytest.mark.asyncio
@@ -407,3 +414,13 @@ async def test_hours_follow_the_scope(compiled_sql):
     # que una vendedora escribe en el chat de otra es trabajo suyo.
     assert sum("wsp_messages.sent_by_user_id = " in statement for statement in by_hour) == 1
     assert sum("automation_executions.started_by_user_id = " in statement for statement in by_hour) == 1
+
+
+@pytest.mark.asyncio
+async def test_hours_list_the_team_person_by_person_only_for_the_team(compiled_sql):
+    """Al mirar a una persona no hay con quién compararla en el mismo panel:
+    no se pide la lista del equipo ni se sirven las celdas de las demás."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
+
+    assert data["hours"]["people"] == []
+    assert not any("users.is_active" in statement for statement in compiled_sql)

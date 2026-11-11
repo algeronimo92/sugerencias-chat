@@ -16,6 +16,23 @@ export const MIN_CASES_FOR_RATE = 5
 
 export const LEVELS = 5
 
+// Un solo tono en degradado: la intensidad se lee sola y no compite con los
+// colores de estado del resto del panel. El nivel 0 es el neutro del fondo.
+// Vive acá y no en un componente porque lo comparten el mapa del equipo y el
+// de cada persona: dos degradados distintos no se podrían comparar.
+//
+// En oscuro el vacío es casi el fondo del panel y el primer nivel sube a /30:
+// con el gris de los campos de vacío y /15 de primer nivel, una franja con
+// poco movimiento quedaba más oscura que una sin nada y se leía como un hueco.
+export const LEVEL_CLASS = [
+  'bg-wa-field dark:bg-white/5',
+  'bg-wa-primary/15 dark:bg-wa-primary/30',
+  'bg-wa-primary/35 dark:bg-wa-primary/45',
+  'bg-wa-primary/55 dark:bg-wa-primary/60',
+  'bg-wa-primary/80',
+  'bg-wa-primary-strong dark:bg-wa-primary',
+]
+
 export interface HoursCell {
   /** null = muy pocos casos para un porcentaje. */
   value: number | null
@@ -45,13 +62,17 @@ export function formatAverage(value: number): string {
   return value.toLocaleString('es-PE', { maximumFractionDigits: 1 })
 }
 
+/** "4 mensajes escritos en el CRM", "1 flujo a mano". */
+export function countPhrase(reading: Exclude<HoursReading, 'engaged'>, amount: number): string {
+  const [one, many] = UNITS[reading]
+  return `${formatAverage(amount)} ${formatAverage(amount) === '1' ? one : many}`
+}
+
 function describe(reading: HoursReading, value: number | null): string {
   if (reading === 'engaged') {
     return value === null ? 'muy pocos casos para un porcentaje' : `${Math.round(value)} % siguió conversando`
   }
-  const amount = value ?? 0
-  const [one, many] = UNITS[reading]
-  return `${formatAverage(amount)} ${formatAverage(amount) === '1' ? one : many} en promedio`
+  return `${countPhrase(reading, value ?? 0)} en promedio`
 }
 
 /** Tope común del equipo para una lectura, si la lectura lo tiene. */
