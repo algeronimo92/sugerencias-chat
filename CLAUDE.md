@@ -124,3 +124,6 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
   `experto-negocio-clinicas`, `experto-anuncios-meta`, `analista-datos` y `moderador-producto`, que sintetiza.
   Se corren juntos con `Workflow({ name: 'debate-expertos', args: { tema, contexto } })`
   (`.claude/workflows/debate-expertos.js`). Ejemplo de resultado: `docs/analisis/16-debate-dashboard-analitica.md`.
+- Debate con contrapartes: `desarrollador-frontend` se suma al panel y `contraparte-agnostica` se instancia una vez
+  por especialista para intentar tumbar su propuesta antes de la réplica y la síntesis.
+  `Workflow({ name: 'debate-contrapartes', args: { tema, contexto } })` (`.claude/workflows/debate-contrapartes.js`).
