@@ -64,6 +64,7 @@ async def test_messages_by_origin_count_flows_phone_and_app_per_day(tenant) -> N
         await _message(de_grecia, author=grecia, outbox=True)                          # app
         await _message(de_grecia, dedupe_key="automation:7:0:0:0")                     # flujo
         await _message(de_grecia, dedupe_key="automation:7:1:0:0")                     # flujo
+        await _message(de_grecia, outbox=True)                                         # flujo viejo, sin clave
         await _message(de_grecia, author=grecia, dedupe_key="scheduled:3")             # programado
         await _message(de_grecia)                                                      # eco del celular
         await _message(de_antonella)                                                   # eco, otro chat
@@ -72,7 +73,7 @@ async def test_messages_by_origin_count_flows_phone_and_app_per_day(tenant) -> N
 
         team = (await collect(build_scope(7, "team", grecia)))["messages"]["by_origin"]
         assert len(team) == 7
-        assert team[-1] | {"date": None} == {"date": None, "app": 1, "automation": 2, "scheduled": 1, "phone": 2}
+        assert team[-1] | {"date": None} == {"date": None, "app": 1, "automation": 3, "scheduled": 1, "phone": 2}
         assert team[-2]["phone"] == 1
         # La serie vieja sigue contando solo lo que tiene autor.
         assert (await collect(build_scope(7, "team", grecia)))["messages"]["trend"][-1]["value"] == 2

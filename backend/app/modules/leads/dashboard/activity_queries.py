@@ -89,11 +89,11 @@ def _by_origin_stmt(scope: DashboardScope):
     """Todo lo que mandó el negocio, por día y por de dónde salió.
 
     "Mensajes enviados" contaba solo los de la app, y un día en que el equipo
-    contestó desde el celular y los flujos trabajaron se veía en cero (el
-    2026-11-10 hubo decenas de mensajes de flujos y del celular, y el gráfico
-    marcaba 0). La regla es la misma con que el chat rotula cada burbuja
+    contestó desde el celular y los flujos trabajaron se veía en cero. Parte de la regla con que el chat rotula cada burbuja
     (`conversations/domain/origin.py`): la clave del outbox distingue flujos y
     programados, y un mensaje sin fila de outbox llegó como eco del celular.
+    A diferencia del chat, "app" exige autor: lo que salió del outbox sin
+    autor ni clave es un flujo viejo.
 
     En el scope propio se acota a los chats de la persona: los ecos y los
     flujos no tienen autor, así que no hay otra forma de atribuírselos.
@@ -102,7 +102,12 @@ def _by_origin_stmt(scope: DashboardScope):
         (MessageOutbox.dedupe_key.startswith(AUTOMATION_KEY_PREFIX), "automation"),
         (MessageOutbox.dedupe_key.startswith(SCHEDULED_KEY_PREFIX), "scheduled"),
         (MessageOutbox.id.is_(None), "phone"),
-        else_="app",
+        (WspMessage.sent_by_user_id.is_not(None), "app"),
+        # Salió por el outbox sin autor ni clave: son los flujos de antes de que
+        # tuvieran clave propia (hasta el 2026-11-01). Contados como "app"
+        # inflaban esa barra muy por encima de los mensajes con autor real.
+        # Todo envío de una persona desde la app guarda su autor.
+        else_="automation",
     )
     day = local_day(WspMessage.sent_at)
     stmt = (
