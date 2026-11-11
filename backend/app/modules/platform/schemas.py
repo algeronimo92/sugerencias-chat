@@ -26,6 +26,8 @@ class NewOrganizationBody(BaseModel):
 class PlatformSettingItem(BaseModel):
     key: str
     label: str
+    # App a la que pertenece (meta, n8n, google, microsoft, zoho, email_oauth).
+    group: str
     secret: bool
     configured: bool
     # Lo calcula platform_settings: de dónde sale el valor efectivo.
@@ -223,6 +225,76 @@ class OnboardingStatus(BaseModel):
     total: int
     all_done: bool
     dismissed: bool
+
+
+EmailOAuthProvider = Literal["google", "microsoft", "zoho"]
+
+
+class EmailSettingsStatus(BaseModel):
+    # El negocio tiene correo propio (cuenta conectada o SMTP) y las
+    # invitaciones salen de ahí.
+    configured: bool
+    mode: Literal["oauth", "smtp"] | None = None
+    oauth_provider: EmailOAuthProvider | None = None
+    oauth_account_email: str | None = None
+    # Proveedores con "Conectar con…" habilitado por la plataforma.
+    oauth_available: list[EmailOAuthProvider]
+    # Sin correo propio, la plataforma igual puede enviar en su nombre.
+    platform_available: bool
+    host: str
+    port: int
+    security: Literal["starttls", "ssl"]
+    username: str
+    password_configured: bool
+    from_address: str
+    from_name: str
+
+
+class EmailSettingsUpdate(BaseModel):
+    host: str = Field(min_length=1, max_length=253)
+    port: int
+    security: Literal["starttls", "ssl"]
+    username: str = Field(default="", max_length=254)
+    # null conserva la contraseña guardada; nunca se devuelve.
+    password: str | None = Field(default=None, max_length=512)
+    from_address: str = Field(min_length=3, max_length=254)
+    from_name: str = Field(default="", max_length=100)
+
+
+class PlatformEmailStatus(BaseModel):
+    # De dónde salen hoy los correos de respaldo: el panel, el .env o ninguno.
+    source: Literal["platform", "environment"] | None
+    host: str
+    port: int
+    security: Literal["starttls", "ssl"]
+    username: str
+    password_configured: bool
+    from_address: str
+    from_name: str
+    environment_host: str | None = None
+    environment_from_address: str | None = None
+
+
+class PlatformEmailUpdate(BaseModel):
+    host: str = Field(min_length=1, max_length=253)
+    port: int = Field(ge=1, le=65535)
+    security: Literal["starttls", "ssl"]
+    username: str = Field(default="", max_length=254)
+    # null conserva la contraseña guardada; nunca se devuelve.
+    password: str | None = Field(default=None, max_length=512)
+    from_address: str = Field(min_length=3, max_length=254)
+    from_name: str = Field(default="", max_length=100)
+
+
+class EmailConnectRequest(BaseModel):
+    provider: EmailOAuthProvider
+    # window.location.origin del CRM: adonde vuelve el callback.
+    return_origin: str
+
+
+class EmailTestResult(BaseModel):
+    recipient: str
+    source: Literal["tenant", "platform"]
 
 
 class KnowledgeTemplateBody(BaseModel):

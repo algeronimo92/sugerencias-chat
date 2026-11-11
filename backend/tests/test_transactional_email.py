@@ -76,12 +76,14 @@ def test_tenant_email_url_uses_resolved_context_not_request_host(monkeypatch) ->
     assert email_service.public_app_url() == "https://acme.example.com"
 
 
-def test_email_is_disabled_when_transport_is_incomplete(monkeypatch) -> None:
+async def test_email_is_disabled_when_transport_is_incomplete(monkeypatch) -> None:
+    monkeypatch.setattr(email_service, "get_current_tenant", lambda: None)
+    monkeypatch.setattr(email_service, "get_platform_mail_config", AsyncMock(return_value=None))
     monkeypatch.setattr(email_service.settings, "email_provider", "smtp")
     monkeypatch.setattr(email_service.settings, "smtp_host", "")
     monkeypatch.setattr(email_service.settings, "email_from_address", "no-reply@example.com")
 
-    assert email_service.email_is_configured() is False
+    assert await email_service.email_is_configured() is False
 
 
 def _users_client() -> TestClient:

@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -103,6 +103,36 @@ export async function disconnectGoogleCalendar(): Promise<GoogleCalendarStatus> 
     ).data
 }
 
+export async function fetchEmailSettings(): Promise<EmailSettingsStatus> {
+  return (await client.get<ApiResponse<'/api/settings/email', 'get'>>('/api/settings/email')).data
+}
+
+export async function saveEmailSettings(payload: EmailSettingsPayload): Promise<EmailSettingsStatus> {
+  return (await client.put<ApiResponse<'/api/settings/email', 'put'>>('/api/settings/email', payload)).data
+}
+
+export async function clearEmailSettings(): Promise<EmailSettingsStatus> {
+  return (await client.delete<ApiResponse<'/api/settings/email', 'delete'>>('/api/settings/email')).data
+}
+
+/** URL de consentimiento del proveedor; el navegador se va ahí y vuelve al CRM. */
+export async function connectEmail(provider: EmailOAuthProvider, returnOrigin: string): Promise<string> {
+  return (
+    await client.post<ApiResponse<'/api/settings/email/connect', 'post'>>('/api/settings/email/connect', {
+      provider,
+      return_origin: returnOrigin,
+    })
+  ).data.url
+}
+
+export async function disconnectEmail(): Promise<EmailSettingsStatus> {
+  return (await client.post<ApiResponse<'/api/settings/email/disconnect', 'post'>>('/api/settings/email/disconnect')).data
+}
+
+export async function sendEmailTest(): Promise<EmailTestResult> {
+  return (await client.post<ApiResponse<'/api/settings/email/test', 'post'>>('/api/settings/email/test')).data
+}
+
 export async function fetchBusinessTimezones(): Promise<BusinessTimezoneItem[]> {
   return (
       await client.get<ApiResponse<'/api/settings/timezones', 'get'>>('/api/settings/timezones')
@@ -190,6 +220,23 @@ export async function fetchPlatformSettings(): Promise<PlatformSetting[]> {
 
 export async function savePlatformSettings(values: Record<string, string>): Promise<PlatformSetting[]> {
   return (await client.put<ApiResponse<'/api/platform/settings', 'put'>>("/api/platform/settings", { values })).data
+}
+
+export async function fetchPlatformEmail(): Promise<PlatformEmailStatus> {
+  return (await client.get<ApiResponse<'/api/platform/email', 'get'>>('/api/platform/email')).data
+}
+
+export async function savePlatformEmail(payload: PlatformEmailPayload): Promise<PlatformEmailStatus> {
+  return (await client.put<ApiResponse<'/api/platform/email', 'put'>>('/api/platform/email', payload)).data
+}
+
+export async function clearPlatformEmail(): Promise<PlatformEmailStatus> {
+  return (await client.delete<ApiResponse<'/api/platform/email', 'delete'>>('/api/platform/email')).data
+}
+
+/** Manda una prueba al correo del operador con sesión, desde el remitente de la plataforma. */
+export async function sendPlatformEmailTest(): Promise<EmailTestResult> {
+  return (await client.post<ApiResponse<'/api/platform/email/test', 'post'>>('/api/platform/email/test')).data
 }
 
 export async function fetchOrganizations(): Promise<OrganizationList> {

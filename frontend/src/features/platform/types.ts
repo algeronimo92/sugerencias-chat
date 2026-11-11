@@ -59,6 +59,14 @@ export interface MetaPublicConfig {
 export type GoogleCalendarStatus = Delivered<ApiSchemas['GoogleCalendarStatus']>
 export type GoogleCalendarItem = Delivered<ApiSchemas['GoogleCalendarItem']>
 
+/** Correo de envío propio del negocio (invitaciones y avisos). */
+export type EmailSettingsStatus = Delivered<ApiSchemas['EmailSettingsStatus']>
+export type EmailSettingsPayload = ApiSchemas['EmailSettingsUpdate']
+export type EmailTestResult = Delivered<ApiSchemas['EmailTestResult']>
+export type PlatformEmailStatus = Delivered<ApiSchemas['PlatformEmailStatus']>
+export type PlatformEmailPayload = ApiSchemas['PlatformEmailUpdate']
+export type EmailOAuthProvider = ApiSchemas['EmailConnectRequest']['provider']
+
 export interface MetaEmbeddedSignupPayload {
   code: string
   waba_id: string

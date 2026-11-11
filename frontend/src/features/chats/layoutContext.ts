@@ -4,7 +4,7 @@ import type { ChatFilters } from '../leads/types'
 export type ChatQuickFilter = 'all' | 'unread' | 'mine'
 export type SettingsTab = 'general' | 'usuarios'
 /** Anclas de la página de Integraciones. */
-export type IntegrationAnchor = 'whatsapp' | 'calendario' | 'erp' | 'voz'
+export type IntegrationAnchor = 'whatsapp' | 'calendario' | 'erp' | 'voz' | 'correo'
 
 export interface ChatFiltersState {
   search: string

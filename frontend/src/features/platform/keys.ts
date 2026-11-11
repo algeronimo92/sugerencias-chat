@@ -17,6 +17,7 @@ export const settingsKeys = {
   metaPublicConfig: ['platform-meta-public-config'] as const,
   googleCalendarStatus: ['settings', 'google-calendar', 'status'] as const,
   googleCalendars: ['settings', 'google-calendar', 'calendars'] as const,
+  email: ['settings', 'email'] as const,
   // Bajo `settings`: guardar ajustes o conectar Google ya invalida el prefijo
   // y el checklist se pone al día sin que nadie lo recuerde.
   onboarding: ['settings', 'onboarding'] as const,
@@ -33,6 +34,7 @@ export const platformKeys = {
   me: ['platform', 'me'] as const,
   organizations: ['platform', 'organizations'] as const,
   settings: ['platform', 'settings'] as const,
+  email: ['platform', 'email'] as const,
   branding: (organizationId: string) => ['platform', 'organizations', organizationId, 'branding'] as const,
   ai: (organizationId: string) => ['platform', 'organizations', organizationId, 'ai'] as const,
   integrations: (organizationId: string) => ['platform', 'organizations', organizationId, 'integrations'] as const,

@@ -64,7 +64,7 @@ export function SettingsDialog({ onClose, initialTab = 'general', onOpenIntegrat
             <p className="flex items-center gap-1.5 border-t border-wa-border/70 px-4 py-2 text-xs text-wa-muted dark:border-wa-border-dark/70 dark:text-wa-muted-dark">
               <Plug className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>
-                WhatsApp, Google Calendar, ERP y voz ahora están en{' '}
+                WhatsApp, Google Calendar, ERP, voz y correo ahora están en{' '}
                 <button type="button" onClick={onOpenIntegrations} className="font-semibold text-wa-primary-strong underline dark:text-wa-primary">
                   Integraciones
                 </button>

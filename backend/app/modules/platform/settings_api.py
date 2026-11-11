@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.integrations.meta import client as meta_service
 from app.integrations.meta.client import MetaApiError
+from app.modules.platform.email_settings import EMAIL_KEYS
 from app.modules.platform.platform_settings import platform_settings_many
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
@@ -36,6 +37,13 @@ async def put_settings(body: UpdateSettingsRequest):
         raise HTTPException(
             status_code=403,
             detail=f"Estos ajustes los administra la plataforma: {', '.join(managed)}",
+        )
+    email_keys = sorted(set(body.values) & set(EMAIL_KEYS))
+    if email_keys:
+        # Se guardan juntos y validados desde la pestaña Correo.
+        raise HTTPException(
+            status_code=400,
+            detail="El correo de envío se configura en la pestaña Correo",
         )
     try:
         await update_settings(body.values)

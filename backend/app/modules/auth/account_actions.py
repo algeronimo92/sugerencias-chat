@@ -47,8 +47,8 @@ def _new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _ensure_email_ready() -> None:
-    if not email_is_configured():
+async def _ensure_email_ready() -> None:
+    if not await email_is_configured():
         raise EmailNotConfiguredError("El correo transaccional no está configurado")
     # Valida también que exista una URL canónica antes de escribir en DB.
     public_app_url()
@@ -81,7 +81,7 @@ async def _rotate_invitation(session, *, user_id: int, raw_token: str, now: date
 
 
 async def invite_user(*, email: str, name: str, role: str) -> dict:
-    _ensure_email_ready()
+    await _ensure_email_ready()
     now = datetime.now(timezone.utc)
     raw_token = _new_token()
     normalized_email = email.strip().lower()
@@ -174,7 +174,7 @@ async def revoke_pending_invitations(user_id: int) -> None:
 async def request_password_reset(email: str) -> None:
     """Siempre retorna igual: nunca permite enumerar usuarios ni config SMTP."""
 
-    if not email_is_configured():
+    if not await email_is_configured():
         logger.info("Recuperación omitida: correo transaccional no configurado")
         return
     try:
@@ -302,7 +302,7 @@ async def send_deduplicated_operational_alert(
 ) -> bool:
     """Entrega una vez por clave; un fallo libera la clave para reintentar."""
 
-    if not email_is_configured():
+    if not await email_is_configured():
         return False
     now = datetime.now(timezone.utc)
     async with session_scope() as session:

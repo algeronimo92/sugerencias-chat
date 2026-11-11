@@ -468,6 +468,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Platform Email */
+        get: operations["get_platform_email_api_platform_email_get"];
+        /** Put Platform Email */
+        put: operations["put_platform_email_api_platform_email_put"];
+        post?: never;
+        /** Delete Platform Email */
+        delete: operations["delete_platform_email_api_platform_email_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Platform Email Test */
+        post: operations["post_platform_email_test_api_platform_email_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/domains": {
         parameters: {
             query?: never;
@@ -1642,6 +1678,76 @@ export interface paths {
         put?: never;
         /** Post Google Disconnect */
         post: operations["post_google_disconnect_api_settings_google_calendar_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Email Settings */
+        get: operations["get_email_settings_api_settings_email_get"];
+        /** Put Email Settings */
+        put: operations["put_email_settings_api_settings_email_put"];
+        post?: never;
+        /** Delete Email Settings */
+        delete: operations["delete_email_settings_api_settings_email_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Email Connect */
+        post: operations["post_email_connect_api_settings_email_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Email Disconnect */
+        post: operations["post_email_disconnect_api_settings_email_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Email Test */
+        post: operations["post_email_test_api_settings_email_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4955,6 +5061,84 @@ export interface components {
              */
             is_primary: boolean;
         };
+        /** EmailConnectRequest */
+        EmailConnectRequest: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "google" | "microsoft" | "zoho";
+            /** Return Origin */
+            return_origin: string;
+        };
+        /** EmailSettingsStatus */
+        EmailSettingsStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Mode */
+            mode?: ("oauth" | "smtp") | null;
+            /** Oauth Provider */
+            oauth_provider?: ("google" | "microsoft" | "zoho") | null;
+            /** Oauth Account Email */
+            oauth_account_email?: string | null;
+            /** Oauth Available */
+            oauth_available: ("google" | "microsoft" | "zoho")[];
+            /** Platform Available */
+            platform_available: boolean;
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @enum {string}
+             */
+            security: "starttls" | "ssl";
+            /** Username */
+            username: string;
+            /** Password Configured */
+            password_configured: boolean;
+            /** From Address */
+            from_address: string;
+            /** From Name */
+            from_name: string;
+        };
+        /** EmailSettingsUpdate */
+        EmailSettingsUpdate: {
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @enum {string}
+             */
+            security: "starttls" | "ssl";
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+            /** Password */
+            password?: string | null;
+            /** From Address */
+            from_address: string;
+            /**
+             * From Name
+             * @default
+             */
+            from_name: string;
+        };
+        /** EmailTestResult */
+        EmailTestResult: {
+            /** Recipient */
+            recipient: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "tenant" | "platform";
+        };
         /** ErpSamplePackage */
         ErpSamplePackage: {
             /** Label */
@@ -6395,12 +6579,66 @@ export interface components {
             /** Items */
             items: components["schemas"]["Message"][];
         };
+        /** PlatformEmailStatus */
+        PlatformEmailStatus: {
+            /** Source */
+            source: ("platform" | "environment") | null;
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @enum {string}
+             */
+            security: "starttls" | "ssl";
+            /** Username */
+            username: string;
+            /** Password Configured */
+            password_configured: boolean;
+            /** From Address */
+            from_address: string;
+            /** From Name */
+            from_name: string;
+            /** Environment Host */
+            environment_host?: string | null;
+            /** Environment From Address */
+            environment_from_address?: string | null;
+        };
+        /** PlatformEmailUpdate */
+        PlatformEmailUpdate: {
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @enum {string}
+             */
+            security: "starttls" | "ssl";
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+            /** Password */
+            password?: string | null;
+            /** From Address */
+            from_address: string;
+            /**
+             * From Name
+             * @default
+             */
+            from_name: string;
+        };
         /** PlatformSettingItem */
         PlatformSettingItem: {
             /** Key */
             key: string;
             /** Label */
             label: string;
+            /** Group */
+            group: string;
             /** Secret */
             secret: boolean;
             /** Configured */
@@ -8166,6 +8404,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_platform_email_api_platform_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformEmailStatus"];
+                };
+            };
+        };
+    };
+    put_platform_email_api_platform_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformEmailUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformEmailStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_platform_email_api_platform_email_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformEmailStatus"];
+                };
+            };
+        };
+    };
+    post_platform_email_test_api_platform_email_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
                 };
             };
         };
@@ -10524,6 +10855,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleCalendarStatus"];
+                };
+            };
+        };
+    };
+    get_email_settings_api_settings_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+        };
+    };
+    put_email_settings_api_settings_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_email_settings_api_settings_email_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+        };
+    };
+    post_email_connect_api_settings_email_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_email_disconnect_api_settings_email_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsStatus"];
+                };
+            };
+        };
+    };
+    post_email_test_api_settings_email_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
                 };
             };
         };

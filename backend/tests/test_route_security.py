@@ -50,6 +50,10 @@ PUBLIC_ROUTES = {
     # común. Solo actúa con un state firmado, vigente y cuyo nonce de un solo
     # uso coincide con el guardado por el negocio (ver google_calendar_api.py).
     ("GET", "/api/integrations/google/callback"),
+    # Vuelta de "Conectar con…" del correo (Google, Microsoft o Zoho): mismas
+    # garantías que la de Calendar, state firmado y nonce de un solo uso
+    # guardado por el negocio (ver email_settings_api.py).
+    ("GET", "/api/integrations/email/callback"),
     ("GET", "/health"),
     ("GET", "/health/ready"),
     ("GET", "/metrics"),

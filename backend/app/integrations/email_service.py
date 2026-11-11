@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape
+import ipaddress
 import logging
 import smtplib
+import socket
 import ssl
 from urllib.parse import urlsplit
 
 from app.core.config import settings
 from app.modules.platform.ports.branding import (DEFAULT_BRANDING, OrganizationNotFound, get_branding)
+from app.integrations import email_oauth
+from app.modules.platform.ports.mail_settings import (
+    PlatformMailConfig,
+    environment_mail_config,
+    get_platform_mail_config,
+    get_tenant_mail_config,
+    get_tenant_mail_oauth,
+    store_rotated_refresh_token,
+)
 from app.tenancy.context import get_current_tenant
 
 
@@ -27,13 +39,104 @@ class EmailDeliveryError(RuntimeError):
     pass
 
 
-def email_is_configured() -> bool:
-    return (
-        settings.email_provider.strip().lower() == "smtp"
-        and bool(settings.smtp_host.strip())
-        and bool(settings.email_from_address.strip())
-        and not (settings.smtp_ssl and settings.smtp_starttls)
+@dataclass(frozen=True)
+class SmtpTransport:
+    host: str
+    port: int
+    username: str
+    password: str
+    use_ssl: bool
+    starttls: bool
+    from_address: str
+    from_name: str
+    # "tenant": el SMTP que cargó el negocio; "platform": el del panel de
+    # plataforma o, en su defecto, el del .env.
+    source: str
+
+    @property
+    def restricted(self) -> bool:
+        # El host del negocio lo escribe un usuario: solo puede ser público.
+        # El de la plataforma puede ser un relay interno a propósito.
+        return self.source == "tenant"
+
+
+def _platform_smtp(config: PlatformMailConfig) -> SmtpTransport:
+    return SmtpTransport(
+        host=config.host,
+        port=config.port,
+        username=config.username,
+        password=config.password,
+        use_ssl=config.security == "ssl",
+        starttls=config.security == "starttls",
+        from_address=config.from_address,
+        from_name=config.from_name,
+        source="platform",
     )
+
+
+async def platform_transport() -> SmtpTransport | None:
+    """El SMTP cargado en el panel de plataforma o, si no hay, el del .env."""
+
+    config = await get_platform_mail_config() or environment_mail_config()
+    return _platform_smtp(config) if config else None
+
+
+async def tenant_transport() -> SmtpTransport | None:
+    if get_current_tenant() is None:
+        return None
+    config = await get_tenant_mail_config()
+    if config is None:
+        return None
+    return SmtpTransport(
+        host=config.host,
+        port=config.port,
+        username=config.username,
+        password=config.password,
+        use_ssl=config.security == "ssl",
+        starttls=config.security == "starttls",
+        from_address=config.from_address,
+        from_name=config.from_name,
+        source="tenant",
+    )
+
+
+@dataclass(frozen=True)
+class OAuthTransport:
+    """Cuenta del negocio conectada con "Conectar con…": se envía por la API
+    del proveedor, sin SMTP ni contraseña."""
+
+    connection: email_oauth.Connection
+    source: str = "tenant"
+
+
+Transport = SmtpTransport | OAuthTransport
+
+
+async def tenant_oauth_transport() -> OAuthTransport | None:
+    if get_current_tenant() is None:
+        return None
+    oauth = await get_tenant_mail_oauth()
+    if oauth is None:
+        return None
+    return OAuthTransport(
+        email_oauth.Connection(
+            provider=oauth.provider,
+            refresh_token=oauth.refresh_token,
+            account_email=oauth.account_email,
+            accounts_server=oauth.accounts_server,
+            account_id=oauth.account_id,
+        )
+    )
+
+
+async def resolve_transport() -> Transport | None:
+    """La cuenta conectada del negocio, su SMTP, o el de la plataforma."""
+
+    return await tenant_oauth_transport() or await tenant_transport() or await platform_transport()
+
+
+async def email_is_configured() -> bool:
+    return await resolve_transport() is not None
 
 
 def public_app_url() -> str:
@@ -67,21 +170,76 @@ async def current_brand_name() -> str:
         return DEFAULT_BRANDING.name
 
 
-def _smtp_send(message: EmailMessage) -> None:
-    smtp_class = smtplib.SMTP_SSL if settings.smtp_ssl else smtplib.SMTP
-    kwargs = {
-        "host": settings.smtp_host.strip(),
-        "port": settings.smtp_port,
+class EmailHostRejected(EmailDeliveryError):
+    pass
+
+
+def _public_address(host: str, port: int) -> str:
+    """Resuelve una sola vez y exige que todas las IP sean públicas.
+
+    La conexión va a la IP ya validada: si se resolviera de nuevo al
+    conectar, un DNS que cambia de respuesta (rebinding) llevaría el SMTP
+    del negocio a postgres, redis o la red interna del servidor.
+    """
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise EmailDeliveryError("No se encontró el servidor SMTP. Revisa el nombre.") from exc
+    addresses = [info[4][0] for info in infos]
+    if not addresses or any(
+        not ipaddress.ip_address(address.split("%", 1)[0]).is_global for address in addresses
+    ):
+        raise EmailHostRejected("El servidor SMTP debe ser una dirección pública")
+    return addresses[0]
+
+
+class _PinnedSMTP(smtplib.SMTP):
+    def __init__(self, *, pinned_ip: str, **kwargs) -> None:
+        self._pinned_ip = pinned_ip
+        super().__init__(**kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        # ``self._host`` sigue siendo el nombre: STARTTLS valida el
+        # certificado contra él, no contra la IP.
+        return socket.create_connection((self._pinned_ip, port), timeout, self.source_address)
+
+
+class _PinnedSMTPSSL(smtplib.SMTP_SSL):
+    def __init__(self, *, pinned_ip: str, **kwargs) -> None:
+        self._pinned_ip = pinned_ip
+        super().__init__(**kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        sock = socket.create_connection((self._pinned_ip, port), timeout, self.source_address)
+        return self.context.wrap_socket(sock, server_hostname=self._host)
+
+
+def _open_client(transport: SmtpTransport) -> smtplib.SMTP:
+    kwargs: dict = {
+        "host": transport.host,
+        "port": transport.port,
         "timeout": settings.smtp_timeout_seconds,
     }
-    client = smtp_class(context=ssl.create_default_context(), **kwargs) if settings.smtp_ssl else smtp_class(**kwargs)
+    if transport.use_ssl:
+        kwargs["context"] = ssl.create_default_context()
+    if transport.restricted:
+        pinned_ip = _public_address(transport.host, transport.port)
+        pinned_class = _PinnedSMTPSSL if transport.use_ssl else _PinnedSMTP
+        return pinned_class(pinned_ip=pinned_ip, **kwargs)
+    smtp_class = smtplib.SMTP_SSL if transport.use_ssl else smtplib.SMTP
+    return smtp_class(**kwargs)
+
+
+def _smtp_send(message: EmailMessage, transport: SmtpTransport) -> None:
+    client = _open_client(transport)
     try:
         client.ehlo()
-        if settings.smtp_starttls:
+        if transport.starttls:
             client.starttls(context=ssl.create_default_context())
             client.ehlo()
-        if settings.smtp_username:
-            client.login(settings.smtp_username, settings.smtp_password)
+        if transport.username:
+            client.login(transport.username, transport.password)
         client.send_message(message)
     finally:
         try:
@@ -90,27 +248,113 @@ def _smtp_send(message: EmailMessage) -> None:
             client.close()
 
 
+def _delivery_reason(exc: BaseException) -> str:
+    """Motivo entendible para el admin que configura su correo.
+
+    Nunca incluye la respuesta del servidor: puede traer el usuario o datos
+    internos del proveedor.
+    """
+
+    if isinstance(exc, EmailDeliveryError):
+        return str(exc)
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return (
+            "El servidor rechazó el usuario o la contraseña. En Gmail y Outlook "
+            "se usa una contraseña de aplicación, no la de la cuenta."
+        )
+    if isinstance(exc, smtplib.SMTPSenderRefused):
+        return "El servidor no permite enviar desde ese correo remitente."
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return "El servidor rechazó al destinatario."
+    if isinstance(exc, smtplib.SMTPNotSupportedError):
+        return "El servidor no admite STARTTLS en ese puerto. Prueba SSL/TLS en el puerto 465."
+    if isinstance(exc, ssl.SSLError):
+        return "Falló la conexión segura. Revisa que el puerto coincida con la seguridad elegida."
+    if isinstance(exc, TimeoutError):
+        return "El servidor SMTP no respondió a tiempo. Revisa el servidor y el puerto."
+    if isinstance(exc, ConnectionRefusedError):
+        return "El servidor SMTP rechazó la conexión en ese puerto."
+    return "El proveedor de correo rechazó el envío."
+
+
 async def send_email(
-    *, recipients: list[str], subject: str, text_body: str, html_body: str
+    *,
+    recipients: list[str],
+    subject: str,
+    text_body: str,
+    html_body: str,
+    transport: Transport | None = None,
 ) -> None:
-    if not email_is_configured():
+    transport = transport or await resolve_transport()
+    if transport is None:
         raise EmailNotConfiguredError("El proveedor SMTP no está configurado")
     clean_recipients = sorted({address.strip().lower() for address in recipients if address.strip()})
     if not clean_recipients:
         return
+    if isinstance(transport, OAuthTransport):
+        from_name, from_address = await current_brand_name(), transport.connection.account_email
+    else:
+        from_name, from_address = transport.from_name, transport.from_address
+        if transport.source == "tenant" and not from_name:
+            from_name = await current_brand_name()
     message = EmailMessage()
-    message["From"] = formataddr(
-        (settings.email_from_name.strip(), settings.email_from_address.strip())
-    )
+    message["From"] = formataddr((from_name, from_address))
     message["To"] = ", ".join(clean_recipients)
     message["Subject"] = subject
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
+    if isinstance(transport, OAuthTransport):
+        await _send_with_oauth(transport, message, clean_recipients, subject, html_body)
+        return
     try:
-        await asyncio.to_thread(_smtp_send, message)
-    except (OSError, smtplib.SMTPException) as exc:
-        logger.warning("No se pudo entregar correo transaccional: %s", type(exc).__name__)
-        raise EmailDeliveryError("El proveedor de correo rechazó el envío") from exc
+        await asyncio.to_thread(_smtp_send, message, transport)
+    except (OSError, smtplib.SMTPException, EmailDeliveryError) as exc:
+        logger.warning(
+            "No se pudo entregar correo transaccional (origen=%s): %s",
+            transport.source,
+            type(exc).__name__,
+        )
+        raise EmailDeliveryError(_delivery_reason(exc)) from exc
+
+
+async def _send_with_oauth(
+    transport: OAuthTransport, message: EmailMessage, recipients: list[str], subject: str, html_body: str
+) -> None:
+    try:
+        rotated = await email_oauth.send_message(
+            transport.connection, message, recipients=recipients, subject=subject, html_body=html_body
+        )
+    except email_oauth.EmailOAuthError as exc:
+        logger.warning(
+            "No se pudo entregar correo por %s: %s", transport.connection.provider, exc.code
+        )
+        raise EmailDeliveryError(str(exc)) from exc
+    if rotated:
+        await store_rotated_refresh_token(rotated)
+
+
+async def send_test_email(*, recipient: str, transport: Transport | None = None) -> Transport:
+    """Manda una prueba con el mismo transporte que usarían las invitaciones."""
+
+    transport = transport or await resolve_transport()
+    if transport is None:
+        raise EmailNotConfiguredError("No hay correo de envío configurado")
+    brand = await current_brand_name()
+    origin = "el correo de tu negocio" if transport.source == "tenant" else "el correo de la plataforma"
+    await send_email(
+        recipients=[recipient],
+        subject=f"Correo de prueba de {brand}",
+        text_body=f"Este es un correo de prueba. Las invitaciones de {brand} salen desde {origin}.",
+        html_body=(
+            '<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;color:#172b27">'
+            '<div style="max-width:560px;margin:24px auto;border:1px solid #dce7e3;border-radius:16px;padding:28px">'
+            f'<p style="font-weight:700">{escape(brand)}</p><h1 style="font-size:22px">Correo de prueba</h1>'
+            f'<p style="line-height:1.6;color:#52635f">Todo listo: las invitaciones de {escape(brand)} '
+            f'salen desde {escape(origin)}.</p></div></body></html>'
+        ),
+        transport=transport,
+    )
+    return transport
 
 
 def _action_html(*, brand: str, greeting: str, message: str, action: str, url: str, expiry: str) -> str:
