@@ -380,26 +380,26 @@ describe('DashboardPage', () => {
   it('cuenta los mensajes que el vendedor envió desde la app', () => {
     renderDashboard()
 
-    expect(screen.getByText('Mensajes enviados')).toBeInTheDocument()
+    expect(screen.getByText('Mensajes escritos en el CRM')).toBeInTheDocument()
     // El KPI aclara de dónde sale la cifra: los enviados desde el celular del
     // vendedor llegan sin autor y no se cuentan.
-    expect(screen.getByText('Desde la app · Últimos 30 días')).toBeInTheDocument()
-    expect(screen.getByText('Quién manda más mensajes')).toBeInTheDocument()
+    expect(screen.getByText('Los envió una persona desde el CRM, no un flujo ni WhatsApp · Últimos 30 días')).toBeInTheDocument()
+    expect(screen.getByText('Quién escribe más en el CRM')).toBeInTheDocument()
   })
 
-  it('reparte los mensajes del negocio por origen, con los del celular aparte', () => {
+  it('reparte los mensajes del negocio por origen y explica qué es cada uno', () => {
     renderDashboard()
 
     const panel = screen.getByRole('region', { name: 'Mensajes enviados por día' })
-    expect(within(panel).getByText('180 mensajes del negocio: el 37% salió desde el celular, fuera de la app.')).toBeInTheDocument()
+    expect(within(panel).getByText('180 mensajes del negocio: el 19% se escribió en el CRM, el 37% salió desde WhatsApp por fuera del CRM, el 42% lo mandaron los flujos automáticos y el 2% eran mensajes programados.')).toBeInTheDocument()
     const reparto = within(panel).getByRole('list', { name: 'Mensajes por origen' })
-    expect(within(reparto).getByText('Desde el celular (fuera de la app)').closest('li')).toHaveTextContent('6637%')
+    expect(within(reparto).getByText('Desde WhatsApp, fuera del CRM').closest('li')).toHaveTextContent('6637%')
     expect(within(reparto).getByText('Flujos automáticos').closest('li')).toHaveTextContent('7642%')
-    expect(within(reparto).getByText('Desde la app').closest('li')).toHaveTextContent('3419%')
-    expect(within(reparto).getByText('Programados').closest('li')).toHaveTextContent('42%')
-    // Las barras llevan su propia leyenda, con los cuatro orígenes aunque alguno esté en cero.
+    expect(within(reparto).getByText('Escritos en el CRM').closest('li')).toHaveTextContent('3419%')
+    expect(within(reparto).getByText('Programados en el CRM').closest('li')).toHaveTextContent('No es una difusión')
+    // Las barras llevan su propia leyenda, con los orígenes que tuvieron mensajes.
     const leyenda = within(panel).getByRole('list', { name: 'Colores de cada origen' })
-    for (const origen of ['Desde la app', 'Desde el celular (fuera de la app)', 'Flujos automáticos', 'Programados']) {
+    for (const origen of ['Escritos en el CRM', 'Desde WhatsApp, fuera del CRM', 'Flujos automáticos', 'Programados en el CRM']) {
       expect(within(leyenda).getByText(origen)).toBeInTheDocument()
     }
   })

@@ -43,10 +43,12 @@ async def _lead(seller_id: int | None) -> str:
 
 
 async def _message(chat_id: str, *, sender: str = "vendedor", author: int | None = None,
-                   dedupe_key: str | None = None, outbox: bool = False, days_ago: int = 0) -> None:
+                   dedupe_key: str | None = None, outbox: bool = False, days_ago: int = 0,
+                   outbox_status: str | None = None, meta_status: str | None = None) -> None:
     async with session_scope() as session:
         message = WspMessage(
             chat_id=chat_id, sender=sender, content="hola", sent_by_user_id=author,
+            outbox_status=outbox_status, meta_status=meta_status,
             sent_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
         )
         session.add(message)
@@ -80,3 +82,23 @@ async def test_messages_by_origin_count_flows_phone_and_app_per_day(tenant) -> N
 
         mine = (await collect(build_scope(7, "mine", antonella)))["messages"]["by_origin"]
         assert mine[-1] | {"date": None} == {"date": None, "app": 0, "automation": 0, "scheduled": 0, "phone": 1}
+
+
+async def test_messages_that_never_went_out_are_not_counted_as_sent(tenant) -> None:
+    """Un envío que agotó reintentos, se descartó o Meta rechazó no llegó al
+    cliente: no es un mensaje enviado, ni en el gráfico ni en el ranking."""
+    with tenant_context(tenant):
+        grecia = await _user("Grecia")
+        chat = await _lead(grecia)
+        await _message(chat, author=grecia, outbox=True, outbox_status="sent", meta_status="read")
+        await _message(chat, author=grecia, outbox=True, outbox_status="queued")              # todavía puede salir
+        await _message(chat, author=grecia, outbox=True, outbox_status="failed")
+        await _message(chat, author=grecia, outbox=True, outbox_status="discarded")
+        await _message(chat, author=grecia, outbox=True, outbox_status="sent", meta_status="failed")
+        await _message(chat, dedupe_key="automation:9:0:0:0", outbox_status="failed")
+        await _message(chat, meta_status="delivered")                                         # eco del celular
+
+        messages = (await collect(build_scope(7, "team", grecia)))["messages"]
+        assert messages["by_origin"][-1] | {"date": None} == {"date": None, "app": 2, "automation": 0, "scheduled": 0, "phone": 1}
+        assert messages["trend"][-1]["value"] == 2
+        assert messages["by_user"] == [{"name": "Grecia", "value": 2}]
