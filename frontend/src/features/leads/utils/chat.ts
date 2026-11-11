@@ -1,6 +1,6 @@
 import type { Chat } from '../types'
 
-export function displayUsername(chat: Chat): string | null {
+export function displayUsername(chat: Pick<Chat, 'username'>): string | null {
   const username = chat.username?.trim()
   if (!username) return null
   return username.startsWith('@') ? username : `@${username}`
@@ -15,7 +15,7 @@ export function displayPhone(chat: Chat): string {
   return chat.phone ?? 'Sin teléfono asociado'
 }
 
-export function avatarInitial(chat: Chat): string {
+export function avatarInitial(chat: Pick<Chat, 'username' | 'name'>): string {
   const username = displayUsername(chat)
   if (username) return username[1]?.toUpperCase() ?? '#'
   return chat.name?.trim()[0]?.toUpperCase() ?? '#'

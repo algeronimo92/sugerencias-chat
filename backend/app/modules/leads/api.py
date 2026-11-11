@@ -15,7 +15,7 @@ from app.modules.conversations.ports.chat_queries import CHATS_PAGE_SIZE
 from app.modules.leads.kanban_queries import KANBAN_PAGE_SIZE
 from app.modules.auth.public import get_current_user, list_active_sellers, require_admin
 from app.modules.catalogs.ports.custom_fields import CustomFieldError, normalize_values
-from app.modules.conversations.ports.chat_queries import fetch_chat, fetch_chats
+from app.modules.conversations.ports.chat_queries import LeadFilters, fetch_chat, fetch_chats, search_chat_messages
 from app.modules.conversations.ports.inbox_queries import fetch_total_unread_chat_count
 from app.modules.leads.application import commands
 from app.modules.leads.domain.lead import Actor
@@ -34,6 +34,7 @@ from app.modules.leads.schemas import (
     LeadStageKey,
     LeadStageUpdate,
     LeadUpdate,
+    MessageSearchPage,
     SellerItem,
     ServiceInterestReassign,
     ServiceInterestReassignResult,
@@ -60,12 +61,7 @@ async def _normalized_phone(raw: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("", response_model=ChatPage)
-async def get_chats(
-    search: str | None = None,
-    cursor_ts: str | None = None,
-    cursor_id: str | None = None,
-    limit: int = CHATS_PAGE_SIZE,
+def _lead_filters(
     unread_only: bool = False,
     stages: str | None = None,
     tag_ids: str | None = None,
@@ -76,37 +72,78 @@ async def get_chats(
     last_sender: str | None = Query(default=None, pattern="^(cliente|vendedor)$"),
     inactive_days: int | None = Query(default=None, ge=1, le=3650),
     waiting_time: str | None = Query(default=None, pattern="^(any|fresh|warning|urgent)$"),
-    cursor_rank: int | None = Query(default=None, ge=0, le=2),
     automation_paused: bool = False,
-):
+) -> LeadFilters:
+    """Los filtros de la bandeja, iguales para la lista de chats y para la
+    búsqueda por mensaje."""
     try:
         # Una clave inexistente no es un error: simplemente no filtra nada
         # (puede venir de un filtro guardado antes de borrar la etapa).
-        parsed_stages = [value for value in stages.split(",") if value] if stages else None
-        parsed_tag_ids = [int(value) for value in tag_ids.split(",") if value] if tag_ids else None
+        parsed_stages = tuple(value for value in stages.split(",") if value) if stages else None
+        parsed_tag_ids = tuple(int(value) for value in tag_ids.split(",") if value) if tag_ids else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Filtros inválidos")
+    return LeadFilters(
+        unread_only=unread_only,
+        stages=parsed_stages,
+        tag_ids=parsed_tag_ids,
+        tag_mode=tag_mode,
+        service=service,
+        seller_id=seller_id,
+        origin=origin,
+        last_sender=last_sender,
+        inactive_days=inactive_days,
+        waiting_time=waiting_time,
+        automation_paused=automation_paused,
+    )
+
+
+@router.get("", response_model=ChatPage)
+async def get_chats(
+    search: str | None = None,
+    cursor_ts: str | None = None,
+    cursor_id: str | None = None,
+    limit: int = CHATS_PAGE_SIZE,
+    cursor_rank: int | None = Query(default=None, ge=0, le=2),
+    # "contacts": solo los leads que matchean por sus datos (la sección
+    # "Contactos" del buscador). Por defecto, también los que matchean por
+    # un mensaje, como lo piden las versiones anteriores de la app.
+    search_in: str = Query(default="all", pattern="^(all|contacts)$"),
+    filters: LeadFilters = Depends(_lead_filters),
+):
+    try:
         return await fetch_chats(
             search.strip() if search else None,
             cursor_ts,
             cursor_id,
             limit,
-            unread_only,
-            parsed_stages,
-            parsed_tag_ids,
-            tag_mode,
-            service,
-            seller_id,
-            origin,
-            last_sender,
-            inactive_days,
-            waiting_time,
+            filters,
             cursor_rank,
-            automation_paused,
+            search_in,
         )
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Filtros inválidos")
     except Exception:
         logger.exception("Error inesperado al listar chats")
         raise HTTPException(status_code=500, detail="Error interno al listar chats")
+
+
+# Antes de las rutas con `{chat_id}`: si no, "message-search" se leería como
+# el id de un chat.
+@router.get("/message-search", response_model=MessageSearchPage)
+async def get_message_search(
+    search: str = Query(min_length=1, max_length=200),
+    cursor_ts: str | None = None,
+    cursor_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=CHATS_PAGE_SIZE, ge=1, le=100),
+    filters: LeadFilters = Depends(_lead_filters),
+):
+    """Los mensajes que contienen la búsqueda, uno por fila y del más nuevo al
+    más viejo: la sección "Mensajes" del buscador."""
+    try:
+        return await search_chat_messages(search.strip(), cursor_ts, cursor_id, limit, filters)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Filtros inválidos")
 
 
 @router.get("/unread-count", response_model=UnreadCount)

@@ -15,6 +15,7 @@ from app.modules.leads import api as leads
 
 EXPECTED_ROUTES = [
     ("GET", "/api/chats", "get_chats"),
+    ("GET", "/api/chats/message-search", "get_message_search"),
     ("GET", "/api/chats/unread-count", "get_unread_count"),
     ("GET", "/api/chats/kanban/counts", "get_kanban_counts"),
     ("GET", "/api/chats/kanban/snapshot", "get_kanban_snapshot"),
@@ -57,6 +58,7 @@ LITERALS_THAT_LOOK_LIKE_A_CHAT_ID = [
     "/api/chats/sellers",
     "/api/chats/phone-config",
     "/api/chats/unread-count",
+    "/api/chats/message-search",
 ]
 
 

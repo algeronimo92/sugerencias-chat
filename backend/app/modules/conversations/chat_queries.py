@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, case, exists, false, func, or_, select, true
@@ -33,6 +34,10 @@ def _last_message_subquery():
         .where(WspMessage.message_type.is_distinct_from("reaction"))
         .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
         .limit(1)
+        # Explícito: la búsqueda por mensaje ya trae `wsp_messages` en su
+        # FROM, y con la correlación automática esta subconsulta se quedaba
+        # sin tabla propia.
+        .correlate(Lead)
         .lateral()
     )
 
@@ -131,11 +136,35 @@ def _unaccent_ilike(column, pattern: str):
     return column.ilike(pattern, escape="\\")
 
 
-def _identity_conditions(search: str) -> list:
+# Tope de palabras por búsqueda: cada una suma condiciones a la consulta.
+MAX_SEARCH_TERMS = 8
+
+
+def search_terms(search: str) -> list[str]:
+    """Las palabras de la búsqueda, sin repetir.
+
+    Se busca por palabras y no por la frase exacta: con la frase, "limpieza
+    facial" no encontraba "limpiezas faciales" ni "limpieza profunda facial",
+    y WhatsApp sí (queja de las vendedoras, 2026-11-11).
+    """
+    terms: list[str] = []
+    seen: set[str] = set()
+    for term in search.split():
+        key = term.casefold()
+        if key not in seen:
+            seen.add(key)
+            terms.append(term)
+    return terms[:MAX_SEARCH_TERMS]
+
+
+def _patterns(search: str) -> list[str]:
+    return [f"%{_escape_like(term)}%" for term in search_terms(search)]
+
+
+def _identity_fields(pattern: str) -> list:
     """Nombre, teléfono o identificador de WhatsApp del lead: lo que busca el
     usuario la mayoría de las veces, y lo que WhatsApp muestra primero."""
-    pattern = f"%{_escape_like(search)}%"
-    conditions = [
+    return [
         exists(select(WhatsAppIdentity.id).where(
             WhatsAppIdentity.lead_id == Lead.id,
             WhatsAppIdentity.identifier.ilike(pattern, escape="\\"),
@@ -146,30 +175,11 @@ def _identity_conditions(search: str) -> list:
         _unaccent_ilike(Lead.nombre, pattern),
     ]
 
-    # Teléfonos: comparar solo dígitos contra solo dígitos, para que
-    # "1112345678" encuentre "+54 9 11 1234-5678" sin importar el formato.
-    digits = re.sub(r"\D", "", search)
-    if len(digits) >= 5:
-        digits_pattern = f"%{digits}%"
-        conditions.append(
-            func.regexp_replace(Lead.telefono, r"\D", "", "g").like(digits_pattern)
-        )
-        conditions.append(
-            func.regexp_replace(Lead.telefono_secundario, r"\D", "", "g").like(digits_pattern)
-        )
-        conditions.append(exists(select(WhatsAppIdentity.id).where(
-            WhatsAppIdentity.lead_id == Lead.id,
-            WhatsAppIdentity.kind == "wa_id",
-            WhatsAppIdentity.identifier.like(digits_pattern),
-        )))
-    return conditions
 
-
-def _crm_field_conditions(search: str) -> list:
+def _crm_fields(pattern: str) -> list:
     """Campos CRM (vendedor/servicio/origen). Siguen siendo buscables, pero
     rankean debajo de los matches por nombre: si no, buscar el nombre de un
     vendedor entierra al lead que se llama igual bajo todos sus asignados."""
-    pattern = f"%{_escape_like(search)}%"
     return [
         _unaccent_ilike(Lead.servicio_interes, pattern),
         _unaccent_ilike(
@@ -183,26 +193,76 @@ def _crm_field_conditions(search: str) -> list:
     ]
 
 
-def _lead_field_conditions(search: str) -> list:
-    return _identity_conditions(search) + _crm_field_conditions(search)
+def _phone_digit_conditions(search: str) -> list:
+    """Teléfonos: comparar solo dígitos contra solo dígitos, para que
+    "1112345678" encuentre "+54 9 11 1234-5678" sin importar el formato. Va
+    sobre la búsqueda entera y no por palabra: un número escrito con espacios
+    es un solo teléfono."""
+    digits = re.sub(r"\D", "", search)
+    if len(digits) < 5:
+        return []
+    digits_pattern = f"%{digits}%"
+    return [
+        func.regexp_replace(Lead.telefono, r"\D", "", "g").like(digits_pattern),
+        func.regexp_replace(Lead.telefono_secundario, r"\D", "", "g").like(digits_pattern),
+        exists(select(WhatsAppIdentity.id).where(
+            WhatsAppIdentity.lead_id == Lead.id,
+            WhatsAppIdentity.kind == "wa_id",
+            WhatsAppIdentity.identifier.like(digits_pattern),
+        )),
+    ]
+
+
+def _every_term(search: str, fields) -> list:
+    """Cada palabra tiene que aparecer en alguno de los campos."""
+    patterns = _patterns(search)
+    if not patterns:
+        return []
+    return [and_(*[or_(*fields(pattern)) for pattern in patterns])]
+
+
+def _identity_match(search: str):
+    return or_(false(), *_every_term(search, _identity_fields), *_phone_digit_conditions(search))
+
+
+def _contact_search_condition(search: str):
+    """El lead matchea por sus propios datos (identidad o campos CRM), sin
+    mirar sus mensajes: la sección "Contactos" del buscador. Las palabras
+    pueden repartirse entre campos ("grecia botox": vendedora y servicio)."""
+    return or_(
+        false(),
+        *_every_term(search, lambda pattern: _identity_fields(pattern) + _crm_fields(pattern)),
+        *_phone_digit_conditions(search),
+    )
+
+
+def _message_text_column(search: str):
+    """El campo del mensaje que contiene las palabras, para mostrarlo y que el
+    resaltado las encuentre. Si el match fue en el análisis IA (p. ej. audios,
+    donde `content` es NULL), es ese resumen y no un preview vacío."""
+    in_content = and_(true(), *[_unaccent_ilike(WspMessage.content, pattern) for pattern in _patterns(search)])
+    return case((in_content, WspMessage.content), else_=WspMessage.analysis["summary"].astext)
 
 
 def _message_text_match(search: str):
-    """Un mensaje matchea si el término aparece en su texto humano o en el
-    resumen del análisis IA del adjunto. Lo segundo es lo que hace que buscar
-    "yape" encuentre el comprobante cuya descripción generó la IA, aunque el
-    cliente no haya escrito nada. El índice trigram sobre
+    """Un mensaje matchea si todas las palabras aparecen en su texto humano o
+    en el resumen del análisis IA del adjunto. Lo segundo es lo que hace que
+    buscar "yape" encuentre el comprobante cuya descripción generó la IA,
+    aunque el cliente no haya escrito nada. El índice trigram sobre
     f_unaccent(analysis->>'summary') (idx_wsp_messages_analysis_trgm) evita el
     recorrido completo.
 
     Los eliminados quedan fuera: su texto ya no se sirve en ningún lado, así
     que tampoco puede aparecer como preview de un resultado de búsqueda."""
-    pattern = f"%{_escape_like(search)}%"
+    patterns = _patterns(search)
+    if not patterns:
+        return false()
+    summary = WspMessage.analysis["summary"].astext
     return and_(
         WspMessage.deleted_at.is_(None),
         or_(
-            _unaccent_ilike(WspMessage.content, pattern),
-            _unaccent_ilike(WspMessage.analysis["summary"].astext, pattern),
+            and_(*[_unaccent_ilike(WspMessage.content, pattern) for pattern in patterns]),
+            and_(*[_unaccent_ilike(summary, pattern) for pattern in patterns]),
         ),
     )
 
@@ -221,7 +281,7 @@ def _message_match_condition(search: str):
 
 
 def _chat_search_condition(search: str):
-    return or_(*_lead_field_conditions(search), _message_match_condition(search))
+    return or_(_contact_search_condition(search), _message_match_condition(search))
 
 
 def _search_rank_expression(search: str):
@@ -230,8 +290,8 @@ def _search_rank_expression(search: str):
     mensaje del historial. Los coalesce evitan que un NULL (p. ej. nombre
     vacío) descoloque la fila en el ORDER BY."""
     return case(
-        (func.coalesce(or_(*_identity_conditions(search)), false()), 2),
-        (func.coalesce(or_(*_crm_field_conditions(search)), false()), 1),
+        (func.coalesce(_identity_match(search), false()), 2),
+        (func.coalesce(_contact_search_condition(search), false()), 1),
         else_=0,
     )
 
@@ -241,15 +301,7 @@ def _matched_message_subquery(search: str, column=None):
     en el preview del resultado (como WhatsApp) y su id permite saltar hasta
     él al abrir la conversación."""
     if column is None:
-        # Preview del resultado: se muestra el campo que realmente contiene el
-        # término, para que el resaltado lo encuentre. Si el match fue en el
-        # análisis IA (p. ej. audios, donde `content` es NULL), se muestra ese
-        # resumen en lugar de un preview vacío.
-        pattern = f"%{_escape_like(search)}%"
-        column = case(
-            (_unaccent_ilike(WspMessage.content, pattern), WspMessage.content),
-            else_=WspMessage.analysis["summary"].astext,
-        )
+        column = _message_text_column(search)
     return (
         select(column)
         .where(
@@ -323,31 +375,103 @@ def _cursor_condition(last_message, cursor_ts: str | None, cursor_id: str):
     return and_(last_message.c.sent_at.is_(None), Lead.id < cursor_id)
 
 
+@dataclass(frozen=True)
+class LeadFilters:
+    """Los filtros de la bandeja sobre el lead. Los comparten la lista de
+    chats y la búsqueda por mensaje: con "No leídos" o "Mis leads" activos,
+    las dos secciones del buscador muestran lo mismo."""
+
+    unread_only: bool = False
+    stages: tuple[str, ...] | None = None
+    tag_ids: tuple[int, ...] | None = None
+    tag_mode: str = "any"
+    service: str | None = None
+    seller_id: int | None = None
+    origin: str | None = None
+    last_sender: str | None = None
+    inactive_days: int | None = None
+    waiting_time: str | None = None
+    automation_paused: bool = False
+
+    @property
+    def needs_last_message(self) -> bool:
+        """Estos tres filtran por el último mensaje del chat: quien arma la
+        consulta tiene que haber hecho el JOIN lateral."""
+        return (
+            self.last_sender in ("cliente", "vendedor")
+            or bool(self.inactive_days and self.inactive_days > 0)
+            or self.waiting_time in ("any", "fresh", "warning", "urgent")
+        )
+
+
+def _apply_lead_filters(stmt, last_message, filters: LeadFilters):
+    if filters.unread_only:
+        stmt = stmt.where(_has_unread_messages_condition())
+
+    if filters.automation_paused:
+        stmt = stmt.where(Lead.automatizacion_pausada.is_(True))
+
+    if filters.stages:
+        stmt = stmt.where(Lead.estado.in_(filters.stages))
+    if filters.tag_ids:
+        tag_conditions = [_has_tag_condition(tag_id) for tag_id in filters.tag_ids]
+        stmt = stmt.where(and_(*tag_conditions) if filters.tag_mode == "all" else or_(*tag_conditions))
+    if filters.service:
+        stmt = stmt.where(Lead.servicio_interes.ilike(f"%{filters.service}%"))
+    if filters.seller_id is not None:
+        stmt = stmt.where(Lead.vendedor_id == filters.seller_id)
+    if filters.origin:
+        stmt = stmt.where(Lead.origen.ilike(f"%{filters.origin}%"))
+    if filters.last_sender in ("cliente", "vendedor"):
+        stmt = stmt.where(last_message.c.sender == filters.last_sender)
+    if filters.inactive_days is not None and filters.inactive_days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=filters.inactive_days)
+        stmt = stmt.where(or_(last_message.c.sent_at < cutoff, last_message.c.sent_at.is_(None)))
+    if filters.waiting_time in ("any", "fresh", "warning", "urgent"):
+        now = datetime.now(timezone.utc)
+        warning_cutoff = now - timedelta(minutes=10)
+        urgent_cutoff = now - timedelta(hours=1)
+        stmt = stmt.where(last_message.c.sender == "cliente")
+        if filters.waiting_time == "fresh":
+            stmt = stmt.where(last_message.c.sent_at > warning_cutoff)
+        elif filters.waiting_time == "warning":
+            stmt = stmt.where(
+                last_message.c.sent_at <= warning_cutoff,
+                last_message.c.sent_at > urgent_cutoff,
+            )
+        elif filters.waiting_time == "urgent":
+            stmt = stmt.where(last_message.c.sent_at <= urgent_cutoff)
+    return stmt
+
+
+SEARCH_IN_ALL = "all"
+SEARCH_IN_CONTACTS = "contacts"
+
+
 async def fetch_chats(
     search: str | None = None,
     cursor_ts: str | None = None,
     cursor_id: str | None = None,
     limit: int = CHATS_PAGE_SIZE,
-    unread_only: bool = False,
-    stages: list[str] | None = None,
-    tag_ids: list[int] | None = None,
-    tag_mode: str = "any",
-    service: str | None = None,
-    seller_id: int | None = None,
-    origin: str | None = None,
-    last_sender: str | None = None,
-    inactive_days: int | None = None,
-    waiting_time: str | None = None,
+    filters: LeadFilters | None = None,
     cursor_rank: int | None = None,
-    automation_paused: bool = False,
+    search_in: str = SEARCH_IN_ALL,
 ) -> dict:
+    """`search_in="contacts"` deja solo los leads que matchean por sus datos:
+    los que matchean por un mensaje los lista `search_chat_messages`, uno por
+    mensaje. El valor por defecto conserva la lista mezclada de antes, que
+    siguen pidiendo las versiones anteriores de la app y la búsqueda de
+    duplicados por teléfono."""
+    filters = filters or LeadFilters()
+    contacts_only = bool(search) and search_in == SEARCH_IN_CONTACTS
     last_message = _last_message_subquery()
 
     columns = list(_chat_columns(last_message))
     if search:
         columns.append(_search_rank_expression(search).label("search_rank"))
-        columns.append(_matched_message_subquery(search).label("matched_message"))
-        columns.append(_matched_message_subquery(search, WspMessage.id).label("matched_message_id"))
+        if not contacts_only:
+            columns.append(_matched_message_subquery(search).label("matched_message"))
+            columns.append(_matched_message_subquery(search, WspMessage.id).label("matched_message_id"))
 
     stmt = (
         select(*columns)
@@ -356,44 +480,15 @@ async def fetch_chats(
     )
 
     if search:
-        stmt = stmt.where(_chat_search_condition(search))
+        stmt = stmt.where(_contact_search_condition(search) if contacts_only else _chat_search_condition(search))
 
-    if unread_only:
-        stmt = stmt.where(_has_unread_messages_condition())
+    stmt = _apply_lead_filters(stmt, last_message, filters)
 
-    if automation_paused:
-        stmt = stmt.where(Lead.automatizacion_pausada.is_(True))
-
-    if stages:
-        stmt = stmt.where(Lead.estado.in_(stages))
-    if tag_ids:
-        tag_conditions = [_has_tag_condition(tag_id) for tag_id in tag_ids]
-        stmt = stmt.where(and_(*tag_conditions) if tag_mode == "all" else or_(*tag_conditions))
-    if service:
-        stmt = stmt.where(Lead.servicio_interes.ilike(f"%{service}%"))
-    if seller_id is not None:
-        stmt = stmt.where(Lead.vendedor_id == seller_id)
-    if origin:
-        stmt = stmt.where(Lead.origen.ilike(f"%{origin}%"))
-    if last_sender in ("cliente", "vendedor"):
-        stmt = stmt.where(last_message.c.sender == last_sender)
-    if inactive_days is not None and inactive_days > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=inactive_days)
-        stmt = stmt.where(or_(last_message.c.sent_at < cutoff, last_message.c.sent_at.is_(None)))
-    if waiting_time in ("any", "fresh", "warning", "urgent"):
-        now = datetime.now(timezone.utc)
-        warning_cutoff = now - timedelta(minutes=10)
-        urgent_cutoff = now - timedelta(hours=1)
-        stmt = stmt.where(last_message.c.sender == "cliente")
-        if waiting_time == "fresh":
-            stmt = stmt.where(last_message.c.sent_at > warning_cutoff)
-        elif waiting_time == "warning":
-            stmt = stmt.where(
-                last_message.c.sent_at <= warning_cutoff,
-                last_message.c.sent_at > urgent_cutoff,
-            )
-        elif waiting_time == "urgent":
-            stmt = stmt.where(last_message.c.sent_at <= urgent_cutoff)
+    # El total va solo en la primera página de "Contactos": la sección muestra
+    # unos pocos y dice cuántos hay. La lista sin búsqueda no lo necesita.
+    total_stmt = None
+    if contacts_only and cursor_id is None:
+        total_stmt = select(func.count()).select_from(stmt.with_only_columns(Lead.id).subquery())
 
     if cursor_id is not None:
         base_cursor = _cursor_condition(last_message, cursor_ts, cursor_id)
@@ -420,11 +515,99 @@ async def fetch_chats(
         rows = (await session.execute(stmt)).mappings().all()
         page_rows = rows[:limit]
         tags_by_lead = await _tags_by_lead(session, [row["chat_id"] for row in page_rows])
+        total = int(await session.scalar(total_stmt) or 0) if total_stmt is not None else None
 
     has_more = len(rows) > limit
     return {
         "items": [_row_to_chat(row, tags_by_lead.get(row["chat_id"])) for row in page_rows],
         "has_more": has_more,
+        "total": total,
+    }
+
+
+# Con menos letras la búsqueda matchea media base y no puede usar el índice
+# trigram: el buscador muestra contactos y espera a que se escriba más.
+MIN_MESSAGE_SEARCH_CHARS = 2
+# Contar todos los mensajes que dicen "hola" recorre el historial entero para
+# mostrar un número que nadie lee: pasado el tope se muestra "1000+".
+MESSAGE_SEARCH_COUNT_CAP = 1000
+
+
+async def search_chat_messages(
+    search: str,
+    cursor_ts: str | None = None,
+    cursor_id: int | None = None,
+    limit: int = CHATS_PAGE_SIZE,
+    filters: LeadFilters | None = None,
+) -> dict:
+    """Los mensajes que contienen la búsqueda, del más nuevo al más viejo y
+    uno por fila: el mismo chat sale tantas veces como mensajes matcheen.
+
+    La lista de chats mostraba un solo mensaje por chat —el más reciente—, así
+    que quien buscaba un texto que ya había mandado no podía elegir cuál ni
+    ver a quiénes más se lo mandó; en WhatsApp sí (queja de las vendedoras,
+    2026-11-11).
+    """
+    filters = filters or LeadFilters()
+    if sum(len(term) for term in search_terms(search)) < MIN_MESSAGE_SEARCH_CHARS:
+        return {"items": [], "has_more": False, "total": 0, "total_capped": False}
+
+    stmt = (
+        select(
+            WspMessage.id.label("message_id"),
+            Lead.id.label("chat_id"),
+            Lead.nombre.label("name"),
+            Lead.nombre_usuario.label("username"),
+            Lead.telefono.label("phone"),
+            _message_text_column(search).label("text"),
+            WspMessage.sender,
+            WspMessage.message_type,
+            WspMessage.sent_at,
+        )
+        .select_from(WspMessage)
+        .join(Lead, Lead.id == WspMessage.chat_id)
+        .where(await _visible_lead_condition(), _message_text_match(search))
+    )
+    last_message = _last_message_subquery()
+    if filters.needs_last_message:
+        stmt = stmt.join(last_message, true(), isouter=True)
+    stmt = _apply_lead_filters(stmt, last_message, filters)
+
+    total_stmt = None
+    if cursor_id is None:
+        capped = stmt.with_only_columns(WspMessage.id).limit(MESSAGE_SEARCH_COUNT_CAP + 1)
+        total_stmt = select(func.count()).select_from(capped.subquery())
+
+    if cursor_id is not None and cursor_ts is not None:
+        parsed_ts = _parse_ts(cursor_ts)
+        stmt = stmt.where(or_(
+            WspMessage.sent_at < parsed_ts,
+            and_(WspMessage.sent_at == parsed_ts, WspMessage.id < cursor_id),
+        ))
+    stmt = stmt.order_by(WspMessage.sent_at.desc(), WspMessage.id.desc()).limit(limit + 1)
+
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+        found = int(await session.scalar(total_stmt) or 0) if total_stmt is not None else None
+
+    return {
+        "items": [
+            {
+                "message_id": row["message_id"],
+                "chat_id": row["chat_id"],
+                "name": row["name"],
+                "username": row["username"],
+                "phone": row["phone"],
+                "text": row["text"],
+                "sender": row["sender"],
+                "message_type": row["message_type"],
+                "sent_at": _fmt_ts(row["sent_at"]),
+            }
+            for row in rows[:limit]
+        ],
+        "has_more": len(rows) > limit,
+        "total": min(found, MESSAGE_SEARCH_COUNT_CAP) if found is not None else None,
+        "total_capped": found is not None and found > MESSAGE_SEARCH_COUNT_CAP,
     }
 
 
