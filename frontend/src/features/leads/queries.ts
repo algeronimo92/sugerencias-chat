@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
-import { createLead, deleteLead, fetchChat, fetchChatsPage, fetchLeadByPhone, fetchPhoneConfig, fetchUnreadCount, markNoShow, mergeLead, updateLead } from './api'
-import type { ChatFilters, LeadUpdateInput, PageParam } from './types'
+import { createLead, deleteLead, fetchChat, fetchChatsPage, fetchLeadByPhone, fetchMessageSearchPage, fetchPhoneConfig, fetchUnreadCount, markNoShow, mergeLead, updateLead } from './api'
+import type { ChatFilters, LeadUpdateInput, MessagePageParam, PageParam } from './types'
 import { kanbanKeys, leadKeys } from './keys'
 
 
@@ -17,12 +17,20 @@ export function useChat(chatId: string | null) {
   })
 }
 
-/** Lista de leads con scroll infinito, paginada por cursor. */
-export function useInfiniteChats(search: string = '', filters: ChatFilters) {
+/**
+ * Lista de leads con scroll infinito, paginada por cursor.
+ *
+ * Con `contactsOnly`, una búsqueda trae solo los leads que matchean por sus
+ * datos (la sección "Contactos" de la bandeja); los que matchean por un
+ * mensaje salen de `useMessageSearch`. Sin él, la lista mezclada de siempre,
+ * que usan los diálogos donde se elige un lead.
+ */
+export function useInfiniteChats(search: string = '', filters: ChatFilters, { contactsOnly = false } = {}) {
   const connected = useChatSocketConnected()
+  const contactSearch = contactsOnly && !!search
   return useInfiniteQuery({
-    queryKey: leadKeys.list(search, filters),
-    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters),
+    queryKey: contactSearch ? leadKeys.contactSearch(search, filters) : leadKeys.list(search, filters),
+    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters, contactSearch),
     initialPageParam: null as PageParam,
     getNextPageParam: (lastPage) => {
       if (!lastPage.has_more || lastPage.items.length === 0) return undefined
@@ -35,6 +43,31 @@ export function useInfiniteChats(search: string = '', filters: ChatFilters) {
     // Sin esto, los 3 reintentos automáticos de React Query absorben el
     // error antes de que isFetchNextPageError llegue a ser true, y el botón
     // "Reintentar" de la UI nunca se muestra.
+    retry: false,
+  })
+}
+
+/** Con menos letras el servidor no busca en los mensajes: matchearía media base. */
+export const MIN_MESSAGE_SEARCH_CHARS = 2
+
+/** Los mensajes que contienen la búsqueda, uno por fila y del más nuevo al
+ * más viejo: la sección "Mensajes" del buscador de la bandeja. */
+export function useMessageSearch(search: string, filters: ChatFilters) {
+  const connected = useChatSocketConnected()
+  return useInfiniteQuery({
+    queryKey: leadKeys.messageSearch(search, filters),
+    queryFn: ({ pageParam }) => fetchMessageSearchPage(search, pageParam as MessagePageParam, filters),
+    initialPageParam: null as MessagePageParam,
+    getNextPageParam: (lastPage) => {
+      const last = lastPage.items[lastPage.items.length - 1]
+      if (!lastPage.has_more || !last?.sent_at) return undefined
+      return { cursorTs: last.sent_at, cursorId: last.message_id }
+    },
+    enabled: search.replace(/\s/g, '').length >= MIN_MESSAGE_SEARCH_CHARS,
+    staleTime: 30_000,
+    refetchInterval: connected ? false : 60_000,
+    // Igual que la lista: sin esto los reintentos automáticos tapan el error
+    // y "Reintentar" nunca se muestra.
     retry: false,
   })
 }

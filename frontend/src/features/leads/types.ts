@@ -189,7 +189,36 @@ export interface LeadUpdateInput {
 export interface ChatsPage {
   items: Chat[]
   has_more: boolean
+  /** Solo en la primera página de una búsqueda de contactos: cuántos hay. */
+  total?: number | null
 }
+
+/** Un mensaje que contiene la búsqueda, con lo justo del lead para nombrarlo. */
+export interface MessageSearchHit {
+  message_id: number
+  chat_id: string
+  name?: string | null
+  username?: string | null
+  phone?: string | null
+  /** El texto donde está el match: el del mensaje o, en un adjunto sin
+   * texto, el resumen que generó la IA. */
+  text?: string | null
+  /** "cliente", o "vendedor" para todo lo que mandó el negocio. */
+  sender: string
+  message_type?: string | null
+  sent_at?: string | null
+}
+
+export interface MessageSearchPage {
+  items: MessageSearchHit[]
+  has_more: boolean
+  /** Solo en la primera página. Con `total_capped` es un piso ("1000+"). */
+  total?: number | null
+  total_capped?: boolean
+}
+
+/** Cursor de la búsqueda por mensaje: el último mensaje de la página anterior. */
+export type MessagePageParam = { cursorTs: string; cursorId: number } | null
 
 /** Cursor de keyset: última fila de la página anterior (mismo orden que la consulta del backend).
  * cursorRank indica en qué sección del orden con búsqueda quedó esa fila

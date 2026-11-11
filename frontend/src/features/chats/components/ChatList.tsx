@@ -30,8 +30,9 @@ import { useLeadStageCatalog } from "../../leads/public/useLeadStages";
 import type { LeadStage } from '../../leads/types';
 import { useSellers } from "../../platform/public/useUsers";
 import { useCreateLead } from '../../leads/public/queries'
-import type { Chat, ChatFilters, LeadUpdateInput } from '../../leads/types'
+import type { Chat, ChatFilters, LeadUpdateInput, MessageSearchHit } from '../../leads/types'
 import { ChatItem } from "./ChatItem";
+import { ChatSearchResults } from "./ChatSearchResults";
 import { ChatViewChips } from "./ChatViewChips";
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
@@ -54,6 +55,13 @@ interface Props {
   error: boolean;
   search: string;
   onSearchChange: (value: string) => void;
+  /** Lo buscado ya estabilizado y con los filtros que se le aplican: con algo
+   * escrito, la lista pasa a ser el resultado en secciones (contactos y
+   * mensajes) y `chats` trae solo los contactos. */
+  searchTerm: string;
+  searchFilters: ChatFilters;
+  contactsTotal: number | null;
+  onOpenMessage: (hit: MessageSearchHit) => void;
   filter: "all" | "unread" | "mine";
   onFilterChange: (value: "all" | "unread" | "mine") => void;
   unreadCount: number;
@@ -121,6 +129,10 @@ export function ChatList({
   error,
   search,
   onSearchChange,
+  searchTerm,
+  searchFilters,
+  contactsTotal,
+  onOpenMessage,
   filter,
   onFilterChange,
   unreadCount,
@@ -406,7 +418,10 @@ export function ChatList({
             <h1 className="truncate text-base font-bold tracking-[-0.02em] text-wa-text dark:text-white">
               Conversaciones
             </h1>
-            {!isLoading && (
+            {/* Con una búsqueda, los totales van en cada sección del
+                resultado: acá este número eran las filas cargadas ("30") y
+                se leía como el total de resultados. */}
+            {!isLoading && !searchTerm && (
               <span className="rounded-full bg-wa-field px-2 py-0.5 text-[10px] font-bold text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
                 {chats.length}
               </span>
@@ -723,8 +738,28 @@ export function ChatList({
         </div>
       )}
 
+      {searchTerm && (
+        <ChatSearchResults
+          term={searchTerm}
+          filters={searchFilters}
+          contacts={chats}
+          contactsTotal={contactsTotal}
+          isLoadingContacts={isLoading}
+          contactsError={error}
+          hasMoreContacts={hasNextPage}
+          isFetchingMoreContacts={isFetchingNextPage}
+          onLoadMoreContacts={onLoadMore}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onPreview={onPreview}
+          onMarkUnread={onMarkUnread}
+          markingUnreadId={markingUnreadId}
+          onOpenMessage={onOpenMessage}
+        />
+      )}
+
       {/* List */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto py-1.5">
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto py-1.5 ${searchTerm ? "hidden" : ""}`}>
         {isLoading && (
           <div aria-label="Cargando leads" className="px-3 py-2 space-y-1">
             {Array.from({ length: 7 }).map((_, i) => (
