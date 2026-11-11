@@ -79,6 +79,9 @@ export type Domain = Delivered<ApiSchemas['OrganizationDomainItem']>;
 export type Organization = Delivered<ApiSchemas['OrganizationItem']>;
 export type OrganizationList = Delivered<ApiSchemas['OrganizationList']>;
 
+/** Foto del negocio para el operador: equipo y primeros pasos. */
+export type ResumenNegocio = Delivered<ApiSchemas['OrganizationOverview']>;
+
 export type AsistenteNegocio = {
   enabled: boolean;
   monthly_quota: number | null;

@@ -6,7 +6,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 """
 
 from __future__ import annotations
-from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, PlatformEmailStatus, PlatformEmailUpdate)
+from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, OrganizationOverview, PlatformEmailStatus, PlatformEmailUpdate)
 
 import base64
 import binascii
@@ -25,6 +25,7 @@ from app.modules.platform.platform_organizations import (
     apply_organization_starter_pack,
     organization_ai,
     organization_integrations,
+    organization_overview,
     update_organization_ai,
     update_organization_integrations,
 )
@@ -243,6 +244,18 @@ async def activate(organization_id: UUID) -> dict:
     except TenantProvisioningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"status": "active"}
+
+
+@router.get(
+    "/organizations/{organization_id}/overview",
+    dependencies=protected,
+    response_model=OrganizationOverview,
+)
+async def get_organization_overview(organization_id: UUID):
+    try:
+        return await organization_overview(organization_id)
+    except OrganizationNotFoundError as exc:
+        raise _organization_not_found() from exc
 
 
 @router.get(

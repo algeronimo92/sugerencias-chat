@@ -24,9 +24,30 @@ const citasIntegrations = [
   { key: 'n8n_citas_webhook_url', label: 'Citas (n8n): URL del webhook', configured: true, value: 'https://n8n.test/citas' },
 ]
 
+const overview = {
+  users: 3,
+  setup: {
+    steps: [
+      { key: 'whatsapp', done: true, optional: false },
+      { key: 'team', done: false, optional: false },
+      { key: 'services', done: false, optional: false },
+      { key: 'google_calendar', done: false, optional: false },
+      { key: 'templates', done: false, optional: true },
+    ],
+    completed: 1,
+    total: 4,
+    all_done: false,
+    dismissed: false,
+  },
+}
+
+function renderPanel() {
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PlatformApp /></QueryClientProvider>)
+}
+
 describe('PlatformApp', () => {
   beforeEach(() => {
-    // La pestaña elegida queda en el hash: cada prueba arranca en Negocios.
+    // La pantalla abierta queda en el hash: cada prueba arranca en el directorio.
     window.history.replaceState(null, '', '/')
     api.get.mockReset()
     api.post.mockReset()
@@ -35,6 +56,7 @@ describe('PlatformApp', () => {
     api.get.mockImplementation((url: string) => {
       if (url === '/api/platform/auth/me') return Promise.resolve({ data: { id: 'op', name: 'Gerson', email: 'op@example.com' } })
       if (url === '/api/platform/settings') return Promise.resolve({ data: platformSettings })
+      if (url === '/api/platform/organizations/1/overview') return Promise.resolve({ data: overview })
       if (url === '/api/platform/organizations/1/ai') return Promise.resolve({ data: { enabled: true, monthly_quota: null, used_this_month: 12 } })
       if (url === '/api/platform/organizations/1/integrations') return Promise.resolve({ data: citasIntegrations })
       if (url === '/api/platform/knowledge-templates') return Promise.resolve({ data: [] })
@@ -49,7 +71,7 @@ describe('PlatformApp', () => {
     const user = userEvent.setup()
     api.get.mockRejectedValueOnce(new Error('Network Error'))
 
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PlatformApp /></QueryClientProvider>)
+    renderPanel()
 
     expect(await screen.findByRole('heading', { name: 'Backend no disponible' })).toBeInTheDocument()
     expect(screen.getByText('El frontend está funcionando, pero no pudo consultar tu sesión en el servidor.')).toBeInTheDocument()
@@ -59,17 +81,31 @@ describe('PlatformApp', () => {
     ).toHaveLength(2))
   })
 
-  it('filtra por dominio y confirma antes de suspender un negocio', async () => {
+  it('el directorio filtra por dominio y cada negocio se administra en su propio espacio', async () => {
     const user = userEvent.setup()
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PlatformApp /></QueryClientProvider>)
+    renderPanel()
 
-    await screen.findByText('DermicaPro')
+    await screen.findByRole('link', { name: 'DermicaPro' })
+    // En el directorio no hay nada que guardar: solo se elige un negocio.
+    expect(screen.queryByRole('textbox', { name: 'Nuevo dominio' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Suspender' })).not.toBeInTheDocument()
+
     await user.type(screen.getByRole('textbox', { name: 'Buscar negocio o dominio' }), 'piloto.localhost')
     expect(screen.getByText('1 de 2 negocios')).toBeInTheDocument()
-    expect(screen.queryByText('DermicaPro')).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Nuevo dominio' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'DermicaPro' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Suspender' }))
+    await user.click(screen.getByRole('link', { name: 'Clínica Piloto' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Clínica Piloto' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#negocios/2')
+    expect(screen.getByRole('link', { name: 'Resumen' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('confirma antes de suspender el negocio abierto', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/#negocios/2')
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: 'Suspender' }))
     expect(screen.getByRole('alertdialog', { name: 'Suspender Clínica Piloto' })).toBeInTheDocument()
     expect(api.post).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Cancelar' }))
@@ -80,11 +116,85 @@ describe('PlatformApp', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/platform/organizations/2/suspend'))
   })
 
+  it('el resumen muestra la puesta en marcha y el uso del negocio abierto', async () => {
+    window.history.replaceState(null, '', '/#negocios/1')
+    renderPanel()
+
+    expect(await screen.findByText('1 de 4')).toBeInTheDocument()
+    expect(screen.getByText('WhatsApp conectado').closest('li')).toHaveTextContent('Listo')
+    expect(screen.getByText('Equipo invitado').closest('li')).toHaveTextContent('Pendiente')
+    expect(screen.getByText('personas en el equipo').closest('p')).toHaveTextContent('3')
+    expect(await screen.findByText('generaciones de IA este mes')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/api/platform/organizations/1/overview')
+    expect(api.get).not.toHaveBeenCalledWith('/api/platform/organizations/2/overview')
+  })
+
+  it('un enlace abre el apartado de ese negocio y cambiar de negocio lo conserva', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/#negocios/1/dominios')
+    renderPanel()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'DermicaPro' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Nuevo dominio' })).toBeInTheDocument()
+    expect(screen.getByText('dermicapro.localhost', { selector: 'li span' })).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Cambiar de negocio' }), 'Clínica Piloto')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Clínica Piloto' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#negocios/2/dominios')
+    expect(screen.getByText('piloto.localhost', { selector: 'li span' })).toBeInTheDocument()
+    expect(screen.queryByText('dermicapro.localhost', { selector: 'li span' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'Negocios', current: false }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Negocios' })).toBeInTheDocument()
+  })
+
+  it('atrás vuelve del negocio al directorio', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(await screen.findByRole('link', { name: 'Clínica Piloto' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Clínica Piloto' })).toBeInTheDocument()
+
+    window.history.back()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Negocios' })).toBeInTheDocument()
+  })
+
+  it('el alta de un negocio abre con el foco en el nombre y refresca el directorio', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: 'Nuevo negocio' }))
+    const nombre = await screen.findByRole('textbox', { name: 'Nombre' })
+    await waitFor(() => expect(nombre).toHaveFocus())
+    await user.type(nombre, 'Clínica Norte')
+    await user.type(screen.getByRole('textbox', { name: 'Dominio principal' }), 'norte.localhost')
+    const antes = api.get.mock.calls.filter(([url]) => url === '/api/platform/organizations').length
+    await user.click(screen.getByRole('button', { name: 'Crear negocio' }))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/platform/organizations', {
+      name: 'Clínica Norte',
+      hostname: 'norte.localhost',
+      admin_email: null,
+      admin_password: null,
+    }))
+    await waitFor(() => expect(
+      api.get.mock.calls.filter(([url]) => url === '/api/platform/organizations').length,
+    ).toBeGreaterThan(antes))
+  })
+
+  it('avisa cuando el enlace apunta a un negocio que no existe', async () => {
+    window.history.replaceState(null, '', '/#negocios/999/marca')
+    renderPanel()
+
+    expect(await screen.findByRole('heading', { name: 'Negocio no encontrado' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Volver a negocios' })).toHaveAttribute('href', '#negocios')
+  })
+
   it('agrupa las credenciales por app y reemplaza secretos sin recibir el valor guardado', async () => {
     const user = userEvent.setup()
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PlatformApp /></QueryClientProvider>)
+    renderPanel()
 
-    await user.click(await screen.findByRole('tab', { name: 'Integraciones' }))
+    await user.click(await screen.findByRole('link', { name: 'Integraciones' }))
     await screen.findByDisplayValue('APP123')
     expect(screen.getByRole('heading', { name: 'Meta · Tech Provider' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Correo de la plataforma' })).toBeInTheDocument()
@@ -100,27 +210,29 @@ describe('PlatformApp', () => {
     }))
   })
 
-  it('fija la cuota del asistente e integra los workflows del negocio desde la plataforma', async () => {
+  it('fija la cuota del asistente e integra los workflows del negocio desde su espacio', async () => {
     const user = userEvent.setup()
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PlatformApp /></QueryClientProvider>)
+    renderPanel()
 
-    await screen.findByText('DermicaPro')
+    await screen.findByRole('link', { name: 'DermicaPro' })
     expect(screen.getByText('IA deshabilitada')).toBeInTheDocument()
-    await user.click(screen.getByText('IA sin límite'))
+    expect(screen.getByText('IA sin límite')).toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'DermicaPro' }))
+    await user.click(await screen.findByRole('link', { name: 'Asistente IA' }))
 
     expect(await screen.findByText(/Este mes:/)).toHaveTextContent('Este mes: 12 generaciones')
-    const cuota = screen.getAllByLabelText('Cuota mensual')[0]
-    await user.type(cuota, '100')
-    await user.click(screen.getAllByRole('button', { name: 'Guardar asistente' })[0])
+    await user.type(screen.getByLabelText('Cuota mensual'), '100')
+    await user.click(screen.getByRole('button', { name: 'Guardar asistente' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/api/platform/organizations/1/ai', {
       enabled: true,
       monthly_quota: 100,
     }))
 
+    await user.click(screen.getByRole('link', { name: 'Integraciones propias' }))
     const citas = await screen.findByDisplayValue('https://n8n.test/citas')
     await user.clear(citas)
     await user.type(citas, 'https://n8n.test/citas-v2')
-    await user.click(screen.getAllByRole('button', { name: 'Guardar integraciones' })[0])
+    await user.click(screen.getByRole('button', { name: 'Guardar integraciones' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/api/platform/organizations/1/integrations', {
       values: { n8n_citas_webhook_url: 'https://n8n.test/citas-v2' },
     }))

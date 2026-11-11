@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -183,6 +183,10 @@ export async function uploadOrganizationLogo(organizacion: Organization, archivo
 
 export async function removeOrganizationLogo(organizacion: Organization): Promise<MarcaGuardada> {
   return (await client.delete<ApiResponse<'/api/platform/organizations/{organization_id}/branding/logo', 'delete'>>(`/api/platform/organizations/${organizacion.id}/branding/logo`)).data
+}
+
+export async function fetchOrganizationOverview(organizacion: Organization): Promise<ResumenNegocio> {
+  return (await client.get<ApiResponse<'/api/platform/organizations/{organization_id}/overview', 'get'>>(`/api/platform/organizations/${organizacion.id}/overview`)).data
 }
 
 export async function fetchOrganizationAi(organizacion: Organization): Promise<AsistenteNegocio> {
