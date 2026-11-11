@@ -24,7 +24,23 @@ export interface DashboardFlowRow extends DashboardMetricItem {
   failed: number
   skipped: number
   active: number
+  /** Las dos suman `value`. Opcionales: una respuesta guardada de la versión
+   *  anterior no las trae. */
+  manual?: number
+  automatic?: number
+  /** Parte de `manual` y de `automatic` que inició otro flujo. */
+  manual_chained?: number
+  automatic_chained?: number
   last_at: string | null
+}
+
+/** Reparto del período entero. Lo que inició otro flujo es parte de cada
+ *  origen, no un tercero: `manual + automatic` ya es el total. */
+export interface DashboardFlowOrigins {
+  manual: number
+  automatic: number
+  manual_chained: number
+  automatic_chained: number
 }
 
 export interface DashboardTagRow extends DashboardMetricItem {
@@ -137,6 +153,8 @@ export interface DashboardMetrics {
   currency: string | null
   automations: {
     by_flow: DashboardFlowRow[]
+    /** Opcional: una respuesta guardada de la versión anterior no lo trae. */
+    origin_totals?: DashboardFlowOrigins
     by_actor: DashboardMetricItem[]
     by_source: DashboardMetricItem[]
     by_trigger: DashboardMetricItem[]
