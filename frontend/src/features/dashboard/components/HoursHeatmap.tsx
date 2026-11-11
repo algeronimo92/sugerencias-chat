@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import type { DashboardHours } from '../types'
 import { NoData } from './primitives'
+import { ReadingToggle } from './ReadingToggle'
 import { MIN_DAYS_FOR_PATTERN, buildHoursGrid, formatAverage, personPeak, type HoursReading } from './hoursGrid'
 
 export interface HoursReadingOption {
@@ -65,23 +66,12 @@ export function HoursHeatmap({ hours, days, readings, label, teamScale = false }
   return (
     <div>
       {readings.length > 1 && (
-        <div role="group" aria-label="Qué mostrar en el mapa" className="mb-3 inline-flex max-w-full flex-wrap rounded-lg border border-wa-border bg-wa-app p-1 dark:border-wa-border-dark dark:bg-wa-app-dark">
-          {readings.map(item => (
-            <button
-              key={item.key}
-              type="button"
-              aria-pressed={item.key === reading.key}
-              onClick={() => { setReadingKey(item.key); setPicked(null) }}
-              className={`min-h-9 rounded-md px-3 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${
-                item.key === reading.key
-                  ? 'bg-white font-semibold text-wa-text shadow-sm dark:bg-wa-head-dark dark:text-wa-text-dark'
-                  : 'text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <ReadingToggle
+          label="Qué mostrar en el mapa"
+          options={readings}
+          value={reading.key}
+          onChange={key => { setReadingKey(key); setPicked(null) }}
+        />
       )}
       <p className="mb-3 text-[11px] text-wa-muted dark:text-wa-muted-dark">{reading.hint}</p>
 

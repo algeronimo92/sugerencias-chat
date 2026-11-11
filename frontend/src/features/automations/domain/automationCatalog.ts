@@ -14,14 +14,14 @@ export const AutomationTrigger = {
 export type AutomationTriggerValue = ValueOf<typeof AutomationTrigger>
 
 export const AUTOMATION_TRIGGERS = [
-  { value: AutomationTrigger.LeadCreated, label: 'Lead nuevo', description: 'Cuando se registra un contacto por primera vez.' },
-  { value: AutomationTrigger.ConversationStarted, label: 'Conversación nueva', description: 'Cuando un mensaje del cliente abre una conversación que estaba cerrada.' },
+  { value: AutomationTrigger.LeadCreated, label: 'Lead nuevo', description: 'Cuando se registra un contacto por primera vez. Pasa una sola vez por contacto.' },
+  { value: AutomationTrigger.ConversationStarted, label: 'Conversación nueva', description: 'Cuando un mensaje del cliente abre una conversación que estaba cerrada, sea un contacto nuevo o uno que vuelve a escribir.' },
   { value: AutomationTrigger.StageChanged, label: 'Cambio de etapa', description: 'Cuando alguien del equipo o la IA cambia la etapa del lead.' },
   { value: AutomationTrigger.MessageReceived, label: 'Mensaje recibido', description: 'Cuando llega un nuevo mensaje del cliente.' },
   { value: AutomationTrigger.SellerResponseOverdue, label: 'Vendedor sin responder', description: 'El último mensaje es del cliente y vence el tiempo configurado.' },
   { value: AutomationTrigger.CustomerResponseOverdue, label: 'Cliente sin responder', description: 'El último mensaje es del vendedor y vence el tiempo configurado.' },
   { value: AutomationTrigger.TaskDue, label: 'Tarea vencida', description: 'Cuando una tarea pendiente llega a su fecha límite.' },
-  { value: AutomationTrigger.Manual, label: 'Inicio manual (vendedor)', description: 'El vendedor lo dispara con el botón "Iniciar flujo" dentro del chat de un lead.' },
+  { value: AutomationTrigger.Manual, label: 'Inicio manual (vendedor)', description: 'El vendedor lo inicia con el botón "Iniciar flujo" dentro del chat de un lead.' },
 ] as const satisfies ReadonlyArray<{
   value: AutomationTriggerValue
   label: string

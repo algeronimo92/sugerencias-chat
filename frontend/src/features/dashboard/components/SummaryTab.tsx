@@ -75,7 +75,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Citas registradas" value={summary.appointments_created} hint={period} icon={CalendarCheck} />
-        <MetricCard label={who(subject, { me: 'Flujos que activé', team: 'Flujos activados', seller: (name) => `Flujos que activó ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} siguen activos`} icon={Send} onClick={onOpenFlows} />
+        <MetricCard label={who(subject, { me: 'Flujos que inicié', team: 'Flujos iniciados', seller: (name) => `Flujos que inició ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} sin terminar`} icon={Send} onClick={onOpenFlows} />
         <MetricCard
           label="Mensajes escritos en el CRM"
           value={summary.messages_sent}

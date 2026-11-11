@@ -233,6 +233,12 @@ class DashboardFlowRow(DashboardMetricItem):
     failed: int
     skipped: int
     active: int
+    # Las dos suman `value`.
+    manual: int
+    automatic: int
+    # Parte de `manual` y de `automatic` que inició otro flujo.
+    manual_chained: int
+    automatic_chained: int
     last_at: str | None = None
 
 
@@ -280,8 +286,17 @@ class DashboardFlowFailures(BaseModel):
     top_errors: list[DashboardMetricItem]
 
 
+class DashboardFlowOrigins(BaseModel):
+    manual: int
+    automatic: int
+    # Parte de cada una que inició otro flujo; no se suman aparte.
+    manual_chained: int
+    automatic_chained: int
+
+
 class DashboardAutomations(BaseModel):
     by_flow: list[DashboardFlowRow]
+    origin_totals: DashboardFlowOrigins
     by_actor: list[DashboardMetricItem]
     by_source: list[DashboardMetricItem]
     by_trigger: list[DashboardMetricItem]
