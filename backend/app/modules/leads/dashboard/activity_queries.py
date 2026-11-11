@@ -255,6 +255,13 @@ def phone_by_owner_hour_stmt(scope: DashboardScope):
     )
 
 
+def team_members_stmt():
+    """Quiénes pueden aparecer en la comparación del equipo por horas. Sin
+    filtro: `hours_queries` decide a quién lista (vendedoras activas, más
+    cualquiera con actividad en el período)."""
+    return select(User.id.label("person"), User.name.label("name"), User.role.label("role"), User.is_active.label("is_active"))
+
+
 # Ventana fija para "siguió conversando": sin ella, una conversación de hace un
 # mes tendría más oportunidad de contar que una de ayer y las celdas no serían
 # comparables. Coincide con la ventana de servicio de WhatsApp.

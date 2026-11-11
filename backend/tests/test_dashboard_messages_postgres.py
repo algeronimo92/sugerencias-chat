@@ -24,11 +24,11 @@ from app.tenancy.context import tenant_context
 from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
 
 
-async def _user(name: str) -> int:
+async def _user(name: str, *, role: str = "vendedor", is_active: bool = True) -> int:
     async with session_scope() as session:
         user = User(
             email=f"{name.lower()}-{uuid4().hex[:6]}@example.test", name=name, password_hash="!",
-            role="vendedor", is_active=True, created_at=datetime.now(timezone.utc),
+            role=role, is_active=is_active, created_at=datetime.now(timezone.utc),
         )
         session.add(user)
         await session.flush()
@@ -162,3 +162,43 @@ async def test_hours_count_phone_messages_by_owner_of_the_chat(tenant) -> None:
         of_antonella = await hours_queries.collect(build_scope(7, "mine", antonella))
         assert total(of_antonella) == 1
         assert of_antonella["person_peaks"]["phone_messages"] == 2
+
+
+async def test_hours_show_each_person_of_the_team_even_the_ones_who_did_nothing(tenant) -> None:
+    """La dueña quería ver a todas las vendedoras juntas para saber quién
+    trabaja y a qué hora. Antes había que elegirlas una por una en el selector,
+    y una que no escribió nada no aparecía en ningún lado."""
+    with tenant_context(tenant):
+        grecia = await _user("Grecia")
+        antonella = await _user("Antonella")
+        sin_actividad = await _user("Zoe")
+        admin_que_atiende = await _user("Admin", role="admin")
+        await _user("Dueña", role="admin")                           # no atiende: no se lista
+        await _user("Analista", role="analista")
+        se_fue = await _user("Baja", is_active=False)
+        await _user("Invitada", is_active=False)                     # inactiva y sin actividad
+        de_antonella = await _lead(antonella)
+        await _message(de_antonella, author=grecia, outbox=True)     # Grecia escribe en chat ajeno
+        await _message(de_antonella, author=grecia, outbox=True)
+        await _message(de_antonella, author=admin_que_atiende, outbox=True)
+        await _message(de_antonella, author=se_fue, outbox=True)
+        await _message(de_antonella)                                 # eco: va a la dueña del chat
+        await _message(de_antonella, dedupe_key="automation:7:0:0:0")
+
+        hours = await hours_queries.collect(build_scope(7, "team", grecia))
+        people = {person["name"]: person for person in hours["people"]}
+
+        assert [person["name"] for person in hours["people"]] == ["Admin", "Antonella", "Baja", "Grecia", "Zoe"]
+        assert people["Zoe"] == {"user_id": sin_actividad, "name": "Zoe", "cells": []}
+
+        def total(name: str, field: str) -> int:
+            return sum(cell[field] for cell in people[name]["cells"])
+
+        assert total("Grecia", "messages") == 2 and total("Grecia", "phone_messages") == 0
+        assert total("Antonella", "messages") == 0 and total("Antonella", "phone_messages") == 1
+        assert total("Admin", "messages") == 1 and total("Baja", "messages") == 1
+        # Las celdas de una persona caben en la escala común del equipo.
+        assert hours["person_peaks"]["messages"] == 2
+        assert hours["start_date"] == build_scope(7, "team", grecia).start_date.isoformat()
+
+        assert (await hours_queries.collect(build_scope(7, "mine", grecia)))["people"] == []
