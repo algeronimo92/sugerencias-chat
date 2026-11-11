@@ -397,6 +397,11 @@ describe('DashboardPage', () => {
     expect(within(reparto).getByText('Flujos automáticos').closest('li')).toHaveTextContent('7642%')
     expect(within(reparto).getByText('Desde la app').closest('li')).toHaveTextContent('3419%')
     expect(within(reparto).getByText('Programados').closest('li')).toHaveTextContent('42%')
+    // Las barras llevan su propia leyenda, con los cuatro orígenes aunque alguno esté en cero.
+    const leyenda = within(panel).getByRole('list', { name: 'Colores de cada origen' })
+    for (const origen of ['Desde la app', 'Desde el celular (fuera de la app)', 'Flujos automáticos', 'Programados']) {
+      expect(within(leyenda).getByText(origen)).toBeInTheDocument()
+    }
   })
 
   it('avisa cuántas citas no llegaron a un lead', async () => {

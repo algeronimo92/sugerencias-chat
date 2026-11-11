@@ -46,6 +46,22 @@ export function MessagesByOriginPanel({ points, days }: { points: DashboardMessa
       </p>
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
+          {/* La leyenda va pegada a las barras: la de la torta queda debajo en
+              el celular y lejos del gráfico en pantallas anchas. */}
+          <ul className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-wa-muted dark:text-wa-muted-dark" aria-label="Colores de cada origen">
+            {MESSAGE_ORIGINS.map((origin) => (
+              <li key={origin.key} className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: origin.color }} aria-hidden="true" />
+                {origin.label}
+              </li>
+            ))}
+            {sundays.length > 0 && (
+              <li className="flex items-center gap-1.5">
+                <span className="h-3 border-l border-dashed border-viz-idle" aria-hidden="true" />
+                Domingo (cierre de semana)
+              </li>
+            )}
+          </ul>
           <div className="h-56 w-full" role="img" aria-label={`Mensajes del negocio por ${weekly ? 'semana' : 'día'} y por origen`}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={buckets} margin={{ top: sundays.length ? 18 : 8, right: 4, bottom: 0, left: 0 }} accessibilityLayer>
@@ -75,12 +91,6 @@ export function MessagesByOriginPanel({ points, days }: { points: DashboardMessa
               </BarChart>
             </ResponsiveContainer>
           </div>
-          {sundays.length > 0 && (
-            <p className="mt-1 flex items-center gap-1.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-              <span className="h-3 border-l border-dashed border-viz-idle" aria-hidden="true" />
-              Domingo (cierre de semana)
-            </p>
-          )}
         </div>
 
         <div>
