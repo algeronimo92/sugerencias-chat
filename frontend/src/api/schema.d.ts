@@ -4645,6 +4645,10 @@ export interface components {
             skipped: number;
             /** Active */
             active: number;
+            /** Manual */
+            manual: number;
+            /** Automatic */
+            automatic: number;
             /** Last At */
             last_at?: string | null;
         };

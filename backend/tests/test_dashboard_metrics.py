@@ -328,6 +328,24 @@ async def test_flow_trend_splits_into_manual_and_automatic_that_add_up(compiled_
 
 
 @pytest.mark.asyncio
+async def test_each_flow_splits_into_manual_and_automatic_that_add_up(compiled_sql):
+    """La dueña pregunta, flujo por flujo, cuántos inició alguien y cuántos
+    arrancaron solos: las dos partes tienen que sumar el total de la fila."""
+    data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
+
+    flows = data["automations"]["by_flow"]
+    assert flows
+    for flow in flows:
+        assert flow["manual"] >= 0 and flow["automatic"] >= 0
+        assert flow["manual"] + flow["automatic"] == flow["value"]
+    by_flow_sql = [sql for sql in compiled_sql if "automation_rules.name" in sql and "GROUP BY" in sql]
+    # El mismo corte que la serie por día: sin usuario y no iniciado a mano.
+    assert any(
+        "started_by_user_id IS NULL AND automation_executions.start_source != " in sql for sql in by_flow_sql
+    )
+
+
+@pytest.mark.asyncio
 async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compiled_sql):
     data = await dashboard_service.get_dashboard_metrics(30, SCOPE_TEAM, user_id=7)
     hours = data["hours"]

@@ -69,12 +69,14 @@ function metrics(): DashboardMetrics {
     automations: {
       by_flow: [{
         name: 'Recordatorio de Yape', rule_id: 12, trigger_type: 'manual', value: 8,
-        completed: 5, failed: 1, skipped: 1, active: 1, last_at: '2026-09-20T15:00:00Z',
+        completed: 5, failed: 1, skipped: 1, active: 1, manual: 6, automatic: 2, last_at: '2026-09-20T15:00:00Z',
       }],
       by_actor: [{ name: 'Antonella', value: 8 }],
       by_source: [{ name: 'Iniciado a mano', value: 8 }],
       by_trigger: [{ name: 'manual', value: 8 }],
       trend: [{ date: '2026-09-20', value: 8 }],
+      trend_manual: [{ date: '2026-09-20', value: 6 }],
+      trend_automatic: [{ date: '2026-09-20', value: 2 }],
       failures: { total: 8, failed: 1, rate: 12.5, top_errors: [{ name: 'ventana cerrada', value: 1 }] },
       active_now: { scheduled: 1, running: 0, paused: 1 },
     },
@@ -247,8 +249,8 @@ describe('DashboardPage', () => {
     renderDashboard()
 
     expect(screen.getByText('Citas registradas')).toBeInTheDocument()
-    expect(screen.getByText('Flujos que activé')).toBeInTheDocument()
-    expect(screen.getByText('2 siguen activos')).toBeInTheDocument()
+    expect(screen.getByText('Flujos que inicié')).toBeInTheDocument()
+    expect(screen.getByText('2 sin terminar')).toBeInTheDocument()
     expect(screen.getByText('Leads etiquetados')).toBeInTheDocument()
     expect(screen.getByText('75% de cobertura')).toBeInTheDocument()
   })
@@ -259,7 +261,7 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Flujos' }))
     expect(screen.getByText('Recordatorio de Yape')).toBeInTheDocument()
-    expect(screen.getByText('Quién activó flujos a mano')).toBeInTheDocument()
+    expect(screen.getByText('Quién inició flujos a mano')).toBeInTheDocument()
     expect(screen.queryByText('Citas registradas')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Etiquetas' }))
@@ -278,10 +280,29 @@ describe('DashboardPage', () => {
 
     // La leyenda nombra los cuatro estados: el color no puede ser el único
     // indicio de qué es cada segmento.
-    for (const label of ['Completados', 'Activos', 'Omitidos', 'Fallidos']) {
+    for (const label of ['Completados', 'Sin terminar', 'Omitidos', 'Fallidos']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    expect(screen.getByText('1 ejecuciones no llegaron a enviarse')).toBeInTheDocument()
+    expect(screen.getByText('1 flujo no llegó a enviarse')).toBeInTheDocument()
+    // Lo propio es todo a mano: no hay reparto que elegir.
+    expect(screen.queryByRole('group', { name: 'Qué mostrar de cada flujo' })).not.toBeInTheDocument()
+  })
+
+  it('al mirar al equipo dice de cada flujo cuántos se iniciaron a mano y cuántos solos', async () => {
+    const user = userEvent.setup()
+    renderDashboard('admin')
+    await user.click(screen.getByRole('tab', { name: 'Flujos' }))
+
+    const panel = within(screen.getByRole('region', { name: 'Flujos iniciados' }))
+    // El resumen sale del total del período, no de sumar las filas visibles.
+    expect(panel.getByText(/De 8 flujos iniciados/)).toHaveTextContent('6 a mano (75%) y 2 automáticos (25%)')
+    const row = panel.getByRole('button', { name: /Recordatorio de Yape/ })
+    expect(row).toHaveTextContent('6 a mano')
+    expect(row).toHaveTextContent('2 automáticos')
+
+    await user.click(panel.getByRole('button', { name: 'Cómo terminaron' }))
+    expect(panel.getByRole('button', { name: /Recordatorio de Yape/ })).toHaveTextContent('5 completados')
+    expect(panel.queryByText(/De 8 flujos iniciados/)).not.toBeInTheDocument()
   })
 
   it('resume las separaciones en la moneda del negocio y contra el período anterior', () => {

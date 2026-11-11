@@ -233,6 +233,9 @@ class DashboardFlowRow(DashboardMetricItem):
     failed: int
     skipped: int
     active: int
+    # Las dos suman `value`.
+    manual: int
+    automatic: int
     last_at: str | None = None
 
 
