@@ -30,15 +30,23 @@ export interface OpenMedia {
 /** Estado de un mensaje saliente. Mientras está en la cola propia manda
  * `outbox_status`; una vez que salió, el literal que informó Meta:
  * `sent` tique simple, `delivered` doble gris, `read` doble azul y `failed`
- * rojo con el motivo que dio Meta. */
+ * rojo con el motivo que dio Meta.
+ *
+ * Lo que salió desde WhatsApp sin pasar por la app no lleva tique mientras
+ * Meta no informe nada: para esos mensajes el acuse de entrega no llega, y el
+ * tique simple que nunca avanzaba se leía como "no le llegó" de mensajes que
+ * el cliente ya había recibido. */
 export function MessageStatusTicks({
   outboxStatus,
   metaStatus,
   statusPayload,
   errorDetail,
+  sentOutsideApp = false,
   onRetry,
   onDiscard,
 }: {
+  /** Eco de un mensaje enviado desde WhatsApp ("Fuera de la app"). */
+  sentOutsideApp?: boolean;
   outboxStatus?: OutboxStatus | null;
   metaStatus?: MetaStatus | null;
   statusPayload?: JsonObject | null;
@@ -140,6 +148,9 @@ export function MessageStatusTicks({
         />
       </span>
     );
+  }
+  if (!metaStatus && sentOutsideApp) {
+    return <span className="sr-only">Enviado desde WhatsApp; su entrega se ve allí</span>;
   }
   return (
     <span aria-label="Enviado" title="Enviado">
@@ -527,6 +538,7 @@ export function MessageBubble({
                           metaStatus={m.meta_status}
                           statusPayload={m.status_payload}
                           errorDetail={m.error_detail}
+                          sentOutsideApp={m.origin?.kind === 'echo'}
                           onRetry={onRetry}
                           onDiscard={onDiscard}
                         />
@@ -557,6 +569,7 @@ export function MessageBubble({
                     metaStatus={m.meta_status}
                     statusPayload={m.status_payload}
                     errorDetail={m.error_detail}
+                    sentOutsideApp={m.origin?.kind === 'echo'}
                     onRetry={onRetry}
                     onDiscard={onDiscard}
                   />

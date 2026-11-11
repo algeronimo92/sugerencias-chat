@@ -159,7 +159,7 @@ export function AlbumBubble({
           </div>
           {caption && <p className="whitespace-pre-wrap break-words px-1 pt-1.5">{caption}</p>}
           <MessageFooter className="px-1 pt-1" sentAt={last.sent_at}>
-            {isVendedor && <MessageStatusTicks outboxStatus={last.outbox_status} metaStatus={last.meta_status} statusPayload={last.status_payload} errorDetail={last.error_detail} onRetry={onRetry} onDiscard={onDiscard} />}
+            {isVendedor && <MessageStatusTicks outboxStatus={last.outbox_status} metaStatus={last.meta_status} statusPayload={last.status_payload} errorDetail={last.error_detail} sentOutsideApp={last.origin?.kind === 'echo'} onRetry={onRetry} onDiscard={onDiscard} />}
           </MessageFooter>
         </div>
       </div>
