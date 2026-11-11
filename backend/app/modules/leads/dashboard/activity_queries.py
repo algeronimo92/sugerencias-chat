@@ -9,13 +9,14 @@ movieron.
 import asyncio
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import aliased
 
 from app.db.models.auth import User
-from app.db.models.conversations import WspMessage
+from app.db.models.conversations import MessageOutbox, WspMessage
 from app.db.models.leads import Lead, LeadActivity
 
+from app.modules.conversations.public import AUTOMATION_KEY_PREFIX, SCHEDULED_KEY_PREFIX
 from app.modules.leads.dashboard.scope import (
     DashboardScope, execute_mapping, items, local_day, local_slot, local_weekday, series,
 )
@@ -71,10 +72,58 @@ async def _messages(scope: DashboardScope) -> dict:
         .order_by(func.count(WspMessage.id).desc())
         .limit(12)
     )
-    trend, by_user = await asyncio.gather(
-        execute_mapping(trend_stmt), execute_mapping(by_user_stmt)
+    trend, by_user, by_origin = await asyncio.gather(
+        execute_mapping(trend_stmt), execute_mapping(by_user_stmt), execute_mapping(_by_origin_stmt(scope)),
     )
-    return {"trend": series(trend, scope), "by_user": items(by_user)}
+    return {
+        "trend": series(trend, scope),
+        "by_user": items(by_user),
+        "by_origin": _origin_series(by_origin, scope),
+    }
+
+
+ORIGINS = ("app", "automation", "scheduled", "phone")
+
+
+def _by_origin_stmt(scope: DashboardScope):
+    """Todo lo que mandó el negocio, por día y por de dónde salió.
+
+    "Mensajes enviados" contaba solo los de la app, y un día en que el equipo
+    contestó desde el celular y los flujos trabajaron se veía en cero (el
+    2026-11-10 hubo decenas de mensajes de flujos y del celular, y el gráfico
+    marcaba 0). La regla es la misma con que el chat rotula cada burbuja
+    (`conversations/domain/origin.py`): la clave del outbox distingue flujos y
+    programados, y un mensaje sin fila de outbox llegó como eco del celular.
+
+    En el scope propio se acota a los chats de la persona: los ecos y los
+    flujos no tienen autor, así que no hay otra forma de atribuírselos.
+    """
+    origin = case(
+        (MessageOutbox.dedupe_key.startswith(AUTOMATION_KEY_PREFIX), "automation"),
+        (MessageOutbox.dedupe_key.startswith(SCHEDULED_KEY_PREFIX), "scheduled"),
+        (MessageOutbox.id.is_(None), "phone"),
+        else_="app",
+    )
+    day = local_day(WspMessage.sent_at)
+    stmt = (
+        select(day.label("day"), origin.label("origin"), func.count(WspMessage.id).label("total"))
+        .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
+        .where(WspMessage.sent_at >= scope.start, WspMessage.sender == "vendedor")
+        .group_by(day, origin)
+    )
+    if scope.is_mine:
+        stmt = stmt.join(Lead, Lead.id == WspMessage.chat_id).where(Lead.vendedor_id == scope.user_id)
+    return stmt
+
+
+def _origin_series(rows, scope: DashboardScope) -> list[dict]:
+    """Un punto por día con los cuatro orígenes en cero si no hubo nada."""
+    counts = {(row["day"], row["origin"]): int(row["total"]) for row in rows}
+    points = []
+    for offset in range(scope.days):
+        day = scope.start_date + timedelta(days=offset)
+        points.append({"date": day.isoformat(), **{name: counts.get((day, name), 0) for name in ORIGINS}})
+    return points
 
 
 async def collect(scope: DashboardScope) -> dict:

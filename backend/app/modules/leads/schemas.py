@@ -397,9 +397,23 @@ class DashboardAppointments(BaseModel):
     linkage: DashboardLinkage
 
 
+class DashboardMessagesByOrigin(BaseModel):
+    date: str
+    # Desde la app por una persona.
+    app: int
+    # Por un flujo de automatización.
+    automation: int
+    # Programados: los escribió una persona y salieron solos a su hora.
+    scheduled: int
+    # Escritos en el celular del negocio: llegan como eco, sin autor.
+    phone: int
+
+
 class DashboardMessages(BaseModel):
+    # Solo los de la app (con autor); by_origin trae todos los del negocio.
     trend: list[DashboardPoint]
     by_user: list[DashboardMetricItem]
+    by_origin: list[DashboardMessagesByOrigin] = []
 
 
 class DashboardActivity(BaseModel):

@@ -9,6 +9,7 @@ import { formatChange, formatDuration, formatMoney, formatNumber } from './forma
 import { fromAppointments } from './serviceBreakdown'
 import { BarList, MetricCard, NoData, Panel, StatGrid, TrendChart } from './primitives'
 import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
+import { MessagesByOriginPanel } from './MessagesByOriginPanel'
 
 // "Cuántas llegan" dice cuándo escribe la gente (y cuándo Meta muestra los
 // anuncios); "Siguieron conversando" es lo que responde a qué hora reaccionan
@@ -103,10 +104,10 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
 
         <Panel anchor="mensajes-por-dia"
           title="Mensajes enviados por día"
-          subtitle="Solo los que salieron de la app: un mensaje escrito desde el celular llega sin autor"
+          subtitle={`${who(subject, { me: 'Lo que mandó el negocio en mis chats', team: 'Todo lo que mandó el negocio', seller: (name) => `Lo que mandó el negocio en los chats de ${name}` })}, según de dónde salió · ${period}`}
           className="lg:col-span-2"
         >
-          <TrendChart points={activity.messages.trend} label="Mensajes" />
+          <MessagesByOriginPanel points={activity.messages.by_origin ?? []} days={days} />
         </Panel>
 
         <Panel anchor="actividad"
@@ -116,7 +117,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <BarList items={activity.by_type} emptyLabel="Sin actividad registrada" />
         </Panel>
 
-        <Panel anchor="quien-manda-mensajes" title="Quién manda más mensajes" subtitle={`Ranking del equipo · ${period}`}>
+        <Panel anchor="quien-manda-mensajes" title="Quién manda más mensajes" subtitle={`Desde la app, que es donde se sabe quién escribió · ranking del equipo · ${period}`}>
           <BarList items={activity.messages.by_user} emptyLabel="Nadie envió mensajes desde la app" />
         </Panel>
 

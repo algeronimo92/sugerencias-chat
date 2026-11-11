@@ -44,6 +44,16 @@ export interface DashboardUpcomingAppointment {
   treatment: string | null
 }
 
+/** Mensajes del negocio de un día, por de dónde salieron. */
+export interface DashboardMessagesByOrigin {
+  date: string
+  app: number
+  automation: number
+  scheduled: number
+  /** Escritos en el celular del negocio, fuera de la app. */
+  phone: number
+}
+
 /** Un punto de una serie diaria con cantidad y monto (separaciones). */
 export interface DashboardAmountPoint {
   date: string
@@ -173,7 +183,9 @@ export interface DashboardMetrics {
     trend: DashboardPoint[]
     by_type: DashboardMetricItem[]
     by_user: DashboardMetricItem[]
-    messages: { trend: DashboardPoint[]; by_user: DashboardMetricItem[] }
+    /** `trend` y `by_user`: solo los enviados desde la app (con autor).
+     *  `by_origin`: todo lo que mandó el negocio, por día y origen. */
+    messages: { trend: DashboardPoint[]; by_user: DashboardMetricItem[]; by_origin: DashboardMessagesByOrigin[] }
   }
   /** Opcional por lo mismo que las series de arriba: sin él, el mapa de
    *  horas muestra "Sin datos" en vez de romper la pestaña. */
