@@ -336,10 +336,10 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
     assert sum(hours["weekday_occurrences"]) == 30
     assert len(hours["weekday_occurrences"]) == 7
     assert hours["slot_hours"] == 2 and hours["engagement_window_hours"] == 24
-    # Conversaciones y flujos caen en la misma celda y se funden en una fila.
+    # Conversaciones, flujos y mensajes caen en la misma celda y se funden en una fila.
     assert hours["cells"] == [{
         "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
-        "flows_manual": 1, "flows_automatic": 1,
+        "flows_manual": 1, "flows_automatic": 1, "messages": 1,
     }]
 
 
@@ -361,6 +361,9 @@ async def test_hours_follow_the_scope(compiled_sql):
     await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
     by_hour = [statement for statement in compiled_sql if "isodow" in statement]
 
-    assert len(by_hour) == 2
+    assert len(by_hour) == 3
     assert any("leads.vendedor_id = " in statement for statement in by_hour)
     assert any("automation_executions.started_by_user_id = " in statement for statement in by_hour)
+    # Los mensajes van por quien los escribió, no por de quién es el chat: lo
+    # que una vendedora escribe en el chat de otra es trabajo suyo.
+    assert any("wsp_messages.sent_by_user_id = " in statement for statement in by_hour)

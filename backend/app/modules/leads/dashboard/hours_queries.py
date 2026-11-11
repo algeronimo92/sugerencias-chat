@@ -1,5 +1,6 @@
 """A qué horas de la semana se mueve el negocio: cuándo llegan conversaciones
-nuevas, cuántas siguen después de la primera respuesta y cuándo salen flujos.
+nuevas, cuántas siguen después de la primera respuesta, cuándo salen flujos y cuándo
+escribe el equipo en el CRM.
 
 Va por día de la semana y franja horaria, no por fecha: 30 días por 24 horas
 son 720 celdas que nadie lee, y la decisión que alimenta (turnos, a qué hora
@@ -24,16 +25,17 @@ def _weekday_occurrences(scope: DashboardScope) -> list[int]:
     return occurrences
 
 
-CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_automatic")
+CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_automatic", "messages")
 
 
 async def collect(scope: DashboardScope) -> dict:
-    conversations, flows = await asyncio.gather(
+    conversations, flows, messages = await asyncio.gather(
         execute_mapping(activity.conversations_by_hour_stmt(scope)),
         execute_mapping(automations.by_hour_stmt(scope)),
+        execute_mapping(activity.messages_by_hour_stmt(scope)),
     )
     cells: dict[tuple[int, int], dict] = {}
-    for row in (*conversations, *flows):
+    for row in (*conversations, *flows, *messages):
         weekday, slot = int(row["weekday"]) - 1, int(row["slot"])
         if not (0 <= weekday < 7 and 0 <= slot < SLOTS_PER_DAY):
             continue

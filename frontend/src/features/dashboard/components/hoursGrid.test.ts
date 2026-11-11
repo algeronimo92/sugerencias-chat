@@ -13,7 +13,7 @@ function hours(cells: Partial<DashboardHours['cells'][number]>[]): DashboardHour
     // Cinco lunes y martes, cuatro del resto: un período de 30 días.
     weekday_occurrences: [5, 5, 4, 4, 4, 4, 4],
     cells: cells.map(cell => ({
-      weekday: 0, slot: 0, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, ...cell,
+      weekday: 0, slot: 0, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0, ...cell,
     })),
   }
 }

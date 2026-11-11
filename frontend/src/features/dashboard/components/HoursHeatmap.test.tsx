@@ -13,7 +13,7 @@ const HOURS: DashboardHours = {
   slot_hours: 2,
   engagement_window_hours: 24,
   weekday_occurrences: [5, 5, 4, 4, 4, 4, 4],
-  cells: [{ weekday: 0, slot: 10, conversations: 10, settled: 10, engaged: 6, flows_manual: 0, flows_automatic: 0 }],
+  cells: [{ weekday: 0, slot: 10, conversations: 10, settled: 10, engaged: 6, flows_manual: 0, flows_automatic: 0, messages: 0 }],
 }
 
 describe('HoursHeatmap', () => {

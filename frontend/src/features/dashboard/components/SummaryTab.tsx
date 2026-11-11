@@ -23,6 +23,16 @@ const CONVERSATION_READINGS: HoursReadingOption[] = [
   },
 ]
 
+// Una sola lectura: lo que se escribe a mano. Los programados, los flujos y el
+// celular no dicen a qué hora estuvo alguien trabajando en el CRM.
+const WRITING_READINGS: HoursReadingOption[] = [
+  {
+    key: 'messages',
+    label: 'Mensajes escritos',
+    hint: 'Mensajes escritos y enviados en el momento desde el CRM, en promedio por día de la semana. No cuenta programados, flujos ni lo que sale desde WhatsApp.',
+  },
+]
+
 interface Props {
   data: DashboardMetrics
   days: number
@@ -108,6 +118,15 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           className="lg:col-span-2"
         >
           <MessagesByOriginPanel points={activity.messages.by_origin ?? []} days={days} />
+        </Panel>
+
+        <Panel
+          anchor="a-que-hora-se-escribe"
+          title="A qué hora se escribe en el CRM"
+          subtitle={`${who(subject, { me: 'Lo que escribí yo', team: 'Lo que escribió el equipo', seller: (name) => `Lo que escribió ${name}` })}, en cualquier chat · ${period} · el color compara las horas entre sí, no a una persona con otra`}
+          className="lg:col-span-2"
+        >
+          <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe en el CRM" />
         </Panel>
 
         <Panel anchor="actividad"

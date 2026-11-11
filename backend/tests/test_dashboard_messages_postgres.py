@@ -17,6 +17,7 @@ from app.db.models.conversations import MessageOutbox, WspMessage
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.modules.leads.dashboard.activity_queries import collect
+from app.modules.leads.dashboard import hours_queries
 from app.modules.leads.dashboard.scope import build_scope
 from app.modules.leads.infrastructure.repository import ensure_lead_stub
 from app.tenancy.context import tenant_context
@@ -102,3 +103,29 @@ async def test_messages_that_never_went_out_are_not_counted_as_sent(tenant) -> N
         assert messages["by_origin"][-1] | {"date": None} == {"date": None, "app": 2, "automation": 0, "scheduled": 0, "phone": 1}
         assert messages["trend"][-1]["value"] == 2
         assert messages["by_user"] == [{"name": "Grecia", "value": 2}]
+
+
+async def test_hours_count_only_what_a_person_wrote_and_sent_right_then(tenant) -> None:
+    """El mapa "a qué hora se escribe en el CRM" responde cuándo trabaja
+    alguien en la app. Un programado tiene autora pero salió solo, y un flujo o
+    un eco del celular no los escribió nadie en el CRM a esa hora."""
+    with tenant_context(tenant):
+        grecia = await _user("Grecia")
+        antonella = await _user("Antonella")
+        de_antonella = await _lead(antonella)
+        await _message(de_antonella, author=grecia, outbox=True)                # a mano, en chat ajeno
+        await _message(de_antonella, author=grecia, outbox=True)
+        await _message(de_antonella, author=antonella, outbox=True)
+        await _message(de_antonella, author=grecia, dedupe_key="scheduled:3")   # programado
+        await _message(de_antonella, dedupe_key="automation:7:0:0:0")           # flujo
+        await _message(de_antonella)                                            # eco del celular
+        await _message(de_antonella, author=grecia, outbox=True, outbox_status="failed")
+        await _message(de_antonella, sender="cliente")
+
+        def total(hours: dict) -> int:
+            return sum(cell["messages"] for cell in hours["cells"])
+
+        assert total(await hours_queries.collect(build_scope(7, "team", grecia))) == 3
+        # Por autora, no por dueña del chat: Grecia escribió en un chat de Antonella.
+        assert total(await hours_queries.collect(build_scope(7, "mine", grecia))) == 2
+        assert total(await hours_queries.collect(build_scope(7, "mine", antonella))) == 1

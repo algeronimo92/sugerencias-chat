@@ -436,6 +436,8 @@ class DashboardHourCell(BaseModel):
     engaged: int
     flows_manual: int
     flows_automatic: int
+    # Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular.
+    messages: int
 
 
 class DashboardHours(BaseModel):

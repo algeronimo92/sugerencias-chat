@@ -4673,6 +4673,8 @@ export interface components {
             flows_manual: number;
             /** Flows Automatic */
             flows_automatic: number;
+            /** Messages */
+            messages: number;
         };
         /** DashboardHours */
         DashboardHours: {

@@ -23,6 +23,7 @@ const HOURS: DashboardHours = {
         engaged: Math.round(conversations * RATE[slot]),
         flows_manual: slot >= 4 && slot <= 9 ? Math.round(conversations * 0.6) : 0,
         flows_automatic: conversations,
+        messages: slot >= 4 && slot <= 10 ? conversations * 3 : 0,
       }
     }),
   ),

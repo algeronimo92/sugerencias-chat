@@ -2,7 +2,7 @@ import type { DashboardHours } from '../types'
 
 /** Qué se lee sobre la cuadrícula. Los conteos van como promedio por día de
  *  la semana; `engaged` es un porcentaje. */
-export type HoursReading = 'conversations' | 'engaged' | 'flows_manual' | 'flows_automatic'
+export type HoursReading = 'conversations' | 'engaged' | 'flows_manual' | 'flows_automatic' | 'messages'
 
 export const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const
 
@@ -37,6 +37,7 @@ const UNITS: Record<Exclude<HoursReading, 'engaged'>, [string, string]> = {
   conversations: ['conversación nueva', 'conversaciones nuevas'],
   flows_manual: ['flujo a mano', 'flujos a mano'],
   flows_automatic: ['flujo automático', 'flujos automáticos'],
+  messages: ['mensaje escrito en el CRM', 'mensajes escritos en el CRM'],
 }
 
 export function formatAverage(value: number): string {

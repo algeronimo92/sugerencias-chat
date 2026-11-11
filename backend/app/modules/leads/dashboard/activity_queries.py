@@ -183,6 +183,32 @@ async def collect(scope: DashboardScope) -> dict:
     }
 
 
+def messages_by_hour_stmt(scope: DashboardScope):
+    """Mensajes que una persona escribió y mandó en el momento desde el CRM.
+
+    Es la lectura de "a qué hora trabaja alguien en la app", así que deja
+    fuera todo lo que no ocurrió a esa hora por mano de esa persona: los
+    programados (tienen autora, pero salieron solos a la hora que ella eligió
+    antes), los flujos y los ecos del celular, que llegan sin autor.
+    """
+    weekday, slot = local_weekday(WspMessage.sent_at), local_slot(WspMessage.sent_at)
+    scheduled = MessageOutbox.dedupe_key.startswith(SCHEDULED_KEY_PREFIX)
+    return (
+        select(weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("messages"))
+        .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
+        .where(
+            WspMessage.sent_at >= scope.start,
+            WspMessage.sent_by_user_id.is_not(None),
+            # Sin fila de outbox la clave es NULL y `NOT LIKE` daría NULL: hay
+            # que dejar pasar ese caso a propósito.
+            MessageOutbox.dedupe_key.is_(None) | ~scheduled,
+            message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
+            scope.mine(WspMessage.sent_by_user_id),
+        )
+        .group_by(weekday, slot)
+    )
+
+
 # Ventana fija para "siguió conversando": sin ella, una conversación de hace un
 # mes tendría más oportunidad de contar que una de ayer y las celdas no serían
 # comparables. Coincide con la ventana de servicio de WhatsApp.

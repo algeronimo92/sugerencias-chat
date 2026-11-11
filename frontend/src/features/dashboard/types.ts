@@ -204,6 +204,8 @@ export interface DashboardHourCell {
   engaged: number
   flows_manual: number
   flows_automatic: number
+  /** Escritos y mandados en el momento desde el CRM: sin programados, flujos ni celular. */
+  messages: number
 }
 
 export interface DashboardHours {
