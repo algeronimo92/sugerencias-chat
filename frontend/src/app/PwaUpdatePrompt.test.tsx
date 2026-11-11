@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hold, LEASE_FRESH_MS, resetActivity } from '../shared/activity'
 import { resetPwaUpdateStore, setPwaCurrentChatId, usePwaUpdatePending } from '../shared/pwaUpdate'
-import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS } from './PwaUpdatePrompt'
+import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS, UPDATE_TOAST_MS } from './PwaUpdatePrompt'
 
 // Doble de `useRegisterSW`: el test decide cuándo "aparece" un worker nuevo
 // (setNeedRefresh) y entrega el registro para que el prompt pueda sondear.
@@ -202,6 +202,20 @@ describe('PwaUpdatePrompt', () => {
       })
       expect(view.getByTestId('pending')).toHaveTextContent('pendiente')
       expect(sw.updateServiceWorker).not.toHaveBeenCalled()
+    })
+
+    it('el aviso se retira solo para no quedar encima de la cabecera, y no reaparece con cada envío', () => {
+      const { view } = mount()
+      act(() => sw.setNeedRefresh(true))
+      expect(offers()).toBe(1)
+      expect(toastMock.mock.calls.at(-1)?.[1]).toMatchObject({ duration: UPDATE_TOAST_MS })
+      // Un envío en vuelo cambia cómo se aplicaría, pero no vuelve a mostrar el aviso.
+      sends.pending = 1
+      view.rerender(<><PwaUpdatePrompt /><PendingProbe /></>)
+      sends.pending = 0
+      view.rerender(<><PwaUpdatePrompt /><PendingProbe /></>)
+      expect(offers()).toBe(1)
+      expect(screen.getByTestId('pending')).toHaveTextContent('pendiente')
     })
 
     it('vuelve a ofrecer la versión nueva al volver a primer plano', () => {
