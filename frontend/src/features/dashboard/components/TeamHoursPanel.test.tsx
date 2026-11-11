@@ -29,7 +29,7 @@ describe('TeamHoursPanel', () => {
     expect(within(people[1]).getByText('1 mensaje')).toBeInTheDocument()
     expect(within(people[2]).getByText('Zoe')).toBeInTheDocument()
     expect(within(people[2]).getByText('Sin actividad')).toBeInTheDocument()
-    expect(screen.getByRole('table', { name: 'Grecia: Escritos en el CRM' })).toBeInTheDocument()
+    expect(screen.getByRole('grid', { name: 'Grecia: Escritos en el CRM' })).toBeInTheDocument()
     expect(screen.getByText('Misma escala para todas las personas')).toBeInTheDocument()
     expect(screen.getByText(/Cada fila es un día del período/)).toBeInTheDocument()
   })
@@ -51,9 +51,33 @@ describe('TeamHoursPanel', () => {
     const user = userEvent.setup()
     render(<TeamHoursPanel hours={HOURS} />)
 
-    const table = screen.getByRole('table', { name: 'Grecia: Escritos en el CRM' })
+    const table = screen.getByRole('grid', { name: 'Grecia: Escritos en el CRM' })
     await user.click(within(table).getByTitle(/^Jue 5 nov\.?, 10–12 h: 10 mensajes escritos en el CRM$/))
     expect(screen.getByText(/^Grecia · Jue 5 nov\.?, 10–12 h: 10 mensajes escritos en el CRM$/)).toBeInTheDocument()
+  })
+
+  // Sin esto el detalle de una celda solo se podía leer con el mouse o tocando.
+  it('con el teclado, cada cuadrícula es una parada y las flechas la recorren', async () => {
+    const user = userEvent.setup()
+    render(<TeamHoursPanel hours={HOURS} />)
+
+    const grid = screen.getByRole('grid', { name: 'Grecia: Escritos en el CRM' })
+    // Tres botones de lectura y después la primera cuadrícula.
+    await user.tab()
+    await user.tab()
+    await user.tab()
+    await user.tab()
+    expect(grid).toHaveFocus()
+    expect(screen.getByText(/^Grecia · Jue 5 nov\.?, 0–2 h: 0 mensajes escritos en el CRM$/)).toBeInTheDocument()
+
+    await user.keyboard('{End}{ArrowDown}{ArrowLeft}')
+    expect(screen.getByText(/^Grecia · Vie 6 nov\.?, 20–22 h: 0 mensajes escritos en el CRM$/)).toBeInTheDocument()
+    const activeCell = document.getElementById(grid.getAttribute('aria-activedescendant')!)
+    expect(activeCell).toHaveAttribute('title', expect.stringMatching(/^Vie 6 nov\.?, 20–22 h/))
+
+    // No se sale de la cuadrícula por los bordes.
+    await user.keyboard('{Home}{ArrowLeft}{ArrowUp}{ArrowUp}')
+    expect(screen.getByText(/^Grecia · Jue 5 nov\.?, 0–2 h/)).toBeInTheDocument()
   })
 
   // Durante un despliegue puede contestar un backend que todavía no manda `people`.
@@ -61,6 +85,6 @@ describe('TeamHoursPanel', () => {
     render(<TeamHoursPanel hours={{ ...HOURS, people: undefined }} />)
 
     expect(screen.getByText('Sin personas que comparar en el período')).toBeInTheDocument()
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument()
   })
 })
