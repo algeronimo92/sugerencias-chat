@@ -29,6 +29,32 @@ const FLOW_READINGS: HoursReadingOption[] = [
   { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que se iniciaron solos, por su disparador, en promedio por día de la semana.' },
 ]
 
+function FailuresPanel({ failures, period }: { failures: DashboardMetrics['automations']['failures']; period: string }) {
+  const { failed, total, rate } = failures
+  return (
+    <Panel anchor="fallos"
+      title="Fallos"
+      subtitle={
+        rate != null
+          ? `${rate}% de ${formatNumber(total)} ${total === 1 ? 'flujo iniciado' : 'flujos iniciados'} · ${period}`
+          : 'Ningún flujo en el período'
+      }
+    >
+      {failed === 0 ? (
+        <NoData label="Ningún flujo falló" />
+      ) : (
+        <>
+          <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {failed === 1 ? '1 flujo no llegó a enviarse' : `${formatNumber(failed)} flujos no llegaron a enviarse`}
+          </div>
+          <BarList items={failures.top_errors} />
+        </>
+      )}
+    </Panel>
+  )
+}
+
 export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
   const { automations } = data
   const period = `Últimos ${days} días`
@@ -40,7 +66,6 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
   const split = subject.kind === 'team' && automations.trend_manual && automations.trend_automatic
     ? { manual: automations.trend_manual, automatic: automations.trend_automatic }
     : null
-  const failed = automations.failures.failed
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -104,26 +129,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
         {activeTotal === 0 && <p className="mt-3 text-[11px] text-wa-muted">No hay nada en cola.</p>}
       </Panel>
 
-      <Panel anchor="fallos"
-        title="Fallos"
-        subtitle={
-          automations.failures.rate != null
-            ? `${automations.failures.rate}% de ${formatNumber(automations.failures.total)} ${automations.failures.total === 1 ? 'flujo iniciado' : 'flujos iniciados'} · ${period}`
-            : 'Ningún flujo en el período'
-        }
-      >
-        {failed === 0 ? (
-          <NoData label="Ningún flujo falló" />
-        ) : (
-          <>
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-400">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              {failed === 1 ? '1 flujo no llegó a enviarse' : `${formatNumber(failed)} flujos no llegaron a enviarse`}
-            </div>
-            <BarList items={automations.failures.top_errors} />
-          </>
-        )}
-      </Panel>
+      <FailuresPanel failures={automations.failures} period={period} />
     </div>
   )
 }

@@ -51,6 +51,47 @@ function share(part: number, total: number): string {
   return total ? `${Math.round((part / total) * 100)}%` : '0%'
 }
 
+/** El reparto del período en una frase: la cifra que se busca no debería
+ *  depender de sumar barras a ojo. */
+function OriginSummary({ totals }: { totals: DashboardFlowOrigins }) {
+  const total = totals.manual + totals.automatic
+  const chained = totals.manual_chained + totals.automatic_chained
+  if (total === 0) return null
+  const strong = 'font-semibold text-wa-text dark:text-wa-text-dark'
+  return (
+    <p className="mb-4 text-xs text-gray-600 dark:text-gray-300">
+      De {formatNumber(total)} {total === 1 ? 'flujo iniciado' : 'flujos iniciados'},{' '}
+      <strong className={strong}>{formatNumber(totals.manual)} a mano</strong> ({share(totals.manual, total)}) y{' '}
+      <strong className={strong}>{formatNumber(totals.automatic)} {totals.automatic === 1 ? 'automático' : 'automáticos'}</strong> ({share(totals.automatic, total)}).
+      {chained > 0 && (
+        <>
+          {' '}De ese total, {formatNumber(chained)} {chained === 1 ? 'lo inició otro flujo' : 'los inició otro flujo'}:{' '}
+          {formatNumber(totals.manual_chained)} a partir de uno a mano y {formatNumber(totals.automatic_chained)} de uno automático.
+        </>
+      )}
+    </p>
+  )
+}
+
+function toRow(flow: DashboardFlowRow) {
+  const manualChained = flow.manual_chained ?? 0
+  const automaticChained = flow.automatic_chained ?? 0
+  return {
+    key: String(flow.rule_id),
+    label: flow.name,
+    sublabel: flow.last_at ? `Último: ${formatShortDateTime(flow.last_at)}` : undefined,
+    total: flow.value,
+    // Van todas las partes: los segmentos de la lectura eligen cuáles se dibujan.
+    parts: {
+      manual_direct: (flow.manual ?? 0) - manualChained,
+      manual_chained: manualChained,
+      automatic_direct: (flow.automatic ?? 0) - automaticChained,
+      automatic_chained: automaticChained,
+      completed: flow.completed, active: flow.active, skipped: flow.skipped, failed: flow.failed,
+    },
+  }
+}
+
 interface Props {
   flows: DashboardFlowRow[]
   /** Totales del período. No se suman las filas: la lista trae solo los flujos
@@ -70,7 +111,6 @@ export function FlowsByFlowPanel({ flows, totals, onSelect }: Props) {
   // Una respuesta guardada de la versión anterior no trae el reparto por fila.
   const canSplit = totals !== null && flows.every(flow => flow.manual != null && flow.automatic != null)
   const reading = canSplit ? READINGS.find(item => item.key === readingKey) ?? READINGS[0] : READINGS[1]
-  const total = totals ? totals.manual + totals.automatic : 0
   const chained = totals ? totals.manual_chained + totals.automatic_chained : 0
   // Sin flujos encadenados en el período, la leyenda no nombra algo que no se ve.
   const segments = reading.key === 'origin' && chained === 0
@@ -83,37 +123,12 @@ export function FlowsByFlowPanel({ flows, totals, onSelect }: Props) {
         <>
           <ReadingToggle label="Qué mostrar de cada flujo" options={READINGS} value={reading.key} onChange={setReadingKey} />
           <p className="mb-3 text-[11px] text-wa-muted dark:text-wa-muted-dark">{reading.hint}{chained > 0 && reading.chainedHint ? ` ${reading.chainedHint}` : ''}</p>
-          {reading.key === 'origin' && totals && total > 0 && (
-            <p className="mb-4 text-xs text-gray-600 dark:text-gray-300">
-              De {formatNumber(total)} {total === 1 ? 'flujo iniciado' : 'flujos iniciados'},{' '}
-              <strong className="font-semibold text-wa-text dark:text-wa-text-dark">{formatNumber(totals.manual)} a mano</strong> ({share(totals.manual, total)}) y{' '}
-              <strong className="font-semibold text-wa-text dark:text-wa-text-dark">{formatNumber(totals.automatic)} {totals.automatic === 1 ? 'automático' : 'automáticos'}</strong> ({share(totals.automatic, total)}).
-              {chained > 0 && (
-                <>
-                  {' '}De ese total, {formatNumber(chained)} {chained === 1 ? 'lo inició otro flujo' : 'los inició otro flujo'}:{' '}
-                  {formatNumber(totals.manual_chained)} a partir de uno a mano y {formatNumber(totals.automatic_chained)} de uno automático.
-                </>
-              )}
-            </p>
-          )}
+          {reading.key === 'origin' && totals && <OriginSummary totals={totals} />}
         </>
       )}
       <StackedBarList
         segments={segments}
-        rows={flows.map(flow => ({
-          key: String(flow.rule_id),
-          label: flow.name,
-          sublabel: flow.last_at ? `Último: ${formatShortDateTime(flow.last_at)}` : undefined,
-          total: flow.value,
-          // Van todas las partes: los segmentos de la lectura eligen cuáles se dibujan.
-          parts: {
-            manual_direct: (flow.manual ?? 0) - (flow.manual_chained ?? 0),
-            manual_chained: flow.manual_chained ?? 0,
-            automatic_direct: (flow.automatic ?? 0) - (flow.automatic_chained ?? 0),
-            automatic_chained: flow.automatic_chained ?? 0,
-            completed: flow.completed, active: flow.active, skipped: flow.skipped, failed: flow.failed,
-          },
-        }))}
+        rows={flows.map(toRow)}
         onSelect={onSelect}
       />
     </div>
