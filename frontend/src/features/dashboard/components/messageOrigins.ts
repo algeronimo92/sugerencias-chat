@@ -50,6 +50,42 @@ export function groupByOrigin(points: DashboardMessagesByOrigin[], size: number)
   return buckets
 }
 
+/** Alto mínimo con que se dibuja un origen que tuvo mensajes, y el hueco que lo
+ *  separa del de arriba. */
+export const MIN_SEGMENT_PX = 5
+export const SEGMENT_GAP_PX = 2
+
+/**
+ * Dónde se dibuja el segmento de un origen dentro de su barra apilada.
+ *
+ * Los mensajes escritos en el CRM son el 2% del total: en un eje que llega a
+ * 1600, los 13 de un día miden menos de 2px. El borde que separaba los
+ * segmentos los tapaba enteros y la barra de ese día no mostraba el color,
+ * aunque el tooltip sí los contaba (alguien mandó un mensaje, vio subir el
+ * ranking por persona y no lo encontró acá). Por eso todo origen con mensajes
+ * ocupa al menos `MIN_SEGMENT_PX` y empuja hacia arriba a los que tiene encima,
+ * en vez de pisarse con ellos; la separación es un hueco y no un borde.
+ *
+ * `y` y `height` son los del segmento según la escala del gráfico; `order` es
+ * el orden de apilado, de abajo hacia arriba.
+ */
+export function segmentBox(
+  counts: Record<MessageOrigin, number>,
+  key: MessageOrigin,
+  order: MessageOrigin[],
+  { y, height }: { y: number; height: number },
+): { y: number; height: number } | null {
+  const value = counts[key]
+  if (!(value > 0) || !(height > 0)) return null
+  const pxPerMessage = height / value
+  const drawn = (count: number) => (count > 0 ? Math.max(count * pxPerMessage, MIN_SEGMENT_PX) : 0)
+  const below = order.slice(0, order.indexOf(key))
+  const baseline = y + height + below.reduce((sum, origin) => sum + counts[origin] * pxPerMessage, 0)
+  const bottom = baseline - below.reduce((sum, origin) => sum + drawn(counts[origin]), 0)
+  const full = drawn(value)
+  return { y: bottom - full + SEGMENT_GAP_PX, height: full - SEGMENT_GAP_PX }
+}
+
 /** Total del período por origen y su porcentaje; los orígenes en cero no van. */
 export function originShares(points: DashboardMessagesByOrigin[]) {
   const totals = MESSAGE_ORIGINS.map((origin) => ({ ...origin, value: points.reduce((sum, point) => sum + point[origin.key], 0) }))

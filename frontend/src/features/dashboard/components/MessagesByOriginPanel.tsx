@@ -5,7 +5,10 @@ import type { DashboardMessagesByOrigin } from '../types'
 import { formatDayLabel, formatNumber } from './format'
 import { NoData } from './primitives'
 import { isSunday } from './salesFormat'
-import { MESSAGE_ORIGINS, groupByOrigin, originHeadline, originShares } from './messageOrigins'
+import { MESSAGE_ORIGINS, groupByOrigin, originHeadline, originShares, segmentBox, type OriginBucket } from './messageOrigins'
+
+/** Lo que recharts le pasa a `shape` por cada segmento de una barra. */
+type SegmentProps = { x: number; y: number; width: number; height: number; payload?: { bucket: OriginBucket } }
 
 const AXIS = '#8696a0'
 const TOOLTIP_STYLE = {
@@ -37,6 +40,7 @@ export function MessagesByOriginPanel({ points, days }: { points: DashboardMessa
   // La leyenda y el tooltip muestran solo los orígenes con mensajes en el
   // período: un "Programados: 0" hacía pensar que faltaban datos.
   const present = MESSAGE_ORIGINS.filter((origin) => pie.some((item) => item.key === origin.key))
+  const stackOrder = present.map((origin) => origin.key)
   const chartData = buckets.map((bucket) => ({
     ...bucket,
     ...Object.fromEntries(MESSAGE_ORIGINS.map((origin) => [origin.key, bucket[origin.key] || null])),
@@ -90,9 +94,13 @@ export function MessagesByOriginPanel({ points, days }: { points: DashboardMessa
                   formatter={(value, name) => [formatNumber(Number(value)), MESSAGE_ORIGINS.find((origin) => origin.key === name)?.label ?? String(name)]}
                 />
                 {present.map((origin) => (
-                  <Bar key={origin.key} dataKey={origin.key} stackId="origen" fill={origin.color} maxBarSize={36}
-                    // 2px de la superficie entre segmentos: el color solo no separa dos orígenes vecinos.
-                    stroke="var(--viz-surface)" strokeWidth={2} isAnimationActive={false} />
+                  <Bar key={origin.key} dataKey={origin.key} stackId="origen" fill={origin.color} maxBarSize={36} isAnimationActive={false}
+                    // Cada segmento se dibuja a mano: con el borde de recharts, un origen
+                    // con pocos mensajes desaparecía de la barra (ver segmentBox).
+                    shape={(props: SegmentProps) => {
+                      const box = props.payload ? segmentBox(props.payload.bucket, origin.key, stackOrder, props) : null
+                      return box ? <rect x={props.x} width={props.width} y={box.y} height={box.height} fill={origin.color} /> : <g />
+                    }} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
