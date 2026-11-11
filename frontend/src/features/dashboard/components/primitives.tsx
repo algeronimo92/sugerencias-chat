@@ -104,13 +104,15 @@ export function NoData({ label = 'Sin datos todavía' }: { label?: string }) {
 interface BarListProps {
   items: DashboardMetricItem[]
   labels?: Record<string, string>
+  /** Qué significa cada fila, cuando el nombre solo no alcanza para distinguirlas. */
+  hints?: Record<string, string>
   /** Color propio de cada barra, como el de las etapas que define el negocio. */
   colors?: Record<string, string>
   onSelect?: (name: string) => void
   emptyLabel?: string
 }
 
-export function BarList({ items, labels, colors, onSelect, emptyLabel }: BarListProps) {
+export function BarList({ items, labels, hints, colors, onSelect, emptyLabel }: BarListProps) {
   if (items.length === 0) return <NoData label={emptyLabel} />
 
   const max = Math.max(...items.map((item) => item.value), 1)
@@ -156,6 +158,7 @@ export function BarList({ items, labels, colors, onSelect, emptyLabel }: BarList
           <div key={item.name}>
             {header}
             {bar}
+            {hints?.[item.name] && <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">{hints[item.name]}</p>}
           </div>
         )
       })}

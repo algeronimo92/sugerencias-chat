@@ -263,6 +263,8 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Flujos' }))
     expect(screen.getByText('Recordatorio de Yape')).toBeInTheDocument()
     expect(screen.getByText('Quién inició flujos a mano')).toBeInTheDocument()
+    // El disparador lleva su explicación: el nombre solo no distingue "Lead nuevo" de "Conversación nueva".
+    expect(within(screen.getByRole('region', { name: 'Qué los inicia' })).getByText(/El vendedor lo inicia con el botón "Iniciar flujo"/)).toBeInTheDocument()
     expect(screen.queryByText('Citas registradas')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Etiquetas' }))
