@@ -12,6 +12,7 @@ import {
 import { useChatSocketConnected } from '../realtime/useRealtime'
 import { usePendingSends } from '../features/chats/public/usePendingSends'
 import { describeUpdateBlocker, updateBlocker } from './pwaUpdateGuard'
+import { reloadWhenActivated } from './pwaReload'
 
 // Id fijo para que el aviso no se apile si el efecto vuelve a correr.
 const UPDATE_TOAST_ID = 'pwa-update'
@@ -118,10 +119,13 @@ export function PwaUpdatePrompt() {
     toast.dismiss(UPDATE_TOAST_ID)
     setApplying(true)
     rememberUpdateApplied()
-    // `true` recarga la página una vez que el worker nuevo toma el control.
+    // `true` recarga la página una vez que el worker nuevo toma el control,
+    // pero solo si la página ya estaba controlada al cargar; el respaldo
+    // recarga igual cuando el worker queda activo.
+    reloadWhenActivated(registration)
     void updateServiceWorker(true)
     return true
-  }, [pendingSends, updateServiceWorker])
+  }, [pendingSends, registration, updateServiceWorker])
 
   const offerUpdate = useCallback(() => {
     toast(`Hay una versión nueva de ${currentBrandName()}`, {
