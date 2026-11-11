@@ -1,10 +1,11 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Building2, Globe2, Layers, Loader2, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { useTheme } from '../../../../shared/hooks/useTheme'
 import { Button } from '../../../../shared/ui/Button'
 import { Input } from '../../../../shared/ui/Input'
 import { loginOperator } from '../../api'
+import { platformKeys } from '../../keys'
 import { mensajeDeError } from './errors'
 import { AvisoError, MarcaPlataforma } from './PanelUi'
 
@@ -35,7 +36,8 @@ function Capacidad({
   );
 }
 
-export function PlatformLogin({ onEntrar }: { onEntrar: () => void }) {
+export function PlatformLogin() {
+  const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +45,8 @@ export function PlatformLogin({ onEntrar }: { onEntrar: () => void }) {
     mutationFn: async () => {
       await loginOperator(email, password);
     },
-    onSuccess: onEntrar,
+    // Con la sesión refrescada, PlatformApp deja el acceso y muestra el panel.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformKeys.me }),
   });
 
   return (

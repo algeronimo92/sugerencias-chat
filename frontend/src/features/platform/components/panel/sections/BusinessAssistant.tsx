@@ -15,7 +15,7 @@ export function BusinessAssistant({ organizacion }: { organizacion: Organization
   const formId = useId()
   const queryClient = useQueryClient()
   const [habilitado, setHabilitado] = useState(organizacion.ai_enabled)
-  const [cuota, setCuota] = useState(organizacion.ai_monthly_quota?.toString() ?? '')
+  const [cuota, setCuota] = useState(() => organizacion.ai_monthly_quota?.toString() ?? '')
   const [errorCuota, setErrorCuota] = useState<string | null>(null)
   const clave = platformKeys.ai(organizacion.id)
 

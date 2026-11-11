@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Building2, ChevronRight, Search } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../shared/ui/Button'
@@ -60,13 +60,74 @@ function FilaNegocio({ organizacion }: { organizacion: Organization }) {
   )
 }
 
+function FiltrosEstado({ organizaciones, cargando, filtro, onElegir }: { organizaciones: Organization[]; cargando: boolean; filtro: Filtro; onElegir: (filtro: Filtro) => void }) {
+  return (
+    <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap gap-2">
+      {FILTROS.map((item) => {
+        const elegido = filtro === item.id
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={elegido}
+            onClick={() => onElegir(item.id)}
+            className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary ${elegido ? 'border-wa-primary bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary' : 'border-wa-border bg-white text-wa-muted hover:text-wa-text dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-muted-dark dark:hover:text-wa-text-dark'}`}
+          >
+            {item.label}
+            <span className="tabular-nums text-wa-text dark:text-white">{cargando ? '—' : organizaciones.filter(item.incluye).length}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CargandoNegocios() {
+  return (
+    <div role="status" className="mt-3 space-y-2">
+      <div className="h-[4.5rem] animate-pulse rounded-xl bg-wa-field motion-reduce:animate-none dark:bg-wa-head-dark" />
+      <div className="h-[4.5rem] animate-pulse rounded-xl bg-wa-field motion-reduce:animate-none dark:bg-wa-head-dark" />
+      <span className="sr-only">Cargando negocios…</span>
+    </div>
+  )
+}
+
+/** La lista ya cargada: los negocios visibles o por qué no hay ninguno. */
+function ListaNegocios({ visibles, hayNegocios, onVerTodos }: { visibles: Organization[]; hayNegocios: boolean; onVerTodos: () => void }) {
+  if (visibles.length > 0) {
+    return (
+      <ul className="mt-3 divide-y divide-wa-border overflow-hidden rounded-xl border border-wa-border bg-white dark:divide-wa-border-dark dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        {visibles.map((organizacion) => <FilaNegocio key={organizacion.id} organizacion={organizacion} />)}
+      </ul>
+    )
+  }
+  if (hayNegocios) {
+    return (
+      <div className="mt-3 rounded-xl border border-dashed border-wa-border p-8 text-center dark:border-wa-border-dark">
+        <p className="text-sm text-wa-muted dark:text-wa-muted-dark">No hay negocios que coincidan.</p>
+        <Button variant="secondary" className="mt-3" onClick={onVerTodos}>Ver todos</Button>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-3 flex flex-col items-center rounded-xl border border-dashed border-wa-border bg-white px-6 py-12 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary"><Building2 className="h-6 w-6" aria-hidden="true" /></span>
+      <h2 className="mt-4 text-base font-bold text-wa-text dark:text-white">Aún no hay negocios</h2>
+      <p className="mt-1 max-w-sm text-sm text-wa-muted dark:text-wa-muted-dark">Crea el primero para preparar su esquema, dominio y cuenta administradora.</p>
+    </div>
+  )
+}
+
+function contar(total: number, visibles: number, filtrando: boolean): string {
+  if (filtrando) return `${visibles} de ${total} negocios`
+  return `${total} ${total === 1 ? 'negocio' : 'negocios'}`
+}
+
 /** Directorio de negocios: solo para encontrar uno y entrar a su espacio.
  *  Toda la administración de un negocio vive en BusinessWorkspace. */
 export function BusinessDirectory() {
-  const queryClient = useQueryClient()
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
-  const refrescar = () => queryClient.invalidateQueries({ queryKey: platformKeys.organizations })
   const negocios = useQuery({ queryKey: platformKeys.organizations, queryFn: fetchOrganizations })
 
   const organizaciones = negocios.data?.items ?? []
@@ -76,7 +137,6 @@ export function BusinessDirectory() {
     incluye(organizacion) &&
     `${organizacion.name} ${organizacion.domains.map((dominio) => dominio.hostname).join(' ')}`.toLocaleLowerCase().includes(texto),
   )
-  const filtrando = texto !== '' || filtro !== 'todos'
 
   return (
     <>
@@ -87,28 +147,12 @@ export function BusinessDirectory() {
             Elige un negocio para administrar su acceso, su asistente, sus integraciones y su marca.
           </p>
         </div>
-        <NewBusinessDialog onCreado={refrescar} />
+        <NewBusinessDialog />
       </section>
 
       <section className="mt-6" aria-label="Lista de negocios">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap gap-2">
-            {FILTROS.map((item) => {
-              const elegido = filtro === item.id
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={elegido}
-                  onClick={() => setFiltro(item.id)}
-                  className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary ${elegido ? 'border-wa-primary bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary' : 'border-wa-border bg-white text-wa-muted hover:text-wa-text dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-muted-dark dark:hover:text-wa-text-dark'}`}
-                >
-                  {item.label}
-                  <span className="tabular-nums text-wa-text dark:text-white">{negocios.isLoading ? '—' : organizaciones.filter(item.incluye).length}</span>
-                </button>
-              )
-            })}
-          </div>
+          <FiltrosEstado organizaciones={organizaciones} cargando={negocios.isLoading} filtro={filtro} onElegir={setFiltro} />
           {organizaciones.length > 0 && (
             <div className="relative w-full lg:w-72">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
@@ -118,46 +162,25 @@ export function BusinessDirectory() {
         </div>
 
         <p aria-live="polite" className="mt-4 text-sm text-wa-muted dark:text-wa-muted-dark">
-          {negocios.isLoading
-            ? 'Cargando lista…'
-            : filtrando
-              ? `${visibles.length} de ${organizaciones.length} negocios`
-              : `${organizaciones.length} ${organizaciones.length === 1 ? 'negocio' : 'negocios'}`}
+          {negocios.isLoading ? 'Cargando lista…' : contar(organizaciones.length, visibles.length, texto !== '' || filtro !== 'todos')}
         </p>
 
-        {negocios.isLoading && (
-          <div role="status" className="mt-3 space-y-2">
-            <div className="h-[4.5rem] animate-pulse rounded-xl bg-wa-field motion-reduce:animate-none dark:bg-wa-head-dark" />
-            <div className="h-[4.5rem] animate-pulse rounded-xl bg-wa-field motion-reduce:animate-none dark:bg-wa-head-dark" />
-            <span className="sr-only">Cargando negocios…</span>
-          </div>
-        )}
+        {negocios.isLoading && <CargandoNegocios />}
         {negocios.isError && (
           <div className="mt-4 space-y-3">
             <AvisoError mensaje={mensajeDeError(negocios.error)} />
-            <Button variant="secondary" onClick={refrescar}>Volver a intentar</Button>
+            <Button variant="secondary" onClick={() => negocios.refetch()}>Volver a intentar</Button>
           </div>
         )}
-
-        {visibles.length > 0 && (
-          <ul className="mt-3 divide-y divide-wa-border overflow-hidden rounded-xl border border-wa-border bg-white dark:divide-wa-border-dark dark:border-wa-border-dark dark:bg-wa-panel-dark">
-            {visibles.map((organizacion) => <FilaNegocio key={organizacion.id} organizacion={organizacion} />)}
-          </ul>
-        )}
-
-        {!negocios.isLoading && !negocios.isError && organizaciones.length > 0 && visibles.length === 0 && (
-          <div className="mt-3 rounded-xl border border-dashed border-wa-border p-8 text-center dark:border-wa-border-dark">
-            <p className="text-sm text-wa-muted dark:text-wa-muted-dark">No hay negocios que coincidan.</p>
-            <Button variant="secondary" className="mt-3" onClick={() => { setBusqueda(''); setFiltro('todos') }}>Ver todos</Button>
-          </div>
-        )}
-
-        {!negocios.isLoading && !negocios.isError && organizaciones.length === 0 && (
-          <div className="mt-3 flex flex-col items-center rounded-xl border border-dashed border-wa-border bg-white px-6 py-12 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary"><Building2 className="h-6 w-6" aria-hidden="true" /></span>
-            <h2 className="mt-4 text-base font-bold text-wa-text dark:text-white">Aún no hay negocios</h2>
-            <p className="mt-1 max-w-sm text-sm text-wa-muted dark:text-wa-muted-dark">Crea el primero para preparar su esquema, dominio y cuenta administradora.</p>
-          </div>
+        {negocios.data && (
+          <ListaNegocios
+            visibles={visibles}
+            hayNegocios={organizaciones.length > 0}
+            onVerTodos={() => {
+              setBusqueda('')
+              setFiltro('todos')
+            }}
+          />
         )}
         {negocios.data?.head && <p className="mt-6 text-xs text-wa-muted dark:text-wa-muted-dark">Revisión de plataforma: <span className="font-mono">{negocios.data.head}</span></p>}
       </section>

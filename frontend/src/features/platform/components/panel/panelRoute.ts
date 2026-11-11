@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useMemo, useSyncExternalStore } from 'react'
 
 /** Secciones de primer nivel del panel. */
 export const SECCIONES_PANEL = ['negocios', 'integraciones', 'plantillas'] as const
@@ -54,27 +54,32 @@ export function usePanelNav(): NavegacionPanel {
   return navegacion
 }
 
-/** Estado de la ruta, sincronizado con el hash (incluye atrás/adelante). */
+function suscribirAlHash(avisar: () => void) {
+  window.addEventListener('popstate', avisar)
+  window.addEventListener('hashchange', avisar)
+  return () => {
+    window.removeEventListener('popstate', avisar)
+    window.removeEventListener('hashchange', avisar)
+  }
+}
+
+function leerHash(): string {
+  return window.location.hash
+}
+
+function irA(destino: RutaPanel) {
+  const hash = hashDeRuta(destino)
+  if (hash === window.location.hash) return
+  // pushState y no replaceState: entrar a un negocio y volver al directorio
+  // con "atrás" es el recorrido natural de una vista maestro-detalle.
+  window.history.pushState(null, '', hash)
+  // pushState no avisa a nadie: sin este evento el panel no se enteraría.
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
+/** La ruta del panel, leída del hash: el enlace es la única fuente de verdad,
+ *  así que atrás/adelante y un enlace pegado a mano se ven igual que un clic. */
 export function usePanelRoute(): NavegacionPanel {
-  const [ruta, setRuta] = useState(() => leerRuta(window.location.hash))
-
-  useEffect(() => {
-    const sincronizar = () => setRuta(leerRuta(window.location.hash))
-    window.addEventListener('popstate', sincronizar)
-    window.addEventListener('hashchange', sincronizar)
-    return () => {
-      window.removeEventListener('popstate', sincronizar)
-      window.removeEventListener('hashchange', sincronizar)
-    }
-  }, [])
-
-  const irA = useCallback((destino: RutaPanel) => {
-    const hash = hashDeRuta(destino)
-    // pushState y no replaceState: entrar a un negocio y volver al directorio
-    // con "atrás" es el recorrido natural de una vista maestro-detalle.
-    if (hash !== window.location.hash) window.history.pushState(null, '', hash)
-    setRuta(destino)
-  }, [])
-
-  return { ruta, irA }
+  const hash = useSyncExternalStore(suscribirAlHash, leerHash)
+  return useMemo(() => ({ ruta: leerRuta(hash), irA }), [hash])
 }

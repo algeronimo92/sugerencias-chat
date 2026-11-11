@@ -1,13 +1,16 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Building2, Globe2, KeyRound, Loader2, Mail, Plus, X } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type InputHTMLAttributes, type Ref } from 'react'
 import { Button } from '../../../../shared/ui/Button'
 import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from '../../../../shared/ui/Dialog'
 import { createOrganization } from '../../api'
+import { platformKeys } from '../../keys'
 import { mensajeDeError } from './errors'
 import { AvisoError } from './PanelUi'
 
-export function NewBusinessDialog({ onCreado }: { onCreado: () => void }) {
+export function NewBusinessDialog() {
+  const queryClient = useQueryClient();
+  const nombreRef = useRef<HTMLInputElement>(null);
   const [abierto, setAbierto] = useState(false);
   const [name, setName] = useState("");
   const [hostname, setHostname] = useState("");
@@ -24,7 +27,7 @@ export function NewBusinessDialog({ onCreado }: { onCreado: () => void }) {
       setAdminEmail("");
       setAdminPassword("");
       setAbierto(false);
-      onCreado();
+      queryClient.invalidateQueries({ queryKey: platformKeys.organizations });
     },
   });
 
@@ -38,7 +41,7 @@ export function NewBusinessDialog({ onCreado }: { onCreado: () => void }) {
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className={dialogOverlayClass} />
-        <DialogPrimitive.Content className={`${dialogContentPositionClass} max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-wa-border bg-white p-5 shadow-xl sm:p-8 dark:border-wa-border-dark dark:bg-wa-panel-dark`} onEscapeKeyDown={(evento) => { if (crear.isPending) evento.preventDefault(); }} onPointerDownOutside={(evento) => { if (crear.isPending) evento.preventDefault(); }}>
+        <DialogPrimitive.Content className={`${dialogContentPositionClass} max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-wa-border bg-white p-5 shadow-xl sm:p-8 dark:border-wa-border-dark dark:bg-wa-panel-dark`} onOpenAutoFocus={(evento) => { evento.preventDefault(); nombreRef.current?.focus(); }} onEscapeKeyDown={(evento) => { if (crear.isPending) evento.preventDefault(); }} onPointerDownOutside={(evento) => { if (crear.isPending) evento.preventDefault(); }}>
       <form
         onSubmit={(evento) => {
           evento.preventDefault();
@@ -63,18 +66,10 @@ export function NewBusinessDialog({ onCreado }: { onCreado: () => void }) {
         </div>
 
         <div className="mt-7 grid gap-5 sm:grid-cols-2">
-          <CampoNegocio label="Nombre" icon={Building2}>
-            <input className="h-11 w-full bg-transparent px-3 text-sm text-wa-text outline-none placeholder:text-wa-muted/70 dark:text-white" value={name} onChange={(evento) => setName(evento.target.value)} placeholder="Clínica Norte" autoFocus required />
-          </CampoNegocio>
-          <CampoNegocio label="Dominio principal" icon={Globe2}>
-            <input className="h-11 w-full bg-transparent px-3 text-sm text-wa-text outline-none placeholder:text-wa-muted/70 dark:text-white" value={hostname} onChange={(evento) => setHostname(evento.target.value)} placeholder="norte.cliniventas.com" required />
-          </CampoNegocio>
-          <CampoNegocio label="Correo del administrador" icon={Mail} optional>
-            <input type="email" className="h-11 w-full bg-transparent px-3 text-sm text-wa-text outline-none placeholder:text-wa-muted/70 dark:text-white" value={adminEmail} onChange={(evento) => setAdminEmail(evento.target.value)} placeholder="admin@clinicanorte.com" />
-          </CampoNegocio>
-          <CampoNegocio label="Contraseña inicial" icon={KeyRound} optional>
-            <input type="password" minLength={8} className="h-11 w-full bg-transparent px-3 text-sm text-wa-text outline-none placeholder:text-wa-muted/70 dark:text-white" value={adminPassword} onChange={(evento) => setAdminPassword(evento.target.value)} placeholder="Mínimo 8 caracteres" />
-          </CampoNegocio>
+          <CampoNegocio ref={nombreRef} label="Nombre" icon={Building2} value={name} onChange={(evento) => setName(evento.target.value)} placeholder="Clínica Norte" required />
+          <CampoNegocio label="Dominio principal" icon={Globe2} value={hostname} onChange={(evento) => setHostname(evento.target.value)} placeholder="norte.cliniventas.com" required />
+          <CampoNegocio label="Correo del administrador" icon={Mail} optional type="email" value={adminEmail} onChange={(evento) => setAdminEmail(evento.target.value)} placeholder="admin@clinicanorte.com" />
+          <CampoNegocio label="Contraseña inicial" icon={KeyRound} optional type="password" minLength={8} value={adminPassword} onChange={(evento) => setAdminPassword(evento.target.value)} placeholder="Mínimo 8 caracteres" />
         </div>
 
         {crear.isError && <div className="mt-5"><AvisoError mensaje={mensajeDeError(crear.error)} /></div>}
@@ -93,17 +88,25 @@ export function NewBusinessDialog({ onCreado }: { onCreado: () => void }) {
   );
 }
 
-function CampoNegocio({ label, icon: Icon, optional = false, children }: { label: string; icon: typeof Building2; optional?: boolean; children: ReactNode }) {
+interface CampoNegocioProps extends InputHTMLAttributes<HTMLInputElement> {
+  label: string
+  icon: typeof Building2
+  optional?: boolean
+  ref?: Ref<HTMLInputElement>
+}
+
+function CampoNegocio({ label, icon: Icon, optional = false, ref, ...input }: CampoNegocioProps) {
+  const id = useId();
   return (
-    <label className="block">
-      <span className="mb-2 flex items-center justify-between text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+    <div>
+      <label htmlFor={id} className="mb-2 flex items-center justify-between text-sm font-semibold text-wa-text dark:text-wa-text-dark">
         {label}
         {optional && <span className="text-xs font-medium text-wa-muted dark:text-wa-muted-dark">Opcional</span>}
-      </span>
+      </label>
       <span className="flex overflow-hidden rounded-xl border border-wa-border bg-gray-50/70 transition focus-within:border-wa-primary focus-within:bg-white focus-within:ring-4 focus-within:ring-wa-primary/10 dark:border-white/10 dark:bg-[#0b0e18] dark:focus-within:border-wa-primary dark:focus-within:bg-[#0b0e18]">
         <span className="flex w-11 shrink-0 items-center justify-center border-r border-wa-border text-wa-muted dark:border-white/10 dark:text-wa-muted-dark"><Icon className="h-4 w-4" aria-hidden="true" /></span>
-        {children}
+        <input id={id} ref={ref} className="h-11 w-full bg-transparent px-3 text-sm text-wa-text outline-none placeholder:text-wa-muted/70 dark:text-white" {...input} />
       </span>
-    </label>
+    </div>
   );
 }

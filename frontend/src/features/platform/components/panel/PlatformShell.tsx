@@ -1,8 +1,9 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { BookText, Building2, Loader2, LogOut, Moon, Plug, Sun, UserRound, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTheme } from '../../../../shared/hooks/useTheme'
 import { logoutOperator } from '../../api'
+import { platformKeys } from '../../keys'
 import type { OperadorActual } from '../../types'
 import { KnowledgeTemplatesPanel } from '../KnowledgeTemplatesPanel'
 import { PlatformCredentials } from '../PlatformCredentials'
@@ -29,7 +30,8 @@ const GRUPOS: { titulo: string; items: { id: SeccionPanel; label: string; icon: 
 const botonBarraClass =
   'flex h-10 items-center justify-center gap-2 rounded-lg border border-wa-border bg-white text-sm font-semibold text-wa-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary disabled:opacity-50 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark'
 
-export function PlatformShell({ operador, onSalir }: { operador: OperadorActual; onSalir: () => void }) {
+export function PlatformShell({ operador }: { operador: OperadorActual }) {
+  const queryClient = useQueryClient()
   const navegacion = usePanelRoute()
   const { ruta } = navegacion
   const { theme, toggleTheme } = useTheme()
@@ -38,7 +40,8 @@ export function PlatformShell({ operador, onSalir }: { operador: OperadorActual;
     mutationFn: async () => {
       await logoutOperator()
     },
-    onSuccess: onSalir,
+    // Sin sesión, PlatformApp vuelve a mostrar el acceso.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformKeys.me }),
   })
 
   // Cada pantalla empieza arriba: el contenido tiene su propio scroll y, sin

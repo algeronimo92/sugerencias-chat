@@ -60,7 +60,7 @@ export function PlatformApp() {
     return <BackendUnavailable detail={detail} isRetrying={sesion.isFetching} onRetry={recargarSesion} />
   }
   if (!sesion.data) {
-    return <PlatformLogin onEntrar={recargarSesion} />
+    return <PlatformLogin />
   }
-  return <PlatformShell operador={sesion.data} onSalir={recargarSesion} />
+  return <PlatformShell operador={sesion.data} />
 }

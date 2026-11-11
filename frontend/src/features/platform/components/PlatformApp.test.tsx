@@ -148,6 +148,40 @@ describe('PlatformApp', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Negocios' })).toBeInTheDocument()
   })
 
+  it('atrás vuelve del negocio al directorio', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(await screen.findByRole('link', { name: 'Clínica Piloto' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Clínica Piloto' })).toBeInTheDocument()
+
+    window.history.back()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Negocios' })).toBeInTheDocument()
+  })
+
+  it('el alta de un negocio abre con el foco en el nombre y refresca el directorio', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: 'Nuevo negocio' }))
+    const nombre = await screen.findByRole('textbox', { name: 'Nombre' })
+    await waitFor(() => expect(nombre).toHaveFocus())
+    await user.type(nombre, 'Clínica Norte')
+    await user.type(screen.getByRole('textbox', { name: 'Dominio principal' }), 'norte.localhost')
+    const antes = api.get.mock.calls.filter(([url]) => url === '/api/platform/organizations').length
+    await user.click(screen.getByRole('button', { name: 'Crear negocio' }))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/platform/organizations', {
+      name: 'Clínica Norte',
+      hostname: 'norte.localhost',
+      admin_email: null,
+      admin_password: null,
+    }))
+    await waitFor(() => expect(
+      api.get.mock.calls.filter(([url]) => url === '/api/platform/organizations').length,
+    ).toBeGreaterThan(antes))
+  })
+
   it('avisa cuando el enlace apunta a un negocio que no existe', async () => {
     window.history.replaceState(null, '', '/#negocios/999/marca')
     renderPanel()
