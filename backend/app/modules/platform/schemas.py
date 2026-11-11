@@ -227,6 +227,15 @@ class OnboardingStatus(BaseModel):
     dismissed: bool
 
 
+class OrganizationOverview(BaseModel):
+    """Resumen de un negocio en el panel de plataforma."""
+
+    # Personas del equipo, contando las invitaciones que aún no se aceptaron.
+    users: int
+    # El mismo checklist de primeros pasos que ve el admin del negocio.
+    setup: OnboardingStatus
+
+
 EmailOAuthProvider = Literal["google", "microsoft", "zoho"]
 
 

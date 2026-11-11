@@ -572,6 +572,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/organizations/{organization_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organization Overview */
+        get: operations["get_organization_overview_api_platform_organizations__organization_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/ai": {
         parameters: {
             query?: never;
@@ -6704,6 +6721,15 @@ export interface components {
             /** Items */
             items: components["schemas"]["OrganizationItem"][];
         };
+        /**
+         * OrganizationOverview
+         * @description Resumen de un negocio en el panel de plataforma.
+         */
+        OrganizationOverview: {
+            /** Users */
+            users: number;
+            setup: components["schemas"]["OnboardingStatus"];
+        };
         /** PersonalTemplateCreate */
         PersonalTemplateCreate: {
             /** Name */
@@ -8797,6 +8823,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_overview_api_platform_organizations__organization_id__overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOverview"];
                 };
             };
             /** @description Validation Error */
