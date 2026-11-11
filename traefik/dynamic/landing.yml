@@ -1,0 +1,43 @@
+# Router estático de la landing (cliniventas.com), separado de active.yml por
+# la misma razón que grafana.yml: active.yml lo reescribe
+# scripts/deploy-bluegreen.sh al conmutar colores, y la landing no participa
+# del blue-green.
+#
+# El contenedor lo define compose.landing.yml y lo despliega
+# scripts/deploy-landing.sh. Publica solo en loopback (127.0.0.1:8090), igual
+# que los colores del CRM.
+#
+# DNS: el registro A de cliniventas.com (y `www`) tiene que apuntar a este
+# servidor para que el tráfico llegue. El certificado no depende de eso: se
+# emite por DNS-01, así que puede estar listo antes de mover el dominio.
+
+http:
+  routers:
+    landing:
+      rule: "Host(`cliniventas.com`) || Host(`www.cliniventas.com`)"
+      # `www.cliniventas.com` también encaja en la HostRegexp de los negocios
+      # (active.yml). Sin prioridad explícita gana la regla más larga, que hoy
+      # es esta por pocos caracteres: un cambio de redacción en cualquiera de
+      # las dos mandaría `www` al CRM, que respondería "negocio no encontrado".
+      priority: 1000
+      entryPoints:
+        - websecure
+      service: landing
+      tls:
+        certResolver: letsencrypt
+        # Solo el dominio raíz: `www` ya lo cubre el wildcard
+        # `*.cliniventas.com` que pide active.yml, y un wildcard no cubre el
+        # dominio al que pertenece. nginx redirige `www` al raíz
+        # (landing/nginx.conf).
+        domains:
+          - main: "cliniventas.com"
+
+  services:
+    landing:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8090"
+        healthCheck:
+          path: /
+          interval: 10s
+          timeout: 3s

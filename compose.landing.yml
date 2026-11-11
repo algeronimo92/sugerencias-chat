@@ -1,0 +1,40 @@
+# Landing pública de CliniVentas (cliniventas.com): un nginx con el export
+# estático de landing/ adentro.
+#
+# Va en su propio archivo y en su propio proyecto de compose, igual que la
+# base y el monitoreo, porque no participa del blue-green: es HTML sin estado
+# ni base de datos. Un despliegue del CRM no la toca, y recrearla tarda lo que
+# tarda en arrancar nginx.
+#
+# No se levanta a mano en producción: lo hace scripts/deploy-landing.sh (CI lo
+# corre en cada despliegue), que construye la imagen, la prueba en un
+# contenedor aparte y recién entonces reemplaza a la que sirve.
+#
+# En desarrollo, para ver la imagen de producción en http://127.0.0.1:8090:
+#
+#   docker compose -f compose.landing.yml up -d --build
+
+name: cliniventas-landing
+
+services:
+  landing:
+    build:
+      context: ./landing
+    # El tag es el hash del árbol landing/ (lo pone deploy-landing.sh): de ahí
+    # se sabe qué versión está sirviendo sin un archivo de estado aparte, y la
+    # imagen anterior sigue en el servidor con su tag para volver atrás.
+    image: cliniventas-landing:${LANDING_REVISION:-dev}
+    restart: unless-stopped
+    ports:
+      # Atado a loopback a propósito, como los colores del CRM: con "8090:80"
+      # quedaría abierto a Internet y se entraría sin pasar por traefik ni por
+      # su TLS. El puerto lo referencia traefik/dynamic/landing.yml.
+      - "127.0.0.1:8090:80"
+    healthcheck:
+      # 127.0.0.1 y no localhost: en alpine resuelve primero a ::1 y nginx
+      # escucha solo en IPv4.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
