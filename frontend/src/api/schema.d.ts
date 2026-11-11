@@ -4676,6 +4676,13 @@ export interface components {
             /** Messages */
             messages: number;
         };
+        /** DashboardHourPeaks */
+        DashboardHourPeaks: {
+            /** Messages */
+            messages: number;
+            /** Flows Manual */
+            flows_manual: number;
+        };
         /** DashboardHours */
         DashboardHours: {
             /** Slot Hours */
@@ -4684,6 +4691,7 @@ export interface components {
             engagement_window_hours: number;
             /** Weekday Occurrences */
             weekday_occurrences: number[];
+            person_peaks: components["schemas"]["DashboardHourPeaks"];
             /** Cells */
             cells: components["schemas"]["DashboardHourCell"][];
         };

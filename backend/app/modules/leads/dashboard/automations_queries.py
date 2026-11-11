@@ -76,6 +76,21 @@ def by_hour_stmt(scope: DashboardScope):
     )
 
 
+def manual_by_starter_hour_stmt(scope: DashboardScope):
+    """Flujos a mano de todo el equipo, partidos por quien los inició: de acá
+    sale la escala común con que se pintan los mapas de cada persona."""
+    weekday, slot = local_weekday(AutomationExecution.created_at), local_slot(AutomationExecution.created_at)
+    starter = AutomationExecution.started_by_user_id
+    return (
+        select(
+            starter.label("person"), weekday.label("weekday"), slot.label("slot"),
+            func.count(AutomationExecution.id).label("flows_manual"),
+        )
+        .where(AutomationExecution.created_at >= scope.start, starter.is_not(None))
+        .group_by(starter, weekday, slot)
+    )
+
+
 async def _by_flow(scope: DashboardScope) -> list[dict]:
     status = AutomationExecution.status
     rows = await execute_mapping(

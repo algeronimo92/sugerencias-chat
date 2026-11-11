@@ -107,6 +107,8 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
           // Lo propio de alguien solo tiene flujos a mano: un automático no lo inicia nadie.
           readings={subject.kind === 'team' ? FLOW_READINGS : FLOW_READINGS.slice(0, 1)}
           label="A qué hora salen los flujos"
+          // El mapa de una persona se compara con el de otra: mismo tope de color.
+          teamScale={subject.kind !== 'team'}
         />
       </Panel>
 

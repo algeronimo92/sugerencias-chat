@@ -53,7 +53,19 @@ function describe(reading: HoursReading, value: number | null): string {
   return `${formatAverage(amount)} ${formatAverage(amount) === '1' ? one : many} en promedio`
 }
 
-export function buildHoursGrid(hours: DashboardHours, reading: HoursReading): HoursGrid {
+/** Tope común del equipo para una lectura, si la lectura lo tiene. */
+export function personPeak(hours: DashboardHours, reading: HoursReading): number | undefined {
+  if (reading !== 'messages' && reading !== 'flows_manual') return undefined
+  const peak = hours.person_peaks?.[reading]
+  return peak && peak > 0 ? peak : undefined
+}
+
+/**
+ * `scaleMax` fija el tope de color desde afuera. Sin él cada cuadrícula se
+ * pinta contra su propio máximo, que sirve para ver el patrón de una semana
+ * pero hace ver igual de intensas a dos personas que trabajan muy distinto.
+ */
+export function buildHoursGrid(hours: DashboardHours, reading: HoursReading, scaleMax?: number): HoursGrid {
   const slotCount = Math.floor(24 / hours.slot_hours)
   const isRate = reading === 'engaged'
   const values: (number | null)[][] = WEEKDAYS.map(() => Array.from({ length: slotCount }, () => (isRate ? null : 0)))
@@ -70,7 +82,10 @@ export function buildHoursGrid(hours: DashboardHours, reading: HoursReading): Ho
     }
   }
 
-  const max = Math.max(0, ...values.flat().map(value => value ?? 0))
+  const ownMax = Math.max(0, ...values.flat().map(value => value ?? 0))
+  // Nunca por debajo de lo propio: un tope desactualizado no puede sacar una
+  // celda de la escala.
+  const max = Math.max(ownMax, scaleMax ?? 0)
   const slots = Array.from({ length: slotCount }, (_, slot) => `${slot * hours.slot_hours}`)
   return {
     slots,

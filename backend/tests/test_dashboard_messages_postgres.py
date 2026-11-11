@@ -128,4 +128,8 @@ async def test_hours_count_only_what_a_person_wrote_and_sent_right_then(tenant) 
         assert total(await hours_queries.collect(build_scope(7, "team", grecia))) == 3
         # Por autora, no por dueña del chat: Grecia escribió en un chat de Antonella.
         assert total(await hours_queries.collect(build_scope(7, "mine", grecia))) == 2
-        assert total(await hours_queries.collect(build_scope(7, "mine", antonella))) == 1
+        of_antonella = await hours_queries.collect(build_scope(7, "mine", antonella))
+        assert total(of_antonella) == 1
+        # La escala es la de quien más escribió, también al mirar a otra
+        # persona: así el mapa de Antonella se ve más claro que el de Grecia.
+        assert of_antonella["person_peaks"]["messages"] == 2

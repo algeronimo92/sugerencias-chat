@@ -213,6 +213,9 @@ export interface DashboardHours {
   engagement_window_hours: number
   /** Cuántas veces cayó cada día de la semana en el período (0 = lunes). */
   weekday_occurrences: number[]
+  /** La franja más cargada de la persona más activa del equipo, en promedio por
+   *  día de la semana: tope de color común para los mapas por persona. */
+  person_peaks?: { messages: number; flows_manual: number }
   /** Solo las celdas con algún movimiento. */
   cells: DashboardHourCell[]
 }

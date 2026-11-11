@@ -31,6 +31,19 @@ describe('HoursHeatmap', () => {
     expect(screen.getByText('Muy pocos casos')).toBeInTheDocument()
   })
 
+  it('en el mapa de una persona usa la escala del equipo y lo dice', () => {
+    const hours: DashboardHours = {
+      ...HOURS,
+      person_peaks: { messages: 10, flows_manual: 0 },
+      cells: [{ ...HOURS.cells[0], messages: 10 }],
+    }
+    const readings: HoursReadingOption[] = [{ key: 'messages', label: 'Mensajes escritos', hint: 'Escritos en el CRM.' }]
+    render(<HoursHeatmap hours={hours} days={30} readings={readings} label="A qué hora se escribe" teamScale />)
+
+    expect(screen.getByText(/10 por franja/)).toBeInTheDocument()
+    expect(screen.getByText('Misma escala para todas las personas')).toBeInTheDocument()
+  })
+
   // Con una semana cada celda es una sola muestra: se vería patrón donde hay azar.
   it('con menos de cuatro semanas avisa en vez de dibujar el mapa', () => {
     render(<HoursHeatmap hours={HOURS} days={7} readings={READINGS} label="Horas de más movimiento" />)

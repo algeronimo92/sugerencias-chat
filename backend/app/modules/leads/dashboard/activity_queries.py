@@ -183,7 +183,7 @@ async def collect(scope: DashboardScope) -> dict:
     }
 
 
-def messages_by_hour_stmt(scope: DashboardScope):
+def _hand_written_by_hour(*extra_columns):
     """Mensajes que una persona escribió y mandó en el momento desde el CRM.
 
     Es la lectura de "a qué hora trabaja alguien en la app", así que deja
@@ -194,18 +194,30 @@ def messages_by_hour_stmt(scope: DashboardScope):
     weekday, slot = local_weekday(WspMessage.sent_at), local_slot(WspMessage.sent_at)
     scheduled = MessageOutbox.dedupe_key.startswith(SCHEDULED_KEY_PREFIX)
     return (
-        select(weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("messages"))
+        select(*extra_columns, weekday.label("weekday"), slot.label("slot"), func.count(WspMessage.id).label("messages"))
         .outerjoin(MessageOutbox, MessageOutbox.message_id == WspMessage.id)
         .where(
-            WspMessage.sent_at >= scope.start,
             WspMessage.sent_by_user_id.is_not(None),
             # Sin fila de outbox la clave es NULL y `NOT LIKE` daría NULL: hay
             # que dejar pasar ese caso a propósito.
             MessageOutbox.dedupe_key.is_(None) | ~scheduled,
             message_went_out(WspMessage.outbox_status, WspMessage.meta_status),
-            scope.mine(WspMessage.sent_by_user_id),
         )
-        .group_by(weekday, slot)
+        .group_by(*extra_columns, weekday, slot)
+    )
+
+
+def messages_by_hour_stmt(scope: DashboardScope):
+    return _hand_written_by_hour().where(
+        WspMessage.sent_at >= scope.start, scope.mine(WspMessage.sent_by_user_id),
+    )
+
+
+def messages_by_author_hour_stmt(scope: DashboardScope):
+    """Lo mismo, de todo el equipo y partido por autora: de acá sale la escala
+    común con que se pintan los mapas de cada persona."""
+    return _hand_written_by_hour(WspMessage.sent_by_user_id.label("person")).where(
+        WspMessage.sent_at >= scope.start,
     )
 
 

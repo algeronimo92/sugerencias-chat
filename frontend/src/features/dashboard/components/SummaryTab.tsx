@@ -123,10 +123,10 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
         <Panel
           anchor="a-que-hora-se-escribe"
           title="A qué hora se escribe en el CRM"
-          subtitle={`${who(subject, { me: 'Lo que escribí yo', team: 'Lo que escribió el equipo', seller: (name) => `Lo que escribió ${name}` })}, en cualquier chat · ${period} · el color compara las horas entre sí, no a una persona con otra`}
+          subtitle={`${who(subject, { me: 'Lo que escribí yo', team: 'Lo que escribió el equipo', seller: (name) => `Lo que escribió ${name}` })}, en cualquier chat · ${period}`}
           className="lg:col-span-2"
         >
-          <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe en el CRM" />
+          <HoursHeatmap hours={data.hours} days={days} readings={WRITING_READINGS} label="A qué hora se escribe en el CRM" teamScale={isPersonal(subject)} />
         </Panel>
 
         <Panel anchor="actividad"
