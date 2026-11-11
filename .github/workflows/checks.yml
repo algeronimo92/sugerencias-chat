@@ -70,7 +70,14 @@ jobs:
         working-directory: frontend
       - run: npm ci
       - run: npm run typecheck
-      - run: npx playwright install --with-deps chromium
+      # Sin `--with-deps`: ese flag instala paquetes con apt, y el 2026-11-11 el
+      # espejo de Ubuntu de los runners no resolvía (`azure.archive.ubuntu.com`).
+      # El paso tardaba 10 minutos en fallar, dos despliegues seguidos quedaron
+      # sin salir y las pruebas de pantalla no corrían en los PR. Las librerías
+      # que Chromium necesita ya vienen en la imagen del runner; lo único que
+      # apt agregaba eran fuentes de otros alfabetos, que estas pruebas no usan
+      # (comprueban posiciones y textos, no comparan imágenes).
+      - run: npx playwright install chromium
       # Playwright compila el frontend y lo sirve por su cuenta (webServer en
       # playwright.config.ts).
       - run: npm test
