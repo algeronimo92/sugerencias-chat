@@ -146,8 +146,8 @@ def test_certificate_domains_can_be_issued() -> None:
     """Traefik no deduce dominios de una HostRegexp: certifica los que lista
     tls.domains. Un wildcard solo se emite por DNS-01 (con HTTP-01 Let's
     Encrypt lo niega en cada arranque), y ningún host certificado puede quedar
-    fuera del router, como el dominio raíz, que es la landing y vive en otro
-    servidor."""
+    fuera del router, como el dominio raíz, que es la landing y tiene su propio
+    router (traefik/dynamic/landing.yml, ver test_landing_config.py)."""
     document = yaml.safe_load(ACTIVE.read_text(encoding="utf-8"))
     router = document["http"]["routers"]["sugerencias-chat"]
     pattern = re.compile(re.fullmatch(r"HostRegexp\(`([^`]+)`\)", router["rule"]).group(1))

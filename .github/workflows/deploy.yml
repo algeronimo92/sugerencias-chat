@@ -313,6 +313,21 @@ jobs:
             if $COMPOSE_DB up -d --wait && ./scripts/db-extensions.sh && ./scripts/deploy-bluegreen.sh; then
               echo "Despliegue verificado"
 
+              # Landing (cliniventas.com). Va DESPUÉS de que el CRM quedó
+              # servido y dentro de la rama de éxito, como el monitoreo: un
+              # fallo acá no entra a la rama de rollback, así que no revierte
+              # un CRM que quedó bien por un problema de la página pública.
+              #
+              # Tampoco corta el script en el acto: el monitoreo de más abajo
+              # no tiene por qué quedarse sin aplicar por la landing. Se anota
+              # y el workflow termina en rojo al final.
+              #
+              # El script decide solo si hay algo que hacer (compara el árbol
+              # landing/ con la imagen que sirve), y prueba la imagen nueva en
+              # un contenedor aparte antes de reemplazar a la publicada.
+              LANDING_OK=1
+              ./scripts/deploy-landing.sh || LANDING_OK=0
+
               # Monitoreo. Va DESPUÉS de que la app quedó servida y dentro de
               # la rama de éxito a propósito: si algo de acá falla, el script
               # corta con set -eu y el workflow queda en rojo, pero no entra a
@@ -415,6 +430,12 @@ jobs:
               # Se conservan las imágenes de la última semana: son las que
               # permiten revertir sin reconstruir desde cero.
               docker image prune -f --filter "until=168h"
+
+              if [ "$LANDING_OK" != 1 ]; then
+                echo "ERROR: el CRM quedó desplegado, pero la landing no." >&2
+                echo "Sigue publicada su versión anterior. Ver el error de scripts/deploy-landing.sh más arriba." >&2
+                exit 1
+              fi
             else
               echo "El despliegue no llegó a conmutar. El color que servía sigue activo sin cambios."
               echo "Dejando el repositorio en $PREVIOUS para el próximo intento."

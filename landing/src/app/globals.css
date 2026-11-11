@@ -1,0 +1,796 @@
+/* ==========================================================================
+   CLINIVENTAS — SISTEMA DE DISENO
+   Direccion de arte: ver /docs/direccion-arte.md
+   Tailwind CSS v4 (configuracion CSS-first: sin tailwind.config.js)
+
+   La paleta esta MUESTREADA PIXEL A PIXEL de las capturas del producto real
+   (_capturas/) para que una captura de la app puesta en la landing se sienta
+   continua y no pegada. El modo claro es el estado por defecto y la
+   referencia visual; el oscuro replica el tema oscuro del producto.
+
+   ORDEN DEL ARCHIVO
+   1. Fuentes auto-hospedadas (Bricolage Grotesque + Hanken Grotesk)
+   2. Variante `dark` (prefers-color-scheme + data-theme)
+   3. Tokens crudos — modo claro (:root)
+   4. Tokens crudos — modo oscuro (automatico + manual)
+   5. @theme inline — mapeo de color a utilidades de Tailwind
+   6. @theme — escala tipografica, radios, sombras, curvas, animacion
+   7. Capa base — reset, tipografia, foco, seleccion
+   8. Utilidades propias — motivo "conversacion"
+   9. Movimiento reducido
+   ========================================================================== */
+
+@import "tailwindcss";
+
+/* --------------------------------------------------------------------------
+   1. FUENTES
+   Se auto-hospedan (public/fonts/) en lugar de enlazar a Google Fonts:
+   el pipeline CSS de Next.js/Turbopack elimina los @import externos, y
+   ademas evita una peticion bloqueante a un tercero y el FOUT asociado.
+   Solo se descargan los subconjuntos `latin` y `latin-ext`; `latin` ya
+   cubre n con virgulilla, vocales acentuadas, dieresis y los signos de
+   apertura del espanol.
+   Si mas adelante se cargan con next/font, basta definir --font-display-src
+   y --font-body-src en <html> y borrar estos @font-face.
+   -------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/fonts/bricolage-grotesque-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/fonts/bricolage-grotesque-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: italic;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/hanken-grotesk-italic-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: italic;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/hanken-grotesk-italic-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/fonts/hanken-grotesk-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/fonts/hanken-grotesk-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+
+/* --------------------------------------------------------------------------
+   2. VARIANTE `dark`
+   Debe funcionar de dos formas a la vez:
+   - Automatica: preferencia del sistema (prefers-color-scheme).
+   - Manual: atributo data-theme="dark" | "light" en <html>, para un toggle.
+   Un data-theme="light" explicito gana siempre sobre la preferencia del SO.
+   -------------------------------------------------------------------------- */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"], [data-theme="light"] *)) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   3. TOKENS CRUDOS — MODO CLARO (por defecto y referencia)
+   Los valores marcados [P] estan muestreados del producto.
+   Se declaran aqui, y no dentro de @theme, para que puedan reasignarse en
+   modo oscuro: las variables de @theme son estaticas y no reaccionan a
+   media queries.
+   -------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  /* -- Superficies ------------------------------------------------------
+     Tres planos, no dos. El crema es el lienzo de la conversacion (el
+     equivalente del fondo de chat), el blanco es el papel de las tarjetas
+     y el gris frio es la alternativa para secciones de datos. */
+  --bg: #edeae3;           /* [P] crema calido: lienzo de la pagina */
+  --surface: #ffffff;      /* [P] tarjetas, navbar, burbuja entrante */
+  --surface-raised: #ffffff; /* modales y popovers: se elevan con sombra */
+  --surface-sunken: #e3dfd5; /* pozos, bloques de codigo, campos sobre crema */
+  --surface-alt: #f1f2f5;  /* [P] gris frio: secciones de datos y tablas */
+
+  /* -- Texto ------------------------------------------------------------ */
+  --text: #151a20;         /* [P] tinta primaria */
+  --text-muted: #525a63;   /* parrafos secundarios, descripciones */
+  --text-subtle: #586169;  /* pies, etiquetas, metadatos */
+  --text-inverse: #ffffff; /* texto sobre rellenos oscuros */
+
+  /* -- Bordes ----------------------------------------------------------- */
+  --border: #ded9cf;       /* hairline decorativo, calido como el crema */
+  --border-strong: #c9c3b6;/* contorno de tarjeta, separador de tabla */
+  --border-field: #847f72; /* borde de input: cumple 3:1 (WCAG 1.4.11) */
+
+  /* -- Acento: verde salvia del producto --------------------------------
+     --accent es un color de RELLENO (boton, barra, chip solido) y de texto
+     SOLO sobre blanco (4.74:1). Sobre el crema no llega a AA (3.95:1):
+     para texto verde usa siempre --accent-strong. */
+  --accent: #4f7c6b;        /* [P] verde de marca: barra de navegacion */
+  --accent-hover: #477060;  /* [P] verde de estado activo/hover */
+  --accent-active: #3c6152;
+  --accent-contrast: #ffffff; /* tinta que va ENCIMA del acento */
+  --accent-soft: #e4efe9;     /* fondo de badge / resalte */
+  --accent-strong: #3a614f;   /* TEXTO verde: valido sobre crema, blanco y suave */
+
+  /* -- Salvia claro: solo grafico ---------------------------------------
+     2.93:1 sobre blanco. Nunca texto, nunca borde de control. Sirve como
+     relleno (con tinta oscura encima), avatar, ilustracion y trazo grueso. */
+  --sage: #8bb0a0;          /* [P] avatares, verde apagado de apoyo */
+  --sage-tint: #f5fcf5;     /* [P] fondo de icono suave dentro de tarjeta */
+
+  /* -- Apoyo: azul de acuse ---------------------------------------------
+     Lo que el verde no puede cargar: enlaces, anillo de foco (un anillo
+     verde sobre un boton verde es invisible) y la palomita de leido. */
+  --info: #386394;
+  --info-hover: #2e5480;
+  --info-contrast: #ffffff;
+  --info-soft: #e4ebf3;
+  --info-strong: #2a4e77;
+
+  /* -- Semanticos --------------------------------------------------------
+     El exito comparte la familia del verde de marca a proposito: en
+     CliniVentas el color de la marca ES el de la confirmacion. No se
+     inventa un segundo verde que compita con el primero. */
+  --success: #3f6956;
+  --success-solid: #4f7c6b;
+  --success-soft: #e4f0e9;
+  --success-contrast: #ffffff;
+
+  --warning: #95560e;       /* [P] ambar quemado, oscurecido para AA */
+  --warning-solid: #e6bf28; /* [P] */
+  --warning-soft: #fbf0da;
+  --warning-contrast: #151a20; /* el ambar pide tinta oscura */
+
+  --danger: #bc3d21;        /* [P] rojo de alerta del dashboard */
+  --danger-solid: #bc3d21;
+  --danger-soft: #faeae6;
+  --danger-contrast: #ffffff;
+
+  /* -- Motivo conversacion ---------------------------------------------- */
+  --tick-idle: #6d7680;     /* [P] palomita gris: entregado */
+  --tick-read: var(--info); /* palomita azul: leido */
+  --bubble-in: var(--surface);   /* [P] la entrante es blanca sobre el crema */
+  --bubble-in-text: var(--text);
+  --bubble-out: #e6fbd7;    /* [P] menta muy claro: la saliente */
+  --bubble-out-text: var(--text);
+  --pattern-dot: rgb(79 124 107 / 0.10);
+  --pattern-gap: 22px;
+
+  /* -- Varios ----------------------------------------------------------- */
+  --ring: var(--info);
+  --overlay: rgb(21 26 32 / 0.45); /* scrim de modal */
+
+  /* Sombras tenidas con la tinta del producto en vez de negro puro: sobre
+     el crema, el negro produce un gris sucio. */
+  --shadow-tint: 21 26 32;
+  --shadow-boost: 1;
+
+  /* Radios usados por CSS propio (burbujas) */
+  --radius-bubble: 20px;
+  --radius-bubble-tail: 6px;
+
+  /* -- Duraciones -------------------------------------------------------
+     Escala de 5 pasos. `--duration-*` no es un namespace de Tailwind, asi
+     que vive aqui; se aplica con duration-(--duration-media). */
+  --duration-micro: 120ms;    /* cambio de color, foco */
+  --duration-rapida: 180ms;   /* hover, pequenos desplazamientos */
+  --duration-media: 260ms;    /* acordeon, tabs, tooltips */
+  --duration-lenta: 420ms;    /* entrada de burbuja, revelado al scroll */
+  --duration-ambiente: 700ms; /* fondos, brillos, movimiento de ambiente */
+}
+
+
+/* --------------------------------------------------------------------------
+   4. TOKENS CRUDOS — MODO OSCURO
+   Replica el tema oscuro real del producto: superficies de pizarra fria
+   (muestreadas) y el verde salvia claro como acento. Se repite el bloque
+   en dos selectores:
+   (a) preferencia del sistema, salvo que haya data-theme="light";
+   (b) data-theme="dark" explicito, que gana sobre todo.
+   -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0f1319;            /* [P] lienzo de la app */
+    --surface: #151a20;       /* [P] tarjetas y paneles */
+    --surface-raised: #1d242b;/* modales, campos, popovers */
+    --surface-sunken: #090c10;
+    --surface-alt: #12171d;
+
+    --text: #ebedef;          /* [P] */
+    --text-muted: #8d959f;    /* [P] */
+    --text-subtle: #7e8792;
+    --text-inverse: #0b120f;
+
+    --border: #313841;        /* [P] */
+    --border-strong: #3d444c;
+    --border-field: #6c7682;
+
+    /* En oscuro el boton primario invierte: relleno verde claro con tinta
+       casi negra. Sube el contraste de 4.74:1 a 8.11:1 y es exactamente el
+       verde que el producto usa como acento sobre fondo oscuro. */
+    --accent: #68a387;        /* [P] */
+    --accent-hover: #7cb79b;
+    --accent-active: #8fc5a9;
+    --accent-contrast: #0b120f;
+    --accent-soft: #1b2c26;   /* [P] */
+    --accent-strong: #a3d2ba;
+
+    --sage: #68a387;          /* [P] */
+    --sage-tint: #17231c;     /* [P] */
+
+    --info: #7fb0e8;
+    --info-hover: #9ac2ef;
+    --info-contrast: #0b120f;
+    --info-soft: #182534;
+    --info-strong: #a8cdf3;
+
+    --success: #68a387;
+    --success-solid: #68a387;
+    --success-soft: #17231c;  /* [P] */
+    --success-contrast: #0b120f;
+
+    --warning: #e6bf28;       /* [P] */
+    --warning-solid: #e6bf28;
+    --warning-soft: #2c2408;
+    --warning-contrast: #151a20;
+
+    --danger: #d8786c;        /* [P] */
+    --danger-solid: #d8786c;
+    --danger-soft: #2e1714;
+    --danger-contrast: #0b120f;
+
+    --tick-idle: #a5b3ad;
+    --bubble-in: var(--surface-raised);
+    --bubble-out: #37594c;    /* [P] burbuja saliente del tema oscuro */
+    --bubble-out-text: var(--text);
+    --pattern-dot: rgb(104 163 135 / 0.12);
+
+    --overlay: rgb(6 9 12 / 0.65);
+
+    /* En oscuro la sombra vuelve a negro puro y se refuerza: una sombra
+       tenida sobre fondo oscuro no se percibe. */
+    --shadow-tint: 0 0 0;
+    --shadow-boost: 4;
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f1319;            /* [P] lienzo de la app */
+  --surface: #151a20;       /* [P] tarjetas y paneles */
+  --surface-raised: #1d242b;/* modales, campos, popovers */
+  --surface-sunken: #090c10;
+  --surface-alt: #12171d;
+
+  --text: #ebedef;          /* [P] */
+  --text-muted: #8d959f;    /* [P] */
+  --text-subtle: #7e8792;
+  --text-inverse: #0b120f;
+
+  --border: #313841;        /* [P] */
+  --border-strong: #3d444c;
+  --border-field: #6c7682;
+
+  /* En oscuro el boton primario invierte: relleno verde claro con tinta
+     casi negra. Sube el contraste de 4.74:1 a 8.11:1 y es exactamente el
+     verde que el producto usa como acento sobre fondo oscuro. */
+  --accent: #68a387;        /* [P] */
+  --accent-hover: #7cb79b;
+  --accent-active: #8fc5a9;
+  --accent-contrast: #0b120f;
+  --accent-soft: #1b2c26;   /* [P] */
+  --accent-strong: #a3d2ba;
+
+  --sage: #68a387;          /* [P] */
+  --sage-tint: #17231c;     /* [P] */
+
+  --info: #7fb0e8;
+  --info-hover: #9ac2ef;
+  --info-contrast: #0b120f;
+  --info-soft: #182534;
+  --info-strong: #a8cdf3;
+
+  --success: #68a387;
+  --success-solid: #68a387;
+  --success-soft: #17231c;  /* [P] */
+  --success-contrast: #0b120f;
+
+  --warning: #e6bf28;       /* [P] */
+  --warning-solid: #e6bf28;
+  --warning-soft: #2c2408;
+  --warning-contrast: #151a20;
+
+  --danger: #d8786c;        /* [P] */
+  --danger-solid: #d8786c;
+  --danger-soft: #2e1714;
+  --danger-contrast: #0b120f;
+
+  --tick-idle: #a5b3ad;
+  --bubble-in: var(--surface-raised);
+  --bubble-out: #37594c;    /* [P] burbuja saliente del tema oscuro */
+  --bubble-out-text: var(--text);
+  --pattern-dot: rgb(104 163 135 / 0.12);
+
+  --overlay: rgb(6 9 12 / 0.65);
+
+  /* En oscuro la sombra vuelve a negro puro y se refuerza: una sombra
+     tenida sobre fondo oscuro no se percibe. */
+  --shadow-tint: 0 0 0;
+  --shadow-boost: 4;
+}
+
+
+/* --------------------------------------------------------------------------
+   5. @theme inline — COLOR
+   `inline` hace que las utilidades emitan var(--bg) en vez de copiar el
+   valor: por eso responden al cambio de tema en caliente.
+   Genera: bg-*, text-*, border-*, ring-*, fill-*, from-*, etc.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-alt: var(--surface-alt);
+
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-field: var(--border-field);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+
+  --color-sage: var(--sage);
+  --color-sage-tint: var(--sage-tint);
+
+  --color-info: var(--info);
+  --color-info-hover: var(--info-hover);
+  --color-info-contrast: var(--info-contrast);
+  --color-info-soft: var(--info-soft);
+  --color-info-strong: var(--info-strong);
+
+  --color-success: var(--success);
+  --color-success-solid: var(--success-solid);
+  --color-success-soft: var(--success-soft);
+  --color-success-contrast: var(--success-contrast);
+
+  --color-warning: var(--warning);
+  --color-warning-solid: var(--warning-solid);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-contrast: var(--warning-contrast);
+
+  --color-danger: var(--danger);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-contrast: var(--danger-contrast);
+
+  --color-tick-idle: var(--tick-idle);
+  --color-tick-read: var(--tick-read);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-out: var(--bubble-out);
+
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+
+  /* Alias de compatibilidad con la plantilla de create-next-app. */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+}
+
+
+/* --------------------------------------------------------------------------
+   6. @theme — TIPOGRAFIA, ESPACIO, RADIOS, SOMBRAS, MOVIMIENTO
+   Valores estaticos: no cambian entre modos.
+   -------------------------------------------------------------------------- */
+@theme {
+  /* -- Familias ---------------------------------------------------------
+     Se leen primero de una variable opcional (--font-display / --font-body),
+     de modo que si mas adelante se cargan con next/font basta con definir
+     esas variables en <html> y el sistema las toma sin tocar este archivo. */
+  --font-display: var(--font-display-src, "Bricolage Grotesque"), "Hanken Grotesk",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-sans: var(--font-body-src, "Hanken Grotesk"), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono, ui-monospace), ui-monospace, SFMono-Regular,
+    "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* -- Escala tipografica -----------------------------------------------
+     Fluida donde el tamano importa (titulares), fija donde importa la
+     consistencia (cuerpo e interfaz). Interlineado 1.65 en cuerpo porque
+     el espanol produce lineas mas largas y palabras mas extensas. */
+  --text-display-1: clamp(2.75rem, 1.6rem + 4.4vw, 4.5rem);
+  --text-display-1--line-height: 1.02;
+  --text-display-1--letter-spacing: -0.035em;
+  --text-display-1--font-weight: 700;
+
+  --text-display-2: clamp(2.25rem, 1.6rem + 2.6vw, 3.25rem);
+  --text-display-2--line-height: 1.06;
+  --text-display-2--letter-spacing: -0.03em;
+  --text-display-2--font-weight: 700;
+
+  --text-h1: clamp(2rem, 1.55rem + 1.9vw, 2.75rem);
+  --text-h1--line-height: 1.1;
+  --text-h1--letter-spacing: -0.025em;
+  --text-h1--font-weight: 700;
+
+  --text-h2: clamp(1.625rem, 1.4rem + 1.1vw, 2rem);
+  --text-h2--line-height: 1.18;
+  --text-h2--letter-spacing: -0.02em;
+  --text-h2--font-weight: 650;
+
+  --text-h3: 1.5rem;
+  --text-h3--line-height: 1.3;
+  --text-h3--letter-spacing: -0.015em;
+  --text-h3--font-weight: 600;
+
+  --text-h4: 1.1875rem;
+  --text-h4--line-height: 1.35;
+  --text-h4--letter-spacing: -0.01em;
+  --text-h4--font-weight: 600;
+
+  --text-lead: clamp(1.0625rem, 1rem + 0.4vw, 1.25rem);
+  --text-lead--line-height: 1.6;
+  --text-lead--letter-spacing: -0.005em;
+  --text-lead--font-weight: 400;
+
+  --text-body: 1rem;
+  --text-body--line-height: 1.65;
+  --text-body--letter-spacing: 0em;
+  --text-body--font-weight: 400;
+
+  --text-body-sm: 0.9375rem;
+  --text-body-sm--line-height: 1.6;
+  --text-body-sm--letter-spacing: 0em;
+  --text-body-sm--font-weight: 400;
+
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.5;
+  --text-caption--letter-spacing: 0.005em;
+  --text-caption--font-weight: 500;
+
+  /* Marca de tiempo del "hilo": se compone en monoespaciada, sin mayusculas */
+  --text-eyebrow: 0.75rem;
+  --text-eyebrow--line-height: 1.2;
+  --text-eyebrow--letter-spacing: 0.02em;
+  --text-eyebrow--font-weight: 500;
+
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.4;
+  --text-micro--letter-spacing: 0.02em;
+  --text-micro--font-weight: 600;
+
+  /* -- Espaciado --------------------------------------------------------
+     Base de 4px. Tailwind deriva toda la escala (p-1 = 4px, p-4 = 16px...). */
+  --spacing: 0.25rem;
+
+  /* Ritmo vertical entre secciones de la landing */
+  --spacing-seccion: clamp(4rem, 2rem + 8vw, 7.5rem);
+  --spacing-seccion-sm: clamp(2.5rem, 1.5rem + 4vw, 4.5rem);
+
+  /* Anchos de composicion */
+  --container-lectura: 68ch;  /* max-w-lectura: columna de texto legible */
+  --container-pagina: 76rem;  /* max-w-pagina: ancho maximo del contenido */
+
+  /* -- Radios -----------------------------------------------------------
+     Progresion suave; nada de esquinas vivas (frio, clinico-hostil) ni de
+     pildoras gigantes en tarjetas (infantil). */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-3xl: 36px;
+  --radius-bubble: 20px;
+  --radius-bubble-tail: 6px;
+
+  /* -- Sombras ----------------------------------------------------------
+     Tenidas con --shadow-tint y escaladas con --shadow-boost, de forma que
+     el mismo token sirva en claro (azul tenue) y en oscuro (negro denso).
+     En modo claro la elevacion se comunica con sombra, no con luminosidad:
+     no hay nada mas claro que #ffffff. */
+  --shadow-xs: 0 1px 2px rgb(var(--shadow-tint) / calc(0.06 * var(--shadow-boost)));
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-tint) / calc(0.05 * var(--shadow-boost))),
+    0 2px 6px -1px rgb(var(--shadow-tint) / calc(0.05 * var(--shadow-boost)));
+  --shadow-md: 0 2px 4px -1px rgb(var(--shadow-tint) / calc(0.04 * var(--shadow-boost))),
+    0 8px 20px -4px rgb(var(--shadow-tint) / calc(0.09 * var(--shadow-boost)));
+  --shadow-lg: 0 4px 8px -2px rgb(var(--shadow-tint) / calc(0.04 * var(--shadow-boost))),
+    0 16px 40px -8px rgb(var(--shadow-tint) / calc(0.12 * var(--shadow-boost)));
+  --shadow-xl: 0 8px 16px -4px rgb(var(--shadow-tint) / calc(0.05 * var(--shadow-boost))),
+    0 32px 64px -12px rgb(var(--shadow-tint) / calc(0.16 * var(--shadow-boost)));
+  --shadow-bubble: 0 1px 1px rgb(var(--shadow-tint) / calc(0.04 * var(--shadow-boost))),
+    0 2px 8px -2px rgb(var(--shadow-tint) / calc(0.07 * var(--shadow-boost)));
+  --shadow-none: 0 0 #0000;
+
+  /* -- Curvas y duraciones ---------------------------------------------- */
+  --ease-suave: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-entrada: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-salida: cubic-bezier(0.4, 0, 1, 1);
+  --ease-burbuja: cubic-bezier(0.34, 1.35, 0.64, 1);
+
+  /* Las duraciones viven en :root (seccion 3): `--duration-*` no es un
+     namespace de Tailwind, asi que dentro de @theme no se emitiria la
+     variable y las animaciones de abajo se quedarian sin duracion.
+     Se usan como duration-(--duration-media) o en CSS propio. */
+
+  /* -- Animaciones ------------------------------------------------------ */
+  --animate-aparecer: aparecer var(--duration-lenta) var(--ease-entrada) both;
+  --animate-burbuja: burbuja var(--duration-lenta) var(--ease-burbuja) both;
+  --animate-palomita: palomita var(--duration-media) var(--ease-entrada) both;
+  --animate-escribiendo: escribiendo 1.3s ease-in-out infinite;
+  --animate-respirar: respirar 6s ease-in-out infinite;
+
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* La burbuja no "rebota": crece 4% y se asienta. Suficiente para leerse
+     como mensaje que llega, no como globo de dibujos animados. */
+  @keyframes burbuja {
+    from { opacity: 0; transform: translateY(8px) scale(0.96); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* La palomita se dibuja: stroke-dashoffset de 100 a 0 sobre un <path>. */
+  @keyframes palomita {
+    from { stroke-dashoffset: 100; opacity: 0.4; }
+    to   { stroke-dashoffset: 0; opacity: 1; }
+  }
+  @keyframes escribiendo {
+    0%, 60%, 100% { opacity: 0.28; transform: translateY(0); }
+    30%           { opacity: 1;    transform: translateY(-3px); }
+  }
+  @keyframes respirar {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50%      { opacity: 0.8; transform: scale(1.04); }
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   7. CAPA BASE — reset propio y ajustes tipograficos
+   Va encima del preflight de Tailwind.
+   -------------------------------------------------------------------------- */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    /* Bordes por defecto al token, no al gris de Tailwind */
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem; /* deja aire bajo la navbar fija */
+    tab-size: 4;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Cifras tabulares en precios y metricas; ligaduras contextuales activas */
+    font-variant-numeric: normal;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Titulares: Bricolage Grotesque, pesos altos y tracking negativo.
+     Nunca por debajo de 24px (ver docs/direccion-arte.md). */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--text);
+    text-wrap: balance;
+    font-optical-sizing: auto;
+  }
+
+  h1 { font-size: var(--text-h1); line-height: var(--text-h1--line-height); letter-spacing: var(--text-h1--letter-spacing); font-weight: 700; }
+  h2 { font-size: var(--text-h2); line-height: var(--text-h2--line-height); letter-spacing: var(--text-h2--letter-spacing); font-weight: 650; }
+  h3 { font-size: var(--text-h3); line-height: var(--text-h3--line-height); letter-spacing: var(--text-h3--letter-spacing); font-weight: 600; }
+  h4 { font-size: var(--text-h4); line-height: var(--text-h4--line-height); letter-spacing: var(--text-h4--letter-spacing); font-weight: 600; }
+
+  /* Evita lineas viudas de una sola palabra en parrafos en espanol */
+  p { text-wrap: pretty; }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Subrayado con desplazamiento: se lee como enlace sin cortar las
+     descendentes de la j, la g o la p. */
+  .prosa a,
+  a[data-enlace] {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    text-decoration-color: color-mix(in oklab, var(--accent) 40%, transparent);
+    transition: text-decoration-color var(--duration-rapida) var(--ease-suave);
+  }
+  .prosa a:hover,
+  a[data-enlace]:hover {
+    text-decoration-color: var(--accent);
+  }
+
+  code, kbd, samp, pre {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  /* Numeros alineados en tablas de precios y metricas */
+  th, td, [data-numerico] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--accent) 22%, transparent);
+    color: var(--text);
+  }
+
+  /* Foco visible unico para todo el sitio: anillo del acento + separacion
+     del color de fondo, para que se vea igual sobre claro y sobre oscuro. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Placeholders e inputs heredan la tipografia del sitio */
+  input, textarea, select, button {
+    font: inherit;
+    color: inherit;
+  }
+  ::placeholder {
+    color: var(--text-subtle);
+    opacity: 1;
+  }
+
+  /* La imagen nunca desborda su contenedor */
+  img, svg, video, canvas {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Ancla de seccion con margen, para el hilo de navegacion */
+  :target {
+    scroll-margin-top: 6rem;
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   8. UTILIDADES PROPIAS — motivo "conversacion"
+   Reglas de uso y limites en /docs/direccion-arte.md, seccion 7.
+   -------------------------------------------------------------------------- */
+
+/* Retícula de puntos muy tenue. Sustituye al fondo con garabatos de las
+   apps de mensajeria: misma funcion (dar textura al lienzo del chat),
+   lenguaje propio (geometrico, clinico). Maximo dos usos por pagina. */
+@utility patron-conversacion {
+  background-image: radial-gradient(circle at center, var(--pattern-dot) 1px, transparent 1.2px);
+  background-size: var(--pattern-gap) var(--pattern-gap);
+  background-position: center;
+}
+
+/* Desvanece cualquier fondo hacia los bordes: el patron nunca debe llegar
+   a tocar el borde de la seccion. */
+@utility patron-desvanecido {
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 35%, transparent 100%);
+}
+
+/* Burbuja recibida: esquina inferior izquierda recortada (la "cola"). */
+@utility burbuja-entrante {
+  background-color: var(--bubble-in);
+  color: var(--bubble-in-text);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail);
+  box-shadow: var(--shadow-bubble);
+}
+
+/* Burbuja enviada: cola a la derecha, fondo del acento suave. */
+@utility burbuja-saliente {
+  background-color: var(--bubble-out);
+  color: var(--bubble-out-text);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail) var(--radius-bubble);
+  box-shadow: var(--shadow-bubble);
+}
+
+/* Barra superior translucida sobre contenido que hace scroll. */
+@utility vidrio {
+  background-color: color-mix(in oklab, var(--surface) 72%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+}
+
+/* Columna de lectura: ~68 caracteres, el optimo para parrafo largo. */
+@utility columna-lectura {
+  max-width: var(--container-lectura);
+  /* Sin esto la caja queda pegada a la izquierda y `text-center` solo centra
+     el texto DENTRO de ella: el titular aparece descuadrado respecto a la
+     retícula de tarjetas de abajo. Afectaba a todas las secciones. */
+  margin-inline: auto;
+}
+
+/* Realce de una palabra dentro de un titular, sin recurrir al degradado. */
+@utility subrayado-acento {
+  background-image: linear-gradient(to top, color-mix(in oklab, var(--accent) 20%, transparent) 0 0.32em, transparent 0.32em);
+  background-repeat: no-repeat;
+}
+
+
+/* --------------------------------------------------------------------------
+   9. MOVIMIENTO REDUCIDO
+   Se anula toda animacion decorativa y el scroll suave. Se conservan los
+   cambios de color de hover/foco: no son movimiento y si son informacion.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Las transiciones de color si se mantienen, a velocidad instantanea. */
+}

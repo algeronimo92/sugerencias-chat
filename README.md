@@ -212,6 +212,27 @@ Cada color publica su nginx sólo en `127.0.0.1` (blue 8081, green 8082), de mod
 
 Para revertir de urgencia sin el script: cambiar el puerto de la línea `url` en `traefik/dynamic/active.yml` por el del otro color. Traefik conmuta en menos de un segundo, sin reconstruir nada.
 
+### 6. Landing (cliniventas.com)
+
+La página pública vive en `landing/` (Next.js con export estático) y corre en este mismo servidor como un contenedor aparte: un nginx con el HTML adentro, publicado sólo en `127.0.0.1:8090`. Traefik lo enruta con `traefik/dynamic/landing.yml`, para `cliniventas.com` y `www.cliniventas.com` (nginx redirige `www` al dominio sin `www`). No participa del blue-green: es su propio proyecto de compose (`compose.landing.yml`), así que un despliegue del CRM no la reinicia.
+
+Se despliega sola en cada push a `main`, después del CRM:
+
+```bash
+scripts/deploy-landing.sh            # construye, prueba y publica si landing/ cambió
+scripts/deploy-landing.sh --status   # qué versión está sirviendo
+```
+
+El script compara el árbol `landing/` del repositorio con la imagen que sirve; si no cambió nada, no reconstruye ni recrea. Si cambió, construye la imagen, la levanta en un contenedor que nadie visita (`127.0.0.1:8091`) y le pide cada ruta, redirección y cabecera (`scripts/landing-smoke.sh`). Sólo si responde bien reemplaza a la publicada, y la imagen anterior queda en el servidor para volver atrás. Un fallo acá deja el workflow en rojo pero no revierte el CRM.
+
+**Mover el dominio al servidor (una sola vez).** El certificado de `cliniventas.com` se emite por DNS-01, así que Traefik lo pide en cuanto este archivo llega al servidor, sin esperar al DNS. Con el contenedor arriba y el certificado emitido, en hPanel:
+
+1. Cambiar el registro `A` de `cliniventas.com` (`@`) a la IP del VPS. Si existe un `AAAA` para `@` que apunta al hosting anterior, borrarlo: quien navegue por IPv6 seguiría llegando allá.
+2. Revisar `www`: si es un `CNAME` a `cliniventas.com`, sigue al registro anterior; si es un `A` propio, apuntarlo también al VPS.
+3. No tocar los registros `MX` ni `TXT`: el correo `@cliniventas.com` no pasa por este servidor.
+
+Para comprobarlo antes de mover nada, desde el propio servidor: `curl -sI --resolve cliniventas.com:443:127.0.0.1 https://cliniventas.com/` tiene que responder `200` con un certificado válido.
+
 ### Desarrollo local
 
 ```bash

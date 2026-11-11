@@ -46,6 +46,25 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # La landing pública (cliniventas.com): un Next.js con export estático,
+  # aparte del frontend del CRM. `next build` también corre el chequeo de tipos.
+  landing-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
   # Pruebas de pantalla: la app compilada en un navegador real, a tamaño de
   # escritorio y de celular, con el backend simulado (e2e/README.md). Cubren lo
   # que Vitest no puede ver porque jsdom no calcula posiciones: un menú que se
@@ -222,6 +241,25 @@ jobs:
         run: |
           docker rm -f backend frontend 2>/dev/null || true
           docker network rm ci-net 2>/dev/null || true
+      # La imagen de la landing, tal como va a producción, y las URL pedidas de
+      # verdad: landing/nginx.conf traduce a mano el .htaccess del hosting
+      # anterior y `nginx -t` no ve si /privacidad quedó en 404 o si el HTML
+      # sale cacheado. Es la misma comprobación que hace el despliegue sobre el
+      # contenedor candidato (scripts/deploy-landing.sh).
+      - name: Build landing image
+        run: docker build -t landing-check ./landing
+      - name: Landing answers every route, redirect and header
+        run: |
+          docker run -d --name landing-check -p 127.0.0.1:8091:80 landing-check
+          for _ in $(seq 1 20); do
+            curl -fsS -o /dev/null http://127.0.0.1:8091/ && break
+            sleep 1
+          done
+          docker exec landing-check nginx -t
+          scripts/landing-smoke.sh http://127.0.0.1:8091
+      - name: Cleanup landing container
+        if: always()
+        run: docker rm -f landing-check 2>/dev/null || true
       # La imagen de la base (PostgreSQL + pgvector) se construye recién en el
       # servidor, al desplegar, y reemplaza a la que tiene los datos. Acá se
       # ensaya ese reemplazo completo antes del merge: datos creados con la

@@ -36,9 +36,11 @@ http:
         # Un único wildcard, emitido por DNS-01 (ver
         # reverse-proxy.docker-compose.yml), cubre el CRM de cada negocio y el
         # panel de plataforma: un negocio nuevo no se agrega acá. Cubre un solo
-        # nivel, igual que la regla de arriba. No va el dominio raíz:
-        # cliniventas.com es la landing y apunta al hosting de Hostinger, no a
-        # este servidor.
+        # nivel, igual que la regla de arriba. No va el dominio raíz: un
+        # wildcard no cubre el dominio al que pertenece, y cliniventas.com es
+        # la landing, con su propio router y su propio certificado
+        # (landing.yml). `www` también encaja en la regla de arriba; landing.yml
+        # se lo queda por prioridad.
         #
         # El DNS ya tiene un registro `*` hacia el VPS, así que un subdominio
         # nuevo resuelve sin pasar por hPanel.
