@@ -34,17 +34,19 @@ def _jid_number(value: Any) -> str | None:
     return head if suffix == "s.whatsapp.net" and head.isdigit() else None
 
 
-def _identity(instance: str, data: dict, payload: dict | None = None) -> ContactIdentity:
+def _is_direct_chat(remote: Any) -> bool:
+    """El CRM gestiona conversaciones directas 1 a 1 con leads. Ignora grupos,
+    difusiones y canales de WhatsApp."""
+    if not isinstance(remote, str):
+        return False
+    return remote.endswith("@s.whatsapp.net") or remote.endswith("@lid")
+
+
+def _identity(instance: str, data: dict) -> ContactIdentity:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
     remote = key.get("remoteJid")
     alternate = key.get("remoteJidAlt")
-    sender = (
-        (payload or {}).get("sender")
-        or data.get("sender")
-        or data.get("participant")
-        or key.get("participant")
-    )
-    wa_id = _jid_number(alternate) or _jid_number(sender) or _jid_number(remote)
+    wa_id = _jid_number(alternate) or _jid_number(remote)
     lid = remote if isinstance(remote, str) and remote.endswith("@lid") else None
     return ContactIdentity(
         phone_number_id=instance,
@@ -114,9 +116,10 @@ async def _save_media(data: dict, stored: dict) -> None:
 
 async def _message(instance: str, data: dict, event: InboxEvent) -> None:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
-    if key.get("fromMe") or not isinstance(key.get("id"), str):
+    remote = key.get("remoteJid")
+    if key.get("fromMe") or not isinstance(key.get("id"), str) or not _is_direct_chat(remote):
         return
-    identity = _identity(instance, data, event.payload)
+    identity = _identity(instance, data)
     resolved = await resolve_whatsapp_identity(identity)
     payload, message_type, subtype, content, quoted = _project(data)
     stored, _ = await receive_provider_message(
@@ -148,6 +151,9 @@ STATUS_MAP = {
 
 async def _status(data: dict, event: InboxEvent) -> None:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
+    remote = key.get("remoteJid")
+    if not _is_direct_chat(remote):
+        return
     update = data.get("update") if isinstance(data.get("update"), dict) else {}
     raw = update.get("status") or data.get("status")
     message_id = key.get("id")

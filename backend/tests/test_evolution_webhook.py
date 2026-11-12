@@ -76,9 +76,22 @@ async def test_delivery_update_uses_the_shared_status_contract(monkeypatch):
     monkeypatch.setattr(processor, "record_provider_status", recorded)
     event = type("Event", (), {"id": "event-1"})()
 
-    await _status({"key": {"id": "EVO-1"}, "update": {"status": "READ"}}, event)
+    await _status(
+        {"key": {"id": "EVO-1", "remoteJid": "51987654321@s.whatsapp.net"}, "update": {"status": "READ"}},
+        event,
+    )
 
     recorded.assert_awaited_once()
     status = recorded.await_args.args[0]
     assert status["id"] == "EVO-1"
     assert status["status"] == "read"
+
+
+@pytest.mark.asyncio
+async def test_non_direct_chats_are_ignored(monkeypatch):
+    recorded = AsyncMock()
+    monkeypatch.setattr(processor, "record_provider_status", recorded)
+    event = type("Event", (), {"id": "event-1"})()
+
+    await _status({"key": {"id": "EVO-1", "remoteJid": "120363272939641376@g.us"}}, event)
+    recorded.assert_not_called()
