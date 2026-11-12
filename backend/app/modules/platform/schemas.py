@@ -167,6 +167,21 @@ class WhatsappStatusItem(BaseModel):
     instance: str | None = None
 
 
+class EvolutionConnectRequest(BaseModel):
+    phone_number: str = Field(min_length=8, max_length=32)
+
+
+class EvolutionStatusItem(BaseModel):
+    state: Literal[
+        "open", "connecting", "close", "missing", "not_configured", "unknown"
+    ]
+    instance: str | None = None
+    qr_base64: str | None = None
+    pairing_code: str | None = None
+    # Sin webhook público la conexión envía, pero no recibe: el panel lo avisa.
+    webhook_configured: bool = False
+
+
 class WhatsappCostBreakdownItem(BaseModel):
     # Valores literales de Meta (MARKETING, UTILITY, SERVICE, AUTHENTICATION…
     # y REGULAR, FREE_CUSTOMER_SERVICE, FREE_ENTRY_POINT).

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Link2, Loader2 } from 'lucide-react'
+import { CheckCircle2, Link2, Loader2, Server } from 'lucide-react'
 import { useId, useState, type ComponentType, type FormEvent } from 'react'
 import { GoogleMark, MetaMark, MicrosoftMark, N8nMark, ZohoMark } from '../../../shared/ui/BrandMarks'
 import { Button } from '../../../shared/ui/Button'
@@ -29,6 +29,12 @@ const SECTIONS: { title: string; apps: AppInfo[] }[] = [
         title: 'Meta · Tech Provider',
         description: 'La app de Facebook con la que cada negocio conecta su WhatsApp (Embedded Signup) y que recibe los webhooks. Las WABA y sus tokens quedan dentro de cada negocio.',
         icon: MetaMark,
+      },
+      {
+        group: 'evolution',
+        title: 'Evolution API',
+        description: 'Servidor compartido que crea una instancia por negocio, envía mensajes y entrega sus webhooks al CRM.',
+        icon: Server,
       },
     ],
   },

@@ -128,6 +128,7 @@ async def _store_message(
     *,
     sender: str,
     webhook_event_id: str,
+    channel_connection: str,
 ) -> tuple[dict, bool]:
     raw_type = message.get("type")
     message_type = raw_type if isinstance(raw_type, str) else None
@@ -151,6 +152,8 @@ async def _store_message(
         quoted_wa_message_id=quoted_wa_message_id(message),
         webhook_event_id=webhook_event_id,
         human_outbound=True if sender == "vendedor" else None,
+        channel_provider="meta",
+        channel_connection=channel_connection,
     )
 
 
@@ -250,6 +253,7 @@ async def _conversation_message(
         resolved.chat_id,
         sender="cliente" if inbound else "vendedor",
         webhook_event_id=webhook_event_id,
+        channel_connection=identity.phone_number_id,
     )
     if created:
         if message.get("type") == "system":

@@ -99,6 +99,10 @@ class WspMessage(Base):
     meta_status: Mapped[str | None] = mapped_column(Text)
     # Último evento de estado completo (errores, pricing, conversation).
     status_payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    # Canal exacto por el que entró o debe salir. Es indispensable cuando un
+    # negocio mantiene números de Meta y Evolution simultáneamente.
+    channel_provider: Mapped[str | None] = mapped_column(Text)
+    channel_connection: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         # wsp_messages está en EXTERNAL_TABLES: alembic no la compara, el
@@ -144,6 +148,7 @@ class WspMessage(Base):
             sent_at.desc(),
             postgresql_where=text("sent_by_user_id IS NOT NULL"),
         ),
+        Index("idx_wsp_messages_chat_channel", chat_id, channel_provider, sent_at),
     )
 
 

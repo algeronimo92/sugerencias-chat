@@ -1,11 +1,18 @@
-import { CheckCircle2, Link2, Loader2 } from "lucide-react";
+import { CheckCircle2, Link2, Loader2, QrCode, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../../shared/ui/Button";
+import { Input, labelClass } from "../../../shared/ui/Input";
 import { extractErrorMessage } from "../../../shared/utils/errors";
 import { useFacebookSdk } from "../hooks/useFacebookSdk";
 import { useCompleteMetaEmbeddedSignup, useMetaPublicConfig } from "../hooks/useSettings";
-import { useWhatsappStatus } from "../hooks/useWhatsapp";
+import {
+  useConnectEvolution,
+  useEvolutionStatus,
+  useRemoveEvolution,
+  useWhatsappStatus,
+} from "../hooks/useWhatsapp";
+import type { EvolutionStatus } from "../types";
 import { WhatsappCostsPanel } from "./WhatsappCostsPanel";
 interface Props {
   onGoToClaves: () => void;
@@ -197,11 +204,142 @@ function MetaEmbeddedSignupPanel() {
   );
 }
 
+function qrSource(value: string): string {
+  return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
+}
+
+/** Conexión adicional por Evolution API. Meta puede seguir activa a la vez. */
+function EvolutionPanel() {
+  const { data: status, isLoading, error: statusError } = useEvolutionStatus();
+  const { mutate: connect, isPending: isConnecting } = useConnectEvolution();
+  const { mutate: remove, isPending: isRemoving } = useRemoveEvolution();
+  const [phone, setPhone] = useState("");
+  const [connection, setConnection] = useState<EvolutionStatus | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const state = status?.state;
+
+  useEffect(() => {
+    if (state === "open" || state === "missing") setConnection(null);
+  }, [state]);
+
+  function handleConnect(event: React.FormEvent) {
+    event.preventDefault();
+    setActionError(null);
+    connect(phone, {
+      onSuccess: result => setConnection(result),
+      onError: err => setActionError(extractErrorMessage(err)),
+    });
+  }
+
+  function handleRemove() {
+    setActionError(null);
+    remove(undefined, {
+      onSuccess: () => {
+        setConnection(null);
+        setPhone("");
+        toast.success("Conexión Evolution eliminada");
+      },
+      onError: err => setActionError(extractErrorMessage(err)),
+    });
+  }
+
+  const qr = connection?.qr_base64;
+  const pairingCode = connection?.pairing_code;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-wa-border p-4 dark:border-wa-border-dark">
+      <div className="flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">
+        <QrCode className="h-4 w-4" />
+        Evolution API
+      </div>
+      <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
+        Vincula otro número como dispositivo. Sus mensajes entran al CRM y las
+        respuestas salen por la misma conexión; Meta puede seguir activa.
+      </p>
+
+      {isLoading ? (
+        <p className="flex items-center gap-2 text-xs text-wa-muted dark:text-wa-muted-dark">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Consultando Evolution…
+        </p>
+      ) : state === "not_configured" ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          El operador debe configurar Evolution API y su webhook público.
+        </p>
+      ) : state === "open" ? (
+        <div className="space-y-3">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-wa-primary-strong dark:text-wa-primary">
+            <CheckCircle2 className="h-4 w-4" /> WhatsApp conectado mediante Evolution
+          </p>
+          {status?.webhook_configured === false && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Falta la URL y el token del webhook público: los envíos salen, pero
+              los mensajes de los clientes no entran al CRM hasta configurarlos.
+            </p>
+          )}
+          <Button variant="ghost" size="sm" onClick={handleRemove} disabled={isRemoving}>
+            {isRemoving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Desconectar Evolution
+          </Button>
+        </div>
+      ) : (
+        <form className="space-y-3" onSubmit={handleConnect}>
+          <div>
+            <label htmlFor="evolution-phone" className={labelClass}>Número con código de país</label>
+            <Input
+              id="evolution-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="Ej. 51987654321"
+              value={phone}
+              onChange={event => setPhone(event.target.value)}
+              disabled={isConnecting}
+              required
+              minLength={8}
+            />
+          </div>
+          <Button type="submit" disabled={isConnecting || phone.trim().length < 8}>
+            {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+            {state === "connecting" ? "Volver a generar código" : "Conectar con Evolution"}
+          </Button>
+        </form>
+      )}
+
+      {qr && state !== "open" && (
+        <div className="space-y-2 text-center">
+          <div className="mx-auto w-fit rounded-xl border border-wa-border bg-white p-3 dark:border-wa-border-dark">
+            <img src={qrSource(qr)} alt="Código QR para vincular WhatsApp" className="h-52 w-52 max-w-full" />
+          </div>
+          <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
+            En WhatsApp: Dispositivos vinculados → Vincular un dispositivo.
+          </p>
+        </div>
+      )}
+      {pairingCode && state !== "open" && (
+        <p className="text-center text-xs text-wa-muted dark:text-wa-muted-dark">
+          Código de vinculación: <strong className="font-mono tracking-widest text-wa-text dark:text-wa-text-dark">{pairingCode}</strong>
+        </p>
+      )}
+      {state === "connecting" && !qr && !pairingCode && (
+        <p className="flex items-center gap-2 text-xs text-wa-muted dark:text-wa-muted-dark">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Esperando la vinculación…
+        </p>
+      )}
+      {(actionError || statusError) && (
+        <p role="alert" className="text-xs text-red-500 dark:text-red-400">
+          {actionError || "No se pudo consultar Evolution API."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function WhatsappPanel({ onGoToClaves }: Props) {
   const { data: whatsappStatus } = useWhatsappStatus();
   return (
     <div className="space-y-4">
       <MetaEmbeddedSignupPanel />
+      <EvolutionPanel />
       {whatsappStatus?.state === "open" && <WhatsappCostsPanel />}
       <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
         También puedes completar el token, el waba id y el phone number id{" "}

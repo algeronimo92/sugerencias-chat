@@ -5,7 +5,7 @@ import logging
 import httpx
 
 from app.integrations.whatsapp.channel import ChannelError
-from app.integrations.whatsapp.channels import current_channel
+from app.integrations.whatsapp.routing import channel_for_chat
 from app.integrations.whatsapp.identity import InvalidWhatsAppIdentityError
 from app.modules.conversations.application.inbox import mark_read, mark_unread
 from app.modules.conversations.common import chats_router
@@ -25,13 +25,14 @@ async def read_chat(chat_id: str):
     wa_message_ids = await fetch_unread_wa_message_ids(chat_id)
     if wa_message_ids:
         try:
-            await current_channel().actions.mark_read(chat_id, wa_message_ids)
+            channel = await channel_for_chat(chat_id)
+            await channel.actions.mark_read(chat_id, wa_message_ids)
         except (ChannelError, httpx.HTTPError, InvalidWhatsAppIdentityError) as exc:
             # Best-effort: si Meta falla igual se marca como visto de nuestro
             # lado; no tiene sentido bloquear el badge interno por un problema
             # ajeno a nuestra base.
             logger.warning(
-                "No se pudieron marcar %d mensajes como leídos en Meta para %s: %s",
+                "No se pudieron marcar %d mensajes como leídos en WhatsApp para %s: %s",
                 len(wa_message_ids), chat_id, exc,
             )
     await mark_read(chat_id)

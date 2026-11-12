@@ -1966,6 +1966,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/evolution/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Evolution Status */
+        get: operations["evolution_status_api_whatsapp_evolution_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/whatsapp/evolution/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evolution Connect */
+        post: operations["evolution_connect_api_whatsapp_evolution_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/whatsapp/evolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Evolution Remove */
+        delete: operations["evolution_remove_api_whatsapp_evolution_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/whatsapp/costs": {
         parameters: {
             query?: never;
@@ -3411,6 +3462,23 @@ export interface paths {
          *     cuenta como duplicado y no se vuelve a procesar.
          */
         post: operations["receive_webhook_api_webhooks_meta_whatsapp_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/evolution/whatsapp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Receive Evolution Webhook */
+        post: operations["receive_evolution_webhook_api_webhooks_evolution_whatsapp_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5373,6 +5441,30 @@ export interface components {
             services_without_packages?: string[];
             /** Sample */
             sample?: components["schemas"]["ErpSampleService"][];
+        };
+        /** EvolutionConnectRequest */
+        EvolutionConnectRequest: {
+            /** Phone Number */
+            phone_number: string;
+        };
+        /** EvolutionStatusItem */
+        EvolutionStatusItem: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "connecting" | "close" | "missing" | "not_configured" | "unknown";
+            /** Instance */
+            instance?: string | null;
+            /** Qr Base64 */
+            qr_base64?: string | null;
+            /** Pairing Code */
+            pairing_code?: string | null;
+            /**
+             * Webhook Configured
+             * @default false
+             */
+            webhook_configured: boolean;
         };
         /**
          * ExecutionErrorCode
@@ -11622,6 +11714,79 @@ export interface operations {
             };
         };
     };
+    evolution_status_api_whatsapp_evolution_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStatusItem"];
+                };
+            };
+        };
+    };
+    evolution_connect_api_whatsapp_evolution_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolutionConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStatusItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evolution_remove_api_whatsapp_evolution_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStatusItem"];
+                };
+            };
+        };
+    };
     whatsapp_costs_api_whatsapp_costs_get: {
         parameters: {
             query?: {
@@ -14774,6 +14939,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    receive_evolution_webhook_api_webhooks_evolution_whatsapp_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, EvolutionStatus, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -40,6 +40,31 @@ export async function createInvitationLink(id: number): Promise<InvitationLink> 
 export async function fetchStatus(): Promise<WhatsappStatus> {
   const { data } = await client.get<ApiResponse<'/api/whatsapp/status', 'get'>>('/api/whatsapp/status')
   return data
+}
+
+export async function fetchEvolutionStatus(): Promise<EvolutionStatus> {
+  return (
+    await client.get<ApiResponse<'/api/whatsapp/evolution/status', 'get'>>(
+      '/api/whatsapp/evolution/status',
+    )
+  ).data
+}
+
+export async function connectEvolution(phoneNumber: string): Promise<EvolutionStatus> {
+  return (
+    await client.post<ApiResponse<'/api/whatsapp/evolution/connect', 'post'>>(
+      '/api/whatsapp/evolution/connect',
+      { phone_number: phoneNumber },
+    )
+  ).data
+}
+
+export async function removeEvolution(): Promise<EvolutionStatus> {
+  return (
+    await client.delete<ApiResponse<'/api/whatsapp/evolution', 'delete'>>(
+      '/api/whatsapp/evolution',
+    )
+  ).data
 }
 
 export async function fetchWhatsappCosts(month: string): Promise<WhatsappCostsSummary> {

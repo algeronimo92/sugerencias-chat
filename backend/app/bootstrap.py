@@ -33,6 +33,7 @@ from app.modules.leads import stages_api as lead_stages
 from app.modules.leads.dashboard import api as dashboard
 from app.modules.tasks import api as tasks
 from app.integrations.meta_webhook import api as meta_webhook
+from app.integrations.evolution_webhook import api as evolution_webhook
 from app.modules.ai import assistant_api as ai_assistant, suggestions_api as suggestions
 from app.modules.auth import api as auth, users_api as users
 from app.modules.automations import api as automations
@@ -183,6 +184,9 @@ app.include_router(automations.router)
 # El webhook de Meta se autentica con la firma HMAC de Meta, no con el token
 # compartido: Meta no lo manda.
 app.include_router(meta_webhook.router)
+# Evolution autentica cada entrega con el bearer configurado al crear la
+# instancia; el tenant se resuelve por el nombre de esa instancia.
+app.include_router(evolution_webhook.router)
 # webhooks y media.upload los llaman los workflows de IA de n8n (autenticados
 # con su propio token, ver INBOUND_WEBHOOK_TOKEN) — no son sesiones de usuario.
 app.include_router(

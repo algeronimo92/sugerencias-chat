@@ -37,6 +37,9 @@ export type WhatsappStatus = Delivered<ApiSchemas['WhatsappStatusItem']>
 export type WhatsappState = WhatsappStatus['state']
 export type WhatsappCostsSummary = Delivered<ApiSchemas['WhatsappCostsSummary']>
 
+export type EvolutionStatus = Delivered<ApiSchemas['EvolutionStatusItem']>
+export type EvolutionState = EvolutionStatus['state']
+
 export interface StatusOptions {
   enabled?: boolean
   // Reconsulta cada 3s hasta que la instancia queda vinculada (open). Se usa

@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib
 
 from app.integrations.whatsapp.channels import current_channel
+from app.integrations.whatsapp.routing import channel_for_chat
 from app.modules.ai.application.ports import AssistantPorts, provide_ai_provider, provide_assistant_ports
 from app.modules.ai.infrastructure.assistant_adapters import PlatformAiAccess, SqlAiJobs, SqlAssistantContext
 from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
@@ -64,6 +65,7 @@ def register_adapters() -> None:
         contract=MetaMessageContract(),
         service_window=get_customer_service_window,
         channel=current_channel,
+        channel_for_chat=channel_for_chat,
     ))
     # Por negocio: n8n (por defecto) o el copiloto nativo con sus propias claves.
     provide_ai_provider(RoutingAiProvider(N8nAiProvider(), NativeAiProvider()))

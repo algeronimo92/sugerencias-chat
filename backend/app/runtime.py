@@ -36,6 +36,7 @@ from app.db.signals import run_bus
 from app.integrations.meta import client as meta_client
 from app.integrations.meta.client import close_meta_client
 from app.integrations.meta_webhook.worker import watch_meta_webhook_inbox
+from app.integrations.evolution_webhook.worker import watch_evolution_webhook_inbox
 from app.integrations.n8n.client import close_n8n_client
 from app.integrations.storage.media_storage import storage_backend
 from app.integrations.tts_service import close_tts_client
@@ -455,6 +456,7 @@ def start_background(*, api: bool, workers: bool) -> list[asyncio.Task]:
         # El inbox de Meta vive en el plano de control: un solo ciclo para
         # toda la plataforma, que abre el contexto de cada negocio por evento.
         tasks.append(asyncio.create_task(watch_meta_webhook_inbox(), name="meta-webhook-inbox"))
+        tasks.append(asyncio.create_task(watch_evolution_webhook_inbox(), name="evolution-webhook-inbox"))
     return tasks
 
 

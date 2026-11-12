@@ -308,6 +308,13 @@ async def sync_whatsapp_connection(
                 f"phone_number_id {phone_number_id} already belongs to another organization"
             )
         if existing is not None:
+            if (
+                existing.provider == provider
+                and existing.status == "active"
+                and existing.waba_id == (waba_id or existing.waba_id)
+            ):
+                # Un GET de estado no debe escribir si ya está todo igual.
+                return
             existing.provider = provider
             existing.waba_id = waba_id or existing.waba_id
             existing.status = "active"
@@ -325,6 +332,26 @@ async def sync_whatsapp_connection(
                 updated_at=now,
             )
         )
+
+
+async def disable_whatsapp_connection(
+    organization_id: UUID, *, provider: str, phone_number_id: str
+) -> None:
+    """Desactiva el ruteo de webhooks sin borrar su historial de control."""
+    now = datetime.now(timezone.utc)
+    async with control_session() as session:
+        connection = (
+            await session.execute(
+                select(WhatsAppConnection).where(
+                    WhatsAppConnection.organization_id == str(organization_id),
+                    WhatsAppConnection.provider == provider,
+                    WhatsAppConnection.phone_number_id == phone_number_id,
+                )
+            )
+        ).scalars().first()
+        if connection is not None:
+            connection.status = "disabled"
+            connection.updated_at = now
 
 
 async def _mark_suspended(organization_id: UUID) -> TenantContext:

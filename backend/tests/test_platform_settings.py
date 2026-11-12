@@ -128,6 +128,6 @@ async def test_tenant_public_config_only_exposes_non_secret_ids(monkeypatch) -> 
 def test_every_platform_credential_belongs_to_an_app() -> None:
     # El panel arma una tarjeta por app: una clave sin grupo quedaría fuera
     # de todas y no se podría editar.
-    groups = {"meta", "n8n", "google", "microsoft", "zoho", "email_oauth", "smtp"}
+    groups = {"meta", "evolution", "n8n", "google", "microsoft", "zoho", "email_oauth", "smtp"}
     for definition in platform_settings.PLATFORM_SETTING_DEFS:
         assert definition.group in groups, definition.key

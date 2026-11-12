@@ -34,7 +34,7 @@ from app.integrations.whatsapp.channel import (
     SendReceipt,
     describe_send_failure,
 )
-from app.integrations.whatsapp.channels import current_channel
+from app.integrations.whatsapp.channels import channel_for, current_channel
 from app.integrations.whatsapp.identity import WA_ID, add_identity_alias
 from app.modules.conversations.application.outbound import record_failed, record_sent
 from app.modules.conversations.domain.delivery import SendOutcome
@@ -99,7 +99,7 @@ async def _wait_for_work() -> None:
     await signal(OUTBOX_SIGNAL).wait(IDLE_POLL_SECONDS)
 
 
-async def _upload_stored_media(media: dict) -> str:
+async def _upload_stored_media(media: dict, channel) -> str:
     info = await asyncio.to_thread(stat_media, media["media_url"])
     content = await asyncio.to_thread(read_media_bytes, media["media_url"])
     content_type = info.content_type
@@ -107,30 +107,40 @@ async def _upload_stored_media(media: dict) -> str:
     if media.get("as_sticker"):
         content = await asyncio.to_thread(image_to_sticker_webp, content)
         content_type = "image/webp"
-    return await current_channel().sender.upload_media(content, content_type, filename)
+    return await channel.sender.upload_media(content, content_type, filename)
 
 
-async def build_final_message(job_payload: dict) -> dict:
+def _channel(payload: dict):
+    """Canal del trabajo. Los trabajos anteriores al ruteo por mensaje no
+    traen proveedor y salen por el canal global, como antes."""
+    if not payload.get("channel_provider"):
+        return current_channel()
+    return channel_for(payload.get("channel_provider"), payload.get("channel_connection"))
+
+
+async def build_final_message(job_payload: dict, channel=None) -> dict:
     """Completa el cuerpo guardado con lo que solo se sabe al enviar. Un
     trabajo sin ``message`` es de un formato anterior y no se envía."""
     if not isinstance(job_payload.get("message"), dict):
         raise OutboundRejected("El trabajo del outbox no tiene un cuerpo Meta", reason="legacy_job")
     message = copy.deepcopy(job_payload["message"])
+    channel = channel or _channel(job_payload)
     validate_message(message)
     media = job_payload.get("media")
     if media:
         root = message["type"]
-        message[root] = {**message.get(root, {}), "id": await _upload_stored_media(media)}
+        message[root] = {**message.get(root, {}), "id": await _upload_stored_media(media, channel)}
     header_media = job_payload.get("header_media")
     if header_media:
-        media_id = await _upload_stored_media(header_media)
+        media_id = await _upload_stored_media(header_media, channel)
         template = message["template"]
         template["components"] = [
             {"type": "header", "parameters": [{"type": "image", "image": {"id": media_id}}]},
             *(template.get("components") or []),
         ]
     validate_message(message, final=True)
-    await require_capabilities(message)
+    if getattr(channel, "name", "meta") == "meta":
+        await require_capabilities(message)
     return message
 
 
@@ -195,10 +205,11 @@ async def _learn_recipient(job: dict, receipt: SendReceipt) -> None:
 async def _process_job(job: dict) -> None:
     started_at = perf_counter()
     payload = job["payload"]
+    channel = _channel(payload)
     try:
-        message = await build_final_message(payload)
+        message = await build_final_message(payload, channel)
         receipt = await asyncio.wait_for(
-            current_channel().sender.send(job["chat_id"], message),
+            channel.sender.send(job["chat_id"], message),
             timeout=JOB_TIMEOUT_SECONDS,
         )
     except asyncio.CancelledError:
@@ -213,8 +224,9 @@ async def _process_job(job: dict) -> None:
         metrics.outbound_payload_mismatch.inc()
         logger.warning("El cuerpo enviado del mensaje %s difiere del registrado en el outbox", job["message_id"])
     logger.info(
-        "Mensaje %s del outbox (%s) enviado vía Meta en %.0fms",
-        job["message_id"], payload["message"].get("type"), (perf_counter() - started_at) * 1000,
+        "Mensaje %s del outbox (%s) enviado vía %s en %.0fms",
+        job["message_id"], payload["message"].get("type"), channel.name,
+        (perf_counter() - started_at) * 1000,
     )
     await asyncio.shield(_persist_sent(job, receipt))
     await _learn_recipient(job, receipt)

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchStatus, fetchWhatsappCosts, syncWhatsappCosts } from '../api'
+import { connectEvolution, fetchEvolutionStatus, fetchStatus, fetchWhatsappCosts, removeEvolution, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
 
@@ -22,6 +22,31 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
           return state === 'open' || state === 'not_configured' ? false : 3000
         }
       : false,
+  })
+}
+
+export function useEvolutionStatus() {
+  return useQuery({
+    queryKey: whatsappKeys.evolution,
+    queryFn: fetchEvolutionStatus,
+    staleTime: 0,
+    refetchInterval: query => query.state.data?.state === 'connecting' ? 3000 : false,
+  })
+}
+
+export function useConnectEvolution() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: connectEvolution,
+    onSuccess: data => queryClient.setQueryData(whatsappKeys.evolution, data),
+  })
+}
+
+export function useRemoveEvolution() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: removeEvolution,
+    onSuccess: data => queryClient.setQueryData(whatsappKeys.evolution, data),
   })
 }
 

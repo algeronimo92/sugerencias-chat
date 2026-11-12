@@ -42,6 +42,8 @@ async def receive_provider_message(
     webhook_event_id: str | None,
     payload: dict | None = None,
     human_outbound: bool | None = None,
+    channel_provider: str | None = None,
+    channel_connection: str | None = None,
 ) -> tuple[dict, bool]:
     """Guarda el mensaje si no existe. Devuelve ``(mensaje, creado)``.
 
@@ -56,6 +58,8 @@ async def receive_provider_message(
             provider_payload=provider_payload, content=content, sent_at=sent_at,
             quoted_wa_message_id=quoted_wa_message_id, webhook_event_id=webhook_event_id,
             payload=payload,
+            channel_provider=channel_provider,
+            channel_connection=channel_connection,
         )
         if created:
             now = _now()

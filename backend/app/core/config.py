@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     meta_config_id: str = ""
     meta_verify_token: str = ""
     meta_app_secret: str = ""
+    # Evolution es un proveedor adicional de WhatsApp por tenant. La API key
+    # global nunca se entrega al navegador; el token autentica los webhooks que
+    # Evolution devuelve al backend.
+    evolution_api_url: str = ""
+    evolution_api_key: str = ""
+    evolution_integration: str = "WHATSAPP-BAILEYS"
+    evolution_webhook_url: str = ""
+    evolution_webhook_token: str = ""
     # Cliente OAuth de Google de la plataforma ("Conectar con Google" para
     # Calendar). Uno solo para todos los negocios, con una única redirect URI
     # registrada en Google Cloud; se resuelven igual que las de Meta.

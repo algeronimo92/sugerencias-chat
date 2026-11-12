@@ -23,6 +23,22 @@ from app.modules.conversations.domain.types import MessageOutboxStatus, OutboxSt
 WORKER_CONCURRENCY = 4
 
 
+async def _channel_route(session, chat_id: str) -> tuple[str, str | None]:
+    """Último canal conocido del hilo. Las filas antiguas pertenecen a Meta."""
+    row = (
+        await session.execute(
+            select(WspMessage.channel_provider, WspMessage.channel_connection)
+            .where(
+                WspMessage.chat_id == chat_id,
+                WspMessage.channel_provider.isnot(None),
+            )
+            .order_by(WspMessage.sent_at.desc(), WspMessage.id.desc())
+            .limit(1)
+        )
+    ).first()
+    return (row[0], row[1]) if row is not None else ("meta", None)
+
+
 async def _quoted_message(session, chat_id: str, wa_message_id: str | None) -> dict | None:
     if not wa_message_id:
         return None
@@ -77,6 +93,7 @@ class SqlOutboxStore:
         message_body = item["message"]
         reply_to = item.get("reply_to")
         payload = item.get("payload")
+        channel_provider, channel_connection = await _channel_route(session, chat_id)
         if item.get("forwarded"):
             payload = {**(payload or {}), "forwarded": True}
         message = WspMessage(
@@ -96,6 +113,8 @@ class SqlOutboxStore:
             # exacto que salió (con destinatario e ids de medios).
             provider_payload=message_body,
             payload=payload,
+            channel_provider=channel_provider,
+            channel_connection=channel_connection,
         )
         session.add(message)
         await session.flush()
@@ -107,6 +126,8 @@ class SqlOutboxStore:
                 "media": item.get("media"),
                 "header_media": item.get("header_media"),
                 "actor_user_id": actor_user_id,
+                "channel_provider": channel_provider,
+                "channel_connection": channel_connection,
             },
             status=OutboxStatus.PENDING,
             next_attempt_at=sent_at,

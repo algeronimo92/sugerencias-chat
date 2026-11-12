@@ -25,6 +25,7 @@ export const settingsKeys = {
 
 export const whatsappKeys = {
   status: ['whatsapp', 'status'] as const,
+  evolution: ['whatsapp', 'evolution'] as const,
   costsAll: ['whatsapp', 'costs'] as const,
   costs: (month: string) => ['whatsapp', 'costs', month] as const,
 }

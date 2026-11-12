@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from app.integrations.whatsapp.channel import SendReceipt, WhatsAppChannel
 
@@ -135,9 +135,17 @@ class ConversationPorts:
     contract: MessageContract
     service_window: WindowReader
     channel: Any  # () -> WhatsAppChannel
+    # Canal del hilo concreto cuando el negocio tiene Meta y Evolution a la
+    # vez. Sin implementación se usa el canal global (tests y mono-proveedor).
+    channel_for_chat: Callable[[str], Awaitable[WhatsAppChannel]] | None = None
 
     def current_channel(self) -> WhatsAppChannel:
         return self.channel()
+
+    async def channel_of(self, chat_id: str) -> WhatsAppChannel:
+        if self.channel_for_chat is None:
+            return self.channel()
+        return await self.channel_for_chat(chat_id)
 
 
 _ports: ConversationPorts | None = None

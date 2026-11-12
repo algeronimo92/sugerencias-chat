@@ -164,7 +164,8 @@ async def send_reaction(chat_id: str, target_wa_message_id: str, emoji: str) -> 
     """
     ports = conversation_ports()
     message = ports.contract.reaction(target_wa_message_id, emoji)
-    receipt = await ports.current_channel().sender.send(chat_id, message)
+    channel = await ports.channel_of(chat_id)
+    receipt = await channel.sender.send(chat_id, message)
     async with unit_of_work():
         await ports.messages.record_reaction_event(
             event_wa_id=receipt.provider_message_id,

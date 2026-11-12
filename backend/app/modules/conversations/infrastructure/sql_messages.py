@@ -69,6 +69,8 @@ class SqlMessageStore:
         quoted_wa_message_id: str | None,
         webhook_event_id: str | None,
         payload: dict | None = None,
+        channel_provider: str | None = None,
+        channel_connection: str | None = None,
     ) -> tuple[dict, bool]:
         session = current_session()
         row = (await session.execute(
@@ -85,6 +87,8 @@ class SqlMessageStore:
                 webhook_event_id=webhook_event_id,
                 quoted_wa_message_id=quoted_wa_message_id,
                 payload=payload,
+                channel_provider=channel_provider,
+                channel_connection=channel_connection,
             )
             .on_conflict_do_nothing(
                 index_elements=[WspMessage.wa_message_id],
