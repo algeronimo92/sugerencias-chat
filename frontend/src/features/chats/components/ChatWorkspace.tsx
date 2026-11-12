@@ -380,7 +380,9 @@ export function ChatWorkspace() {
           >
             {selectedChat ? (
               <div className="flex h-full flex-col">
-                {whatsappStatus != null && whatsappStatus.state !== "open" && (
+                {whatsappStatus != null &&
+                  whatsappStatus.state !== "open" &&
+                  evolutionStatus?.state !== "open" && (
                   <IntegrationNotice
                     className="m-2 mb-0"
                     tone="warning"

@@ -25,12 +25,14 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
   })
 }
 
-export function useEvolutionStatus() {
+export function useEvolutionStatus(options: StatusOptions = {}) {
   return useQuery({
     queryKey: whatsappKeys.evolution,
     queryFn: fetchEvolutionStatus,
+    enabled: options.enabled ?? true,
     staleTime: 0,
-    refetchInterval: query => query.state.data?.state === 'connecting' ? 3000 : false,
+    refetchInterval: query =>
+      options.pollUntilConnected && query.state.data?.state === 'connecting' ? 3000 : false,
   })
 }
 

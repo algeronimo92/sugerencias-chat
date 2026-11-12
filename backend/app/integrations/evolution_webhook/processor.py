@@ -151,12 +151,16 @@ STATUS_MAP = {
 
 async def _status(data: dict, event: InboxEvent) -> None:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
-    remote = key.get("remoteJid")
+    # Evolution 2.3.x entrega messages.update aplanado (`keyId`, `remoteJid`,
+    # `status`). Algunas integraciones antiguas lo entregan dentro de `key`.
+    remote = key.get("remoteJid") or data.get("remoteJid")
     if not _is_direct_chat(remote):
         return
     update = data.get("update") if isinstance(data.get("update"), dict) else {}
     raw = update.get("status") or data.get("status")
-    message_id = key.get("id")
+    # `keyId` es el id de WhatsApp que devolvió sendText/sendMedia. El campo
+    # `messageId` de Evolution es su id interno y no identifica wsp_messages.
+    message_id = key.get("id") or data.get("keyId")
     status = STATUS_MAP.get(str(raw).upper())
     if isinstance(message_id, str) and status:
         await record_provider_status(
