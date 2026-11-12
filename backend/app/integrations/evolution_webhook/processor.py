@@ -42,7 +42,7 @@ def _is_direct_chat(remote: Any) -> bool:
     return remote.endswith("@s.whatsapp.net") or remote.endswith("@lid")
 
 
-def _identity(instance: str, data: dict) -> ContactIdentity:
+def _identity(instance: str, data: dict, *, from_business: bool = False) -> ContactIdentity:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
     remote = key.get("remoteJid")
     alternate = key.get("remoteJidAlt")
@@ -52,7 +52,14 @@ def _identity(instance: str, data: dict) -> ContactIdentity:
         phone_number_id=instance,
         wa_id=wa_id,
         user_id=lid,
-        profile_name=data.get("pushName") if isinstance(data.get("pushName"), str) else None,
+        # En eventos fromMe, Evolution pone en pushName el perfil del número
+        # vinculado (el negocio), no el nombre del destinatario. Guardarlo haría
+        # que todos los contactos creados desde el celular parezcan el negocio.
+        profile_name=(
+            data.get("pushName")
+            if not from_business and isinstance(data.get("pushName"), str)
+            else None
+        ),
     )
 
 
@@ -120,7 +127,7 @@ async def _message(instance: str, data: dict, event: InboxEvent) -> None:
     if not isinstance(key.get("id"), str) or not _is_direct_chat(remote):
         return
     from_business = key.get("fromMe") is True
-    identity = _identity(instance, data)
+    identity = _identity(instance, data, from_business=from_business)
     resolved = await resolve_whatsapp_identity(identity)
     payload, message_type, subtype, content, quoted = _project(data)
     stored, _ = await receive_provider_message(

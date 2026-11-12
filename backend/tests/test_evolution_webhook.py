@@ -70,6 +70,20 @@ def test_identity_prefers_the_real_phone_over_the_lid():
     assert identity.profile_name == "Ana"
 
 
+def test_business_echo_does_not_use_own_profile_as_recipient_name():
+    identity = _identity(
+        "evolution-org",
+        {
+            "key": {"remoteJid": "51987654321@s.whatsapp.net", "fromMe": True},
+            "pushName": "Mi negocio",
+        },
+        from_business=True,
+    )
+
+    assert identity.wa_id == "51987654321"
+    assert identity.profile_name is None
+
+
 @pytest.mark.asyncio
 async def test_delivery_update_uses_the_shared_status_contract(monkeypatch):
     recorded = AsyncMock()
