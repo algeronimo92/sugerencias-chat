@@ -1,2 +1,2 @@
 /** Explicit consumer contract; implementation remains with its feature owner. */
-export { useWhatsappStatus } from '../hooks/useWhatsapp'
+export { useEvolutionStatus, useWhatsappStatus } from '../hooks/useWhatsapp'

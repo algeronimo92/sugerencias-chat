@@ -23,7 +23,7 @@ SuggestionError,
 useGenerateSuggestions,
 useSuggestionStatus,
 } from "../../ai/public/useSuggestions";
-import { useWhatsappStatus } from "../../platform/public/useWhatsapp";
+import { useEvolutionStatus, useWhatsappStatus } from "../../platform/public/useWhatsapp";
 import { useLayoutContext } from "../layoutContext";
 import { useMarkChatRead, useMarkChatUnread } from "../queries";
 import { useUnreadCount } from '../../leads/public/queries'
@@ -173,10 +173,14 @@ export function ChatWorkspace() {
   const { data: whatsappStatus } = useWhatsappStatus({
     enabled: me?.role === "admin",
   });
+  const { data: evolutionStatus } = useEvolutionStatus({
+    enabled: me?.role === "admin",
+  });
   const showConnectWhatsapp =
     me?.role === "admin" &&
     whatsappStatus != null &&
-    whatsappStatus.state !== "open";
+    whatsappStatus.state !== "open" &&
+    evolutionStatus?.state !== "open";
 
   async function handleLoadMore(): Promise<void> {
     if (hasNextPage && !isFetchingNextPage) await fetchNextPage();
