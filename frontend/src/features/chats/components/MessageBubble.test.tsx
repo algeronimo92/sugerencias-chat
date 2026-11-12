@@ -208,9 +208,9 @@ describe('MessageBubble', () => {
   })
 
   it.each([
-    ['sent', 'Enviado'],
-    ['delivered', 'Entregado'],
-    ['read', 'Leído'],
+    ['sent', 'Enviado a WhatsApp'],
+    ['delivered', 'Entregado al cliente'],
+    ['read', 'Leído por el cliente'],
   ] as const)('muestra el estado literal de Meta %s', (metaStatus, label) => {
     renderBubble({ meta_status: metaStatus })
     expect(screen.getByLabelText(label)).toBeInTheDocument()
@@ -223,13 +223,13 @@ describe('MessageBubble', () => {
       // Para los ecos el acuse no llega: el tique simple que nunca avanzaba se
       // leía como "no le llegó" de mensajes que el cliente ya había recibido.
       renderBubble({ meta_status: null, origin: ECHO })
-      expect(screen.queryByLabelText('Enviado')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Enviado a WhatsApp')).not.toBeInTheDocument()
       expect(screen.getByText('Enviado desde WhatsApp; su entrega se ve allí')).toBeInTheDocument()
     })
 
     it('si Meta sí informa la entrega, se muestra como cualquier otro', () => {
       renderBubble({ meta_status: 'delivered', origin: ECHO })
-      expect(screen.getByLabelText('Entregado')).toBeInTheDocument()
+      expect(screen.getByLabelText('Entregado al cliente')).toBeInTheDocument()
     })
   })
 

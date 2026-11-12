@@ -12,6 +12,7 @@ import { MessageFooter } from './MessageFooter'
 import { ReactionBadge, ReactionMenu } from './MessageReactions'
 import { QuotedMessage } from './QuotedMessage'
 import { TemplateMessageButtons } from './TemplateMessageCard'
+import { Tooltip } from '../../../shared/ui/Tooltip'
 
 // Alto máximo visual de una imagen en el hilo (coincide con max-h-80).
 const IMAGE_MAX_HEIGHT_PX = 320;
@@ -131,34 +132,40 @@ export function MessageStatusTicks({
   }
   if (metaStatus === "read") {
     return (
-      <span aria-label="Leído" title="Leído">
-        <CheckCheck
-          aria-hidden="true"
-          className="w-3.5 h-3.5 text-wa-accent shrink-0"
-        />
-      </span>
+      <Tooltip content="Leído por el cliente" side="top">
+        <span aria-label="Leído por el cliente" className="inline-flex">
+          <CheckCheck
+            aria-hidden="true"
+            className="w-3.5 h-3.5 text-wa-accent shrink-0"
+          />
+        </span>
+      </Tooltip>
     );
   }
   if (metaStatus === "delivered") {
     return (
-      <span aria-label="Entregado" title="Entregado">
-        <CheckCheck
-          aria-hidden="true"
-          className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0"
-        />
-      </span>
+      <Tooltip content="Entregado al cliente" side="top">
+        <span aria-label="Entregado al cliente" className="inline-flex">
+          <CheckCheck
+            aria-hidden="true"
+            className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0"
+          />
+        </span>
+      </Tooltip>
     );
   }
   if (!metaStatus && sentOutsideApp) {
     return <span className="sr-only">Enviado desde WhatsApp; su entrega se ve allí</span>;
   }
   return (
-    <span aria-label="Enviado" title="Enviado">
-      <Check
-        aria-hidden="true"
-        className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0"
-      />
-    </span>
+    <Tooltip content="Enviado a WhatsApp" side="top">
+      <span aria-label="Enviado a WhatsApp" className="inline-flex">
+        <Check
+          aria-hidden="true"
+          className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0"
+        />
+      </span>
+    </Tooltip>
   );
 }
 

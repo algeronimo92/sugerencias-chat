@@ -117,14 +117,15 @@ async def _save_media(data: dict, stored: dict) -> None:
 async def _message(instance: str, data: dict, event: InboxEvent) -> None:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
     remote = key.get("remoteJid")
-    if key.get("fromMe") or not isinstance(key.get("id"), str) or not _is_direct_chat(remote):
+    if not isinstance(key.get("id"), str) or not _is_direct_chat(remote):
         return
+    from_business = key.get("fromMe") is True
     identity = _identity(instance, data)
     resolved = await resolve_whatsapp_identity(identity)
     payload, message_type, subtype, content, quoted = _project(data)
     stored, _ = await receive_provider_message(
         chat_id=resolved.chat_id,
-        sender="cliente",
+        sender="vendedor" if from_business else "cliente",
         wa_message_id=key["id"],
         message_type=message_type,
         message_subtype=subtype,
@@ -133,6 +134,10 @@ async def _message(instance: str, data: dict, event: InboxEvent) -> None:
         sent_at=_timestamp(data.get("messageTimestamp")),
         quoted_wa_message_id=quoted,
         webhook_event_id=event.id,
+        # Los mensajes `fromMe` que no existen aún en la base se enviaron
+        # desde WhatsApp u otro dispositivo vinculado. Si los mandó el CRM,
+        # el wa_message_id único encuentra la fila del outbox y no la duplica.
+        human_outbound=True if from_business else None,
         channel_provider="evolution",
         channel_connection=instance,
     )

@@ -97,3 +97,27 @@ async def test_non_direct_chats_are_ignored(monkeypatch):
 
     await _status({"keyId": "EVO-1", "remoteJid": "120363272939641376@g.us"}, event)
     recorded.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_message_sent_from_linked_device_is_stored_as_business_echo(monkeypatch):
+    resolved = type("Resolved", (), {"chat_id": "lead-1"})()
+    monkeypatch.setattr(processor, "resolve_whatsapp_identity", AsyncMock(return_value=resolved))
+    received = AsyncMock(return_value=({"id": 10, "chat_id": "lead-1"}, True))
+    monkeypatch.setattr(processor, "receive_provider_message", received)
+    event = type("Event", (), {"id": "event-1", "payload": {}})()
+
+    await processor._message("evolution-org", {
+        "key": {
+            "id": "EVO-PHONE-1",
+            "fromMe": True,
+            "remoteJid": "51987654321@s.whatsapp.net",
+        },
+        "messageType": "conversation",
+        "message": {"conversation": "Enviado desde el celular"},
+    }, event)
+
+    assert received.await_args.kwargs["sender"] == "vendedor"
+    assert received.await_args.kwargs["human_outbound"] is True
+    assert received.await_args.kwargs["channel_provider"] == "evolution"
+    assert received.await_args.kwargs["content"] == "Enviado desde el celular"
