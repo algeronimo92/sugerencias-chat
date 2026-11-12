@@ -77,7 +77,7 @@ class WhatsAppNoticeMessenger:
     async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> None:
         try:
             message = await official_template_message(template, parameters)
-            await current_channel().sender.send(phone, message)
+            await current_channel().sender.send_to_number(phone, message)
         except (ChatMessagingError, *SEND_FAILURES) as exc:
             raise NoticeNotSent(str(exc)) from exc
 

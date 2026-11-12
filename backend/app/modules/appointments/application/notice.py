@@ -207,7 +207,10 @@ async def send_staff_notice(appointment_id: int) -> dict[int, str]:
         try:
             await ports.messenger.send_to_phone(phone=recipient["phone"], template=template, parameters=parameters)
             results[recipient["id"]] = "sent"
-        except NoticeNotSent:
+        except Exception:
+            # Cualquier error, no solo los esperados: en la cita 359 uno
+            # inesperado con el primer destinatario cortó el envío y el resto
+            # del equipo se quedó sin aviso.
             logger.warning(
                 "No se pudo avisar al usuario %s de la cita %s", recipient["id"], appointment_id, exc_info=True,
             )
