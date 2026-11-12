@@ -52,6 +52,20 @@ function parseBody(data: unknown): unknown {
   }
 }
 
+/** Igual que el adaptador real: un pedido que declara `timeout` y no recibe
+ * respuesta a tiempo falla sin respuesta, como si no hubiera llegado. */
+function withinTimeout<T>(config: InternalAxiosRequestConfig, respond: () => Promise<T>): Promise<T> {
+  const limit = config.timeout ?? 0
+  if (!limit) return respond()
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new AxiosError(`timeout of ${limit}ms exceeded`, AxiosError.ECONNABORTED, config)),
+      limit,
+    )
+    respond().then(resolve, reject).finally(() => clearTimeout(timer))
+  })
+}
+
 export class FakeApi {
   readonly requests: FakeRequest[] = []
   private routes: Route[] = []
@@ -77,7 +91,9 @@ export class FakeApi {
     this.requests.push(request)
 
     const route = this.routes.find(candidate => candidate.method === method && candidate.matches(request.path))
-    const reply = route ? await route.respond(request) : { status: 404, data: { detail: 'Not Found' } }
+    const reply = route
+      ? await withinTimeout(config, async () => route.respond(request))
+      : { status: 404, data: { detail: 'Not Found' } }
     const status = reply.status ?? 200
     const response: AxiosResponse = {
       data: reply.data ?? null,
