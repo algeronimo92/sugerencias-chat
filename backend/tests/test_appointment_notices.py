@@ -319,3 +319,51 @@ def test_a_template_variable_becomes_a_notice_variable():
     assert from_template_parameter("{{cita.fecha_larga}} a las {{cita.hora_12h}}") == "{fecha_larga} a las {hora_12h}"
     assert from_template_parameter("{{nombre}}") == "{lead.nombre}"
     assert from_template_parameter("Clínica") == "Clínica"
+
+
+async def test_the_team_notice_reaches_the_number_through_the_real_channel(monkeypatch):
+    # En producción el aviso al equipo pasaba el número como id de un lead y
+    # fallaba con 'invalid UUID' antes de llegar a Meta (cita 359). Este test
+    # recorre el canal de verdad, con Meta simulado en la última llamada.
+    from app.integrations.meta import client as meta_client
+
+    sent: list[dict] = []
+
+    async def fake_config():
+        return "token", "PHONE_ID", "WABA_ID"
+
+    async def fake_request(method, url, token, *, json_body=None, **_kwargs):
+        sent.append({"method": method, "url": url, "body": json_body})
+        return {"messages": [{"id": "wamid.equipo"}]}
+
+    async def no_lead_lookup(_chat_id):
+        raise AssertionError("un número del equipo no se busca como lead")
+
+    monkeypatch.setattr(meta_client, "_config", fake_config)
+    monkeypatch.setattr(meta_client, "_request", fake_request)
+    monkeypatch.setattr(meta_client, "_recipient", no_lead_lookup)
+
+    await integrations.WhatsAppNoticeMessenger().send_to_phone(
+        phone="51927345336", template=SALE, parameters=["AYME", "-", "-", "12/11/2026", "de 13:00 a 15:00", "Grecia"],
+    )
+
+    [request] = sent
+    assert request["method"] == "POST" and request["url"].endswith("PHONE_ID/messages")
+    assert request["body"]["to"] == "51927345336"
+    assert request["body"]["type"] == "template"
+    assert request["body"]["template"]["name"] == "nueva_venta"
+
+
+async def test_an_unexpected_error_with_one_member_does_not_stop_the_rest(stored, in_memory_appointments):
+    await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
+    world = in_memory_appointments
+    world.staff.team = [
+        {"id": 1, "name": "Admin", "phone": "51906471403"},
+        {"id": 2, "name": "Grecia", "phone": "51927345336"},
+    ]
+    world.messenger.error = RuntimeError("invalid UUID '51906471403'")
+    world.messenger.failing_phones = {"51906471403"}
+    appointment_id = await _appointment(world)
+
+    assert await notice.send_staff_notice(appointment_id) == {1: "failed", 2: "sent"}
+    assert [item["phone"] for item in world.messenger.to_phones] == ["51927345336"]
