@@ -33,6 +33,7 @@ from app.integrations.whatsapp.channel import (
     DeliveryUnconfirmedError,
     SendReceipt,
     describe_send_failure,
+    is_transient_send_failure,
 )
 from app.integrations.whatsapp.channels import current_channel
 from app.integrations.whatsapp.identity import WA_ID, add_identity_alias
@@ -55,7 +56,7 @@ JOB_TIMEOUT_SECONDS = 90
 
 
 def _rejection_outcome(exc: ChannelError) -> SendOutcome:
-    if exc.status_code is not None and (exc.status_code == 429 or exc.status_code >= 500):
+    if is_transient_send_failure(exc):
         return SendOutcome.RETRYABLE
     return SendOutcome.DEFINITIVE
 

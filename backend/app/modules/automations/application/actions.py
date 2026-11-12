@@ -11,6 +11,7 @@ import dataclasses
 import itertools
 from datetime import timedelta
 
+from app.integrations.whatsapp.channel import SEND_FAILURES, is_transient_send_failure
 from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus
 from app.modules.catalogs.ports.types import InteractiveType, TemplateType
 from app.modules.notifications.ports.types import NotificationType
@@ -224,7 +225,21 @@ async def _action_react_to_last_customer_message(action, chat, execution, rule, 
     # Igual que la reacción manual: primero WhatsApp y luego el badge local,
     # para no mostrar como enviada una reacción que el cliente nunca recibió.
     # El aviso a los paneles lo da conversations al registrar la reacción.
-    message = await deps.send_reaction(chat["chat_id"], target["wa_message_id"], emoji)
+    try:
+        message = await deps.send_reaction(chat["chat_id"], target["wa_message_id"], emoji)
+    except SEND_FAILURES as exc:
+        # send_reaction ya reintentó. Si Meta sigue caído, la reacción es
+        # cosmética: perderla no justifica cortar el resto del flujo ni
+        # avisar al equipo de un fallo que no puede arreglar. Un rechazo
+        # definitivo (4xx) sí falla: suele ser configuración.
+        if not is_transient_send_failure(exc):
+            raise
+        return {
+            "status": AutomationExecutionStatus.SKIPPED,
+            "wa_message_id": target["wa_message_id"],
+            "emoji": emoji,
+            "detail": f"WhatsApp no aceptó la reacción tras varios intentos: {exc}"[:500],
+        }
     return {
         "status": AutomationExecutionStatus.COMPLETED,
         "message_id": message["id"] if message else target["id"],
