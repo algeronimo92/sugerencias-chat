@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import case, func, insert, or_, select, update
@@ -11,9 +11,16 @@ from app.db.models.appointments import Appointment, AppointmentNotice
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
+from app.modules.conversations.ports.message_queries import phoneless_chats_mentioning
 from app.modules.conversations.public import NoteAuthor, create_note
-from app.modules.leads.public import Actor, fetch_lead_raw, register_appointment
+from app.modules.leads.public import Actor, LeadAlreadyExists, create_lead, fetch_lead_raw, register_appointment
 from app.modules.appointments.queries import _query, _serialize
+
+# Así se reconoce en el CRM el lead que nació de una cita cargada desde Citas.
+NEW_LEAD_ORIGIN = "Cita"
+# Cuánto atrás se busca el número dictado en un chat sin teléfono: la cita
+# se carga mientras se conversa, y una semana cubre al que agenda días después.
+CHAT_MENTION_WINDOW = timedelta(days=7)
 
 _INTEGRATION_FIELDS = (
     "status", "n8n_status", "message", "event_link",
@@ -65,13 +72,27 @@ class SqlAppointmentLeads:
     async def by_whatsapp_identity(self, e164: str) -> str | None:
         return await lead_id_for_identifier(e164)
 
-    async def by_phone_tail(self, tail: str) -> str | None:
+    async def by_phone_tail(self, tail: str) -> list[str]:
         lead_tail = func.right(func.regexp_replace(Lead.telefono, r"\D", "", "g"), len(tail))
         async with session_scope() as session:
-            matches = (await session.execute(
+            return list((await session.execute(
                 select(Lead.id).where(Lead.telefono.is_not(None), lead_tail == tail).limit(2)
-            )).scalars().all()
-        return matches[0] if len(matches) == 1 else None
+            )).scalars().all())
+
+    async def by_phone_in_chat(self, tail: str) -> list[str]:
+        since = datetime.now(timezone.utc) - CHAT_MENTION_WINDOW
+        return await phoneless_chats_mentioning(tail, since=since)
+
+    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+        try:
+            return await create_lead(phone, name, actor=Actor.user(actor_user_id), origen=NEW_LEAD_ORIGIN)
+        except LeadAlreadyExists:
+            # Un mensaje entrante (u otra cita) dio de alta el número entre la
+            # búsqueda y el alta: la cita va a ese lead.
+            existing = await lead_id_for_identifier(phone)
+            if existing is None:
+                raise
+            return existing
 
     async def snapshot(self, lead_id: str) -> dict | None:
         return await fetch_lead_raw(lead_id)
