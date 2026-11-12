@@ -256,10 +256,7 @@ export function parseContent(input: ParseInput): ParsedContent {
   } else if (kind === "system") {
     text = rawText || asString(asObject(meta.system).body);
   } else if (kind === "unsupported") {
-    // La lista de chats y las citas muestran este texto: "No soportado"
-    // a secas hace pensar en un envío fallido.
-    const unsupported = messageUnsupported(meta);
-    if (unsupported.fromPhone) text = rawText || unsupportedFromPhoneText(unsupported.typeLabel);
+    text = rawText || unsupportedText(messageUnsupported(meta));
   }
 
   return {
@@ -491,28 +488,66 @@ export function messageSystemNotice(meta: JsonObject): { body: string; type: str
   return { body: asString(system.body), type: asString(system.type) };
 }
 
-// Nombre en castellano de los tipos que Meta suele declarar en `unsupported`.
+// Valores de `unsupported.type` que lista la referencia del webhook de Meta
+// (más `poll` y `event`, que llegaron antes de que Meta los documentara).
+// Se leen como "Mensaje <rótulo>". Espejo de backend/app/integrations/meta/text.py.
 const UNSUPPORTED_TYPE_LABELS: Record<string, string> = {
   interactive: "interactivo",
   poll: "de encuesta",
+  poll_creation: "de encuesta",
+  poll_update: "de voto en encuesta",
   event: "de evento",
+  edit: "de edición",
+  gif: "con GIF",
+  group_invite: "de invitación a grupo",
+  pin: "fijado",
+  keep_in_chat: "guardado en el chat",
+  reaction: "de reacción",
+  image: "con imagen",
+  location: "de ubicación",
+  button: "de botón",
+  list: "de lista",
+  order: "de pedido",
+  product: "de producto",
+  link_preview: "con vista previa de enlace",
+  media_placeholder: "con archivo",
+  hsm: "de plantilla",
 };
 
-/** Mensaje que Meta informa sin contenido (`unsupported`). `fromPhone` es
- * el eco de algo que el negocio mandó desde la app de WhatsApp Business
- * (coexistencia): solo esos traen `to`. Meta avisa que salió y de qué tipo
- * era, pero no comparte su contenido. */
-export function messageUnsupported(meta: JsonObject): { type: string; typeLabel: string; fromPhone: boolean } {
+// 131060: en coexistencia, Meta no entrega por la API el primer mensaje de un
+// cliente nuevo (típico de un anuncio Click-to-WhatsApp) ni lo que pasa por un
+// dispositivo vinculado no soportado. Solo está en la app del celular.
+const UNAVAILABLE_ERROR_CODE = "131060";
+
+export interface UnsupportedMessage {
+  type: string;
+  typeLabel: string;
+  /** Eco de algo que el negocio mandó desde la app (coexistencia): solo esos traen `to`. */
+  fromPhone: boolean;
+  /** Meta retuvo el mensaje del cliente (131060): hay que verlo en el celular. */
+  unavailable: boolean;
+}
+
+/** Mensaje que Meta informa sin contenido (`unsupported`): avisa que existió
+ * y, a veces, de qué tipo era, pero no comparte su contenido. */
+export function messageUnsupported(meta: JsonObject): UnsupportedMessage {
   const type = asString(asObject(meta.unsupported).type);
+  const fromPhone = Boolean(asString(meta.to));
   return {
     type,
     typeLabel: UNSUPPORTED_TYPE_LABELS[type] ?? type,
-    fromPhone: Boolean(asString(meta.to)),
+    fromPhone,
+    unavailable: !fromPhone && metaErrors(meta).some((error) => error.code === UNAVAILABLE_ERROR_CODE),
   };
 }
 
-function unsupportedFromPhoneText(typeLabel: string): string {
-  return typeLabel ? `Mensaje ${typeLabel} enviado desde el celular` : "Mensaje enviado desde el celular";
+// Texto de la lista de chats y de las citas: "No soportado" a secas hace
+// pensar en un envío fallido o en un cliente que no escribió nada.
+function unsupportedText(unsupported: UnsupportedMessage): string {
+  const { typeLabel, fromPhone, unavailable } = unsupported;
+  if (fromPhone) return typeLabel ? `Mensaje ${typeLabel} enviado desde el celular` : "Mensaje enviado desde el celular";
+  if (unavailable) return "Mensaje no disponible en el CRM: revísalo en el celular";
+  return typeLabel ? `Mensaje ${typeLabel} que WhatsApp no comparte con el CRM` : "";
 }
 
 /** Errores que Meta informó para el mensaje o para su entrega. */

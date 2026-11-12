@@ -474,18 +474,25 @@ function SystemBody({ parsed }: MessageBodyContext) {
  * errores y el texto disponibles, nunca se descarta el mensaje. */
 function UnrenderedBody({ parsed }: MessageBodyContext) {
   const unsupported = parsed.kind === 'unsupported' ? messageUnsupported(parsed.meta) : null
-  if (unsupported?.fromPhone) {
-    // No es un fallo: salió bien desde el celular y el cliente lo recibió.
-    // El código de error de Meta (131051) solo confundiría.
+  // No son fallos: el mensaje existe y está en la app del celular, pero Meta
+  // no comparte su contenido. El código y el título en inglés de Meta
+  // (131051, 131060) solo confundirían; quedan en el tooltip para soporte.
+  const hint = unsupported?.fromPhone
+    ? 'WhatsApp no comparte su contenido con el CRM.'
+    : unsupported?.unavailable
+      ? 'WhatsApp no lo entrega al CRM; suele pasar con el primer mensaje de un cliente nuevo. Míralo en la app de WhatsApp Business del celular.'
+      : unsupported?.typeLabel
+        ? 'Míralo en la app de WhatsApp Business del celular.'
+        : null
+  if (hint) {
+    const codes = metaErrors(parsed.meta).map(error => error.code).filter(Boolean).join(', ')
     return (
-      <div className="space-y-0.5">
+      <div className="space-y-0.5" title={codes ? `Código de WhatsApp: ${codes}` : undefined}>
         <p className="flex items-center gap-1.5 text-sm italic text-wa-muted dark:text-wa-text-dark/70">
           <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {parsed.text}
         </p>
-        <p className="text-xs text-wa-muted dark:text-wa-text-dark/70">
-          WhatsApp no comparte su contenido con el CRM.
-        </p>
+        <p className="text-xs text-wa-muted dark:text-wa-text-dark/70">{hint}</p>
       </div>
     )
   }
