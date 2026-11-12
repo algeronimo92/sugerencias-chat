@@ -110,15 +110,17 @@ class FakeMessenger:
     error: Exception | None = None
     failing_phones: set[str] = field(default_factory=set)
 
-    async def send_to_lead(self, **values) -> None:
+    async def send_to_lead(self, **values) -> int | None:
         if self.error is not None:
             raise self.error
         self.sent.append(values)
+        return 9000 + len(self.sent)
 
-    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> None:
+    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> str | None:
         if phone in self.failing_phones and self.error is not None:
             raise self.error
         self.to_phones.append({"phone": phone, "template_id": template["id"], "parameters": parameters})
+        return f"wamid.{phone}"
 
 
 @dataclass
@@ -132,6 +134,19 @@ class FakeStaff:
 
 
 @dataclass
+class FakeNotices:
+    rows: list[dict] = field(default_factory=list)
+    deliveries: list[dict] = field(default_factory=list)
+
+    async def record(self, appointment_id: int, notices: list[dict]) -> None:
+        self.rows.extend({"appointment_id": appointment_id, **notice} for notice in notices)
+
+    async def record_delivery(self, **values) -> int:
+        self.deliveries.append(values)
+        return 1
+
+
+@dataclass
 class AppointmentWorld:
     repository: FakeAppointments
     calendar: FakeCalendar
@@ -140,6 +155,7 @@ class AppointmentWorld:
     published: list
     messenger: FakeMessenger = field(default_factory=FakeMessenger)
     staff: FakeStaff = field(default_factory=FakeStaff)
+    notices: FakeNotices = field(default_factory=FakeNotices)
 
     def of(self, event_type):
         return [event for event in self.published if isinstance(event, event_type)]
@@ -166,7 +182,7 @@ def in_memory_appointments(monkeypatch) -> AppointmentWorld:
     )
     monkeypatch.setattr(ports, "_ports", AppointmentPorts(
         repository=world.repository, calendar=world.calendar, sync=world.sync, leads=world.leads,
-        messenger=world.messenger, staff=world.staff,
+        messenger=world.messenger, staff=world.staff, notices=world.notices,
     ))
     monkeypatch.setattr(uow, "get_sessionmaker", lambda: _FakeSession)
 

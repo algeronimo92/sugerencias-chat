@@ -75,6 +75,26 @@ class AppointmentItem(BaseModel):
     calendar_sync_status: Literal["not_configured", "pending", "synced", "error", "skipped"] = "not_configured"
     calendar_sync_error: str | None = None
     created_at: str
+    notices: list["AppointmentNoticeItem"] = Field(default_factory=list)
+
+
+class AppointmentNoticeItem(BaseModel):
+    """Un aviso de WhatsApp de la cita. ``status`` es lo que pasó al
+    enviarlo (``sent``, ``failed``, ``skipped``, con ``reason`` si no salió);
+    ``delivery_status`` lo que informó Meta después."""
+
+    id: int
+    audience: Literal["client", "staff"]
+    recipient_name: str
+    status: Literal["sent", "failed", "skipped"]
+    reason: str | None = None
+    delivery_status: Literal["sent", "delivered", "read", "failed"] | None = None
+    delivered_at: str | None = None
+    read_at: str | None = None
+    created_at: str
+
+
+AppointmentItem.model_rebuild()
 
 class AppointmentCreated(BaseModel):
     """Resultado de registrar una cita. Lleva además lo que devolvió el

@@ -22,6 +22,7 @@ from typing import Any
 from app.core.config import settings
 from app.integrations.meta import client as meta_service
 from app.modules.leads.ports.ad_referral_service import (rehost_referral_image)
+from app.modules.appointments.ports.notice_delivery import record_notice_delivery
 from app.modules.conversations.ports.inbound import (
     attach_media,
     receive_provider_message,
@@ -269,9 +270,18 @@ async def _status(status: dict, webhook_event_id: str) -> None:
     for error in status.get("errors") or []:
         if isinstance(error, dict):
             metrics.outbound_meta_errors.labels(code=str(error.get("code"))).inc()
-    await record_provider_status(
-        status, occurred_at=_timestamp(status.get("timestamp")), webhook_event_id=webhook_event_id,
-    )
+    occurred_at = _timestamp(status.get("timestamp"))
+    update = await record_provider_status(status, occurred_at=occurred_at, webhook_event_id=webhook_event_id)
+    try:
+        # Un aviso de cita al equipo no está en ningún chat: solo así se sabe
+        # si llegó. El del cliente se reconoce por su mensaje del CRM.
+        await record_notice_delivery(
+            provider_message_id=status.get("id") if isinstance(status.get("id"), str) else None,
+            wsp_message_id=update["id"] if update else None,
+            status=str(value), at=occurred_at,
+        )
+    except Exception:
+        logger.exception("No se pudo registrar el estado %s en los avisos de cita", value)
 
 
 async def _messages_change(change: dict, webhook_event_id: str) -> None:

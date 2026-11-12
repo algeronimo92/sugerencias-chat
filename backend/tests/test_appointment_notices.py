@@ -174,11 +174,11 @@ async def test_the_team_gets_the_sale_on_their_own_number(stored, in_memory_appo
     await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
     world = in_memory_appointments
     world.staff.team = [
-        {"id": 1, "name": "Alan", "phone": "51906471403"},
-        {"id": 5, "name": "Grecia", "phone": "51927345336"},
+        {"id": 1, "name": "Alan", "phone": "51900000001"},
+        {"id": 5, "name": "Grecia", "phone": "51900000002"},
     ]
     world.messenger.error = NoticeNotSent("Meta rechazó el número")
-    world.messenger.failing_phones = {"51906471403"}
+    world.messenger.failing_phones = {"51900000001"}
     appointment_id = await _appointment(world)
 
     # Un número que falla no deja sin aviso a los demás.
@@ -186,36 +186,38 @@ async def test_the_team_gets_the_sale_on_their_own_number(stored, in_memory_appo
 
     assert world.staff.asked == ["Grecia"]
     assert world.messenger.to_phones == [{
-        "phone": "51927345336", "template_id": 12,
+        "phone": "51900000002", "template_id": 12,
         "parameters": ["AYME", "-", "-", "12/11/2026", "de 13:00 a 15:00", "Grecia"],
     }]
 
 
 async def test_the_team_gets_nothing_for_a_test_appointment(stored, in_memory_appointments):
     await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
-    in_memory_appointments.staff.team = [{"id": 1, "name": "Alan", "phone": "51906471403"}]
+    in_memory_appointments.staff.team = [{"id": 1, "name": "Alan", "phone": "51900000001"}]
     appointment_id = await _appointment(in_memory_appointments, test_mode=True)
 
     assert await notice.send_staff_notice(appointment_id) == {}
     assert in_memory_appointments.messenger.to_phones == []
 
 
-async def test_recipients_are_the_seller_and_the_admins_with_a_phone(monkeypatch):
+async def test_recipients_are_the_seller_and_the_admins(monkeypatch):
     monkeypatch.setattr(integrations, "list_active_sellers", AsyncMock(return_value=[
         {"id": 1, "name": "Alan", "role": "admin"},
         {"id": 2, "name": "Rosa", "role": "admin"},
         {"id": 5, "name": "Grecia", "role": "vendedor"},
         {"id": 6, "name": "Antonella", "role": "vendedor"},
     ]))
-    phones = AsyncMock(return_value={1: "51906471403", 5: "51927345336", 6: "51996961136"})
+    phones = AsyncMock(return_value={1: "51900000001", 5: "51900000002", 6: "51900000003"})
     monkeypatch.setattr(integrations, "staff_phones", phones)
 
     recipients = await TeamDirectory().recipients(" grecia ")
 
-    # Rosa no tiene teléfono; Antonella no es la responsable.
+    # Rosa va sin teléfono: su aviso queda registrado como no enviado.
+    # Antonella no es la responsable.
     assert recipients == [
-        {"id": 1, "name": "Alan", "phone": "51906471403"},
-        {"id": 5, "name": "Grecia", "phone": "51927345336"},
+        {"id": 1, "name": "Alan", "phone": "51900000001"},
+        {"id": 2, "name": "Rosa", "phone": None},
+        {"id": 5, "name": "Grecia", "phone": "51900000002"},
     ]
     phones.assert_awaited_once_with([1, 2, 5])
 
@@ -344,12 +346,12 @@ async def test_the_team_notice_reaches_the_number_through_the_real_channel(monke
     monkeypatch.setattr(meta_client, "_recipient", no_lead_lookup)
 
     await integrations.WhatsAppNoticeMessenger().send_to_phone(
-        phone="51927345336", template=SALE, parameters=["AYME", "-", "-", "12/11/2026", "de 13:00 a 15:00", "Grecia"],
+        phone="51900000002", template=SALE, parameters=["AYME", "-", "-", "12/11/2026", "de 13:00 a 15:00", "Grecia"],
     )
 
     [request] = sent
     assert request["method"] == "POST" and request["url"].endswith("PHONE_ID/messages")
-    assert request["body"]["to"] == "51927345336"
+    assert request["body"]["to"] == "51900000002"
     assert request["body"]["type"] == "template"
     assert request["body"]["template"]["name"] == "nueva_venta"
 
@@ -358,12 +360,67 @@ async def test_an_unexpected_error_with_one_member_does_not_stop_the_rest(stored
     await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
     world = in_memory_appointments
     world.staff.team = [
-        {"id": 1, "name": "Admin", "phone": "51906471403"},
-        {"id": 2, "name": "Grecia", "phone": "51927345336"},
+        {"id": 1, "name": "Admin", "phone": "51900000001"},
+        {"id": 2, "name": "Grecia", "phone": "51900000002"},
     ]
-    world.messenger.error = RuntimeError("invalid UUID '51906471403'")
-    world.messenger.failing_phones = {"51906471403"}
+    world.messenger.error = RuntimeError("invalid UUID '51900000001'")
+    world.messenger.failing_phones = {"51900000001"}
     appointment_id = await _appointment(world)
 
     assert await notice.send_staff_notice(appointment_id) == {1: "failed", 2: "sent"}
-    assert [item["phone"] for item in world.messenger.to_phones] == ["51927345336"]
+    assert [item["phone"] for item in world.messenger.to_phones] == ["51900000002"]
+
+
+
+async def test_every_notice_is_recorded_on_the_appointment(stored, in_memory_appointments):
+    await notice.save_settings(Audience.CLIENT, enabled=True, template_id=7, parameters=CLIENT_FIELDS, user_id=1)
+    await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
+    world = in_memory_appointments
+    world.staff.team = [
+        {"id": 1, "name": "Admin", "phone": "51900000001"},
+        {"id": 2, "name": "Rosa", "phone": None},
+        {"id": 5, "name": "Grecia", "phone": "51900000002"},
+    ]
+    world.messenger.error = RuntimeError("Meta rechazó el número")
+    world.messenger.failing_phones = {"51900000001"}
+    appointment_id = await _appointment(world)
+
+    assert await notice.send_client_notice(appointment_id) == "failed"
+    world.messenger.error = None
+    assert await notice.send_client_notice(appointment_id) == "sent"
+    world.messenger.error = RuntimeError("Meta rechazó el número")
+    assert await notice.send_staff_notice(appointment_id) == {1: "failed", 2: "skipped", 5: "sent"}
+
+    rows = [(row["audience"], row["recipient_name"], row["status"], row.get("reason")) for row in world.notices.rows]
+    assert rows == [
+        ("client", "AYME", "failed", "Meta rechazó el número"),
+        ("client", "AYME", "sent", None),
+        ("staff", "Admin", "failed", "Meta rechazó el número"),
+        ("staff", "Rosa", "skipped", "Sin WhatsApp cargado en Usuarios"),
+        ("staff", "Grecia", "sent", None),
+    ]
+    assert world.notices.rows[1]["wsp_message_id"] == 9001
+    assert world.notices.rows[4]["provider_message_id"] == "wamid.51900000002"
+
+
+async def test_a_client_notice_without_lead_is_recorded_as_not_sent(stored, in_memory_appointments):
+    await notice.save_settings(Audience.CLIENT, enabled=True, template_id=7, parameters=CLIENT_FIELDS, user_id=1)
+    appointment_id = await _appointment(in_memory_appointments, lead_id=None)
+
+    assert await notice.send_client_notice(appointment_id) == "no_lead"
+    [row] = in_memory_appointments.notices.rows
+    assert (row["status"], row["reason"]) == ("skipped", "La cita no está vinculada a un lead")
+
+
+async def test_meta_statuses_reach_the_notice(in_memory_appointments):
+    assert await notice.record_notice_delivery(
+        provider_message_id="wamid.x", wsp_message_id=None, status="read", at=None,
+    ) == 1
+    # Estados que no son de entrega, o sin id, no se buscan.
+    assert await notice.record_notice_delivery(
+        provider_message_id="wamid.x", wsp_message_id=None, status="played", at=None,
+    ) == 0
+    assert await notice.record_notice_delivery(provider_message_id=None, wsp_message_id=None, status="read", at=None) == 0
+    assert in_memory_appointments.notices.deliveries == [
+        {"provider_message_id": "wamid.x", "wsp_message_id": None, "status": "read", "at": None},
+    ]

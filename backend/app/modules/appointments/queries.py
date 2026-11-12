@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
-from app.db.models.appointments import Appointment
+from app.db.models.appointments import Appointment, AppointmentNotice
 from app.db.models.auth import User
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
@@ -82,11 +82,45 @@ def _query():
     )
 
 
+def _notice(row: AppointmentNotice) -> dict:
+    return {
+        "id": row.id,
+        "audience": row.audience,
+        "recipient_name": row.recipient_name,
+        "status": row.status,
+        "reason": row.reason,
+        "delivery_status": row.delivery_status,
+        "delivered_at": iso_utc(row.delivered_at) if row.delivered_at else None,
+        "read_at": iso_utc(row.read_at) if row.read_at else None,
+        "created_at": iso_utc(row.created_at),
+    }
+
+
+async def notices_by_appointment(appointment_ids: list[int]) -> dict[int, list[dict]]:
+    """Los avisos de WhatsApp de cada cita: primero el del cliente, después
+    el equipo en el orden en que se enviaron."""
+    if not appointment_ids:
+        return {}
+    stmt = (
+        select(AppointmentNotice)
+        .where(AppointmentNotice.appointment_id.in_(appointment_ids))
+        .order_by(AppointmentNotice.appointment_id, AppointmentNotice.audience, AppointmentNotice.id)
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).scalars().all()
+    grouped: dict[int, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row.appointment_id, []).append(_notice(row))
+    return grouped
+
+
 async def list_appointments(limit: int = 300) -> list[dict]:
     stmt = _query().order_by(Appointment.created_at.desc(), Appointment.id.desc()).limit(limit)
     async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
-    return [_serialize(row) for row in rows]
+    items = [_serialize(row) for row in rows]
+    notices = await notices_by_appointment([item["id"] for item in items])
+    return [{**item, "notices": notices.get(item["id"], [])} for item in items]
 
 
 async def get_appointment(appointment_id: int) -> dict | None:

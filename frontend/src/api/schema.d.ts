@@ -4121,6 +4121,8 @@ export interface components {
             calendar_sync_error?: string | null;
             /** Created At */
             created_at: string;
+            /** Notices */
+            notices?: components["schemas"]["AppointmentNoticeItem"][];
         };
         /** AppointmentLeadUpdates */
         AppointmentLeadUpdates: {
@@ -4132,6 +4134,38 @@ export interface components {
             custom_fields?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * AppointmentNoticeItem
+         * @description Un aviso de WhatsApp de la cita. ``status`` es lo que pasó al
+         *     enviarlo (``sent``, ``failed``, ``skipped``, con ``reason`` si no salió);
+         *     ``delivery_status`` lo que informó Meta después.
+         */
+        AppointmentNoticeItem: {
+            /** Id */
+            id: number;
+            /**
+             * Audience
+             * @enum {string}
+             */
+            audience: "client" | "staff";
+            /** Recipient Name */
+            recipient_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sent" | "failed" | "skipped";
+            /** Reason */
+            reason?: string | null;
+            /** Delivery Status */
+            delivery_status?: ("sent" | "delivered" | "read" | "failed") | null;
+            /** Delivered At */
+            delivered_at?: string | null;
+            /** Read At */
+            read_at?: string | null;
+            /** Created At */
+            created_at: string;
         };
         /**
          * Audience

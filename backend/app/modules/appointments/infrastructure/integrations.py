@@ -68,18 +68,20 @@ class WhatsAppNoticeMessenger:
 
     async def send_to_lead(
         self, *, chat_id: str, template_id: int, parameters: list[str], user_id: int, dedupe_key: str,
-    ) -> None:
+    ) -> int | None:
         try:
-            await send_template(chat_id, template_id, None, parameters, user_id, dedupe_key=dedupe_key)
+            sent = await send_template(chat_id, template_id, None, parameters, user_id, dedupe_key=dedupe_key)
         except ChatMessagingError as exc:
             raise NoticeNotSent(str(exc)) from exc
+        return sent[0]["id"] if sent else None
 
-    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> None:
+    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> str | None:
         try:
             message = await official_template_message(template, parameters)
-            await current_channel().sender.send_to_number(phone, message)
+            receipt = await current_channel().sender.send_to_number(phone, message)
         except (ChatMessagingError, *SEND_FAILURES) as exc:
             raise NoticeNotSent(str(exc)) from exc
+        return receipt.provider_message_id
 
 
 class TeamDirectory:
@@ -95,4 +97,4 @@ class TeamDirectory:
         ]
         phones = await staff_phones(ids)
         names = {member["id"]: member["name"] for member in team}
-        return [{"id": user_id, "name": names[user_id], "phone": phones[user_id]} for user_id in ids if user_id in phones]
+        return [{"id": user_id, "name": names[user_id], "phone": phones.get(user_id)} for user_id in ids]
