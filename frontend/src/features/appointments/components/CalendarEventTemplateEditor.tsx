@@ -22,7 +22,7 @@ import {
 } from '../domain/eventTemplate'
 import { useCalendarEventTemplate, useSaveCalendarEventTemplate } from '../queries'
 import type { CalendarEventTemplate } from '../types'
-import { EventTemplateZone, type MoveDirection } from './EventTemplateZone'
+import { PieceLine, type MoveDirection } from '../../../shared/ui/PieceLine'
 
 const sectionLabel = 'text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark'
 // Neutro a propósito: el acento queda solo para foco y destino del arrastre.
@@ -191,13 +191,13 @@ function TemplateEditor({ template }: { template: CalendarEventTemplate }) {
 
       <div className="space-y-1.5">
         <p className={sectionLabel}>Título del evento</p>
-        <EventTemplateZone {...zoneProps('title', draft.title)} label="Título del evento" placeholder="Vacío: se usa el servicio" />
+        <PieceLine {...zoneProps('title', draft.title)} label="Título del evento" placeholder="Vacío: se usa el servicio" />
       </div>
 
       <div className="space-y-1.5">
         <p className={sectionLabel}>Descripción</p>
         {draft.lines.map((pieces, line) => (
-          <EventTemplateZone
+          <PieceLine
             key={line}
             {...zoneProps(line, pieces)}
             label={`Línea ${line + 1} de la descripción`}

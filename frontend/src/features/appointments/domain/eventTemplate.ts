@@ -5,58 +5,24 @@
  * dos formas y arma la vista previa con datos de ejemplo.
  */
 
+import {
+  PIECE_PLACEHOLDER as PLACEHOLDER,
+  insertPiece as insertAnywhere,
+  movePiece as moveAnywhere,
+  parseLine,
+  serializeLine,
+  type Piece,
+  type PieceDraft,
+  type PiecePosition,
+  type ZoneId,
+} from '../../../shared/pieces'
+
+export { fieldPiece, parseLine, removePiece, serializeLine, textPiece, updatePiece } from '../../../shared/pieces'
+export type { Piece, PiecePosition, ZoneId } from '../../../shared/pieces'
+
 export const ALL_CUSTOM_FIELDS = 'campos_personalizados'
 
-export type Piece =
-  | { id: string; kind: 'field'; key: string }
-  | { id: string; kind: 'text'; text: string }
-
-/** `title` es la única línea del título; un número es una línea de la descripción. */
-export type ZoneId = 'title' | number
-
-export interface TemplateDraft {
-  title: Piece[]
-  lines: Piece[][]
-}
-
-export interface PiecePosition {
-  zone: ZoneId
-  index: number
-}
-
-const PLACEHOLDER = /\{([a-z0-9_.]+)\}/g
-
-let nextId = 0
-const newId = () => `p${++nextId}`
-
-export function fieldPiece(key: string): Piece {
-  return { id: newId(), kind: 'field', key }
-}
-
-export function textPiece(text = ''): Piece {
-  return { id: newId(), kind: 'text', text }
-}
-
-/** Un marcador desconocido queda como texto: así se ve y se puede borrar. */
-export function parseLine(line: string, knownKeys: Set<string>): Piece[] {
-  const pieces: Piece[] = []
-  let last = 0
-  const pushText = (raw: string) => {
-    const text = raw.trim()
-    if (!text) return
-    const previous = pieces[pieces.length - 1]
-    if (previous?.kind === 'text') previous.text = `${previous.text} ${text}`
-    else pieces.push(textPiece(text))
-  }
-  for (const match of line.matchAll(PLACEHOLDER)) {
-    pushText(line.slice(last, match.index))
-    if (knownKeys.has(match[1])) pieces.push(fieldPiece(match[1]))
-    else pushText(match[0])
-    last = match.index + match[0].length
-  }
-  pushText(line.slice(last))
-  return pieces
-}
+export type TemplateDraft = PieceDraft
 
 export function parseTemplate(title: string, description: string, knownKeys: Set<string>): TemplateDraft {
   return {
@@ -65,39 +31,10 @@ export function parseTemplate(title: string, description: string, knownKeys: Set
   }
 }
 
-// Las piezas se unen con un espacio, salvo junto a la puntuación que va
-// pegada: "({custom.sede})" o "{nombre_completo}, {telefono}".
-const GLUE_AFTER = /[([¿¡#]$/
-const GLUE_BEFORE = /^[)\],.:;!?%]/
-
-function pieceText(piece: Piece): string {
-  return piece.kind === 'field' ? `{${piece.key}}` : piece.text.trim()
-}
-
-export function serializeLine(pieces: Piece[]): string {
-  let line = ''
-  for (const piece of pieces) {
-    const text = pieceText(piece)
-    if (!text) continue
-    const glued = !line || GLUE_AFTER.test(line) || GLUE_BEFORE.test(text)
-    line += glued ? text : ` ${text}`
-  }
-  return line
-}
-
 export function serializeDraft(draft: TemplateDraft): { title: string; description: string } {
   const lines = draft.lines.map(serializeLine)
   while (lines.length && !lines[lines.length - 1]) lines.pop()
   return { title: serializeLine(draft.title), description: lines.join('\n') }
-}
-
-function zonePieces(draft: TemplateDraft, zone: ZoneId): Piece[] {
-  return zone === 'title' ? draft.title : draft.lines[zone] ?? []
-}
-
-function withZone(draft: TemplateDraft, zone: ZoneId, pieces: Piece[]): TemplateDraft {
-  if (zone === 'title') return { ...draft, title: pieces }
-  return { ...draft, lines: draft.lines.map((line, index) => (index === zone ? pieces : line)) }
 }
 
 /** La lista de todos los campos personalizados ocupa líneas propias: en el
@@ -107,31 +44,13 @@ export function canDrop(piece: Piece, zone: ZoneId): boolean {
 }
 
 export function insertPiece(draft: TemplateDraft, piece: Piece, to: PiecePosition): TemplateDraft {
-  if (!canDrop(piece, to.zone)) return draft
-  const pieces = [...zonePieces(draft, to.zone)]
-  pieces.splice(Math.max(0, Math.min(to.index, pieces.length)), 0, piece)
-  return withZone(draft, to.zone, pieces)
+  return canDrop(piece, to.zone) ? insertAnywhere(draft, piece, to) : draft
 }
 
-export function removePiece(draft: TemplateDraft, at: PiecePosition): TemplateDraft {
-  return withZone(draft, at.zone, zonePieces(draft, at.zone).filter((_, index) => index !== at.index))
-}
-
-export function updatePiece(draft: TemplateDraft, at: PiecePosition, text: string): TemplateDraft {
-  return withZone(draft, at.zone, zonePieces(draft, at.zone).map((piece, index) => (
-    index === at.index && piece.kind === 'text' ? { ...piece, text } : piece
-  )))
-}
-
-/** Mueve una pieza a otra posición. `to.index` cuenta las piezas de destino
- *  tal como están antes de sacar la que se mueve. */
 export function movePiece(draft: TemplateDraft, from: PiecePosition, to: PiecePosition): TemplateDraft {
-  const piece = zonePieces(draft, from.zone)[from.index]
-  if (!piece || !canDrop(piece, to.zone)) return draft
-  const sameZone = from.zone === to.zone
-  const index = sameZone && to.index > from.index ? to.index - 1 : to.index
-  if (sameZone && index === from.index) return draft
-  return insertPiece(removePiece(draft, from), piece, { zone: to.zone, index })
+  const zone = from.zone === 'title' ? draft.title : draft.lines[from.zone] ?? []
+  const piece = zone[from.index]
+  return piece && canDrop(piece, to.zone) ? moveAnywhere(draft, from, to) : draft
 }
 
 export function addLine(draft: TemplateDraft, after?: number): TemplateDraft {

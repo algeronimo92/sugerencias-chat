@@ -18,7 +18,12 @@ from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
 from app.modules.ai.infrastructure.native_provider import NativeAiProvider
 from app.modules.ai.infrastructure.routing_provider import RoutingAiProvider
 from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
-from app.modules.appointments.infrastructure.integrations import GoogleCalendar, N8nAppointmentSync
+from app.modules.appointments.infrastructure.integrations import (
+    GoogleCalendar,
+    N8nAppointmentSync,
+    TeamDirectory,
+    WhatsAppNoticeMessenger,
+)
 from app.modules.appointments.infrastructure.repository import SqlAppointmentRepository, SqlAppointmentLeads
 from app.modules.automations.application.ports import AutomationPorts, provide_automation_ports
 from app.modules.automations.infrastructure.sql_executions import SqlExecutionStore
@@ -48,6 +53,7 @@ SUBSCRIBER_MODULES: tuple[str, ...] = (
     "app.modules.automations.subscribers",
     "app.modules.ai.subscribers",
     "app.modules.tasks.subscribers",
+    "app.modules.appointments.subscribers",
     "app.modules.notifications.subscribers",
 )
 
@@ -78,6 +84,8 @@ def register_adapters() -> None:
         calendar=GoogleCalendar(),
         sync=N8nAppointmentSync(),
         leads=SqlAppointmentLeads(),
+        messenger=WhatsAppNoticeMessenger(),
+        staff=TeamDirectory(),
     ))
     provide_automation_ports(AutomationPorts(
         executions=SqlExecutionStore(),

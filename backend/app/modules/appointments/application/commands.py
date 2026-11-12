@@ -112,7 +112,8 @@ async def create_appointment(
         if not request.test_mode:
             title, text = announcement(appointment)
             collect(AppointmentCreated(
-                appointment_id=appointment["id"], created_by_user_id=created_by_user_id, title=title, text=text,
+                appointment_id=appointment["id"], created_by_user_id=created_by_user_id,
+                seller_name=appointment["vendedor"], title=title, text=text,
             ))
     return {
         **result.payload, "success": True, "message": result.message,

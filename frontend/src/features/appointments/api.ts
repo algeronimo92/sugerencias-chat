@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput } from './types';
+import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeSettings, NoticeUpdate } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
   return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
@@ -53,4 +53,16 @@ export async function saveCalendarEventTemplate(values: { title: string; descrip
  *  formulario la usa para mostrar el símbolo junto al adelanto. */
 export async function fetchBusinessCurrency(): Promise<string | null> {
   return (await client.get<ApiResponse<'/api/ai/profile', 'get'>>('/api/ai/profile')).data.currency ?? null
+}
+
+export async function fetchNotice(audience: NoticeAudience): Promise<NoticeSettings> {
+  return (
+    await client.get<ApiResponse<'/api/appointments/notices/{audience}', 'get'>>(`/api/appointments/notices/${audience}`)
+  ).data
+}
+
+export async function saveNotice(audience: NoticeAudience, values: NoticeUpdate): Promise<NoticeSettings> {
+  return (
+    await client.put<ApiResponse<'/api/appointments/notices/{audience}', 'put'>>(`/api/appointments/notices/${audience}`, values)
+  ).data
 }

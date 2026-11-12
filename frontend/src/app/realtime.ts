@@ -6,6 +6,7 @@
 
 import { createRealtimeBus, type RealtimeBus } from '../realtime/bus'
 import { createAiRealtime } from '../features/ai/public/realtime'
+import { createAppointmentsRealtime } from '../features/appointments/public/realtime'
 import { createAutomationsRealtime } from '../features/automations/public/realtime'
 import { createChatsRealtime } from '../features/chats/public/realtime'
 import { createDashboardRealtime } from '../features/dashboard/public/realtime'
@@ -23,6 +24,7 @@ export function createAppRealtimeBus(): RealtimeBus {
     createTasksRealtime(),
     createDashboardRealtime(),
     createTemplatesRealtime(),
+    createAppointmentsRealtime(),
     createAiRealtime(),
     createAutomationsRealtime(),
     createMediaRealtime(),

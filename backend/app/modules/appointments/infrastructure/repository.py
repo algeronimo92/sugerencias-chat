@@ -12,7 +12,7 @@ from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
 from app.modules.conversations.public import NoteAuthor, create_note
-from app.modules.leads.public import Actor, register_appointment
+from app.modules.leads.public import Actor, fetch_lead_raw, register_appointment
 from app.modules.appointments.queries import _query, _serialize
 
 _INTEGRATION_FIELDS = (
@@ -41,6 +41,15 @@ class SqlAppointmentRepository:
             ).mappings().one_or_none()
         return _serialize(row) if row is not None else None
 
+    async def latest_real(self) -> dict | None:
+        stmt = (
+            _query().where(Appointment.test_mode.is_(False))
+            .order_by(Appointment.created_at.desc(), Appointment.id.desc()).limit(1)
+        )
+        async with session_scope() as session:
+            row = (await session.execute(stmt)).mappings().first()
+        return _serialize(row) if row is not None else None
+
     async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
         changes = {key: value for key, value in values.items() if key in _INTEGRATION_FIELDS and value is not None}
         if clear_calendar_sync_error:
@@ -63,6 +72,9 @@ class SqlAppointmentLeads:
                 select(Lead.id).where(Lead.telefono.is_not(None), lead_tail == tail).limit(2)
             )).scalars().all()
         return matches[0] if len(matches) == 1 else None
+
+    async def snapshot(self, lead_id: str) -> dict | None:
+        return await fetch_lead_raw(lead_id)
 
     async def exists(self, lead_id: str) -> bool:
         async with session_scope() as session:

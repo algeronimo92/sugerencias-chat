@@ -36,6 +36,11 @@ export type AppointmentResult = Delivered<ApiSchemas['AppointmentCreated']>
 export type CalendarEventTemplate = Delivered<ApiSchemas['CalendarEventTemplate']>
 export type CalendarEventField = Delivered<ApiSchemas['CalendarEventField']>
 
+/** Aviso de cita por WhatsApp: la plantilla oficial y el campo de cada variable. */
+export type NoticeAudience = 'client' | 'staff'
+export type NoticeSettings = Delivered<ApiSchemas['NoticeSettings']>
+export type NoticeUpdate = ApiSchemas['NoticeSettingsUpdate']
+
 export interface AppointmentListItem {
   id: number
   created_by_user_id: number

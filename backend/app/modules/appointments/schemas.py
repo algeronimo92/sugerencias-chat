@@ -112,3 +112,46 @@ class CalendarEventTemplateUpdate(BaseModel):
     # solo cortan un cuerpo absurdo antes de llegar ahí.
     title_template: str = Field(max_length=1000)
     description_template: str = Field(max_length=10000)
+
+
+class NoticeTemplate(BaseModel):
+    id: int
+    name: str
+    content: str
+    variable_count: int
+    # Lo que se armó para cada variable en Plantillas, ya en la sintaxis del
+    # aviso: el armador arranca con esto en vez de vacío.
+    suggested_parameters: list[str] = []
+
+
+class NoticeField(BaseModel):
+    key: str
+    label: str
+    # cita | cita_personalizado | lead | lead_personalizado
+    group: str
+
+
+class NoticePreview(BaseModel):
+    """La última cita real: el armador muestra cada variable con sus datos."""
+
+    label: str
+    values: dict[str, str]
+
+
+class NoticeSettings(BaseModel):
+    """Aviso de cita por WhatsApp (al cliente o al equipo). ``parameters`` es
+    el contenido de cada variable, en orden: texto libre con marcadores
+    ``{campo}`` que nombran uno de ``fields``."""
+
+    enabled: bool
+    template_id: int | None
+    parameters: list[str]
+    fields: list[NoticeField]
+    templates: list[NoticeTemplate]
+    preview: NoticePreview | None = None
+
+
+class NoticeSettingsUpdate(BaseModel):
+    enabled: bool
+    template_id: int | None = None
+    parameters: list[str] = Field(default_factory=list, max_length=20)

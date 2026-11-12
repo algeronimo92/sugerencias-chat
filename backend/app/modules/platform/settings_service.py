@@ -220,6 +220,15 @@ SETTING_DEFS: list[SettingDef] = [
     # (appointments/application/calendar_template.py).
     SettingDef("google_calendar_title_template", "Título del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
     SettingDef("google_calendar_description_template", "Descripción del evento", "calendar", "Google Calendar (opcional)", secret=False, hidden=True),
+    # Avisos de cita por WhatsApp, al cliente y al equipo. Se editan solo
+    # desde su panel (appointments/application/notice.py), que valida que la
+    # plantilla esté aprobada y que cada variable tenga un campo.
+    SettingDef("appointment_client_notice_enabled", "Avisar al cliente", "appointments", "Avisos de cita", secret=False, boolean=True, hidden=True),
+    SettingDef("appointment_client_notice_template_id", "Plantilla para el cliente", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_client_notice_parameters", "Campos de cada variable (cliente)", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_staff_notice_enabled", "Avisar al equipo", "appointments", "Avisos de cita", secret=False, boolean=True, hidden=True),
+    SettingDef("appointment_staff_notice_template_id", "Plantilla para el equipo", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_staff_notice_parameters", "Campos de cada variable (equipo)", "appointments", "Avisos de cita", secret=False, hidden=True),
     # SMTP propio del negocio para invitaciones y avisos (pestaña Correo). Se
     # editan solo por app/modules/platform/email_settings.py, que valida el
     # conjunto: un host suelto sin remitente no sirve. Los nombres no

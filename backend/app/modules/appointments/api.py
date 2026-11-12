@@ -5,7 +5,8 @@ import base64
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.modules.appointments.application import calendar_template, commands
+from app.modules.appointments.application import calendar_template, commands, notice
+from app.modules.appointments.domain.notice import Audience
 from app.modules.appointments.domain.appointment import CUSTOM_ADELANTO_KEY, AppointmentRequest, LeadLink
 from app.modules.appointments.queries import list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
@@ -16,6 +17,8 @@ from app.modules.appointments.schemas import (
     AppointmentItem,
     CalendarEventTemplate,
     CalendarEventTemplateUpdate,
+    NoticeSettings,
+    NoticeSettingsUpdate,
 )
 from app.modules.auth.public import get_current_user, require_admin
 from app.modules.media.ports.media_upload import (normalize_media_content_type)
@@ -46,6 +49,18 @@ async def get_calendar_template(_user: User = Depends(require_admin)):
 @router.put("/calendar-template", response_model=CalendarEventTemplate)
 async def put_calendar_template(body: CalendarEventTemplateUpdate, _user: User = Depends(require_admin)):
     return await calendar_template.save_template(body.title_template, body.description_template)
+
+
+@router.get("/notices/{audience}", response_model=NoticeSettings)
+async def get_notice(audience: Audience, user: User = Depends(require_admin)):
+    return await notice.get_settings(audience, user.id)
+
+
+@router.put("/notices/{audience}", response_model=NoticeSettings)
+async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User = Depends(require_admin)):
+    return await notice.save_settings(
+        audience, enabled=body.enabled, template_id=body.template_id, parameters=body.parameters, user_id=user.id,
+    )
 
 
 @router.post("/{appointment_id}/sync-calendar", response_model=AppointmentItem)

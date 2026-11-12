@@ -27,6 +27,8 @@ export interface UpdateUserPayload {
   email?: string
   role?: UserRole
   is_active?: boolean
+  /** WhatsApp para el aviso de venta; vacío lo borra. */
+  phone?: string
 }
 
 export type InvitationLink = Delivered<ApiSchemas['InvitationLinkOut']>

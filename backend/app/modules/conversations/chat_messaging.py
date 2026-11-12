@@ -234,7 +234,10 @@ def forward_item(message: dict) -> dict | None:
 
 async def send_template(
     chat_id: str, template_id: int, text: str | None, parameters: list[str], user_id: int,
+    *, dedupe_key: str | None = None,
 ) -> list[dict]:
+    """``dedupe_key`` es para los envíos que dispara el sistema (el aviso de
+    una cita): si el mismo evento llega dos veces, el cliente recibe uno solo."""
     template = next((item for item in await list_templates(user_id) if item["id"] == template_id), None)
     if template is None:
         raise TemplateNotFoundError("Plantilla no encontrada")
@@ -242,6 +245,18 @@ async def send_template(
         raise LeadNotFoundError("Lead no encontrado")
     build_items = TEMPLATE_ITEM_BUILDERS[template_kind(template)]
     items = await build_items(template, chat_id, (text or "").strip(), parameters)
+    if dedupe_key:
+        items = [{**item, "dedupe_key": f"{dedupe_key}:{index}"} for index, item in enumerate(items)]
     sent = await queue_messages(chat_id, items, actor_user_id=user_id)
     await record_template_use(template_id, user_id)
     return sent
+
+
+async def official_template_message(template: dict, parameters: list[str]) -> dict:
+    """El cuerpo para Meta de una plantilla oficial aprobada, para un envío
+    que no pasa por el chat de un lead (el aviso de cita al equipo). Una
+    plantilla con imagen en el encabezado no se puede: la sube el outbox."""
+    if template.get("official_header_type") == "image":
+        raise TemplateNotSendableError("Una plantilla con imagen solo se puede enviar a un lead")
+    [item] = await _official_items(template, "", "", parameters)
+    return item["message"]
