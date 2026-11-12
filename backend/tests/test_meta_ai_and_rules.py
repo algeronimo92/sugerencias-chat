@@ -36,7 +36,7 @@ def test_orders_keep_products_quantities_prices_and_currency():
 def test_locations_contacts_and_unsupported_are_readable_without_inventing():
     assert _text_of("location") == "Ubicación: Plaza Mayor (-12.0464, -77.0428)"
     assert _text_of("contacts").startswith("Contacto compartido: Ana Pérez +51 912 345 678")
-    assert _text_of("unsupported") == "[mensaje no soportado por WhatsApp: Message type unknown]"
+    assert _text_of("unsupported") == "[el cliente envió un mensaje que WhatsApp no comparte con el CRM]"
     assert _text_of("future_type") == "[poll_v9]"
     assert message_text("image", None, "Así está mi piel", inbound_message("image")) == "[imagen] Así está mi piel"
 
@@ -55,6 +55,33 @@ def test_an_unsupported_echo_from_the_phone_is_not_read_as_an_error():
     no_type = {key: value for key, value in echo.items() if key != "unsupported"}
     assert message_text("unsupported", None, None, no_type) == (
         "[mensaje enviado por el negocio desde el celular; WhatsApp no comparte su contenido]"
+    )
+
+
+def test_an_unsupported_from_the_client_names_what_it_was():
+    """Meta manda ``unsupported.type`` (``poll_creation``, ``edit``...): la IA
+    y la vendedora deben saber qué fue, no leer el título en inglés."""
+    poll = {
+        "from": "51911111111", "type": "unsupported",
+        "errors": [{"code": 131051, "title": "Message type unknown"}],
+        "unsupported": {"type": "poll_creation"},
+    }
+    assert message_text("unsupported", None, None, poll) == (
+        "[el cliente envió un mensaje de encuesta que WhatsApp no comparte con el CRM]"
+    )
+
+
+def test_the_first_message_withheld_by_coexistence_points_to_the_phone():
+    """131060: en coexistencia el primer mensaje de un cliente nuevo (p. ej. de
+    un anuncio) no llega por la API. No es un fallo del cliente: está en el
+    celular, y la IA no debe suponer que no escribió nada."""
+    first = {
+        "from": "51911111111", "type": "unsupported",
+        "errors": [{"code": 131060, "title": "This message is currently unavailable."}],
+    }
+    assert message_text("unsupported", None, None, first) == (
+        "[mensaje del cliente que WhatsApp no entregó al CRM (suele ser su primer mensaje); "
+        "su contenido solo está en el celular del negocio]"
     )
 
 

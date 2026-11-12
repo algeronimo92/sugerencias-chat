@@ -19,12 +19,41 @@ MEDIA_LABELS = {
     "sticker": "sticker",
 }
 
-# Tipos que Meta suele declarar en ``unsupported``.
+# Valores de ``unsupported.type`` que lista la referencia del webhook de Meta
+# (más ``poll`` y ``event``, que llegaron antes de que Meta los documentara).
+# Se leen como "mensaje <rótulo>".
 UNSUPPORTED_TYPE_LABELS = {
     "interactive": "interactivo",
     "poll": "de encuesta",
+    "poll_creation": "de encuesta",
+    "poll_update": "de voto en encuesta",
     "event": "de evento",
+    "edit": "de edición",
+    "gif": "con GIF",
+    "group_invite": "de invitación a grupo",
+    "pin": "fijado",
+    "keep_in_chat": "guardado en el chat",
+    "reaction": "de reacción",
+    "image": "con imagen",
+    "location": "de ubicación",
+    "button": "de botón",
+    "list": "de lista",
+    "order": "de pedido",
+    "product": "de producto",
+    "link_preview": "con vista previa de enlace",
+    "media_placeholder": "con archivo",
+    "hsm": "de plantilla",
 }
+
+# 131060 ("This message is currently unavailable"): en coexistencia, Meta no
+# entrega por la API el primer mensaje de un cliente nuevo (típico de un
+# anuncio Click-to-WhatsApp) ni lo que pasa por un dispositivo vinculado no
+# soportado. El texto solo está en la app del celular.
+UNAVAILABLE_ERROR_CODE = "131060"
+
+
+def _error_codes(message: dict) -> set[str]:
+    return {str(_object(error).get("code")) for error in message.get("errors") or []}
 
 
 def _object(value: Any) -> dict:
@@ -116,7 +145,16 @@ def message_text(
             f"[mensaje {label + ' ' if label else ''}enviado por el negocio desde el celular; "
             "WhatsApp no comparte su contenido]"
         )
-    if message_type in {"unknown", "unsupported"}:
+    if message_type == "unsupported" and UNAVAILABLE_ERROR_CODE in _error_codes(message):
+        return (
+            "[mensaje del cliente que WhatsApp no entregó al CRM (suele ser su primer mensaje); "
+            "su contenido solo está en el celular del negocio]"
+        )
+    if message_type == "unsupported":
+        kind = _text(_object(message.get("unsupported")).get("type"))
+        label = UNSUPPORTED_TYPE_LABELS.get(kind, kind)
+        return f"[el cliente envió un mensaje {label + ' ' if label else ''}que WhatsApp no comparte con el CRM]"
+    if message_type == "unknown":
         errors = message.get("errors") or []
         title = _text(_object(errors[0]).get("title")) if errors else ""
         return f"[mensaje no soportado por WhatsApp{': ' + title if title else ''}]"
