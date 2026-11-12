@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Text, and_, func, or_, select
 
 from app.db.models.leads import Lead
 from app.db.models.conversations import WspMessage
@@ -150,3 +150,31 @@ async def chat_id_for_wa_message(wa_message_id: str) -> str | None:
         return await session.scalar(
             select(WspMessage.chat_id).where(WspMessage.wa_message_id == wa_message_id)
         )
+
+
+async def phoneless_chats_mentioning(tail: str, *, since: datetime, limit: int = 2) -> list[str]:
+    """Leads sin teléfono en cuyo chat el cliente escribió un número que
+    termina en ``tail`` desde ``since``. Un contacto con nombre de usuario de
+    WhatsApp llega sin número (solo con su BSUID) y suele dictarlo en el chat
+    al agendar: así se reconoce su lead antes de crearle uno duplicado (cita
+    361: la clienta escribió su número 13 minutos antes de que le cargaran la cita).
+
+    Compara solo dígitos, así "987 654 321" o "+51987654321" también cuentan.
+    La ventana corta y el filtro por remitente mantienen la consulta liviana.
+    """
+    digits = func.regexp_replace(func.coalesce(WspMessage.content, ""), r"\D", "", "g", type_=Text)
+    stmt = (
+        select(WspMessage.chat_id)
+        .join(Lead, Lead.id == WspMessage.chat_id)
+        .where(
+            Lead.telefono.is_(None),
+            WspMessage.sender == "cliente",
+            WspMessage.sent_at >= since,
+            # ``tail`` sale de un E.164 normalizado: solo dígitos, sin comodines.
+            digits.like(f"%{tail}%"),
+        )
+        .distinct()
+        .limit(limit)
+    )
+    async with session_scope() as session:
+        return list((await session.execute(stmt)).scalars().all())

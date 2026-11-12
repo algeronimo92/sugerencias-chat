@@ -85,6 +85,10 @@ class FakeLeads:
     existing: set[str] = field(default_factory=set)
     registered: list[dict] = field(default_factory=list)
     snapshots: dict[str, dict] = field(default_factory=dict)
+    # Cola -> leads sin teléfono cuyo cliente escribió ese número en el chat.
+    chat_mentions: dict[str, list[str]] = field(default_factory=dict)
+    created: list[dict] = field(default_factory=list)
+    create_error: Exception | None = None
 
     async def snapshot(self, lead_id: str) -> dict | None:
         return self.snapshots.get(lead_id)
@@ -92,12 +96,25 @@ class FakeLeads:
     async def by_whatsapp_identity(self, e164: str) -> str | None:
         return self.identities.get(e164)
 
-    async def by_phone_tail(self, tail: str) -> str | None:
+    async def by_phone_tail(self, tail: str) -> list[str]:
         self.tail_lookups.append(tail)
-        return self.tails.get(tail)
+        found = self.tails.get(tail)
+        return [found] if isinstance(found, str) else list(found or [])
+
+    async def by_phone_in_chat(self, tail: str) -> list[str]:
+        return list(self.chat_mentions.get(tail, []))
 
     async def exists(self, lead_id: str) -> bool:
         return lead_id in self.existing
+
+    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+        if self.create_error is not None:
+            raise self.create_error
+        lead_id = f"lead-nuevo-{len(self.created) + 1}"
+        self.created.append({"phone": phone, "name": name, "actor_user_id": actor_user_id})
+        self.existing.add(lead_id)
+        self.identities[phone] = lead_id
+        return lead_id
 
     async def register(self, lead_id: str, **values) -> None:
         self.registered.append({"lead_id": lead_id, **values})

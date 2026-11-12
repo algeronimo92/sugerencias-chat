@@ -39,11 +39,21 @@ class AppointmentSync(Protocol):
 class AppointmentLeads(Protocol):
     async def by_whatsapp_identity(self, e164: str) -> str | None: ...
 
-    async def by_phone_tail(self, tail: str) -> str | None:
-        """El único lead cuyo teléfono termina en ``tail``; None si no hay
-        ninguno o hay más de uno."""
+    async def by_phone_tail(self, tail: str) -> list[str]:
+        """Los leads cuyo teléfono termina en ``tail``, hasta dos: con uno se
+        vincula, con dos no se adivina y con ninguno se puede crear."""
+
+    async def by_phone_in_chat(self, tail: str) -> list[str]:
+        """Los leads sin teléfono (solo conocidos por su usuario de WhatsApp)
+        en cuyo chat el cliente escribió hace poco un número que termina en
+        ``tail``, hasta dos."""
 
     async def exists(self, lead_id: str) -> bool: ...
+
+    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+        """Da de alta el lead de ese ``wa_id`` (E.164 en dígitos), como el alta
+        manual, y devuelve su id. Si en el medio otro alta tomó ese número,
+        devuelve el de ese lead."""
 
     async def snapshot(self, lead_id: str) -> dict | None:
         """La fila del lead (nombre, teléfono, campos personalizados…), o None."""
