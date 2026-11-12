@@ -9,6 +9,7 @@ número, sin abrir un chat en el CRM: no son leads.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from app.modules.appointments.application.ports import appointment_ports
 from app.modules.appointments.domain.calendar_event import BUILTIN_FIELDS, CUSTOM_PREFIX
@@ -160,35 +161,52 @@ async def _appointment(appointment_id: int) -> dict | None:
     return appointment
 
 
+def _short(error: BaseException) -> str:
+    """El motivo de un fallo como se lee en el historial: una línea."""
+    text = " ".join(str(error).split()) or type(error).__name__
+    return text[:300]
+
+
 async def send_client_notice(appointment_id: int) -> str:
-    """Avisa al cliente de su cita nueva. Devuelve qué pasó (para el log y
-    los tests): ``sent`` o el motivo por el que no salió. Sin lead no sale:
-    el envío va al chat del lead, que es donde el equipo ve la conversación."""
+    """Avisa al cliente de su cita nueva y deja el aviso registrado en la
+    cita. Devuelve qué pasó (para el log y los tests): ``sent`` o el motivo
+    por el que no salió. Sin lead no sale: el envío va al chat del lead, que
+    es donde el equipo ve la conversación."""
     config = await _config(Audience.CLIENT)
     if not config.enabled or config.template_id is None:
         return "disabled"
     appointment = await _appointment(appointment_id)
     if appointment is None:
         return "skipped"
+    ports = appointment_ports()
+    notice = {
+        "audience": Audience.CLIENT.value, "recipient_name": appointment.get("nombre_completo") or "Cliente",
+        "phone": appointment.get("telefono") or None, "template_id": config.template_id,
+    }
     if not appointment.get("lead_id"):
+        await ports.notices.record(appointment_id, [{
+            **notice, "status": "skipped", "reason": "La cita no está vinculada a un lead",
+        }])
         return "no_lead"
-    lead = await appointment_ports().leads.snapshot(appointment["lead_id"])
+    lead = await ports.leads.snapshot(appointment["lead_id"])
     try:
-        await appointment_ports().messenger.send_to_lead(
+        message_id = await ports.messenger.send_to_lead(
             chat_id=appointment["lead_id"], template_id=config.template_id,
             parameters=parameter_values(appointment, config.parameters, lead),
             user_id=appointment["created_by_user_id"], dedupe_key=f"appointment-client-notice:{appointment_id}",
         )
-    except NoticeNotSent:
+    except Exception as exc:
         logger.warning("No se pudo encolar el aviso al cliente de la cita %s", appointment_id, exc_info=True)
+        await ports.notices.record(appointment_id, [{**notice, "status": "failed", "reason": _short(exc)}])
         return "failed"
+    await ports.notices.record(appointment_id, [{**notice, "status": "sent", "wsp_message_id": message_id}])
     return "sent"
 
 
 async def send_staff_notice(appointment_id: int) -> dict[int, str]:
-    """Avisa de la venta al responsable de la cita y a los admins que tengan
-    teléfono. Devuelve qué pasó con cada uno, por id de usuario. Un envío que
-    falla no frena a los demás."""
+    """Avisa de la venta al responsable de la cita y a los admins, y deja
+    cada aviso registrado en la cita. Devuelve qué pasó con cada uno, por id
+    de usuario. Un envío que falla no frena a los demás."""
     config = await _config(Audience.STAFF)
     if not config.enabled or config.template_id is None:
         return {}
@@ -203,16 +221,47 @@ async def send_staff_notice(appointment_id: int) -> dict[int, str]:
     lead = await ports.leads.snapshot(appointment["lead_id"]) if appointment.get("lead_id") else None
     parameters = parameter_values(appointment, config.parameters, lead)
     results: dict[int, str] = {}
+    notices: list[dict] = []
     for recipient in await ports.staff.recipients(appointment.get("vendedor") or ""):
+        notice = {
+            "audience": Audience.STAFF.value, "recipient_name": recipient["name"], "user_id": recipient["id"],
+            "phone": recipient["phone"], "template_id": config.template_id,
+        }
+        if not recipient["phone"]:
+            notices.append({**notice, "status": "skipped", "reason": "Sin WhatsApp cargado en Usuarios"})
+            results[recipient["id"]] = "skipped"
+            continue
         try:
-            await ports.messenger.send_to_phone(phone=recipient["phone"], template=template, parameters=parameters)
+            provider_id = await ports.messenger.send_to_phone(
+                phone=recipient["phone"], template=template, parameters=parameters,
+            )
+            notices.append({**notice, "status": "sent", "provider_message_id": provider_id})
             results[recipient["id"]] = "sent"
-        except Exception:
+        except Exception as exc:
             # Cualquier error, no solo los esperados: en la cita 359 uno
             # inesperado con el primer destinatario cortó el envío y el resto
             # del equipo se quedó sin aviso.
             logger.warning(
                 "No se pudo avisar al usuario %s de la cita %s", recipient["id"], appointment_id, exc_info=True,
             )
+            notices.append({**notice, "status": "failed", "reason": _short(exc)})
             results[recipient["id"]] = "failed"
+    if notices:
+        await ports.notices.record(appointment_id, notices)
     return results
+
+
+_DELIVERY_STATUSES = ("sent", "delivered", "read", "failed")
+
+
+async def record_notice_delivery(
+    *, provider_message_id: str | None, wsp_message_id: int | None, status: str, at: datetime | None,
+) -> int:
+    """Un estado de Meta (``statuses[]`` del webhook) sobre un aviso: el del
+    equipo se reconoce por el id de Meta y el del cliente por su mensaje en
+    el CRM. Lo que no es un aviso de cita se ignora."""
+    if status not in _DELIVERY_STATUSES or (not provider_message_id and wsp_message_id is None):
+        return 0
+    return await appointment_ports().notices.record_delivery(
+        provider_message_id=provider_message_id, wsp_message_id=wsp_message_id, status=status, at=at,
+    )

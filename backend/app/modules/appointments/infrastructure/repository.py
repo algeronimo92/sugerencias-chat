@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import case, func, insert, or_, select, update
 
-from app.db.models.appointments import Appointment
+from app.db.models.appointments import Appointment, AppointmentNotice
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
@@ -88,3 +88,60 @@ class SqlAppointmentLeads:
         )
         # Sin menciones, el nombre del autor no se usa (solo arma el aviso).
         await create_note(lead_id, note, [], NoteAuthor(id=actor_user_id, name=""))
+
+
+# Un estado de Meta solo avanza: un aviso leído no vuelve a "entregado" si
+# los eventos llegan desordenados. "failed" es final.
+_DELIVERY_RANK = {"sent": 1, "delivered": 2, "read": 3, "failed": 4}
+
+
+class SqlAppointmentNotices:
+    async def record(self, appointment_id: int, notices: list[dict]) -> None:
+        if not notices:
+            return
+        rows = [
+            {
+                "appointment_id": appointment_id,
+                "audience": notice["audience"],
+                "recipient_name": notice["recipient_name"],
+                "user_id": notice.get("user_id"),
+                "phone": notice.get("phone"),
+                "template_id": notice.get("template_id"),
+                "status": notice["status"],
+                "reason": notice.get("reason"),
+                "provider_message_id": notice.get("provider_message_id"),
+                "wsp_message_id": notice.get("wsp_message_id"),
+                "delivery_status": "sent" if notice["status"] == "sent" else None,
+            }
+            for notice in notices
+        ]
+        async with session_scope() as session:
+            await session.execute(insert(AppointmentNotice), rows)
+
+    async def record_delivery(
+        self, *, provider_message_id: str | None, wsp_message_id: int | None, status: str, at: datetime | None,
+    ) -> int:
+        matches = []
+        if provider_message_id:
+            matches.append(AppointmentNotice.provider_message_id == provider_message_id)
+        if wsp_message_id is not None:
+            matches.append(AppointmentNotice.wsp_message_id == wsp_message_id)
+        when = at or datetime.now(timezone.utc)
+        rank = _DELIVERY_RANK[status]
+        current_rank = case(
+            *((AppointmentNotice.delivery_status == name, value) for name, value in _DELIVERY_RANK.items()),
+            else_=0,
+        )
+        values: dict = {"delivery_status": status}
+        if status in ("delivered", "read"):
+            values["delivered_at"] = func.coalesce(AppointmentNotice.delivered_at, when)
+        if status == "read":
+            values["read_at"] = func.coalesce(AppointmentNotice.read_at, when)
+        stmt = (
+            update(AppointmentNotice)
+            .where(or_(*matches), current_rank < rank)
+            .values(**values)
+        )
+        async with session_scope() as session:
+            result = await session.execute(stmt)
+        return result.rowcount or 0

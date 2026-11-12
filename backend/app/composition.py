@@ -24,7 +24,11 @@ from app.modules.appointments.infrastructure.integrations import (
     TeamDirectory,
     WhatsAppNoticeMessenger,
 )
-from app.modules.appointments.infrastructure.repository import SqlAppointmentRepository, SqlAppointmentLeads
+from app.modules.appointments.infrastructure.repository import (
+    SqlAppointmentLeads,
+    SqlAppointmentNotices,
+    SqlAppointmentRepository,
+)
 from app.modules.automations.application.ports import AutomationPorts, provide_automation_ports
 from app.modules.automations.infrastructure.sql_executions import SqlExecutionStore
 from app.modules.automations.infrastructure.sql_references import SqlReferenceChecker
@@ -86,6 +90,7 @@ def register_adapters() -> None:
         leads=SqlAppointmentLeads(),
         messenger=WhatsAppNoticeMessenger(),
         staff=TeamDirectory(),
+        notices=SqlAppointmentNotices(),
     ))
     provide_automation_ports(AutomationPorts(
         executions=SqlExecutionStore(),

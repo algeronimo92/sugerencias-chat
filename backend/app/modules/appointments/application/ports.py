@@ -61,19 +61,33 @@ class AppointmentLeads(Protocol):
 class NoticeMessenger(Protocol):
     async def send_to_lead(
         self, *, chat_id: str, template_id: int, parameters: list[str], user_id: int, dedupe_key: str,
-    ) -> None:
-        """Encola la plantilla oficial en el chat del lead. Levanta
-        ``NoticeNotSent`` si no se pudo encolar."""
+    ) -> int | None:
+        """Encola la plantilla oficial en el chat del lead y devuelve el id
+        del mensaje en el CRM. Levanta ``NoticeNotSent`` si no se pudo."""
 
-    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> None:
+    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> str | None:
         """Manda la plantilla directo a un número del equipo, sin abrir un
-        chat en el CRM. Levanta ``NoticeNotSent`` si Meta no la aceptó."""
+        chat en el CRM, y devuelve el id que le dio Meta. Levanta
+        ``NoticeNotSent`` si Meta no la aceptó."""
 
 
 class StaffDirectory(Protocol):
     async def recipients(self, seller_name: str) -> list[dict]:
         """``{id, name, phone}`` del responsable de la cita (por nombre) y de
-        los admins activos, sin repetir y solo los que tienen teléfono."""
+        los admins activos, sin repetir. ``phone`` es None si no lo cargaron:
+        el aviso queda registrado como no enviado por eso."""
+
+
+class NoticeLog(Protocol):
+    async def record(self, appointment_id: int, notices: list[dict]) -> None:
+        """Guarda los avisos que generó la cita (ver ``AppointmentNotice``)."""
+
+    async def record_delivery(
+        self, *, provider_message_id: str | None, wsp_message_id: int | None, status: str, at: datetime | None,
+    ) -> int:
+        """Marca como enviado, entregado, leído o fallido el aviso de ese
+        mensaje, sin volver atrás (un leído no pasa a entregado). Devuelve
+        cuántos avisos cambiaron."""
 
 
 @dataclass(frozen=True)
@@ -84,6 +98,7 @@ class AppointmentPorts:
     leads: AppointmentLeads
     messenger: NoticeMessenger
     staff: StaffDirectory
+    notices: NoticeLog
 
 
 _ports: AppointmentPorts | None = None

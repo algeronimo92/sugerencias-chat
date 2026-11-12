@@ -71,4 +71,8 @@ export interface AppointmentListItem {
   calendar_sync_status: 'not_configured' | 'pending' | 'synced' | 'error' | 'skipped'
   calendar_sync_error: string | null
   created_at: string
+  /** Avisos de WhatsApp de la cita (al cliente y a cada miembro del equipo). */
+  notices?: AppointmentNotice[]
 }
+
+export type AppointmentNotice = Delivered<ApiSchemas['AppointmentNoticeItem']>

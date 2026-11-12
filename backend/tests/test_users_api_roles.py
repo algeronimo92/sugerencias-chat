@@ -130,8 +130,8 @@ def test_a_phone_is_stored_as_the_whatsapp_id_and_empty_clears_it(client, monkey
     # identifica Meta, con el código de país del negocio si no lo trae.
     monkeypatch.setattr(users_api, "effective_country_code", AsyncMock(return_value="51"))
 
-    assert client.patch("/api/users/2", json={"phone": "927 345 336"}).status_code == 200
-    assert users_api.update_user.await_args.args == (2, {"phone": "51927345336"})
+    assert client.patch("/api/users/2", json={"phone": "900 000 002"}).status_code == 200
+    assert users_api.update_user.await_args.args == (2, {"phone": "51900000002"})
 
     assert client.patch("/api/users/2", json={"phone": " "}).status_code == 200
     assert users_api.update_user.await_args.args == (2, {"phone": None})
