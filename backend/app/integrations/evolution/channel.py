@@ -19,6 +19,8 @@ async def _destination(chat_id: str) -> str:
     destination = await resolve_whatsapp_destination(chat_id)
     if destination.wa_id and destination.wa_id.isdigit():
         return destination.wa_id
+    if destination.user_id:
+        return destination.user_id
     raise ChannelError("El contacto no tiene un número utilizable por Evolution API")
 
 

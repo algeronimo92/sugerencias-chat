@@ -50,3 +50,19 @@ async def test_media_uses_the_data_prepared_by_upload(monkeypatch):
         caption="Resultado",
         filename=None,
     )
+
+
+@pytest.mark.asyncio
+async def test_destination_falls_back_to_user_id_when_wa_id_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        channel, "resolve_whatsapp_destination", AsyncMock(return_value=Destination(None, "123456789@lid"))
+    )
+    send = AsyncMock(return_value={"key": {"id": "EVO-3"}})
+    monkeypatch.setattr(channel.client, "send_text", send)
+
+    receipt = await channel.EvolutionMessageSender("evolution-org").send(
+        "lead-1", {"type": "text", "text": {"body": "Hola"}}
+    )
+
+    send.assert_awaited_once_with("evolution-org", "123456789@lid", "Hola")
+    assert receipt.provider_message_id == "EVO-3"
