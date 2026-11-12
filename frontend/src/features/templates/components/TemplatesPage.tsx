@@ -1,4 +1,5 @@
 import { AlertTriangle, BadgeCheck, Download, FileText, FolderOpen, ImagePlus, List as ListIcon, Loader2, MessageSquareText, MousePointerClick, Pencil, Plus, Power, RefreshCw, Star, Trash2, UploadCloud } from 'lucide-react'
+import { OfficialVariablesSection } from './OfficialVariablesSection'
 import { useEffect, useReducer, useRef, useState, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -668,10 +669,12 @@ export function TemplatesPage() {
             </div>
             {form.templateType === 'official' ? (
               <div className="grid gap-2 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
-                <p className="text-xs text-wa-muted dark:text-wa-muted-dark">El texto aprobado usa variables numéricas consecutivas: {'{{1}}'}, {'{{2}}'}, ... Configura qué dato enviará el CRM en cada posición.</p>
-                {form.officialParameterValues.map((value, index) => (
-                  <label key={index} className="grid gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 sm:grid-cols-[80px_1fr] sm:items-center"><span>{`{{${index + 1}}}`}</span><input required value={value} onChange={event => setForm(f => ({ ...f, officialParameterValues: f.officialParameterValues.map((item, itemIndex) => itemIndex === index ? event.target.value : item) }))} placeholder="Ej. {{nombre}}" className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark" /></label>
-                ))}
+                <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Variables del mensaje</p>
+                <OfficialVariablesSection
+                  variables={form.officialParameterValues.map((_, index) => String(index + 1))}
+                  values={form.officialParameterValues}
+                  onChange={values => setForm(f => ({ ...f, officialParameterValues: values }))}
+                />
               </div>
             ) : (
               <p className="text-xs text-wa-muted dark:text-wa-muted-dark">

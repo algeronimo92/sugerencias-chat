@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowLeft, BadgeCheck, Download, Loader2, X } from 'lucide-react'
+import { OfficialVariablesSection } from './OfficialVariablesSection'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
@@ -179,22 +180,11 @@ export function ImportMetaTemplatesDialog({ existingMetaIds, categories, default
                 {variableCount > 0 && (
                   <div className="grid gap-3 rounded-2xl border border-wa-border bg-[#f9fbfa] p-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
                     <h3 className="text-sm font-bold text-wa-text dark:text-white">Variables del mensaje</h3>
-                    <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                      Valor por defecto de cada variable — puedes usar texto fijo o un placeholder interno: {'{{nombre}}'}, {'{{telefono}}'}, {'{{servicio}}'}, {'{{vendedor}}'}, {'{{fecha_actual}}'}
-                    </p>
-                    {variableNames.map((variableName, index) => (
-                      <label key={index} className="templates-field">{`{{${variableName}}}`}<input
-                        required
-                        value={parameterValues[index] ?? ''}
-                        onChange={event => setParameterValues(current => {
-                          const next = [...current]
-                          next[index] = event.target.value
-                          return next
-                        })}
-                        placeholder={`Valor de {{${variableName}}}`}
-                        className="rounded-md border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-field-dark"
-                      /></label>
-                    ))}
+                    <OfficialVariablesSection
+                      variables={variableNames}
+                      values={variableNames.map((_, index) => parameterValues[index] ?? '')}
+                      onChange={setParameterValues}
+                    />
                   </div>
                 )}
                 <div className="mt-1 flex flex-wrap justify-end gap-2 border-t border-wa-border pt-4 dark:border-wa-border-dark">

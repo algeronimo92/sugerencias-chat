@@ -11,6 +11,9 @@ export const appointmentKeys = {
   // Fuera de `all`: refrescar el historial de citas no tiene por qué releer
   // la plantilla del evento.
   calendarTemplate: ['appointment-calendar-template'] as const,
+  // Los avisos de cita tampoco cambian cuando se agenda una cita.
+  notices: ['appointment-notice'] as const,
+  notice: (audience: 'client' | 'staff') => ['appointment-notice', audience] as const,
   // Moneda del negocio para el símbolo del adelanto: cambia casi nunca.
   businessCurrency: ['appointment-business-currency'] as const,
 }

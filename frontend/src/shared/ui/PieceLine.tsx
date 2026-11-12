@@ -1,7 +1,7 @@
 import { GripVertical, X } from 'lucide-react'
 import type { DragEvent, KeyboardEvent, ReactNode } from 'react'
-import { cn } from '../../../shared/utils/cn'
-import type { Piece } from '../domain/eventTemplate'
+import { cn } from '../utils/cn'
+import type { Piece } from '../pieces'
 
 export type MoveDirection = 'left' | 'right' | 'up' | 'down'
 
@@ -33,9 +33,9 @@ function DropMarker() {
   return <span aria-hidden="true" className="h-6 w-0.5 shrink-0 rounded-full bg-wa-primary" />
 }
 
-/** Una línea del armador: recibe piezas arrastradas y deja reordenarlas.
+/** Una línea de un armador de piezas (ver shared/pieces.ts): recibe piezas arrastradas y deja reordenarlas.
  *  Con teclado, Alt + flechas mueve la pieza enfocada y Supr la quita. */
-export function EventTemplateZone({
+export function PieceLine({
   label, pieces, fieldLabels, dropIndex, active, focusId, placeholder, actions,
   onActivate, onDragStartPiece, onDragOverIndex, onDrop, onDragEnd, onRemove, onTextChange, onMove,
 }: Props) {

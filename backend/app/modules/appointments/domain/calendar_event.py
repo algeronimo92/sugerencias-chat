@@ -97,7 +97,7 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
-def _value(appointment: dict, key: str) -> str:
+def field_value(appointment: dict, key: str) -> str:
     custom = appointment.get("custom_fields") or {}
     if key.startswith(CUSTOM_PREFIX):
         return _text(custom.get(key.removeprefix(CUSTOM_PREFIX)))
@@ -120,7 +120,7 @@ def _render_line(line: str, appointment: dict) -> str | None:
     """La línea con sus valores, o None si todos sus campos quedaron vacíos:
     así "Teléfono: " no aparece en una cita sin teléfono."""
     keys = placeholders(line)
-    values = {key: _value(appointment, key) for key in keys}
+    values = {key: field_value(appointment, key) for key in keys}
     if keys and not any(values.values()):
         return None
     return _PLACEHOLDER.sub(lambda match: values[match.group(1)], line).strip()

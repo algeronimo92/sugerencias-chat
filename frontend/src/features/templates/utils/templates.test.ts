@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../types'
-import { renderOfficialTemplate, templateParameterIdentifiers } from './templates'
+import { renderOfficialParameterValues, renderOfficialTemplate, templateParameterIdentifiers } from './templates'
 
 function chat(overrides: Partial<Chat> = {}): Chat {
   return {
@@ -38,5 +38,14 @@ describe('renderOfficialTemplate', () => {
   it('sustituye variables con nombre en el orden en que aparecen, en vez de dejarlas crudas', () => {
     const template = officialTemplate('Hola {{cliente}}, tu turno es {{fecha}}.')
     expect(renderOfficialTemplate(template, chat(), ['Ana', 'martes'])).toBe('Hola Ana, tu turno es martes.')
+  })
+})
+
+describe('variables con datos de la cita desde un chat', () => {
+  it('usa la próxima cita del lead y deja vacío lo que no se sabe', () => {
+    const template = { ...officialTemplate('Tu cita es el {{1}} a las {{2}}, {{3}}'), official_parameter_values: ['{{cita.fecha_larga}}', '{{cita.hora_12h}}', '{{cita.tratamiento}}'] }
+    const at = new Date(2026, 10, 12, 13, 0)
+    expect(renderOfficialParameterValues(template, { ...chat(), proxima_cita: at.toISOString() })).toEqual(['JUEVES 12 de Noviembre', '01:00 Pm', ''])
+    expect(renderOfficialParameterValues(template, { ...chat(), proxima_cita: null })).toEqual(['', '', ''])
   })
 })

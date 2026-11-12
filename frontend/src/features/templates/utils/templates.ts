@@ -17,8 +17,39 @@ export function renderTemplateText(content: string, chat: Chat): string {
   return content.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? `{{${key}}}`)
 }
 
+const WEEKDAYS = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO']
+const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const pad = (value: number) => String(value).padStart(2, '0')
+
+/** Los datos de la cita que se saben desde el chat: los de su próxima cita
+ *  (fecha y hora). En los avisos de cita los llena el backend con la cita
+ *  guardada. */
+export function appointmentValuesFromChat(chat: Pick<Chat, 'proxima_cita'>): Record<string, string> {
+  const at = chat.proxima_cita ? new Date(chat.proxima_cita) : null
+  if (!at || Number.isNaN(at.getTime())) return {}
+  const hour = at.getHours()
+  const minutes = pad(at.getMinutes())
+  return {
+    'cita.fecha': `${pad(at.getDate())}/${pad(at.getMonth() + 1)}/${at.getFullYear()}`,
+    'cita.fecha_larga': `${WEEKDAYS[at.getDay()]} ${at.getDate()} de ${MONTHS[at.getMonth()]}`,
+    'cita.hora': `${pad(hour)}:${minutes}`,
+    'cita.hora_12h': `${pad(hour % 12 || 12)}:${minutes} ${hour < 12 ? 'Am' : 'Pm'}`,
+  }
+}
+
+const APPOINTMENT_VARIABLE = /\{\{\s*(cita\.[a-z0-9_]+)\s*\}\}/g
+
+/** El valor de cada variable al enviar desde un chat. Si lleva un dato de la
+ *  cita que no se conoce, queda vacía para completarla a mano, en vez de
+ *  mandar el marcador crudo. */
 export function renderOfficialParameterValues(template: MessageTemplate, chat: Chat): string[] {
-  return template.official_parameter_values.map(value => renderTemplateText(value, chat))
+  const appointment = appointmentValuesFromChat(chat)
+  return template.official_parameter_values.map(value => {
+    const keys = Array.from(value.matchAll(APPOINTMENT_VARIABLE), match => match[1])
+    if (keys.some(key => !appointment[key])) return ''
+    const withAppointment = value.replace(APPOINTMENT_VARIABLE, (_whole, key: string) => appointment[key])
+    return renderTemplateText(withAppointment, chat).trim()
+  })
 }
 
 /** Espejo de `template_parameter_identifiers` en el backend (`meta_service.py`):

@@ -35,6 +35,10 @@ class FakeAppointments:
         row = self.rows.get(appointment_id)
         return dict(row) if row else None
 
+    async def latest_real(self) -> dict | None:
+        real = [row for row in self.rows.values() if not row.get("test_mode")]
+        return dict(real[-1]) if real else None
+
     async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
         row = self.rows[appointment_id]
         row.update({key: value for key, value in values.items() if value is not None})
@@ -80,6 +84,10 @@ class FakeLeads:
     tail_lookups: list[str] = field(default_factory=list)
     existing: set[str] = field(default_factory=set)
     registered: list[dict] = field(default_factory=list)
+    snapshots: dict[str, dict] = field(default_factory=dict)
+
+    async def snapshot(self, lead_id: str) -> dict | None:
+        return self.snapshots.get(lead_id)
 
     async def by_whatsapp_identity(self, e164: str) -> str | None:
         return self.identities.get(e164)
@@ -96,12 +104,42 @@ class FakeLeads:
 
 
 @dataclass
+class FakeMessenger:
+    sent: list[dict] = field(default_factory=list)
+    to_phones: list[dict] = field(default_factory=list)
+    error: Exception | None = None
+    failing_phones: set[str] = field(default_factory=set)
+
+    async def send_to_lead(self, **values) -> None:
+        if self.error is not None:
+            raise self.error
+        self.sent.append(values)
+
+    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> None:
+        if phone in self.failing_phones and self.error is not None:
+            raise self.error
+        self.to_phones.append({"phone": phone, "template_id": template["id"], "parameters": parameters})
+
+
+@dataclass
+class FakeStaff:
+    team: list[dict] = field(default_factory=list)
+    asked: list[str] = field(default_factory=list)
+
+    async def recipients(self, seller_name: str) -> list[dict]:
+        self.asked.append(seller_name)
+        return list(self.team)
+
+
+@dataclass
 class AppointmentWorld:
     repository: FakeAppointments
     calendar: FakeCalendar
     sync: FakeSync
     leads: FakeLeads
     published: list
+    messenger: FakeMessenger = field(default_factory=FakeMessenger)
+    staff: FakeStaff = field(default_factory=FakeStaff)
 
     def of(self, event_type):
         return [event for event in self.published if isinstance(event, event_type)]
@@ -128,6 +166,7 @@ def in_memory_appointments(monkeypatch) -> AppointmentWorld:
     )
     monkeypatch.setattr(ports, "_ports", AppointmentPorts(
         repository=world.repository, calendar=world.calendar, sync=world.sync, leads=world.leads,
+        messenger=world.messenger, staff=world.staff,
     ))
     monkeypatch.setattr(uow, "get_sessionmaker", lambda: _FakeSession)
 

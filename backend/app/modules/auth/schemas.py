@@ -78,6 +78,8 @@ class UserItem(BaseModel):
     # Nunca activó su cuenta: el correo se puede corregir y la invitación
     # reenviar o copiar. Un desactivado (entró alguna vez) no es pendiente.
     invitation_pending: bool
+    # WhatsApp para el aviso de cita al equipo; nulo si no lo cargaron.
+    phone: str | None = None
 
 class CreateUserRequest(BaseModel):
     email: str
@@ -88,6 +90,8 @@ class UpdateUserRequest(BaseModel):
     email: str | None = Field(default=None, min_length=3, max_length=254)
     role: str | None = None
     is_active: bool | None = None
+    # Vacío lo borra.
+    phone: str | None = Field(default=None, max_length=30)
 
 class InvitationLinkOut(BaseModel):
     url: str

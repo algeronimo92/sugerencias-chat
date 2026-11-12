@@ -123,3 +123,17 @@ def test_invitation_link_needs_a_public_url(client, monkeypatch):
     monkeypatch.setattr(users_api, "issue_invitation_link", AsyncMock(side_effect=EmailNotConfiguredError("no url")))
     response = client.post("/api/users/3/invitation-link")
     assert response.status_code == 503
+
+
+def test_a_phone_is_stored_as_the_whatsapp_id_and_empty_clears_it(client, monkeypatch):
+    # El aviso de cita al equipo le escribe a este número: se guarda como lo
+    # identifica Meta, con el código de país del negocio si no lo trae.
+    monkeypatch.setattr(users_api, "effective_country_code", AsyncMock(return_value="51"))
+
+    assert client.patch("/api/users/2", json={"phone": "927 345 336"}).status_code == 200
+    assert users_api.update_user.await_args.args == (2, {"phone": "51927345336"})
+
+    assert client.patch("/api/users/2", json={"phone": " "}).status_code == 200
+    assert users_api.update_user.await_args.args == (2, {"phone": None})
+
+    assert client.patch("/api/users/2", json={"phone": "12"}).status_code == 400

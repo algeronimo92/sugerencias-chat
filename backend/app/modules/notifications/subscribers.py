@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from app.core.events import Phase, subscribe
 from app.modules.appointments.public import AppointmentCreated
+from app.modules.auth.ports.users import list_active_sellers
 from app.modules.conversations.public import NoteMentionsAdded, NoteMentionsRead
 from app.modules.issue_reports.ports.service import list_active_admin_ids
 from app.modules.notifications.events import NotificationCreated, NotificationsRead
@@ -57,9 +58,16 @@ async def mark_lead_notifications_seen(event: NoteMentionsRead) -> None:
 
 @subscribe(AppointmentCreated, phase=Phase.AFTER_COMMIT)
 async def notify_new_appointment(event: AppointmentCreated) -> None:
-    """Quien cargó la cita y los admins se enteran, en la app y por push."""
+    """Quien cargó la cita, el responsable elegido y los admins se enteran,
+    en la app y por push. El responsable se guarda por nombre (el formulario
+    ofrece los nombres del equipo): antes solo se avisaba a quien la cargó,
+    y una cita agendada por recepción para otra vendedora no le llegaba a ella."""
     try:
-        recipient_ids = {event.created_by_user_id, *(await list_active_admin_ids())}
+        recipient_ids = {
+            event.created_by_user_id,
+            *(await list_active_admin_ids()),
+            *(await _seller_ids(event.seller_name)),
+        }
         for recipient_id in recipient_ids:
             notification = await create_system_notification(
                 recipient_id, NotificationType.APPOINTMENT, event.title, event.text,
@@ -71,6 +79,13 @@ async def notify_new_appointment(event: AppointmentCreated) -> None:
             )
     except Exception:
         logger.exception("No se pudo avisar de la nueva cita %s", event.appointment_id)
+
+
+async def _seller_ids(name: str) -> list[int]:
+    wanted = name.strip().casefold()
+    if not wanted:
+        return []
+    return [seller["id"] for seller in await list_active_sellers() if seller["name"].strip().casefold() == wanted]
 
 
 @subscribe(NotificationsRead, phase=Phase.AFTER_COMMIT)

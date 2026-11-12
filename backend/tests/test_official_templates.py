@@ -66,7 +66,7 @@ async def test_official_template_create_sends_full_components_to_meta(monkeypatc
     assert (name, category, language) == ("recordatorio_cita", "UTILITY", "es")
     assert components == [
         {"type": "HEADER", "format": "TEXT", "text": "DermicaPro"},
-        {"type": "BODY", "text": "Hola {{1}}, tu cita es el {{2}}."},
+        {"type": "BODY", "text": "Hola {{1}}, tu cita es el {{2}}.", "example": {"body_text": [["Ana", "martes 10:00"]]}},
         {"type": "FOOTER", "text": "Gracias por tu preferencia"},
         {"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "Confirmar"}]},
     ]
@@ -477,3 +477,49 @@ async def test_delete_of_imported_template_never_touches_meta(monkeypatch):
     result = await templates.delete_template(9, SimpleNamespace(id=11))
 
     assert result == {"status": "ok"}
+
+
+
+@pytest.mark.asyncio
+async def test_saving_a_rejected_template_resubmits_it_with_examples(monkeypatch):
+    # La primera plantilla de aviso de cita se rechazó por llegar sin
+    # ejemplos; al corregirlos y guardar, quedaba rechazada porque el texto
+    # no había cambiado y no se volvía a mandar a Meta.
+    current = {
+        "id": 8, "name": "Aviso", "content": "Hola {{1}}", "category": "Seguimiento",
+        "template_type": "official", "official_name": "aviso_cita_cliente",
+        "official_language": "es", "official_category": "UTILITY", "official_status": "REJECTED",
+        "official_rejected_reason": "INVALID_FORMAT",
+        "official_parameter_values": ["Contacto"], "meta_template_id": "meta-8",
+        "official_header_type": "none", "official_header_text": None, "official_header_media_asset_id": None,
+        "official_footer": None, "official_buttons": [], "interactive_type": "none", "interactive_config": {},
+        "attachments": [], "stage": None, "task_type": None, "service": None, "shortcut": None,
+    }
+    sent: list = []
+    saved: list = []
+
+    async def fake_list_templates(_user_id, _include_inactive):
+        return [current]
+
+    async def fake_update_whatsapp_template(meta_id, components, category):
+        sent.append((meta_id, components, category))
+        return {"success": True}
+
+    async def fake_update_template(template_id, values):
+        saved.append(values)
+        return {**current, **values}
+
+    monkeypatch.setattr(templates, "list_templates", fake_list_templates)
+    monkeypatch.setattr(templates, "update_whatsapp_template", fake_update_whatsapp_template)
+    monkeypatch.setattr(templates, "update_template", fake_update_template)
+    monkeypatch.setattr(templates, "get_template_category_by_name", _category_found)
+
+    await templates.patch_template(
+        8, TemplateUpdate(official_parameter_values=["{{nombre}}"]), SimpleNamespace(id=11, role="admin"),
+    )
+
+    [(meta_id, components, _category)] = sent
+    assert meta_id == "meta-8"
+    assert components[0]["example"] == {"body_text": [["Ana"]]}
+    assert saved[0]["official_status"] == "PENDING"
+    assert saved[0]["official_rejected_reason"] is None
