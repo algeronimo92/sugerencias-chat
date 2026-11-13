@@ -27,6 +27,8 @@ export interface UpdateUserPayload {
   email?: string
   role?: UserRole
   is_active?: boolean
+  /** WhatsApp para el aviso de venta; vacío lo borra. */
+  phone?: string
 }
 
 export type InvitationLink = Delivered<ApiSchemas['InvitationLinkOut']>
@@ -78,6 +80,9 @@ export type Domain = Delivered<ApiSchemas['OrganizationDomainItem']>;
 
 export type Organization = Delivered<ApiSchemas['OrganizationItem']>;
 export type OrganizationList = Delivered<ApiSchemas['OrganizationList']>;
+
+/** Foto del negocio para el operador: equipo y primeros pasos. */
+export type ResumenNegocio = Delivered<ApiSchemas['OrganizationOverview']>;
 
 export type AsistenteNegocio = {
   enabled: boolean;

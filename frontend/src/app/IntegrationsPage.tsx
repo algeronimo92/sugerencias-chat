@@ -16,6 +16,9 @@ import { AiIntegrationCard, useAiProviders } from '../features/ai/public/aiInteg
 const CalendarEventTemplateEditor = lazy(() =>
   import('../features/appointments/public/CalendarEventTemplateEditor').then(module => ({ default: module.CalendarEventTemplateEditor })),
 )
+const NoticeCard = lazy(() =>
+  import('../features/appointments/public/NoticeCard').then(module => ({ default: module.NoticeCard })),
+)
 
 /**
  * Conexiones con servicios externos, en orden fijo: WhatsApp (sin él no hay
@@ -89,6 +92,10 @@ export function IntegrationsPage() {
                 </Suspense>
               )}
             />
+            <Suspense fallback={null}>
+              <NoticeCard audience="client" />
+              <NoticeCard audience="staff" />
+            </Suspense>
             <ErpIntegrationCard />
             <AiIntegrationCard />
             <ElevenLabsIntegrationCard />

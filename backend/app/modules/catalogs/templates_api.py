@@ -38,6 +38,7 @@ from app.modules.catalogs.template_validation import (
     normalize_common_fields,
     template_parameter_identifiers,
     validate_internal_variables,
+    validate_parameter_variables,
     validate_template_values,
 )
 
@@ -218,7 +219,7 @@ async def post_import_meta_template(
     if len(values["official_parameter_values"]) != expected_count or any(not value for value in values["official_parameter_values"]):
         raise HTTPException(400, f"Debes configurar un valor para cada una de las {expected_count} variables oficiales")
     with _template_errors():
-        validate_internal_variables(values["official_parameter_values"])
+        validate_parameter_variables(values["official_parameter_values"])
 
     category = await get_template_category_by_name(values["category"])
     if category is None:
@@ -421,11 +422,17 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
                 400,
                 "El nombre y el idioma de una plantilla ya enviada a Meta no se pueden cambiar; crea una nueva plantilla",
             )
-        content_changed = any(
+        # Los ejemplos de las variables también viajan a Meta: cambiarlos (o
+        # guardar de nuevo una rechazada) tiene que volver a mandarla a
+        # revisión. Antes solo se reenviaba si cambiaba el texto, y una
+        # plantilla rechazada por falta de ejemplos quedaba rechazada aunque
+        # se los cargara.
+        content_changed = current.get("official_status") == "REJECTED" or any(
             merged.get(field) != current.get(field)
             for field in (
                 "content", "official_header_type", "official_header_text",
                 "official_header_media_asset_id", "official_footer", "official_buttons",
+                "official_parameter_values",
             )
         )
         category_changed_meta = merged.get("official_category") != current.get("official_category")
@@ -440,6 +447,11 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
                 )
             except MetaApiError as exc:
                 raise HTTPException(502, describe_template_error(exc))
+            if content_changed:
+                # Meta la vuelve a revisar: hasta que responda, no está
+                # aprobada ni rechazada.
+                merged["official_status"] = "PENDING"
+                values["official_rejected_reason"] = None
     for key in ("name", "content", "category", "shortcut", "service"):
         if key in values:
             values[key] = merged[key]

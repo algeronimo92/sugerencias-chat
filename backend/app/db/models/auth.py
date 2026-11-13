@@ -20,6 +20,8 @@ class User(Base):
     # Nulo mientras la invitación sigue pendiente; distingue "nunca entró" de
     # "entró y el admin lo desactivó", que ``is_active`` solo no puede.
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # WhatsApp del usuario en E.164 sin "+", para el aviso de cita al equipo.
+    phone: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'vendedor', 'analista')", name="users_role_check"),

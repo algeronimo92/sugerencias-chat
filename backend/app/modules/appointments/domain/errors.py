@@ -32,3 +32,10 @@ class AppointmentLeadNotFound(NotFound):
     """El lead de la cita ya no existe"""
 
     code = "appointment_lead_not_found"
+
+
+class NoticeNotSent(DomainError):
+    """No se pudo mandar el aviso de cita."""
+
+    status_code = 502
+    code = "appointment_notice_not_sent"

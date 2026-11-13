@@ -312,11 +312,23 @@ async def send_message(chat_id: str, message: dict) -> dict:
 
     Devuelve ``{"body": cuerpo exacto enviado, "response": respuesta de Meta}``.
     """
+    return await _post_message(await _recipient(chat_id), message)
+
+
+async def send_message_to_number(wa_id: str, message: dict) -> dict:
+    """Lo mismo que ``send_message`` pero a un número que no es un lead (el
+    aviso de cita al equipo). Antes ese aviso pasaba el número como si fuera
+    el id de un lead, la búsqueda de la identidad fallaba con 'invalid UUID'
+    y no le llegaba a nadie."""
+    return await _post_message({"to": wa_id}, message)
+
+
+async def _post_message(recipient: dict[str, str], message: dict) -> dict:
     token, phone_number_id, _waba_id = await _config()
     body = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
-        **await _recipient(chat_id),
+        **recipient,
         **message,
     }
     url = _graph_url(f"{phone_number_id}/messages")

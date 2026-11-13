@@ -8,6 +8,7 @@ import { useMe } from '../../../shared/auth'
 import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../constants'
 import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
+import { AppointmentNotices } from './AppointmentNotices'
 
 const ALL_STATUSES = Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]
 const FAILED_STATUSES: AppointmentStatus[] = ['error', 'created_with_errors']
@@ -187,6 +188,8 @@ export function AppointmentHistoryList() {
                   {extractErrorMessage(syncCalendar.error)}
                 </p>
               )}
+
+              <AppointmentNotices notices={item.notices ?? []} leadId={item.lead_id} />
 
               {Object.keys(item.custom_fields).length > 0 && (
                 <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-wa-muted">

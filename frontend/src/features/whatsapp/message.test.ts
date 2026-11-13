@@ -54,14 +54,28 @@ describe('parseContent', () => {
     }
     const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: echo })
     expect(parsed.text).toBe('Mensaje interactivo enviado desde el celular')
-    expect(messageUnsupported(parsed.meta)).toEqual({ type: 'interactive', typeLabel: 'interactivo', fromPhone: true })
+    expect(messageUnsupported(parsed.meta))
+      .toEqual({ type: 'interactive', typeLabel: 'interactivo', fromPhone: true, unavailable: false })
   })
 
-  it('un unsupported que mandó el cliente sigue siendo un aviso de error', () => {
+  it('un unsupported del cliente sin tipo sigue siendo un aviso de error', () => {
     const inbound = { from: '51911111111', type: 'unsupported', errors: [{ code: 131051 }] }
     const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: inbound })
     expect(parsed.text).toBe('')
-    expect(messageUnsupported(parsed.meta).fromPhone).toBe(false)
+    expect(messageUnsupported(parsed.meta)).toMatchObject({ fromPhone: false, unavailable: false })
+  })
+
+  it('un unsupported del cliente con tipo dice qué fue', () => {
+    const poll = { from: '51911111111', type: 'unsupported', errors: [{ code: 131051 }], unsupported: { type: 'poll_creation' } }
+    const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: poll })
+    expect(parsed.text).toBe('Mensaje de encuesta que WhatsApp no comparte con el CRM')
+  })
+
+  it('el primer mensaje que retiene la coexistencia (131060) manda a mirar el celular', () => {
+    const first = { from: '51911111111', type: 'unsupported', errors: [{ code: 131060, title: 'This message is currently unavailable.' }] }
+    const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: first })
+    expect(messageUnsupported(parsed.meta).unavailable).toBe(true)
+    expect(parsed.text).toBe('Mensaje no disponible en el CRM: revísalo en el celular')
   })
 
   it('arma el interactivo de botones desde la estructura de Meta', () => {

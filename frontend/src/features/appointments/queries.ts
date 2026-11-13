@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAppointments, createAppointment, fetchCalendarEventTemplate, saveCalendarEventTemplate, syncAppointmentCalendar } from './api'
+import { fetchAppointments, createAppointment, fetchCalendarEventTemplate, fetchNotice, saveCalendarEventTemplate, saveNotice, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
+import type { NoticeAudience, NoticeUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
 
 export type { AppointmentAttachmentInput } from './types'
@@ -56,5 +57,19 @@ export function useSaveCalendarEventTemplate() {
   return useMutation({
     mutationFn: saveCalendarEventTemplate,
     onSuccess: (template) => queryClient.setQueryData(appointmentKeys.calendarTemplate, template),
+  })
+}
+
+export function useNotice(audience: NoticeAudience) {
+  return useQuery({
+    queryKey: appointmentKeys.notice(audience),
+    queryFn: () => fetchNotice(audience),
+  })
+}
+
+export function useSaveNotice(audience: NoticeAudience) {
+  return useMutation({
+    mutationFn: (values: NoticeUpdate) => saveNotice(audience, values),
+    onSuccess: (settings) => queryClient.setQueryData(appointmentKeys.notice(audience), settings),
   })
 }

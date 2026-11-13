@@ -17,6 +17,7 @@ def _row_to_user(user: User) -> dict:
         "role": user.role,
         "is_active": user.is_active,
         "invitation_pending": user.invitation_pending,
+        "phone": user.phone,
     }
 
 
@@ -98,7 +99,7 @@ async def count_active_admins(exclude_user_id: int | None = None) -> int:
 
 
 async def update_user(user_id: int, values: dict) -> dict | None:
-    """values puede traer 'email', 'role' y/o 'is_active'. Si el cambio dejaría
+    """values puede traer 'email', 'role', 'is_active' y/o 'phone'. Si el cambio dejaría
     sin ningún admin activo, se rechaza con LastAdminError antes de aplicarlo;
     un correo que ya usa otra cuenta, con EmailAlreadyExistsError.
 
@@ -175,3 +176,17 @@ async def team_summary() -> dict:
             )
         ).scalar_one_or_none()
     return {"users": int(total), "first_admin_id": first_admin_id}
+
+
+async def staff_phones(user_ids: Iterable[int]) -> dict[int, str]:
+    """El WhatsApp de cada usuario activo pedido que lo tenga cargado: a
+    quién le llega el aviso de cita al equipo."""
+    wanted = {int(user_id) for user_id in user_ids}
+    if not wanted:
+        return {}
+    stmt = select(User.id, User.phone).where(
+        User.id.in_(wanted), User.is_active == true(), User.phone.is_not(None), User.phone != "",
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).all()
+    return {user_id: phone for user_id, phone in rows}

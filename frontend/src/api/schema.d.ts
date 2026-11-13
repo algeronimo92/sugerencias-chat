@@ -572,6 +572,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/organizations/{organization_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organization Overview */
+        get: operations["get_organization_overview_api_platform_organizations__organization_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/ai": {
         parameters: {
             query?: never;
@@ -2901,6 +2918,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/notices/{audience}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Notice */
+        get: operations["get_notice_api_appointments_notices__audience__get"];
+        /** Put Notice */
+        put: operations["put_notice_api_appointments_notices__audience__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/{appointment_id}/sync-calendar": {
         parameters: {
             query?: never;
@@ -4086,6 +4121,8 @@ export interface components {
             calendar_sync_error?: string | null;
             /** Created At */
             created_at: string;
+            /** Notices */
+            notices?: components["schemas"]["AppointmentNoticeItem"][];
         };
         /** AppointmentLeadUpdates */
         AppointmentLeadUpdates: {
@@ -4098,6 +4135,43 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * AppointmentNoticeItem
+         * @description Un aviso de WhatsApp de la cita. ``status`` es lo que pasó al
+         *     enviarlo (``sent``, ``failed``, ``skipped``, con ``reason`` si no salió);
+         *     ``delivery_status`` lo que informó Meta después.
+         */
+        AppointmentNoticeItem: {
+            /** Id */
+            id: number;
+            /**
+             * Audience
+             * @enum {string}
+             */
+            audience: "client" | "staff";
+            /** Recipient Name */
+            recipient_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sent" | "failed" | "skipped";
+            /** Reason */
+            reason?: string | null;
+            /** Delivery Status */
+            delivery_status?: ("sent" | "delivered" | "read" | "failed") | null;
+            /** Delivered At */
+            delivered_at?: string | null;
+            /** Read At */
+            read_at?: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * Audience
+         * @enum {string}
+         */
+        Audience: "client" | "staff";
         /**
          * AutomationBuilderMode
          * @enum {string}
@@ -6561,6 +6635,71 @@ export interface components {
              */
             starter_pack: boolean;
         };
+        /** NoticeField */
+        NoticeField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Group */
+            group: string;
+        };
+        /**
+         * NoticePreview
+         * @description La última cita real: el armador muestra cada variable con sus datos.
+         */
+        NoticePreview: {
+            /** Label */
+            label: string;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * NoticeSettings
+         * @description Aviso de cita por WhatsApp (al cliente o al equipo). ``parameters`` es
+         *     el contenido de cada variable, en orden: texto libre con marcadores
+         *     ``{campo}`` que nombran uno de ``fields``.
+         */
+        NoticeSettings: {
+            /** Enabled */
+            enabled: boolean;
+            /** Template Id */
+            template_id: number | null;
+            /** Parameters */
+            parameters: string[];
+            /** Fields */
+            fields: components["schemas"]["NoticeField"][];
+            /** Templates */
+            templates: components["schemas"]["NoticeTemplate"][];
+            preview?: components["schemas"]["NoticePreview"] | null;
+        };
+        /** NoticeSettingsUpdate */
+        NoticeSettingsUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /** Template Id */
+            template_id?: number | null;
+            /** Parameters */
+            parameters?: string[];
+        };
+        /** NoticeTemplate */
+        NoticeTemplate: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Content */
+            content: string;
+            /** Variable Count */
+            variable_count: number;
+            /**
+             * Suggested Parameters
+             * @default []
+             */
+            suggested_parameters: string[];
+        };
         /** NotificationItem */
         NotificationItem: {
             /** Id */
@@ -6703,6 +6842,15 @@ export interface components {
             head?: string | null;
             /** Items */
             items: components["schemas"]["OrganizationItem"][];
+        };
+        /**
+         * OrganizationOverview
+         * @description Resumen de un negocio en el panel de plataforma.
+         */
+        OrganizationOverview: {
+            /** Users */
+            users: number;
+            setup: components["schemas"]["OnboardingStatus"];
         };
         /** PersonalTemplateCreate */
         PersonalTemplateCreate: {
@@ -7699,6 +7847,8 @@ export interface components {
             role?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+            /** Phone */
+            phone?: string | null;
         };
         /** UserItem */
         UserItem: {
@@ -7713,6 +7863,8 @@ export interface components {
             is_active: boolean;
             /** Invitation Pending */
             invitation_pending: boolean;
+            /** Phone */
+            phone?: string | null;
         };
         /** UserOut */
         UserOut: {
@@ -8797,6 +8949,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_overview_api_platform_organizations__organization_id__overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOverview"];
                 };
             };
             /** @description Validation Error */
@@ -13697,6 +13880,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarEventTemplate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notice_api_appointments_notices__audience__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                audience: components["schemas"]["Audience"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_notice_api_appointments_notices__audience__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                audience: components["schemas"]["Audience"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSettings"];
                 };
             };
             /** @description Validation Error */

@@ -13,6 +13,8 @@ from sqlalchemy import select
 from app.db.models.control import Organization, OrganizationDomain, TenantSchemaVersion
 from app.db.session import control_session
 from app.modules.ai.public import AIEntitlement, count_usage_this_month, get_entitlement
+from app.modules.auth.public import team_summary
+from app.modules.platform.onboarding import onboarding_status
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
     SETTING_DEFS,
@@ -116,6 +118,21 @@ async def organization_context(organization_id: UUID) -> TenantContext:
     if row is None:
         raise OrganizationNotFoundError(str(organization_id))
     return TenantContext(UUID(str(row.id)), row.schema_name, row.hostname, row.storage_prefix)
+
+
+async def organization_overview(organization_id: UUID) -> dict:
+    """Foto del negocio para el operador: cuánta gente tiene y qué dejó listo.
+
+    Reutiliza el checklist de primeros pasos del propio negocio en vez de
+    recalcularlo acá: así el operador ve exactamente lo mismo que el admin del
+    negocio, y un paso nuevo aparece en los dos lados sin tocar este módulo.
+    """
+
+    context = await organization_context(organization_id)
+    with tenant_context(context):
+        setup = await onboarding_status()
+        team = await team_summary()
+    return {"users": team["users"], "setup": setup}
 
 
 async def organization_ai(organization_id: UUID) -> dict:

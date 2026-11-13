@@ -3,6 +3,7 @@ import type { LeadStage } from '../../leads/types'
 import type { TaskType } from '../../tasks/types'
 import type { InteractiveLimits, MessageTemplate, OfficialTemplateButton } from '../types'
 import type { EditableListSection, EditableReplyButton } from './interactiveConfig'
+import { PARAMETER_KEYS } from './officialParameters'
 
 export function exceedsLimit(value: string, limit: number | undefined): limit is number {
   return limit !== undefined && value.length > limit
@@ -135,7 +136,7 @@ function officialRules(form: TemplateFormState, _limits: InteractiveLimits | und
     report(ctx, 'Configura un valor para cada variable oficial.')
   }
   const unknownParameters = [...templateVariables(...form.officialParameterValues)]
-    .filter(value => !ALLOWED_INTERNAL_VARIABLES.has(value))
+    .filter(value => !PARAMETER_KEYS.has(value))
   if (unknownParameters.length) {
     report(ctx, `Variables no reconocidas en los parámetros: ${unknownParameters.map(value => `{{${value}}}`).join(', ')}.`)
   }

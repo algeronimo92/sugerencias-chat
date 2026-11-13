@@ -1,5 +1,6 @@
 """Puertos de las citas: dónde se guardan, el calendario externo, el
-sincronizador de n8n y cómo se encuentra el lead de un teléfono."""
+sincronizador de n8n, cómo se encuentra el lead de un teléfono y cómo se le
+escribe al cliente."""
 
 from __future__ import annotations
 
@@ -15,6 +16,9 @@ class AppointmentRepository(Protocol):
     async def add(self, values: dict) -> dict: ...
 
     async def get(self, appointment_id: int) -> dict | None: ...
+
+    async def latest_real(self) -> dict | None:
+        """La última cita que no es de prueba (para las vistas previas)."""
 
     async def record_integrations(self, appointment_id: int, **values) -> dict:
         """Guarda el resultado de las integraciones. ``clear_calendar_sync_error``
@@ -35,11 +39,24 @@ class AppointmentSync(Protocol):
 class AppointmentLeads(Protocol):
     async def by_whatsapp_identity(self, e164: str) -> str | None: ...
 
-    async def by_phone_tail(self, tail: str) -> str | None:
-        """El único lead cuyo teléfono termina en ``tail``; None si no hay
-        ninguno o hay más de uno."""
+    async def by_phone_tail(self, tail: str) -> list[str]:
+        """Los leads cuyo teléfono termina en ``tail``, hasta dos: con uno se
+        vincula, con dos no se adivina y con ninguno se puede crear."""
+
+    async def by_phone_in_chat(self, tail: str) -> list[str]:
+        """Los leads sin teléfono (solo conocidos por su usuario de WhatsApp)
+        en cuyo chat el cliente escribió hace poco un número que termina en
+        ``tail``, hasta dos."""
 
     async def exists(self, lead_id: str) -> bool: ...
+
+    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+        """Da de alta el lead de ese ``wa_id`` (E.164 en dígitos), como el alta
+        manual, y devuelve su id. Si en el medio otro alta tomó ese número,
+        devuelve el de ese lead."""
+
+    async def snapshot(self, lead_id: str) -> dict | None:
+        """La fila del lead (nombre, teléfono, campos personalizados…), o None."""
 
     async def register(
         self, lead_id: str, *, actor_user_id: int, appointment: dict,
@@ -51,12 +68,47 @@ class AppointmentLeads(Protocol):
         ``note`` como nota interna a nombre de quien agendó."""
 
 
+class NoticeMessenger(Protocol):
+    async def send_to_lead(
+        self, *, chat_id: str, template_id: int, parameters: list[str], user_id: int, dedupe_key: str,
+    ) -> int | None:
+        """Encola la plantilla oficial en el chat del lead y devuelve el id
+        del mensaje en el CRM. Levanta ``NoticeNotSent`` si no se pudo."""
+
+    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> str | None:
+        """Manda la plantilla directo a un número del equipo, sin abrir un
+        chat en el CRM, y devuelve el id que le dio Meta. Levanta
+        ``NoticeNotSent`` si Meta no la aceptó."""
+
+
+class StaffDirectory(Protocol):
+    async def recipients(self, seller_name: str) -> list[dict]:
+        """``{id, name, phone}`` del responsable de la cita (por nombre) y de
+        los admins activos, sin repetir. ``phone`` es None si no lo cargaron:
+        el aviso queda registrado como no enviado por eso."""
+
+
+class NoticeLog(Protocol):
+    async def record(self, appointment_id: int, notices: list[dict]) -> None:
+        """Guarda los avisos que generó la cita (ver ``AppointmentNotice``)."""
+
+    async def record_delivery(
+        self, *, provider_message_id: str | None, wsp_message_id: int | None, status: str, at: datetime | None,
+    ) -> int:
+        """Marca como enviado, entregado, leído o fallido el aviso de ese
+        mensaje, sin volver atrás (un leído no pasa a entregado). Devuelve
+        cuántos avisos cambiaron."""
+
+
 @dataclass(frozen=True)
 class AppointmentPorts:
     repository: AppointmentRepository
     calendar: CalendarProvider
     sync: AppointmentSync
     leads: AppointmentLeads
+    messenger: NoticeMessenger
+    staff: StaffDirectory
+    notices: NoticeLog
 
 
 _ports: AppointmentPorts | None = None

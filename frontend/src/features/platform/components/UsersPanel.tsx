@@ -30,6 +30,7 @@ import {
 } from '../hooks/useUsers'
 import type { AppUser } from '../types'
 import { settingInputClass } from './SettingField'
+import { UserPhoneField } from './UserPhoneField'
 
 const ROLE_LABEL: Record<UserRole, string> = { admin: 'Admin', vendedor: 'Vendedor', analista: 'Analista' }
 const ANALYST_HELP = 'Solo verá el dashboard: sin chats, leads ni tareas.'
@@ -292,6 +293,7 @@ function UserRow({ user, isSelf }: { user: AppUser; isSelf: boolean }) {
               )}
             </p>
           )}
+          {!inactive && user.role !== 'analista' && <UserPhoneField user={user} />}
           {status === 'pending' && !editingEmail && (
             <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">Todavía no creó su contraseña. Si no le llegó el correo, reenvíale la invitación o pásale el enlace por WhatsApp.</p>
           )}

@@ -56,7 +56,11 @@ class SendReceipt:
 
 
 class MessageSender(Protocol):
-    async def send(self, chat_id: str, message: dict) -> SendReceipt: ...
+    async def send(self, chat_id: str, message: dict) -> SendReceipt:
+        """A un lead: el destino sale de su identidad de WhatsApp."""
+
+    async def send_to_number(self, wa_id: str, message: dict) -> SendReceipt:
+        """A un número que no es un lead (alguien del equipo)."""
 
     async def upload_media(self, content: bytes, content_type: str, filename: str) -> str: ...
 

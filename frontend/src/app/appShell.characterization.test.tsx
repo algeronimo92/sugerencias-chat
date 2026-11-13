@@ -13,7 +13,8 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import client from '../shared/http/client'
-import { queryClient } from '../shared/queryClient'
+import { SESSION_CHECK_TIMEOUT_MS } from '../shared/auth'
+import { ME_QUERY_KEY, queryClient } from '../shared/queryClient'
 import { installFakeApi, networkError } from '../test/fakeApi'
 import { installFakeSocket } from '../test/fakeSocket'
 import App from './App'
@@ -65,6 +66,39 @@ describe('sesión', () => {
     expect(await screen.findByText('No se pudo establecer conexión con el servidor.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar conexión' }))
     expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+  })
+
+  it('si el servidor no contesta, el spinner de arranque da paso al aviso de conexión', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    api.current.on('get', '/api/auth/me', () => new Promise<never>(() => {}))
+    at('/')
+    render(<App />)
+
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_TIMEOUT_MS - 1)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await screen.findByText('No se pudo establecer conexión con el servidor.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reintentar conexión' })).toBeInTheDocument()
+  })
+
+  it('con la app ya abierta, una consulta de sesión lenta no saca del CRM', async () => {
+    let attempts = 0
+    api.current.on('get', '/api/auth/me', () => {
+      attempts += 1
+      return attempts === 1 ? { data: SELLER } : new Promise<never>(() => {})
+    })
+    at('/')
+    render(<App />)
+    expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY })
+    await waitFor(() => expect(attempts).toBe(2))
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_TIMEOUT_MS * 4)
+
+    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+    expect(screen.queryByText('Backend no disponible')).not.toBeInTheDocument()
   })
 
   it('sin sesión muestra el login y al entrar abre el CRM', async () => {

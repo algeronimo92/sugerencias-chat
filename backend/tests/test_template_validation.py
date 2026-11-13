@@ -150,7 +150,62 @@ async def test_meta_components_follow_the_graph_api_shape():
     components = await build_meta_components(values)
 
     assert components == [
-        {"type": "BODY", "text": "Hola {{1}}"},
+        {"type": "BODY", "text": "Hola {{1}}", "example": {"body_text": [values["official_parameter_values"]]}},
         {"type": "FOOTER", "text": "Equipo"},
         {"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "Sí"}]},
     ]
+
+
+async def test_meta_gets_one_example_per_variable():
+    # Sin ejemplos Meta rechazó la primera plantilla de aviso de cita como
+    # INVALID_FORMAT.
+    values = await validate_template_values(official(
+        content="¡Hola *{{1}}*! Tu sesión de *{{2}}* quedó para el *{{3}} a las {{4}}*.",
+        official_parameter_values=["AYME", "Hifu12D", "JUEVES 12 de Noviembre", "01:00 Pm"],
+    ))
+
+    [body] = await build_meta_components(values)
+
+    assert body["example"] == {"body_text": [["AYME", "Hifu12D", "JUEVES 12 de Noviembre", "01:00 Pm"]]}
+
+
+async def test_a_template_without_variables_has_no_example():
+    [body] = await build_meta_components(await validate_template_values(official(
+        content="Gracias por escribirnos", official_parameter_values=[],
+    )))
+
+    assert "example" not in body
+
+
+async def test_named_variables_get_named_examples():
+    [body] = await build_meta_components({
+        "content": "Hola {{cliente}}, {{cliente}} tu cita es el {{fecha}}",
+        "official_parameter_values": ["Ana", "Ana", "lunes"],
+    })
+
+    assert body["example"] == {"body_text_named_params": [
+        {"param_name": "cliente", "example": "Ana"},
+        {"param_name": "fecha", "example": "lunes"},
+    ]}
+
+
+async def test_app_variables_reach_meta_as_sample_text():
+    # El valor por defecto {{nombre}} se completa al enviar; Meta necesita
+    # ver un ejemplo sin llaves.
+    [body] = await build_meta_components(await validate_template_values(official(
+        content="Hola {{1}}, te escribe {{2}}", official_parameter_values=["{{nombre}}", "{{ vendedor }} de la clínica"],
+    )))
+
+    assert body["example"] == {"body_text": [["Ana", "Grecia de la clínica"]]}
+
+
+async def test_official_variables_can_use_appointment_data():
+    values = await validate_template_values(official(
+        content="Tu cita es el {{1}}", official_parameter_values=["{{cita.fecha_larga}} a las {{cita.hora_12h}}"],
+    ))
+
+    [body] = await build_meta_components(values)
+
+    assert body["example"] == {"body_text": [["JUEVES 12 de Noviembre a las 01:00 Pm"]]}
+    with pytest.raises(TemplateValidationError):
+        await validate_template_values(official(official_parameter_values=["{{cita.inventado}}"]))

@@ -17,12 +17,26 @@ from app.modules.auth.users_service import EmailAlreadyExistsError, LastAdminErr
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
 from app.modules.auth.session_service import revoke_all_for_user
 from app.modules.auth.types import UserRole
+from app.core.phone_utils import PhoneValidationError, normalize_phone
+from app.modules.platform.public import effective_country_code
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
 # Un correo con forma de correo: lo que importa es no guardar algo a lo que
 # nunca llegará una invitación ni un restablecimiento.
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+async def _normalized_phone(raw: str | None) -> str | None:
+    """El WhatsApp del usuario como lo identifica Meta (E.164 sin "+"); vacío
+    lo borra. Sin código de país se asume el del negocio."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return normalize_phone(raw, await effective_country_code())
+    except PhoneValidationError as exc:
+        raise HTTPException(status_code=400, detail="El teléfono no es válido") from exc
 
 
 @router.get("", response_model=list[UserItem])
@@ -74,6 +88,8 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
         values["email"] = (values["email"] or "").strip().lower()
         if not EMAIL_RE.match(values["email"]):
             raise HTTPException(status_code=400, detail="El correo no es válido")
+    if "phone" in values:
+        values["phone"] = await _normalized_phone(values["phone"])
     try:
         user = await update_user(user_id, values)
     except LastAdminError:

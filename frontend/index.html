@@ -6,24 +6,24 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Manifest del negocio (nombre, color e ícono propios), resuelto por dominio. -->
     <link rel="manifest" href="/api/branding/manifest.webmanifest" />
-    <!-- viewport-fit=cover: en la PWA instalada la app se dibuja debajo de la
-         barra de estado y de la barra de gestos; el margen real lo ponen las
-         utilidades pt-safe / pb-safe con env(safe-area-inset-*). -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- En Android se quita viewport-fit=cover. Con él, la app instalada en un
-         equipo con barra de tres botones se dibujó hasta el borde físico de la
-         pantalla mientras env(safe-area-inset-bottom) valía 0: el cuadro de
-         escritura del chat quedó entero debajo de la barra del sistema y no se
-         podía escribir. Sin cover, Android deja la página por encima de sus
-         barras, que es lo que la app ya suponía. iOS lo conserva: ahí sí
-         informa los márgenes y la app instalada los necesita. Va en un script
-         propio y antes del primer frame para que la página nunca se mida con
-         el alto equivocado. -->
+    <!-- viewport-fit=cover: en la PWA instalada de iOS la app se dibuja debajo
+         de la barra de estado y de la barra de gestos; el margen real lo ponen
+         las utilidades pt-safe / pb-safe con env(safe-area-inset-*).
+         Android nunca debe verlo. Con él, la app instalada en un equipo con
+         barra de tres botones se dibuja hasta el borde físico de la pantalla
+         mientras env(safe-area-inset-bottom) vale 0, y el cuadro de escritura
+         del chat y la barra inferior quedan debajo de la barra del sistema.
+         Por eso el meta nace sin cover y el script lo agrega fuera de Android,
+         y no al revés: hasta el 2026-11-12 nacía con cover y el script se lo
+         quitaba en Android (#171), pero al recargar la PWA con "Actualizar"
+         Chrome se quedaba con el primer valor que leyó el parser y la parte de
+         abajo volvía a cortarse. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      if (/Android/i.test(navigator.userAgent)) {
+      if (!/Android/i.test(navigator.userAgent)) {
         document
           .querySelector('meta[name="viewport"]')
-          .setAttribute('content', 'width=device-width, initial-scale=1.0')
+          .setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover')
       }
     </script>
     <meta name="apple-mobile-web-app-title" content="CRM" />

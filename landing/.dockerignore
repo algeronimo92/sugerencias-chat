@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+.git
+
+# Por patrón y no por nombre exacto: Next hornea cualquier NEXT_PUBLIC_* del
+# .env dentro del bundle, así que lo que entre al contexto termina público.
+.env*
+**/.env*
+
+# Capturas originales del producto: traen datos reales de pacientes
+# (ver .gitignore). No entran ni al contexto de build.
+_capturas
+.venv-img
+
+docs
+*.md
+Dockerfile
+.dockerignore

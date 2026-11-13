@@ -122,6 +122,41 @@ def template_variables(value: object) -> set[str]:
     return set()
 
 
+# Datos de la cita que puede llevar una variable de plantilla oficial, con el
+# ejemplo que revisa Meta. Las claves son las del aviso de cita
+# (appointments/domain/notice.py), con el prefijo "cita.": catalogs no
+# depende de appointments, así que la lista se repite acá a propósito.
+APPOINTMENT_VARIABLES = {
+    "cita.nombre_completo": "Ana Pérez",
+    "cita.dni": "45678912",
+    "cita.telefono": "987654321",
+    "cita.tratamiento": "Limpieza facial",
+    "cita.detalle": "Primera sesión",
+    "cita.vendedor": "Grecia",
+    "cita.adelanto": "50",
+    "cita.duration_minutes": "120",
+    "cita.fecha": "12/11/2026",
+    "cita.hora": "13:00",
+    "cita.fecha_larga": "JUEVES 12 de Noviembre",
+    "cita.hora_12h": "01:00 Pm",
+    "cita.hora_fin": "15:00",
+    "cita.horario": "de 13:00 a 15:00",
+    "cita.fecha_horario": "12/11/2026 de 13:00 a 15:00",
+}
+
+
+def validate_parameter_variables(*values: object) -> None:
+    """Las variables de una plantilla oficial pueden nombrar datos del lead
+    o de la cita (``{{cita.fecha_larga}}``)."""
+    unknown = (
+        set().union(*(template_variables(value) for value in values))
+        - ALLOWED_INTERNAL_VARIABLES - set(APPOINTMENT_VARIABLES)
+    )
+    if unknown:
+        formatted = ", ".join(f"{{{{{name}}}}}" for name in sorted(unknown))
+        raise TemplateValidationError(f"Variables no reconocidas: {formatted}")
+
+
 def validate_internal_variables(*values: object) -> None:
     unknown = set().union(*(template_variables(value) for value in values)) - ALLOWED_INTERNAL_VARIABLES
     if unknown:
@@ -335,7 +370,7 @@ def _validate_official_text(values: dict) -> tuple[str, str, list[str]]:
         raise TemplateValidationError(
             f"Debes configurar un valor para cada una de las {len(expected_positions)} variables oficiales"
         )
-    validate_internal_variables(parameters)
+    validate_parameter_variables(parameters)
     return official_name, official_language, parameters
 
 
@@ -357,6 +392,50 @@ async def validate_template_values(values: dict) -> dict:
     })
     await validate_official_components(values)
     return values
+
+
+# Con qué se ilustra cada variable de la app en el ejemplo que revisa Meta:
+# un valor por defecto como ``{{nombre}}`` se resuelve recién al enviar, y
+# Meta rechaza un ejemplo que todavía trae llaves.
+SAMPLE_INTERNAL_VALUES = {
+    "nombre": "Ana",
+    "telefono": "51987654321",
+    "servicio": "Limpieza facial",
+    "vendedor": "Grecia",
+    "fecha_actual": "12/11/2026",
+}
+
+
+def _sample(value: object) -> str:
+    text = re.sub(
+        r"\{\{\s*([^{}]+?)\s*\}\}",
+        lambda match: SAMPLE_INTERNAL_VALUES.get(match.group(1).strip())
+        or APPOINTMENT_VARIABLES.get(match.group(1).strip(), match.group(1).strip()),
+        str(value),
+    )
+    return text.strip()
+
+
+def _body_component(values: dict) -> dict:
+    """El cuerpo con un ejemplo por variable. Meta revisa la plantilla con
+    esos ejemplos y, sin ellos, la rechaza como INVALID_FORMAT: pasó con la
+    primera plantilla de aviso de cita. Los ejemplos salen de los valores
+    por defecto del formulario, con las variables de la app ya resueltas."""
+    body: dict = {"type": "BODY", "text": values["content"]}
+    names = template_parameter_identifiers(values["content"])
+    samples = [_sample(value) for value in values.get("official_parameter_values") or []]
+    if not names or len(samples) != len(names):
+        return body
+    if all(name.isdigit() for name in names):
+        body["example"] = {"body_text": [samples]}
+    else:
+        # Una variable con nombre puede repetirse en el texto; Meta pide un
+        # ejemplo por nombre.
+        named = dict(zip(names, samples))
+        body["example"] = {"body_text_named_params": [
+            {"param_name": name, "example": sample} for name, sample in named.items()
+        ]}
+    return body
 
 
 async def build_meta_components(values: dict) -> list[dict]:
@@ -381,7 +460,7 @@ async def build_meta_components(values: dict) -> list[dict]:
         except MetaApiError as exc:
             raise TemplateMediaError(describe_template_error(exc)) from exc
         components.append({"type": "HEADER", "format": "IMAGE", "example": {"header_handle": [handle]}})
-    components.append({"type": "BODY", "text": values["content"]})
+    components.append(_body_component(values))
     if values.get("official_footer"):
         components.append({"type": "FOOTER", "text": values["official_footer"]})
     buttons = values.get("official_buttons") or []

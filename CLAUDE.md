@@ -25,6 +25,7 @@ Fuente completa: [docs/arquitectura-modular.md](docs/arquitectura-modular.md).
 | `backend/alembic/versions/` | **Única fuente del esquema** (un solo head) | [backend/migrations/README.md](backend/migrations/README.md): los `.sql` están congelados |
 | `backend/tests/test_layering.py` · `frontend/src/test/architecture.test.ts` | Reglas de arquitectura como tests | ver abajo |
 | `frontend/src/{app,features/<15>,shared,realtime}` | Composición; una carpeta por feature; piezas sin reglas de negocio; bus de tiempo real | [frontend/src/app/README.md](frontend/src/app/README.md), [frontend/src/shared/README.md](frontend/src/shared/README.md) |
+| `landing/` · `compose.landing.yml` · `traefik/dynamic/landing.yml` | Página pública `cliniventas.com`: Next.js con export estático en un nginx aparte, fuera del blue-green | [landing/README.md](landing/README.md); se despliega con `scripts/deploy-landing.sh` |
 | `e2e/` | Pruebas de pantalla: la app compilada en un navegador real, con el backend simulado | [e2e/README.md](e2e/README.md) |
 | `frontend/src/api/schema.d.ts` | Tipos generados del OpenAPI; CI falla si se desincronizan | `scripts/generate-api-types.sh` |
 | `scripts/` · `backend/scripts/` | Operación del VPS (deploy, backup, TLS) · `python -m scripts.<x>` (dry-run salvo `--apply`) | |
@@ -62,6 +63,10 @@ cd frontend && npm run lint && npm test && npm run build
 
 # Pruebas de pantalla (Playwright, backend simulado): compila el frontend y lo abre en escritorio y celular.
 cd e2e && npm ci && npx playwright install chromium && npm run typecheck && npm test
+
+# Landing (Next.js aparte del frontend; lint = eslint). La imagen de producción queda en http://127.0.0.1:8090.
+cd landing && npm ci && npm run lint && npm run build
+docker compose -f compose.landing.yml up -d --build && scripts/landing-smoke.sh http://127.0.0.1:8090
 
 # Tipos de API: regenerar y comprobar que no cambió nada (CI falla si hay diff).
 scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema.d.ts

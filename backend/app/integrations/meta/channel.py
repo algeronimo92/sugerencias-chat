@@ -14,6 +14,14 @@ class MetaMessageSender:
             recipient_wa_id=contacts[0].get("wa_id") if contacts else None,
         )
 
+    async def send_to_number(self, wa_id: str, message: dict) -> SendReceipt:
+        result = await meta_service.send_message_to_number(wa_id, message)
+        messages = result["response"].get("messages") or []
+        return SendReceipt(
+            provider_message_id=messages[0].get("id") if messages else None,
+            sent_body=result["body"],
+        )
+
     async def upload_media(self, content: bytes, content_type: str, filename: str) -> str:
         return await meta_service.upload_media(content, content_type, filename)
 
