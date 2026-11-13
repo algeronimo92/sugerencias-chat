@@ -199,7 +199,6 @@ export function PlatformEmailPanel() {
       id="plataforma-correo"
       icon={Mail}
       title="Correo de la plataforma"
-      description="Desde aquí salen las invitaciones, los cambios de contraseña y los avisos de los negocios que no conectaron su propio correo. La prueba llega a tu correo de operador."
       state={state}
       stateLabel={label}
     >

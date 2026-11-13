@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.integrations.whatsapp.channel import ChannelError
 from app.modules.automations.ports.types import AutomationActionType, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
 from app.modules.automations.application.actions import execute_action
 from app.modules.automations.application.engine import run_execution
@@ -491,6 +492,25 @@ class TestReactToLastCustomerMessage:
             await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
         assert whatsapp.reactions == []
         assert recorder.events == []
+
+    async def test_meta_still_down_after_retries_skips_the_step_instead_of_failing_the_flow(self, deps, whatsapp):
+        # Lo que pasó con el flujo "Yape": un 131000 de Meta al reaccionar
+        # al comprobante marcaba toda la ejecución como fallida.
+        whatsapp.fail_with = ChannelError("Meta Graph API respondió 500: (#131000) Something went wrong", status_code=500)
+        action = {"type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE, "emoji": "✅"}
+
+        result = await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
+
+        assert result["status"] == AutomationExecutionStatus.SKIPPED
+        assert "131000" in result["detail"]
+        assert whatsapp.reactions == []
+
+    async def test_a_definitive_rejection_still_fails_the_step(self, deps, whatsapp):
+        whatsapp.fail_with = ChannelError("Meta Graph API respondió 400: Invalid parameter", status_code=400)
+        action = {"type": AutomationActionType.REACT_TO_LAST_CUSTOMER_MESSAGE, "emoji": "✅"}
+
+        with pytest.raises(ChannelError):
+            await execute_action(action, make_chat(), make_execution(), make_rule(), deps)
 
 
 class TestSendAudio:

@@ -121,7 +121,7 @@ function AppCredentialsCard({ app, items }: { app: AppInfo; items: PlatformSetti
   const { state, label } = stateOf(items)
 
   return (
-    <IntegrationCard id={`plataforma-${app.group}`} icon={app.icon} title={app.title} description={app.description} state={state} stateLabel={label}>
+    <IntegrationCard id={`plataforma-${app.group}`} icon={app.icon} title={app.title} state={state} stateLabel={label}>
       <form onSubmit={handleSubmit} className="space-y-3">
         {items.map((item) => {
           const inputId = `${formId}-${item.key}`

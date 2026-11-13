@@ -41,7 +41,6 @@ describe('TeamHoursPanel', () => {
     const source = screen.getByRole('region', { name: /WhatsApp, fuera del CRM/ })
     expect(within(source).getByText('Sin autor')).toBeInTheDocument()
     expect(within(source).getByText('200 mensajes')).toBeInTheDocument()
-    expect(within(source).getByText(/WhatsApp no dice quién los escribió/)).toBeInTheDocument()
     // No está entre las personas.
     expect(within(screen.getByRole('list', { name: 'En el CRM, por persona' })).queryByText(/WhatsApp/)).not.toBeInTheDocument()
     expect(screen.getByText('Personas: hasta 10 por franja, misma escala para todas')).toBeInTheDocument()

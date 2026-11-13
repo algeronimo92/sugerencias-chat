@@ -49,3 +49,18 @@ async def test_an_unusable_phone_never_breaks_the_appointment(leads):
     for phone in ("", "sin numero", "123"):
         assert await commands.resolve_lead_for_phone(phone) is None
     assert leads.tail_lookups == [], "un teléfono inválido no debería llegar a consultar"
+
+
+async def test_a_phoneless_lead_that_wrote_the_number_in_the_chat_is_used(leads):
+    """Contacto con usuario de WhatsApp: su lead no tiene teléfono, pero
+    dictó el número en el chat."""
+    leads.chat_mentions["987654321"] = ["lead-con-bsuid"]
+
+    assert await commands.resolve_lead_for_phone("987654321") == "lead-con-bsuid"
+
+
+async def test_a_lead_with_that_phone_wins_over_the_chat_mention(leads):
+    leads.tails["987654321"] = "lead-con-telefono"
+    leads.chat_mentions["987654321"] = ["lead-con-bsuid"]
+
+    assert await commands.resolve_lead_for_phone("987654321") == "lead-con-telefono"

@@ -3,6 +3,7 @@ memoria: la cita local siempre se guarda primero."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import HTTPException
@@ -33,6 +34,8 @@ def dependencies(monkeypatch, in_memory_appointments):
     ]))
     monkeypatch.setattr(appointments, "effective_country_code", AsyncMock(return_value="51"))
     monkeypatch.setattr(commands, "effective_country_code", AsyncMock(return_value="51"))
+    # Un teléfono sin lead ahora crea uno, que se entera de la cita a la hora del negocio.
+    monkeypatch.setattr(commands, "business_timezone", AsyncMock(return_value=ZoneInfo("America/Lima")))
     monkeypatch.setattr(appointments, "normalize_values", AsyncMock(side_effect=lambda _e, values, **_k: values))
     monkeypatch.setattr(calendar_template, "list_definitions", AsyncMock(return_value=[]))
     monkeypatch.setattr(calendar_template, "get_effective_many", AsyncMock(return_value={

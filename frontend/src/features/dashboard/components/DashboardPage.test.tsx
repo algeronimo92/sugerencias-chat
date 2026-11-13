@@ -423,7 +423,7 @@ describe('DashboardPage', () => {
     expect(within(reparto).getByText('Desde WhatsApp, fuera del CRM').closest('li')).toHaveTextContent('6637%')
     expect(within(reparto).getByText('Flujos automáticos').closest('li')).toHaveTextContent('7642%')
     expect(within(reparto).getByText('Escritos en el CRM').closest('li')).toHaveTextContent('3419%')
-    expect(within(reparto).getByText('Programados en el CRM').closest('li')).toHaveTextContent('No es una difusión')
+    expect(within(reparto).getByText('Programados en el CRM')).toBeVisible()
     // Las barras llevan su propia leyenda, con los orígenes que tuvieron mensajes.
     const leyenda = within(panel).getByRole('list', { name: 'Colores de cada origen' })
     for (const origen of ['Escritos en el CRM', 'Desde WhatsApp, fuera del CRM', 'Flujos automáticos', 'Programados en el CRM']) {

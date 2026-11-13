@@ -251,10 +251,16 @@ class FakeContract:
 class FakeChannelSender:
     calls: list[tuple[str, dict]] = field(default_factory=list)
     fail_with: Exception | None = None
+    # Fallos de una sola vez, en orden, antes de que los envíos salgan bien.
+    fail_next: list[Exception] = field(default_factory=list)
+    attempts: int = 0
 
     async def send(self, chat_id, message):
+        self.attempts += 1
         if self.fail_with is not None:
             raise self.fail_with
+        if self.fail_next:
+            raise self.fail_next.pop(0)
         self.calls.append((chat_id, message))
         return SendReceipt(f"WA-{len(self.calls)}", sent_body={"to": "51999", **message})
 

@@ -95,9 +95,6 @@ export function ErpSyncCard() {
               Último intento fallido: {status.last_error}
             </p>
           )}
-          <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-            Los servicios y paquetes del ERP se editan allí; acá les sumas sus fichas para el asistente IA.
-          </p>
         </div>
       </div>
       <Button
