@@ -29,6 +29,16 @@ class DeliveryUnconfirmedError(ChannelError):
 SEND_FAILURES: tuple[type[Exception], ...] = (ChannelError, httpx.HTTPError)
 
 
+def is_transient_send_failure(exc: Exception) -> bool:
+    """Un fallo que puede salir bien si se repite el mismo envío: límite de
+    velocidad (429), error interno del proveedor (5xx, como el 131000 genérico
+    de Meta) o un error de transporte. Un 4xx es un rechazo del contenido y
+    repetirlo da lo mismo."""
+    if isinstance(exc, ChannelError):
+        return exc.status_code is not None and (exc.status_code == 429 or exc.status_code >= 500)
+    return isinstance(exc, SEND_FAILURES)
+
+
 def describe_send_failure(exc: Exception, action: str) -> str:
     if isinstance(exc, ChannelError) and exc.user_message:
         return exc.user_message

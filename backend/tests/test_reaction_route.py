@@ -7,12 +7,18 @@ from fastapi import HTTPException
 
 from app.integrations.whatsapp.channel import ChannelError
 from app.modules.conversations import api as chats
+from app.modules.conversations.application import outbound
 from app.modules.conversations.domain.errors import MessageNotConfirmed, MessageNotFound
 from app.modules.conversations.domain.events import ReactionChanged
 from app.modules.conversations.schemas import ReactionRequest
 from tests.conftest import patch_chats
 
 CHAT_ID = "4316bc30-f78c-57a2-8f98-bff9087678d6"
+
+
+@pytest.fixture(autouse=True)
+def no_retry_wait(monkeypatch):
+    monkeypatch.setattr(outbound, "REACTION_RETRY_DELAYS", (0.0, 0.0))
 
 
 @pytest.fixture
@@ -75,3 +81,37 @@ async def test_react_does_not_persist_when_channel_fails(target):
     assert exc.value.status_code == 502
     assert world.messages.reaction_events == []
     assert world.published == []
+
+
+async def test_a_meta_hiccup_is_retried_and_the_reaction_lands(target):
+    """El 131000 genérico de Meta llega como 500 y suele ser de un instante."""
+    world = target({"id": 7, "sender": "cliente", "content": "hola", "wa_message_id": "WA-7"})
+    world.sender.fail_next = [ChannelError("Something went wrong (código 131000)", status_code=500)]
+
+    result = await chats.react_to_message(CHAT_ID, 7, ReactionRequest(emoji="❤️"))
+
+    assert world.sender.attempts == 2
+    assert len(world.messages.reaction_events) == 1
+    assert result["reactions"] == [{"emoji": "❤️", "from_me": True}]
+
+
+async def test_a_persistent_meta_outage_gives_up_after_the_retries(target):
+    world = target({"id": 7, "sender": "cliente", "content": "hola", "wa_message_id": "WA-7"})
+    world.sender.fail_with = ChannelError("Something went wrong", status_code=500)
+
+    with pytest.raises(HTTPException) as exc:
+        await chats.react_to_message(CHAT_ID, 7, ReactionRequest(emoji="❤️"))
+
+    assert exc.value.status_code == 502
+    assert world.sender.attempts == len(outbound.REACTION_RETRY_DELAYS) + 1
+    assert world.messages.reaction_events == []
+
+
+async def test_a_definitive_rejection_is_not_retried(target):
+    world = target({"id": 7, "sender": "cliente", "content": "hola", "wa_message_id": "WA-7"})
+    world.sender.fail_with = ChannelError("Invalid parameter", status_code=400)
+
+    with pytest.raises(HTTPException):
+        await chats.react_to_message(CHAT_ID, 7, ReactionRequest(emoji="❤️"))
+
+    assert world.sender.attempts == 1

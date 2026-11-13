@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Check, Columns3, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Columns3, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -22,6 +22,7 @@ useUpdateLeadStage,
 } from '../hooks/useLeadStages'
 import type { LeadStageAdminDefinition, LeadStageKind } from '../types'
 import { AppointmentStageSwitch } from './AppointmentStageSwitch'
+import { StageColorPicker } from './StageColorPicker'
 
 interface StageDraft {
   name: string
@@ -45,41 +46,6 @@ function changedFields(stage: LeadStageAdminDefinition, draft: StageDraft) {
   if (draft.kind !== original.kind) changes.kind = draft.kind
   if (draft.description.trim() !== original.description) changes.description = draft.description.trim()
   return changes
-}
-
-interface ColorPickerProps {
-  value: string
-  onChange: (color: string) => void
-  label: string
-}
-
-/** Paleta cerrada (ver LEAD_STAGE_COLORS): garantiza que la insignia derivada
- *  se lea en tema claro y oscuro. */
-function ColorPicker({ value, onChange, label }: ColorPickerProps) {
-  return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
-      {LEAD_STAGE_COLORS.map(color => {
-        const selected = color.value === value
-        return (
-          <button
-            key={color.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={color.label}
-            title={color.label}
-            onClick={() => onChange(color.value)}
-            style={{ backgroundColor: color.value }}
-            className={`grid h-7 w-7 place-items-center rounded-full outline-none ring-offset-2 ring-offset-white transition-transform focus-visible:ring-2 focus-visible:ring-wa-primary-strong dark:ring-offset-wa-panel-dark ${
-              selected ? 'ring-2 ring-wa-text dark:ring-wa-text-dark' : 'hover:scale-110'
-            }`}
-          >
-            {selected && <Check className="h-3.5 w-3.5 text-white" aria-hidden="true" />}
-          </button>
-        )
-      })}
-    </div>
-  )
 }
 
 function KindSelect({ value, onChange, id, label }: { value: LeadStageKind; onChange: (kind: LeadStageKind) => void; id?: string; label?: string }) {
@@ -240,7 +206,7 @@ export function LeadStagesManagementPanel() {
           </label>
           <div className="sm:col-span-2">
             <p className="mb-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">Color</p>
-            <ColorPicker label="Color de la nueva etapa" value={newStage.color} onChange={color => setNewStage(current => ({ ...current, color }))} />
+            <StageColorPicker label="Color de la nueva etapa" value={newStage.color} onChange={color => setNewStage(current => ({ ...current, color }))} />
           </div>
           <div className="sm:col-span-2">
             <Button type="submit" disabled={!newStage.name.trim() || createStage.isPending} className="h-10 bg-wa-primary-strong hover:bg-wa-primary-deep">
@@ -331,7 +297,7 @@ export function LeadStagesManagementPanel() {
                       aria-label={`Criterio de ${stage.name}`}
                       className="h-10 w-full bg-white dark:bg-wa-panel-dark"
                     />
-                    <ColorPicker label={`Color de ${stage.name}`} value={draft.color} onChange={color => setDraft(stage, { color })} />
+                    <StageColorPicker label={`Color de ${stage.name}`} value={draft.color} onChange={color => setDraft(stage, { color })} />
                     <AppointmentStageSwitch stageName={stage.name} checked={stage.on_appointment} available={stage.is_active} disabled={pending} onChange={value => handleAppointmentStage(stage, value)} />
                     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-wa-muted dark:text-wa-muted-dark">
                       <span style={stageColorStyle(draft.color)} className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${STAGE_BADGE_CLASS}`}>{draft.name.trim() || stage.name}</span>

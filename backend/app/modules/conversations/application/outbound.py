@@ -8,9 +8,12 @@ después y registra el resultado con ``record_sent``/``record_failed``.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 from app.db.uow import collect, unit_of_work
+from app.integrations.whatsapp.channel import SEND_FAILURES, DeliveryUnconfirmedError, is_transient_send_failure
 from app.modules.conversations.application.ports import conversation_ports
 from app.modules.conversations.domain.delivery import SendOutcome, is_final_failure
 from app.modules.conversations.domain.errors import NotRetryable
@@ -21,6 +24,13 @@ from app.modules.conversations.domain.events import (
     OutboundQueued,
     ReactionChanged,
 )
+
+
+logger = logging.getLogger(__name__)
+
+# Esperas entre intentos de una reacción ante un fallo pasajero. Cortas: la
+# reacción manual hace esperar al vendedor con el clic hecho.
+REACTION_RETRY_DELAYS: tuple[float, ...] = (1.0, 3.0)
 
 
 def _now() -> datetime:
@@ -156,6 +166,22 @@ async def record_failed(job: dict, *, error: str, outcome: SendOutcome) -> None:
             collect(MessageFailed(chat_id=job["chat_id"], message_id=job["message_id"], scheduled=scheduled))
 
 
+async def _send_reaction_with_retries(sender, chat_id: str, message: dict):
+    """La reacción no pasa por el outbox, así que no hereda sus reintentos.
+    Repetirla es seguro: WhatsApp reemplaza la reacción propia sobre el mismo
+    mensaje. Motivo: el 12-11-2026 un 131000 suelto de Meta hizo fallar el
+    flujo "Yape" en el paso de reaccionar al comprobante."""
+    for delay in (*REACTION_RETRY_DELAYS, None):
+        try:
+            return await sender.send(chat_id, message)
+        except SEND_FAILURES as exc:
+            transient = is_transient_send_failure(exc) or isinstance(exc, DeliveryUnconfirmedError)
+            if delay is None or not transient:
+                raise
+            logger.warning("Reacción en %s falló (%s); se reintenta en %ss", chat_id, exc, delay)
+            await asyncio.sleep(delay)
+
+
 async def send_reaction(chat_id: str, target_wa_message_id: str, emoji: str) -> dict | None:
     """Reacciona como el negocio (``emoji`` vacío la quita).
 
@@ -164,7 +190,7 @@ async def send_reaction(chat_id: str, target_wa_message_id: str, emoji: str) -> 
     """
     ports = conversation_ports()
     message = ports.contract.reaction(target_wa_message_id, emoji)
-    receipt = await ports.current_channel().sender.send(chat_id, message)
+    receipt = await _send_reaction_with_retries(ports.current_channel().sender, chat_id, message)
     async with unit_of_work():
         await ports.messages.record_reaction_event(
             event_wa_id=receipt.provider_message_id,
