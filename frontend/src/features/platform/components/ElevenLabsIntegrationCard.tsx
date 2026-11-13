@@ -23,7 +23,6 @@ export function ElevenLabsIntegrationCard() {
       id="voz"
       icon={ElevenLabsMark}
       title="ElevenLabs"
-      description="Convierte las sugerencias del asistente en audios con la voz del negocio."
       state={configured ? 'connected' : 'unconfigured'}
     >
       <IntegrationDisclosure id="voz-settings" title="Ajustes de voz" open={open} onToggle={() => { setTouched(true); setOpen(value => !value) }}>

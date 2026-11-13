@@ -21,7 +21,6 @@ export function WhatsappIntegrationCard({ highlight = false }: { highlight?: boo
       id="whatsapp"
       icon={WhatsAppMark}
       title="WhatsApp"
-      description="El número del negocio, vinculado con Meta Cloud API: por aquí entran y salen los chats."
       state={status ? (connected ? 'connected' : 'unconfigured') : 'unconfigured'}
       stateLabel={connected && status?.instance ? `Conectado · ${status.instance}` : undefined}
       highlight={highlight && !connected}

@@ -40,6 +40,8 @@ export type CalendarEventField = Delivered<ApiSchemas['CalendarEventField']>
 export type NoticeAudience = 'client' | 'staff'
 export type NoticeSettings = Delivered<ApiSchemas['NoticeSettings']>
 export type NoticeUpdate = ApiSchemas['NoticeSettingsUpdate']
+export type NoticeSender = Delivered<ApiSchemas['NoticeSender']>
+export type NoticeSenderSignup = ApiSchemas['NoticeSenderSignup']
 
 export interface AppointmentListItem {
   id: number

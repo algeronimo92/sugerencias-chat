@@ -74,7 +74,6 @@ export function TemplateCategoriesManagementPanel() {
     <CatalogPanel
       icon={FolderTree}
       title="Categorías de plantillas"
-      description="Ordenan las plantillas con nombres consistentes. Las categorías inactivas permanecen en las plantillas existentes."
       items={categories}
       getId={category => category.id}
       getName={category => category.name}

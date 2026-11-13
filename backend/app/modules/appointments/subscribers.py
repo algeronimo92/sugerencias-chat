@@ -6,7 +6,8 @@ import logging
 
 from app.core.events import Phase, subscribe
 from app.modules.appointments.application.notice import send_client_notice, send_staff_notice
-from app.modules.appointments.domain.events import AppointmentCreated
+from app.modules.appointments.domain.events import AppointmentCreated, NoticeTemplatesChanged
+from app.realtime.ws_manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -30,3 +31,8 @@ async def notify_the_team(event: AppointmentCreated) -> None:
         logger.exception("No se pudo avisar al equipo de la cita %s", event.appointment_id)
         return
     logger.info("Aviso al equipo de la cita %s: %s", event.appointment_id, outcome)
+
+
+@subscribe(NoticeTemplatesChanged, phase=Phase.AFTER_COMMIT)
+async def announce_notice_templates(_event: NoticeTemplatesChanged) -> None:
+    await manager.broadcast({"type": "notice_sender_updated"})

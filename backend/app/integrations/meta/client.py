@@ -163,41 +163,47 @@ async def is_configured() -> bool:
     return all(values.values())
 
 
-async def _resolve_phone_number_id(waba_id: str, access_token: str) -> str:
+NOTICE_NUMBER_KEY = "appointment_notice_phone_number_id"
+# La WABA del número de avisos cuando no es la del CRM. En coexistencia Meta
+# no deja elegir una WABA existente: el registro crea una nueva en el
+# portfolio del negocio (pasó al vincular el número de avisos de DermicaPro).
+NOTICE_WABA_KEY = "appointment_notice_waba_id"
+
+
+async def _owner_business(waba_id: str, token: str) -> str | None:
+    body = await _request(
+        "GET", _graph_url(waba_id), token, params={"fields": "owner_business_info"}, timeout=20.0,
+    )
+    return ((body or {}).get("owner_business_info") or {}).get("id")
+
+
+async def _resolve_phone_number_id(waba_id: str, access_token: str, *, exclude: set[str] | None = None) -> str:
     """El evento de coexistencia (`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`)
     solo trae `waba_id` -- a diferencia del embedded signup normal, Meta no
     manda el `phone_number_id` por `postMessage` porque el número ya existía
     de antes en la app de WhatsApp Business, no se creó en este flujo. Hay
-    que resolverlo aparte con `GET /{waba_id}/phone_numbers`."""
+    que resolverlo aparte con `GET /{waba_id}/phone_numbers`.
+
+    Con el número de avisos de cita la WABA tiene dos números: ``exclude``
+    descarta el que ya tiene otro papel (el de avisos al vincular el del CRM,
+    y al revés) para que quede uno solo."""
     body = await _request(
         "GET", _graph_url(f"{waba_id}/phone_numbers"), access_token,
         params={"fields": "id"}, timeout=20.0,
     )
-    numbers = body.get("data") or []
+    numbers = [item for item in body.get("data") or [] if item.get("id") not in (exclude or set())]
     if len(numbers) == 1:
         return numbers[0]["id"]
     if not numbers:
-        raise MetaApiError(f"La WABA {waba_id} no tiene ningún número de teléfono todavía")
+        raise MetaApiError(f"La WABA {waba_id} no tiene ningún número de teléfono nuevo todavía")
     raise MetaApiError(
-        f"La WABA {waba_id} tiene {len(numbers)} números; completá el Phone Number ID "
-        "a mano en Configuración → Claves porque no se puede elegir uno solo automáticamente"
+        f"La WABA {waba_id} tiene {len(numbers)} números posibles y no se puede elegir uno solo "
+        "automáticamente; elígelo a mano"
     )
 
 
-async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str | None = None) -> None:
-    """Cierra el flujo de WhatsApp Embedded Signup: cambia el `code` de un
-    solo uso que dio `FB.login()` por un token de acceso, suscribe esta app a
-    los webhooks de la WABA elegida y guarda las tres credenciales
-    resultantes como si el admin las hubiese tipeado a mano en la pestaña
-    Claves.
-
-    `waba_id` (y, en el signup normal -no coexistencia-, `phone_number_id`)
-    no los devuelve este intercambio -- llegan aparte, del evento
-    `WA_EMBEDDED_SIGNUP` que Meta manda por `postMessage` al completar el
-    signup en el frontend (ver WhatsappPanel.tsx). En coexistencia con la app
-    de WhatsApp Business el evento es `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`
-    y su payload omite `phone_number_id` a propósito -- se resuelve acá con
-    `_resolve_phone_number_id`."""
+async def _exchange_code(code: str) -> str:
+    """Cambia el `code` de un solo uso de `FB.login()` por un token de acceso."""
     values = await platform_settings_many(("meta_app_id", "meta_app_secret"))
     app_id, app_secret = values["meta_app_id"], values["meta_app_secret"]
     if not (app_id and app_secret):
@@ -219,13 +225,70 @@ async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str
     access_token = exchange.json().get("access_token")
     if not access_token:
         raise MetaApiError("Meta no devolvió un access token para el código recibido")
+    return access_token
+
+
+async def complete_notice_number_signup(
+    code: str, waba_id: str, phone_number_id: str | None = None,
+) -> dict[str, str]:
+    """El Embedded Signup (también con coexistencia) del número de avisos de
+    cita. A diferencia de ``complete_embedded_signup`` no guarda nada: el
+    token, la WABA y el número del CRM quedan como estaban, y devuelve
+    ``{phone_number_id, waba_id}`` del número vinculado para que se elija
+    como número de avisos.
+
+    Puede quedar en la WABA del CRM o en otra del mismo portfolio (en
+    coexistencia Meta siempre crea una nueva). El token del CRM es del
+    usuario del sistema de la app y el registro le da acceso también a la
+    WABA nueva, así que sirve para enviar desde las dos. Otro portfolio sería
+    otro negocio y se rechaza."""
+    access_token = await _exchange_code(code)
+    token, crm_number, crm_waba = await _config()
+    if waba_id != crm_waba:
+        crm_business = await _owner_business(crm_waba, token)
+        notice_business = await _owner_business(waba_id, token)
+        if not crm_business or crm_business != notice_business:
+            raise MetaApiError(
+                "El número quedó en una cuenta de WhatsApp Business de otro portfolio comercial. "
+                "Vuelve a vincularlo eligiendo el portfolio del negocio"
+            )
+    # Sin esto la WABA no manda webhooks a esta app; con el CRM ya vinculado
+    # la suscripción existe y repetirla no cambia nada.
+    await _request("POST", _graph_url(f"{waba_id}/subscribed_apps"), access_token, timeout=20.0)
+    if not phone_number_id:
+        phone_number_id = await _resolve_phone_number_id(waba_id, access_token, exclude={crm_number})
+    if phone_number_id == crm_number:
+        raise MetaApiError("Ese es el número del CRM: vincula otro número para los avisos")
+    return {"phone_number_id": phone_number_id, "waba_id": waba_id}
+
+
+async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str | None = None) -> None:
+    """Cierra el flujo de WhatsApp Embedded Signup: cambia el `code` de un
+    solo uso que dio `FB.login()` por un token de acceso, suscribe esta app a
+    los webhooks de la WABA elegida y guarda las tres credenciales
+    resultantes como si el admin las hubiese tipeado a mano en la pestaña
+    Claves.
+
+    `waba_id` (y, en el signup normal -no coexistencia-, `phone_number_id`)
+    no los devuelve este intercambio -- llegan aparte, del evento
+    `WA_EMBEDDED_SIGNUP` que Meta manda por `postMessage` al completar el
+    signup en el frontend (ver WhatsappPanel.tsx). En coexistencia con la app
+    de WhatsApp Business el evento es `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`
+    y su payload omite `phone_number_id` a propósito -- se resuelve acá con
+    `_resolve_phone_number_id`."""
+    access_token = await _exchange_code(code)
 
     # Sin esto la WABA no manda webhooks (mensajes entrantes, estados) a esta
     # app -- paso obligatorio de Embedded Signup, ver docs de Meta.
     await _request("POST", _graph_url(f"{waba_id}/subscribed_apps"), access_token, timeout=20.0)
 
     if not phone_number_id:
-        phone_number_id = await _resolve_phone_number_id(waba_id, access_token)
+        # Con número de avisos la WABA tiene dos números: el de avisos nunca
+        # es el del CRM.
+        notice_number = (await get_effective_many((NOTICE_NUMBER_KEY,)))[NOTICE_NUMBER_KEY]
+        phone_number_id = await _resolve_phone_number_id(
+            waba_id, access_token, exclude={notice_number} if notice_number else None,
+        )
 
     await update_settings({
         "meta_access_token": access_token,
@@ -315,16 +378,85 @@ async def send_message(chat_id: str, message: dict) -> dict:
     return await _post_message(await _recipient(chat_id), message)
 
 
-async def send_message_to_number(wa_id: str, message: dict) -> dict:
+async def send_message_to_number(wa_id: str, message: dict, *, sender_phone_number_id: str | None = None) -> dict:
     """Lo mismo que ``send_message`` pero a un número que no es un lead (el
     aviso de cita al equipo). Antes ese aviso pasaba el número como si fuera
     el id de un lead, la búsqueda de la identidad fallaba con 'invalid UUID'
-    y no le llegaba a nadie."""
-    return await _post_message({"to": wa_id}, message)
+    y no le llegaba a nadie.
+
+    ``sender_phone_number_id`` sale desde otro número de la misma WABA (el
+    número de avisos) con el mismo token; sin él, desde el número del CRM."""
+    return await _post_message({"to": wa_id}, message, sender_phone_number_id=sender_phone_number_id)
 
 
-async def _post_message(recipient: dict[str, str], message: dict) -> dict:
+async def send_message_to_lead_from(chat_id: str, message: dict, *, sender_phone_number_id: str) -> dict:
+    """Al lead, pero desde el número de avisos y sin pasar por su chat."""
+    return await _post_message(await _recipient(chat_id), message, sender_phone_number_id=sender_phone_number_id)
+
+
+async def list_phone_numbers(waba_id: str | None = None) -> list[dict]:
+    """Los números de una WABA (la del CRM si no se dice otra): ``{id,
+    display_phone_number, verified_name, waba_id}``. El de avisos sale de
+    la WABA del CRM o de la suya propia."""
+    token, _phone_number_id, crm_waba = await _config()
+    waba_id = waba_id or crm_waba
+    body = await _request(
+        "GET", _graph_url(f"{waba_id}/phone_numbers"), token,
+        params={"fields": "id,display_phone_number,verified_name"}, timeout=20.0,
+    )
+    return [
+        {
+            "id": str(item["id"]),
+            "display_phone_number": str(item.get("display_phone_number") or ""),
+            "verified_name": str(item.get("verified_name") or ""),
+            "waba_id": waba_id,
+        }
+        for item in body.get("data") or []
+        if isinstance(item, dict) and item.get("id")
+    ]
+
+
+async def get_waba_name(waba_id: str) -> str:
+    token, _phone_number_id, _crm_waba = await _config()
+    body = await _request("GET", _graph_url(waba_id), token, params={"fields": "name"}, timeout=20.0)
+    return str((body or {}).get("name") or "")
+
+
+async def register_extra_number(phone_number_id: str, waba_id: str | None = None) -> None:
+    """Registra en el plano de control un número que no es el del CRM (el de
+    avisos), para que sus estados de entrega encuentren el negocio. Sus
+    mensajes entrantes no abren chats (ver ``meta_webhook.processor``). Con
+    su propia WABA, esa WABA también rutea sus eventos de plantillas."""
+    context = get_current_tenant()
+    if context is None:
+        return
+    _token, _crm_number, crm_waba = await _config()
+    from app.tenancy.provisioning import sync_whatsapp_connection
+
+    await sync_whatsapp_connection(
+        context.organization_id, phone_number_id=phone_number_id, waba_id=waba_id or crm_waba,
+    )
+
+
+async def unregister_extra_number(phone_number_id: str) -> None:
+    """Lo contrario de ``register_extra_number``. Nunca toca el número del
+    CRM: sus webhooks son los chats."""
+    context = get_current_tenant()
+    if context is None:
+        return
+    _token, crm_number, _waba_id = await _config()
+    if phone_number_id == crm_number:
+        return
+    from app.tenancy.provisioning import disable_whatsapp_connection
+
+    await disable_whatsapp_connection(context.organization_id, phone_number_id=phone_number_id)
+
+
+async def _post_message(
+    recipient: dict[str, str], message: dict, *, sender_phone_number_id: str | None = None,
+) -> dict:
     token, phone_number_id, _waba_id = await _config()
+    phone_number_id = sender_phone_number_id or phone_number_id
     body = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -341,11 +473,16 @@ async def _post_message(recipient: dict[str, str], message: dict) -> dict:
     return {"body": body, "response": response}
 
 
-async def upload_media(content: bytes, content_type: str, filename: str) -> str:
+async def upload_media(
+    content: bytes, content_type: str, filename: str, *, sender_phone_number_id: str | None = None,
+) -> str:
     """Sube un adjunto de mensaje normal (no encabezado de plantilla) a Meta y
     devuelve el media id: ``POST /{phone_number_id}/media`` (multipart) y
-    recién después el mensaje con ``{tipo: {"id": media_id}}``."""
+    recién después el mensaje con ``{tipo: {"id": media_id}}``. El id solo
+    vale para el número que lo subió: un envío desde el número de avisos
+    tiene que subirlo con ese número."""
     token, phone_number_id, _waba_id = await _config()
+    phone_number_id = sender_phone_number_id or phone_number_id
     started_at = perf_counter()
     try:
         response = await _client().post(
@@ -486,6 +623,42 @@ async def create_whatsapp_template(
     return await _request("POST", url, token, json_body=payload, timeout=30.0)
 
 
+_MEDIA_HEADER_FORMATS = {"IMAGE", "VIDEO", "DOCUMENT"}
+
+
+async def copy_whatsapp_template(meta_template_id: str, waba_id: str) -> dict:
+    """Crea en otra WABA (la del número de avisos) una copia de una plantilla
+    de la WABA del CRM, con el mismo nombre, idioma, categoría y contenido:
+    un envío desde un número solo encuentra las plantillas de su WABA, y con
+    el mismo nombre el aviso se arma igual. Meta la revisa de nuevo.
+
+    El ejemplo de un encabezado con imagen viene como URL descargable y la
+    creación exige un ``header_handle``: se baja y se vuelve a subir."""
+    original = await get_whatsapp_template(meta_template_id)
+    components: list[dict] = []
+    for component in original.get("components") or []:
+        component = dict(component)
+        if component.get("type") == "HEADER" and component.get("format") in _MEDIA_HEADER_FORMATS:
+            urls = (component.get("example") or {}).get("header_handle") or []
+            if not urls:
+                raise MetaApiError(f"La plantilla {original.get('name')} no trae el ejemplo de su encabezado")
+            content, content_type = await download_template_header_example(urls[0])
+            extension = content_type.rsplit("/", 1)[-1] or "bin"
+            handle = await upload_header_media(content, content_type, f"encabezado.{extension}")
+            component["example"] = {"header_handle": [handle]}
+        components.append(component)
+    token, _phone_number_id, _crm_waba = await _config()
+    payload = {
+        "name": original.get("name"),
+        "category": original.get("category"),
+        "language": original.get("language"),
+        "components": components,
+    }
+    return await _request(
+        "POST", _graph_url(f"{waba_id}/message_templates"), token, json_body=payload, timeout=30.0,
+    )
+
+
 async def get_whatsapp_template(meta_template_id: str) -> dict:
     """`GET /{meta_template_id}` con los `components` completos -- a
     diferencia de `list_whatsapp_templates` (que no los pide, para no pesar
@@ -501,11 +674,13 @@ async def get_whatsapp_template(meta_template_id: str) -> dict:
     )
 
 
-async def list_whatsapp_templates() -> list[dict]:
+async def list_whatsapp_templates(waba_id: str | None = None) -> list[dict]:
     """Trae del lado de Meta el estado real de las plantillas de la WABA
-    conectada (`GET /{waba_id}/message_templates`), siguiendo `paging.next`
-    hasta agotarlo: una WABA puede tener más de 100 plantillas."""
-    token, _phone_number_id, waba_id = await _config()
+    conectada (u otra, la del número de avisos) con `GET
+    /{waba_id}/message_templates`, siguiendo `paging.next` hasta agotarlo:
+    una WABA puede tener más de 100 plantillas."""
+    token, _phone_number_id, crm_waba = await _config()
+    waba_id = waba_id or crm_waba
     url = _graph_url(f"{waba_id}/message_templates")
     params: dict | None = {"fields": "id,name,status,category,language,rejected_reason", "limit": 100}
     next_url: str | None = url

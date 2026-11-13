@@ -327,6 +327,25 @@ async def sync_whatsapp_connection(
         )
 
 
+async def disable_whatsapp_connection(organization_id: UUID, *, phone_number_id: str) -> None:
+    """Deja de rutear los webhooks de un número del negocio sin borrar la
+    fila. Lo usa el número de avisos de cita al cambiarlo o quitarlo: si
+    siguiera ruteando, lo que le escriban ya no se reconocería como del
+    número de avisos y abriría chats en el CRM."""
+    async with control_session() as session:
+        connection = (
+            await session.execute(
+                select(WhatsAppConnection).where(
+                    WhatsAppConnection.organization_id == str(organization_id),
+                    WhatsAppConnection.phone_number_id == phone_number_id.strip(),
+                )
+            )
+        ).scalars().first()
+        if connection is not None:
+            connection.status = "disabled"
+            connection.updated_at = datetime.now(timezone.utc)
+
+
 async def _mark_suspended(organization_id: UUID) -> TenantContext:
     async with control_session() as session:
         organization = await session.get(Organization, str(organization_id))

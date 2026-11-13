@@ -10,25 +10,21 @@ export type MessageOrigin = 'app' | 'automation' | 'scheduled' | 'phone'
  * `hint` explica cada origen donde hay lugar (la lista junto a la torta);
  * "Programados" sonaba a campaña y por eso aclara que va a un solo chat.
  */
-export const MESSAGE_ORIGINS: { key: MessageOrigin; label: string; short: string; hint: string; phrase: string; color: string }[] = [
+export const MESSAGE_ORIGINS: { key: MessageOrigin; label: string; short: string; phrase: string; color: string }[] = [
   {
     key: 'app', label: 'Escritos en el CRM', short: 'CRM', color: 'var(--viz-cat-1)',
-    hint: 'Alguien del equipo los escribió en el chat del CRM. Son los únicos que guardan quién los envió.',
     phrase: 'se escribió en el CRM',
   },
   {
     key: 'phone', label: 'Desde WhatsApp, fuera del CRM', short: 'WhatsApp', color: 'var(--viz-cat-2)',
-    hint: 'Salieron del WhatsApp Business del celular o de WhatsApp Web. Incluye respuestas rápidas y listas de difusión.',
     phrase: 'salió desde WhatsApp por fuera del CRM',
   },
   {
     key: 'automation', label: 'Flujos automáticos', short: 'Flujos', color: 'var(--viz-cat-3)',
-    hint: 'Los mandó una automatización del CRM, sin que nadie escriba.',
     phrase: 'lo mandaron los flujos automáticos',
   },
   {
     key: 'scheduled', label: 'Programados en el CRM', short: 'Programados', color: 'var(--viz-cat-4)',
-    hint: 'Alguien los escribió en el CRM para que salgan más tarde, a un solo chat. No es una difusión.',
     phrase: 'eran mensajes programados',
   },
 ]

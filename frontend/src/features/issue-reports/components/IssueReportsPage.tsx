@@ -112,9 +112,6 @@ export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
               Calidad del producto
             </div>
             <h1 className="text-2xl font-semibold text-wa-text dark:text-wa-text-dark sm:text-3xl">{isAdmin ? 'Reportes de problemas' : 'Mis reportes'}</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-              {isAdmin ? 'Revisa evidencias, actualiza estados y comunica el avance al equipo.' : 'Consulta el avance y las respuestas de los problemas que reportaste.'}
-            </p>
           </div>
           <Button onClick={onCreate} className="h-11 shrink-0 bg-wa-primary-strong px-4 hover:bg-wa-primary-deep"><Plus className="h-4 w-4" aria-hidden="true" /> Nuevo reporte</Button>
         </header>

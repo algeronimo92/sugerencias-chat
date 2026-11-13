@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeSettings, NoticeUpdate } from './types';
+import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
   return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
@@ -64,5 +64,33 @@ export async function fetchNotice(audience: NoticeAudience): Promise<NoticeSetti
 export async function saveNotice(audience: NoticeAudience, values: NoticeUpdate): Promise<NoticeSettings> {
   return (
     await client.put<ApiResponse<'/api/appointments/notices/{audience}', 'put'>>(`/api/appointments/notices/${audience}`, values)
+  ).data
+}
+
+export async function fetchNoticeSender(): Promise<NoticeSender> {
+  return (await client.get<ApiResponse<'/api/appointments/notice-sender', 'get'>>('/api/appointments/notice-sender')).data
+}
+
+export async function saveNoticeSender(phoneNumberId: string | null): Promise<NoticeSender> {
+  return (
+    await client.put<ApiResponse<'/api/appointments/notice-sender', 'put'>>('/api/appointments/notice-sender', {
+      phone_number_id: phoneNumberId,
+    })
+  ).data
+}
+
+export async function linkNoticeSender(payload: NoticeSenderSignup): Promise<NoticeSender> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/notice-sender/embedded-signup', 'post'>>(
+      '/api/appointments/notice-sender/embedded-signup', payload,
+    )
+  ).data
+}
+
+export async function copyNoticeTemplates(): Promise<NoticeSender> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/notice-sender/templates', 'post'>>(
+      '/api/appointments/notice-sender/templates',
+    )
   ).data
 }

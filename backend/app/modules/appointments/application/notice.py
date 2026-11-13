@@ -4,6 +4,11 @@ salen cuando se guarda una cita.
 Al cliente le llega en el chat de su lead (el equipo ve el mensaje en la
 conversación). Al equipo (el responsable y los admins) le llega directo a su
 número, sin abrir un chat en el CRM: no son leads.
+
+Con un número de avisos elegido (otro número de la WABA del CRM o de otra
+WABA del mismo portfolio, con copias de las plantillas) los dos salen
+desde ese número y directo al teléfono: el del cliente ya no entra a su chat,
+porque el cliente lo recibe de un número distinto al de la conversación.
 """
 
 from __future__ import annotations
@@ -11,9 +16,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from app.db.uow import collect, unit_of_work
 from app.modules.appointments.application.ports import appointment_ports
+from app.modules.appointments.domain.events import NoticeTemplatesChanged
 from app.modules.appointments.domain.calendar_event import BUILTIN_FIELDS, CUSTOM_PREFIX
-from app.modules.appointments.domain.errors import NoticeNotSent
+from app.modules.appointments.domain.errors import NoticeAccountUnavailable
 from app.modules.appointments.domain.notice import (
     FORMATTED_FIELDS,
     LEAD_CUSTOM_PREFIX,
@@ -33,6 +40,18 @@ from app.modules.platform.ports.settings_service import get_effective_many, upda
 
 logger = logging.getLogger(__name__)
 
+# Phone number id del número de avisos. Vacío: los avisos salen del número
+# del CRM, como antes de que existiera.
+SENDER_KEY = "appointment_notice_phone_number_id"
+# Su WABA cuando no es la del CRM: en coexistencia Meta no deja elegir una
+# existente y crea otra en el portfolio del negocio. Ahí los avisos usan
+# copias de las plantillas, con el mismo nombre e idioma.
+SENDER_ACCOUNT_KEY = "appointment_notice_waba_id"
+
+
+async def _sender() -> str | None:
+    return ((await get_effective_many((SENDER_KEY,)))[SENDER_KEY] or "").strip() or None
+
 
 def setting_keys(audience: Audience) -> tuple[str, str, str]:
     prefix = f"appointment_{audience.value}_notice"
@@ -45,17 +64,22 @@ async def _config(audience: Audience) -> NoticeConfig:
     return NoticeConfig.from_settings(stored[enabled], stored[template_id], stored[parameters])
 
 
-def _sendable(template: dict, audience: Audience) -> bool:
+def _sendable(template: dict, audience: Audience, sender: str | None) -> bool:
     """Solo una plantilla oficial aprobada llega con la ventana de 24 h
     cerrada. Tiene que ser global: el aviso sale a nombre de quien cargó la
-    cita, que no ve las plantillas personales de otro. Al equipo no le llega
-    una con imagen, porque la imagen la sube el outbox de los chats."""
+    cita, que no ve las plantillas personales de otro. Desde el número del
+    CRM al equipo no le llega una con imagen, porque la imagen la sube el
+    outbox de los chats; desde el número de avisos la sube el envío mismo."""
     return (
         template["template_type"] == "official"
         and template["official_status"] == "APPROVED"
         and template["visibility"] == "global"
         and bool(template["is_active"])
-        and (audience is Audience.CLIENT or template.get("official_header_type") != "image")
+        and (
+            audience is Audience.CLIENT
+            or sender is not None
+            or template.get("official_header_type") != "image"
+        )
     )
 
 
@@ -65,7 +89,7 @@ def _variable_count(template: dict) -> int:
 
 async def _template(template_id: int | None, user_id: int, audience: Audience) -> dict | None:
     template = next((item for item in await list_templates(user_id) if item["id"] == template_id), None)
-    return template if template is not None and _sendable(template, audience) else None
+    return template if template is not None and _sendable(template, audience, await _sender()) else None
 
 
 async def _fields() -> list[dict]:
@@ -108,6 +132,7 @@ async def _preview() -> dict | None:
 
 async def get_settings(audience: Audience, user_id: int) -> dict:
     config = await _config(audience)
+    sender = await _sender()
     templates = [
         {
             "id": item["id"], "name": item["name"], "content": item["content"],
@@ -117,7 +142,7 @@ async def get_settings(audience: Audience, user_id: int) -> dict:
             ],
         }
         for item in await list_templates(user_id)
-        if _sendable(item, audience)
+        if _sendable(item, audience, sender)
     ]
     return {
         "enabled": config.enabled,
@@ -189,10 +214,14 @@ async def send_client_notice(appointment_id: int) -> str:
         }])
         return "no_lead"
     lead = await ports.leads.snapshot(appointment["lead_id"])
+    parameters = parameter_values(appointment, config.parameters, lead)
+    sender = await _sender()
+    if sender is not None:
+        return await _send_client_from(appointment, config.template_id, parameters, sender, notice)
     try:
         message_id = await ports.messenger.send_to_lead(
             chat_id=appointment["lead_id"], template_id=config.template_id,
-            parameters=parameter_values(appointment, config.parameters, lead),
+            parameters=parameters,
             user_id=appointment["created_by_user_id"], dedupe_key=f"appointment-client-notice:{appointment_id}",
         )
     except Exception as exc:
@@ -200,6 +229,33 @@ async def send_client_notice(appointment_id: int) -> str:
         await ports.notices.record(appointment_id, [{**notice, "status": "failed", "reason": _short(exc)}])
         return "failed"
     await ports.notices.record(appointment_id, [{**notice, "status": "sent", "wsp_message_id": message_id}])
+    return "sent"
+
+
+async def _send_client_from(
+    appointment: dict, template_id: int, parameters: list[str], sender: str, notice: dict,
+) -> str:
+    """El aviso al cliente desde el número de avisos: directo a su WhatsApp,
+    fuera de su chat. Su estado de entrega se reconoce por el id de Meta."""
+    ports = appointment_ports()
+    appointment_id = appointment["id"]
+    template = await _template(template_id, appointment["created_by_user_id"], Audience.CLIENT)
+    if template is None:
+        await ports.notices.record(appointment_id, [{
+            **notice, "status": "failed", "reason": "La plantilla ya no es una plantilla oficial aprobada y global",
+        }])
+        return "failed"
+    try:
+        provider_id = await ports.messenger.send_to_lead_from(
+            chat_id=appointment["lead_id"], template=template, parameters=parameters, sender=sender,
+        )
+    except Exception as exc:
+        # Cualquier error, también al leer la imagen del encabezado: el aviso
+        # queda registrado como fallido en vez de perderse en el log.
+        logger.warning("No se pudo avisar al cliente de la cita %s", appointment_id, exc_info=True)
+        await ports.notices.record(appointment_id, [{**notice, "status": "failed", "reason": _short(exc)}])
+        return "failed"
+    await ports.notices.record(appointment_id, [{**notice, "status": "sent", "provider_message_id": provider_id}])
     return "sent"
 
 
@@ -220,6 +276,7 @@ async def send_staff_notice(appointment_id: int) -> dict[int, str]:
     ports = appointment_ports()
     lead = await ports.leads.snapshot(appointment["lead_id"]) if appointment.get("lead_id") else None
     parameters = parameter_values(appointment, config.parameters, lead)
+    sender = await _sender()
     results: dict[int, str] = {}
     notices: list[dict] = []
     for recipient in await ports.staff.recipients(appointment.get("vendedor") or ""):
@@ -233,7 +290,7 @@ async def send_staff_notice(appointment_id: int) -> dict[int, str]:
             continue
         try:
             provider_id = await ports.messenger.send_to_phone(
-                phone=recipient["phone"], template=template, parameters=parameters,
+                phone=recipient["phone"], template=template, parameters=parameters, sender=sender,
             )
             notices.append({**notice, "status": "sent", "provider_message_id": provider_id})
             results[recipient["id"]] = "sent"
@@ -251,6 +308,128 @@ async def send_staff_notice(appointment_id: int) -> dict[int, str]:
     return results
 
 
+async def _sender_account() -> str | None:
+    """La WABA propia del número de avisos; ``None`` si está en la del CRM."""
+    return ((await get_effective_many((SENDER_ACCOUNT_KEY,)))[SENDER_ACCOUNT_KEY] or "").strip() or None
+
+
+async def _notice_templates(user_id: int) -> list[tuple[Audience, dict]]:
+    """Las plantillas que usan hoy los avisos, para copiarlas a la WABA del
+    número de avisos."""
+    templates = {item["id"]: item for item in await list_templates(user_id)}
+    chosen: list[tuple[Audience, dict]] = []
+    for audience in Audience:
+        config = await _config(audience)
+        template = templates.get(config.template_id) if config.template_id is not None else None
+        if template is not None and template.get("meta_template_id"):
+            chosen.append((audience, template))
+    return chosen
+
+
+def _copy_key(name: str | None, language: str | None) -> tuple[str, str]:
+    return (name or "", (language or "").lower())
+
+
+async def _account_templates(account: str, user_id: int) -> list[dict]:
+    """Cada plantilla de los avisos y el estado de su copia en la WABA del
+    número de avisos: un envío desde ese número solo encuentra las de su
+    WABA, por nombre e idioma."""
+    remote = {
+        _copy_key(item.get("name"), item.get("language")): str(item.get("status") or "")
+        for item in await appointment_ports().senders.templates(account)
+    }
+    return [
+        {
+            "audience": audience.value,
+            "template_id": template["id"],
+            "name": template["name"],
+            "status": remote.get(_copy_key(template["official_name"], template["official_language"]), "MISSING"),
+        }
+        for audience, template in await _notice_templates(user_id)
+    ]
+
+
+async def get_sender(user_id: int) -> dict:
+    """El número de avisos elegido, los números para elegirlo y, si está en
+    su propia WABA, esa cuenta y el estado de las copias de las plantillas."""
+    ports = appointment_ports()
+    account = await _sender_account()
+    numbers = await ports.senders.numbers(account)
+    result: dict = {"phone_number_id": await _sender(), "numbers": numbers, "account": None, "templates": []}
+    if account is not None:
+        result["account"] = {"waba_id": account, "name": await ports.senders.account_name(account)}
+        try:
+            result["templates"] = await _account_templates(account, user_id)
+        except NoticeAccountUnavailable:
+            logger.warning("No se leyeron las plantillas de la WABA de avisos %s", account, exc_info=True)
+    return result
+
+
+async def save_sender(phone_number_id: str | None, user_id: int, *, account: str | None = None) -> dict:
+    """Elige el número de avisos, o vuelve al del CRM con ``None``. Tiene que
+    ser otro número de la WABA del CRM o de la WABA propia del número de
+    avisos (``account`` al recién vincularlo); levanta ``InvalidNotice`` si
+    no."""
+    chosen = (phone_number_id or "").strip() or None
+    ports = appointment_ports()
+    previous = await _sender()
+    chosen_account = ""
+    if chosen is not None:
+        numbers = await ports.senders.numbers(account or await _sender_account())
+        number = next((item for item in numbers if item["id"] == chosen), None)
+        if number is None:
+            raise InvalidNotice("Ese número no está en ninguna cuenta de WhatsApp Business del negocio")
+        if number["is_crm"]:
+            raise InvalidNotice("Elige un número distinto al del CRM o deja los avisos en el número del CRM")
+        crm_account = next((item["waba_id"] for item in numbers if item["is_crm"]), None)
+        if number["waba_id"] != crm_account:
+            chosen_account = number["waba_id"]
+        await ports.senders.register(chosen, number["waba_id"])
+    await update_settings({SENDER_KEY: chosen or "", SENDER_ACCOUNT_KEY: chosen_account})
+    if previous is not None and previous != chosen:
+        # Si el número anterior siguiera ruteando, lo que le escriban ya no se
+        # reconocería como del número de avisos y abriría chats en el CRM.
+        await ports.senders.unregister(previous)
+    return await get_sender(user_id)
+
+
+async def copy_templates(user_id: int) -> dict:
+    """Crea en la WABA del número de avisos las plantillas de los avisos que
+    todavía no están ahí. Meta las revisa de nuevo; hasta que las apruebe,
+    el aviso que salga desde ese número queda como fallido en la cita."""
+    account = await _sender_account()
+    if account is None:
+        raise InvalidNotice("El número de avisos está en la cuenta del CRM y usa sus plantillas")
+    ports = appointment_ports()
+    status = {item["template_id"]: item["status"] for item in await _account_templates(account, user_id)}
+    copied: set[int] = set()
+    for _audience, template in await _notice_templates(user_id):
+        if template["id"] in copied or status.get(template["id"]) != "MISSING":
+            continue
+        await ports.senders.copy_template(template["meta_template_id"], account)
+        copied.add(template["id"])
+    return await get_sender(user_id)
+
+
+async def link_sender(code: str, waba_id: str, phone_number_id: str | None, user_id: int) -> dict:
+    """Vincula un número nuevo con el Embedded Signup de Meta (también con
+    coexistencia: el número sigue en la app de WhatsApp Business del
+    celular, donde se ven las respuestas a los avisos) y lo deja como número
+    de avisos. Las credenciales del CRM no cambian. Si quedó en su propia
+    WABA (en coexistencia siempre), copia ahí las plantillas de los avisos."""
+    linked = await appointment_ports().senders.complete_signup(code, waba_id, phone_number_id)
+    result = await save_sender(linked["phone_number_id"], user_id, account=linked["waba_id"])
+    if result["account"] is None:
+        return result
+    try:
+        return await copy_templates(user_id)
+    except NoticeAccountUnavailable:
+        # El número ya quedó vinculado: la tarjeta muestra qué plantillas
+        # faltan y permite reintentar la copia.
+        logger.warning("No se copiaron las plantillas de avisos a la WABA %s", linked["waba_id"], exc_info=True)
+        return result
+
+
 _DELIVERY_STATUSES = ("sent", "delivered", "read", "failed")
 
 
@@ -265,3 +444,14 @@ async def record_notice_delivery(
     return await appointment_ports().notices.record_delivery(
         provider_message_id=provider_message_id, wsp_message_id=wsp_message_id, status=status, at=at,
     )
+
+
+async def notice_account_template_changed(waba_id: str) -> bool:
+    """Un evento de plantilla de Meta que llegó por la WABA propia del número
+    de avisos: avisa a la tarjeta para que vuelva a leer el estado de las
+    copias. Devuelve si era esa WABA."""
+    if not waba_id or waba_id != await _sender_account():
+        return False
+    async with unit_of_work():
+        collect(NoticeTemplatesChanged())
+    return True

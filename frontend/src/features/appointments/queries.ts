@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAppointments, createAppointment, fetchCalendarEventTemplate, fetchNotice, saveCalendarEventTemplate, saveNotice, syncAppointmentCalendar } from './api'
+import { copyNoticeTemplates, fetchAppointments, createAppointment, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
 import type { NoticeAudience, NoticeUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
@@ -71,5 +71,42 @@ export function useSaveNotice(audience: NoticeAudience) {
   return useMutation({
     mutationFn: (values: NoticeUpdate) => saveNotice(audience, values),
     onSuccess: (settings) => queryClient.setQueryData(appointmentKeys.notice(audience), settings),
+  })
+}
+
+export function useNoticeSender() {
+  return useQuery({
+    queryKey: appointmentKeys.noticeSender,
+    queryFn: fetchNoticeSender,
+    // Sin WhatsApp conectado Meta no responde: reintentar no lo arregla.
+    retry: false,
+  })
+}
+
+export function useSaveNoticeSender() {
+  return useMutation({
+    mutationFn: saveNoticeSender,
+    onSuccess: (sender) => {
+      queryClient.setQueryData(appointmentKeys.noticeSender, sender)
+      // Con número de avisos el aviso al equipo admite plantillas con imagen.
+      void queryClient.invalidateQueries({ queryKey: appointmentKeys.notices })
+    },
+  })
+}
+
+export function useLinkNoticeSender() {
+  return useMutation({
+    mutationFn: linkNoticeSender,
+    onSuccess: (sender) => {
+      queryClient.setQueryData(appointmentKeys.noticeSender, sender)
+      void queryClient.invalidateQueries({ queryKey: appointmentKeys.notices })
+    },
+  })
+}
+
+export function useCopyNoticeTemplates() {
+  return useMutation({
+    mutationFn: copyNoticeTemplates,
+    onSuccess: (sender) => queryClient.setQueryData(appointmentKeys.noticeSender, sender),
   })
 }

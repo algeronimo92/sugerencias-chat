@@ -33,14 +33,12 @@ const WRITING_READINGS: HoursReadingOption[] = [
   {
     key: 'messages',
     label: 'En el CRM',
-    hint: 'Mensajes escritos y enviados en el momento desde el CRM, por quien los escribió y en cualquier chat. En promedio por día de la semana.',
   },
   {
     key: 'phone_messages',
     // El mismo nombre que en "Mensajes enviados por día": "desde el celular"
     // dejaba afuera WhatsApp Web, que también sale por acá.
     label: 'Desde WhatsApp, fuera del CRM',
-    hint: 'Mensajes que salieron por WhatsApp sin pasar por el CRM, de todos los chats. No traen autor, e incluyen respuestas automáticas y difusiones de WhatsApp.',
   },
 ]
 
@@ -125,7 +123,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
 
         <Panel anchor="mensajes-por-dia"
           title={days >= 90 ? 'Mensajes enviados por semana' : 'Mensajes enviados por día'}
-          subtitle={`${who(subject, { me: 'Lo que mandó el negocio en mis chats', team: 'Todo lo que mandó el negocio', seller: (name) => `Lo que mandó el negocio en los chats de ${name}` })}, según de dónde salió · ${period}`}
+          subtitle={period}
           className="lg:col-span-2"
         >
           <MessagesByOriginPanel points={activity.messages.by_origin ?? []} days={days} />
@@ -152,7 +150,7 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           <Panel
             anchor="horas-por-persona"
             title="Quién atiende y a qué hora"
-            subtitle={`Lo que cada persona hizo en el CRM y, aparte, lo que salió por WhatsApp · ${period} · franjas de ${data.hours?.slot_hours ?? 2} horas`}
+            subtitle={period}
             className="lg:col-span-2"
           >
             <TeamHoursPanel hours={data.hours} />

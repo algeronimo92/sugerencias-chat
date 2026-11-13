@@ -162,7 +162,7 @@ export function AiIntegrationCard() {
 
   if (isLoading || !status) {
     return (
-      <IntegrationCard id="ia-sugerencias" icon={Sparkles} title="Sugerencias con IA" description="Cargando…" state={isError ? 'error' : 'unconfigured'} />
+      <IntegrationCard id="ia-sugerencias" icon={Sparkles} title="Sugerencias con IA" state={isError ? 'error' : 'unconfigured'} />
     )
   }
 
@@ -182,7 +182,6 @@ export function AiIntegrationCard() {
       id="ia-sugerencias"
       icon={Sparkles}
       title="Sugerencias con IA"
-      description="Con qué claves y modelos el copiloto propone respuestas en el chat. Si el modelo que procesa falla, responde el de respaldo. Otras funciones de IA se configuran aparte."
       state={state}
       stateLabel={stateLabel}
     >

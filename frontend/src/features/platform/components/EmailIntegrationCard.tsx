@@ -36,7 +36,6 @@ export function EmailIntegrationCard() {
       id="correo"
       icon={Mail}
       title="Correo de envío"
-      description="Las invitaciones a tu equipo y los avisos salen desde este correo, con el nombre de tu negocio."
       state={state}
       stateLabel={label}
     >

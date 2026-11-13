@@ -2,7 +2,7 @@ import { BellRing, CalendarCheck, Check, Loader2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
-import { IntegrationCard } from '../../../shared/ui/IntegrationCard'
+import { IntegrationCard, IntegrationDisclosure } from '../../../shared/ui/IntegrationCard'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { parseLine, serializeLine, type PieceDraft as TemplateDraft } from '../../../shared/pieces'
@@ -16,7 +16,6 @@ const COPY = {
     id: 'aviso-cita-cliente',
     icon: CalendarCheck,
     title: 'Aviso de cita al cliente',
-    description: 'Al guardar una cita, el cliente recibe por WhatsApp una plantilla oficial con los datos de su cita, en el chat de su lead.',
     toggle: 'Avisar al cliente cuando se guarda una cita',
     previewLabel: 'Así le llega al cliente',
     previewHint: 'Solo sale si la cita está vinculada a un lead. Una variable cuyos datos están vacíos sale como "-". Las citas de prueba nunca avisan.',
@@ -25,7 +24,6 @@ const COPY = {
     id: 'aviso-cita-equipo',
     icon: BellRing,
     title: 'Aviso de venta al equipo',
-    description: 'Al guardar una cita, el responsable y los admins reciben por WhatsApp una plantilla oficial con la venta, en el número cargado en Usuarios. También se enteran en la app.',
     toggle: 'Avisar al equipo cuando se guarda una cita',
     previewLabel: 'Así le llega al equipo',
     previewHint: 'Solo le llega a quien tiene teléfono cargado en Usuarios. Una variable cuyos datos están vacíos sale como "-". Las citas de prueba nunca avisan.',
@@ -41,7 +39,6 @@ export function NoticeCard({ audience }: { audience: NoticeAudience }) {
       id={copy.id}
       icon={copy.icon}
       title={copy.title}
-      description={copy.description}
       state={data?.enabled ? 'connected' : 'unconfigured'}
       stateLabel={data?.enabled ? 'Activo' : 'Apagado'}
     >
@@ -92,6 +89,7 @@ function NoticeForm({ audience, settings }: { audience: NoticeAudience; settings
   const knownKeys = useMemo(() => new Set(settings.fields.map(field => field.key)), [settings.fields])
   const labels = useMemo(() => pieceLabels(settings.fields), [settings.fields])
   const [enabled, setEnabled] = useState(settings.enabled)
+  const [configurationOpen, setConfigurationOpen] = useState(false)
   const [templateId, setTemplateId] = useState<number | null>(settings.template_id ?? null)
   const initialTemplate = settings.templates.find(item => item.id === settings.template_id) ?? null
   const [draft, setDraft] = useState<TemplateDraft>(
@@ -129,49 +127,58 @@ function NoticeForm({ audience, settings }: { audience: NoticeAudience; settings
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <label className="flex items-center gap-2 text-sm text-wa-text dark:text-wa-text-dark">
         <Checkbox checked={enabled} onCheckedChange={value => change(() => setEnabled(value))} disabled={save.isPending} />
         {copy.toggle}
       </label>
 
-      <div>
-        <label htmlFor={`${audience}-notice-template`} className={labelClass}>Plantilla oficial</label>
-        <Select id={`${audience}-notice-template`} value={templateId ?? ''} onValueChange={chooseTemplate} disabled={save.isPending} className={fieldClass}>
-          <option value="">Elige una plantilla aprobada</option>
-          {settings.templates.map(item => <option key={item.id} value={String(item.id)}>{item.name}</option>)}
-        </Select>
-      </div>
+      <IntegrationDisclosure
+        id={`${audience}-notice-configuration`}
+        title="Configuración del aviso"
+        open={configurationOpen}
+        onToggle={() => setConfigurationOpen(current => !current)}
+      >
+        <div className="space-y-4">
+          <div>
+            <label htmlFor={`${audience}-notice-template`} className={labelClass}>Plantilla oficial</label>
+            <Select id={`${audience}-notice-template`} value={templateId ?? ''} onValueChange={chooseTemplate} disabled={save.isPending} className={fieldClass}>
+              <option value="">Elige una plantilla aprobada</option>
+              {settings.templates.map(item => <option key={item.id} value={String(item.id)}>{item.name}</option>)}
+            </Select>
+          </div>
 
-      {template && variables.length > 0 && (
-        <VariablesBuilder
-          groups={groupsOf(settings.fields)}
-          labels={labels}
-          variables={variables}
-          draft={draft}
-          rendered={rendered}
-          renderedLabel={settings.preview ? 'Con la última cita' : 'Se verá'}
-          disabled={save.isPending}
-          onChange={next => change(() => setDraft(next))}
-        />
-      )}
+          {template && variables.length > 0 && (
+            <VariablesBuilder
+              groups={groupsOf(settings.fields)}
+              labels={labels}
+              variables={variables}
+              draft={draft}
+              rendered={rendered}
+              renderedLabel={settings.preview ? 'Con la última cita' : 'Se verá'}
+              disabled={save.isPending}
+              onChange={next => change(() => setDraft(next))}
+            />
+          )}
 
-      {template && (
-        <div>
-          <p className={labelClass}>{copy.previewLabel}</p>
-          <p className="mb-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-            {settings.preview
-              ? `Con los datos de la última cita: ${settings.preview.label}`
-              : 'Todavía no hay citas: cada dato se muestra por su nombre.'}
-          </p>
-          <p className="whitespace-pre-wrap rounded-lg bg-wa-field px-3 py-2 text-sm text-wa-text dark:bg-wa-field-dark dark:text-wa-text-dark">
-            {previewNotice(template.content, rendered)}
-          </p>
-          <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-            {copy.previewHint}
-          </p>
+          {template && (
+            <div>
+              <p className={labelClass}>{copy.previewLabel}</p>
+              <p className="mb-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">
+                {settings.preview
+                  ? `Con los datos de la última cita: ${settings.preview.label}`
+                  : 'Todavía no hay citas: cada dato se muestra por su nombre.'}
+              </p>
+              <p className="whitespace-pre-wrap rounded-lg bg-wa-field px-3 py-2 text-sm text-wa-text dark:bg-wa-field-dark dark:text-wa-text-dark">
+                {previewNotice(template.content, rendered)}
+              </p>
+              <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
+                {copy.previewHint}
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </IntegrationDisclosure>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         {save.isError && (

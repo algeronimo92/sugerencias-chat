@@ -19,6 +19,9 @@ const CalendarEventTemplateEditor = lazy(() =>
 const NoticeCard = lazy(() =>
   import('../features/appointments/public/NoticeCard').then(module => ({ default: module.NoticeCard })),
 )
+const NoticeSenderCard = lazy(() =>
+  import('../features/appointments/public/NoticeCard').then(module => ({ default: module.NoticeSenderCard })),
+)
 
 /**
  * Conexiones con servicios externos, en orden fijo: WhatsApp (sin él no hay
@@ -93,6 +96,7 @@ export function IntegrationsPage() {
               )}
             />
             <Suspense fallback={null}>
+              <NoticeSenderCard />
               <NoticeCard audience="client" />
               <NoticeCard audience="staff" />
             </Suspense>
