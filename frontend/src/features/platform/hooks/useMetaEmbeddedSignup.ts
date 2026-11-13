@@ -49,7 +49,11 @@ export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPa
   // el número en un lugar distinto.
   const started = useRef(false)
   const completeRef = useRef(onComplete)
-  completeRef.current = onComplete
+  // Se actualiza después del render: render tiene que ser puro (React puede
+  // repetirlo o descartarlo) y el callback solo se llama desde eventos.
+  useEffect(() => {
+    completeRef.current = onComplete
+  })
 
   function trySubmit() {
     const code = pendingCode.current
