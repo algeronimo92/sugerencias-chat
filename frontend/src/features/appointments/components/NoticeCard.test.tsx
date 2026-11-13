@@ -36,6 +36,10 @@ function renderCard(data: NoticeSettings, audience: 'client' | 'staff' = 'client
   )
 }
 
+async function openConfiguration() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Configuración del aviso' }))
+}
+
 describe('NoticeCard', () => {
   beforeEach(() => {
     api.get.mockReset()
@@ -57,6 +61,7 @@ describe('NoticeCard', () => {
 
   it('muestra el mensaje con los datos de la última cita', async () => {
     renderCard(settings)
+    await openConfiguration()
 
     expect(await screen.findByText('Hola AYME, te esperamos el JUEVES 12 de Noviembre a las 01:00 Pm.')).toBeInTheDocument()
     expect(screen.getByText(/última cita: AYME · Hifu12D/)).toBeInTheDocument()
@@ -66,6 +71,7 @@ describe('NoticeCard', () => {
   it('sumar un dato tocándolo lo agrega a la variable marcada', async () => {
     renderCard(settings)
     api.put.mockResolvedValue({ data: settings })
+    await openConfiguration()
 
     await screen.findByRole('group', { name: 'Variable {{1}}' })
     await userEvent.click(screen.getByRole('button', { name: /Nombre en el CRM/ }))
@@ -87,6 +93,7 @@ describe('NoticeCard', () => {
     api.put.mockResolvedValue({ data: { ...settings, enabled: false } })
 
     expect(await screen.findByRole('region', { name: /Aviso de venta al equipo/ })).toBeInTheDocument()
+    await openConfiguration()
     expect(await screen.findByText(/teléfono cargado en Usuarios/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('checkbox'))
     await userEvent.click(screen.getByRole('button', { name: 'Guardar aviso' }))
@@ -99,10 +106,27 @@ describe('NoticeCard', () => {
     api.put.mockResolvedValue({ data: settings })
 
     await userEvent.click(await screen.findByRole('checkbox'))
+    await openConfiguration()
     await userEvent.click(screen.getByRole('combobox'))
     await userEvent.click(await screen.findByRole('option', { name: 'confirmacion_cita' }))
 
     // {fecha} no tiene valor en la última cita: sale "-", como al enviar.
     expect(await screen.findByText('Hola Ayme Torres, te esperamos el -.')).toBeInTheDocument()
+  })
+
+  it('mantiene la configuración adicional plegada por defecto', async () => {
+    renderCard(settings)
+
+    const disclosure = await screen.findByRole('button', { name: 'Configuración del aviso' })
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('checkbox')).toBeVisible()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Hola AYME/)).not.toBeInTheDocument()
+
+    await userEvent.click(disclosure)
+
+    expect(disclosure).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('combobox')).toBeVisible()
+    expect(screen.getByText(/Hola AYME/)).toBeVisible()
   })
 })
