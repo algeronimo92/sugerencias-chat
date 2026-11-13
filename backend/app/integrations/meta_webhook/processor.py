@@ -22,7 +22,7 @@ from typing import Any
 from app.core.config import settings
 from app.integrations.meta import client as meta_service
 from app.modules.leads.ports.ad_referral_service import (rehost_referral_image)
-from app.modules.appointments.ports.notice_delivery import record_notice_delivery
+from app.modules.appointments.ports.notice_delivery import notice_account_template_changed, record_notice_delivery
 from app.modules.conversations.ports.inbound import (
     attach_media,
     receive_provider_message,
@@ -40,6 +40,7 @@ from app.integrations.meta_webhook import metrics
 from app.integrations.meta_webhook.inbox import InboxEvent
 from app.integrations.meta_webhook.projection import project, quoted_wa_message_id
 from app.modules.catalogs.ports.template_service import (replace_official_template_from_meta)
+from app.modules.platform.ports.settings_service import get_effective_many
 from app.integrations.whatsapp.identity import (
     WA_ID,
     ContactIdentity,
@@ -284,6 +285,14 @@ async def _status(status: dict, webhook_event_id: str) -> None:
         logger.exception("No se pudo registrar el estado %s en los avisos de cita", value)
 
 
+async def _is_notice_number(phone_number_id: str) -> bool:
+    """Se compara con el número de avisos y no con el del CRM: el del CRM
+    puede venir de una variable de entorno vieja, y una diferencia ahí
+    dejaría de abrir los chats de verdad."""
+    key = "appointment_notice_phone_number_id"
+    return (await get_effective_many((key,)))[key] == phone_number_id
+
+
 async def _messages_change(change: dict, webhook_event_id: str) -> None:
     value = change.get("value") if isinstance(change.get("value"), dict) else {}
     phone_number_id = _phone_number_id(value)
@@ -294,6 +303,15 @@ async def _messages_change(change: dict, webhook_event_id: str) -> None:
     for status in value.get("statuses") or []:
         if isinstance(status, dict):
             await _status(status, webhook_event_id)
+    if await _is_notice_number(phone_number_id):
+        # El número de avisos de cita: de él solo interesan los estados de
+        # entrega de los avisos. Lo que le escriban no abre un chat: el CRM
+        # responde siempre desde su propio número.
+        ignored = len(value.get("messages") or []) + len(value.get("message_echoes") or [])
+        if ignored:
+            metrics.webhook_ignored_extra_number_messages.labels(field=change["field"]).inc(ignored)
+            logger.info("Se ignoraron %s mensajes del número %s, que no es el del CRM", ignored, phone_number_id)
+        return
     for message in value.get("messages") or []:
         if isinstance(message, dict):
             await _conversation_message(
@@ -320,7 +338,11 @@ async def _template_change(change: dict, _webhook_event_id: str) -> None:
     if not template_id:
         raise ValueError(f"Evento {change['field']} sin id de plantilla")
     remote = await meta_service.get_whatsapp_template(str(template_id))
-    await replace_official_template_from_meta(str(template_id), remote, source="meta_webhook")
+    updated = await replace_official_template_from_meta(str(template_id), remote, source="meta_webhook")
+    if not updated:
+        # Las copias de la WABA propia del número de avisos no están en el
+        # CRM: su tarjeta las vuelve a leer de Meta.
+        await notice_account_template_changed(str(change.get("entry_id") or ""))
 
 
 ChangeHandler = Callable[[dict, str], Awaitable[None]]

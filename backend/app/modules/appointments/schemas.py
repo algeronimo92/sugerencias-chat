@@ -171,6 +171,58 @@ class NoticeSettings(BaseModel):
     preview: NoticePreview | None = None
 
 
+class NoticeSenderNumber(BaseModel):
+    id: str
+    display_phone_number: str
+    verified_name: str
+    # El número del CRM no se puede elegir: sin número de avisos, los avisos
+    # ya salen de ahí.
+    is_crm: bool
+    waba_id: str
+
+
+class NoticeSenderAccount(BaseModel):
+    """La cuenta de WhatsApp Business propia del número de avisos."""
+
+    waba_id: str
+    name: str
+
+
+class NoticeSenderTemplate(BaseModel):
+    """Una plantilla de los avisos y su copia en la cuenta del número de
+    avisos. ``status``: el de Meta (``APPROVED``, ``PENDING``, ``REJECTED``…)
+    o ``MISSING`` si todavía no se copió."""
+
+    audience: Literal["client", "staff"]
+    template_id: int
+    name: str
+    status: str
+
+
+class NoticeSender(BaseModel):
+    """Desde qué número salen los avisos de cita. ``phone_number_id`` vacío:
+    del número del CRM. ``account`` vacío: el número está en la cuenta del
+    CRM y usa sus plantillas."""
+
+    phone_number_id: str | None
+    numbers: list[NoticeSenderNumber]
+    account: NoticeSenderAccount | None = None
+    templates: list[NoticeSenderTemplate] = Field(default_factory=list)
+
+
+class NoticeSenderUpdate(BaseModel):
+    phone_number_id: str | None = Field(default=None, max_length=64)
+
+
+class NoticeSenderSignup(BaseModel):
+    """Lo que devuelve el Embedded Signup de Meta para el número de avisos."""
+
+    code: str = Field(min_length=1, max_length=2048)
+    waba_id: str = Field(min_length=1, max_length=64)
+    # Ausente en coexistencia: Meta no lo manda y se resuelve en el backend.
+    phone_number_id: str | None = Field(default=None, max_length=64)
+
+
 class NoticeSettingsUpdate(BaseModel):
     enabled: bool
     template_id: int | None = None

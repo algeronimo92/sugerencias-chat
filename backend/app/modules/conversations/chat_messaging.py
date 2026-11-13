@@ -252,11 +252,21 @@ async def send_template(
     return sent
 
 
-async def official_template_message(template: dict, parameters: list[str]) -> dict:
+async def official_template_message(
+    template: dict, parameters: list[str], *, header_media_id: str | None = None,
+) -> dict:
     """El cuerpo para Meta de una plantilla oficial aprobada, para un envío
-    que no pasa por el chat de un lead (el aviso de cita al equipo). Una
-    plantilla con imagen en el encabezado no se puede: la sube el outbox."""
-    if template.get("official_header_type") == "image":
+    que no pasa por el outbox del chat (los avisos de cita). Una plantilla con
+    imagen en el encabezado necesita ``header_media_id``: la imagen ya subida
+    por el número que va a enviar."""
+    is_image = template.get("official_header_type") == "image"
+    if is_image and not header_media_id:
         raise TemplateNotSendableError("Una plantilla con imagen solo se puede enviar a un lead")
     [item] = await _official_items(template, "", "", parameters)
-    return item["message"]
+    message = item["message"]
+    if is_image:
+        message["template"]["components"] = [
+            {"type": "header", "parameters": [{"type": "image", "image": {"id": header_media_id}}]},
+            *(message["template"].get("components") or []),
+        ]
+    return message

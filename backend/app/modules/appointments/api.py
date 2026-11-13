@@ -17,6 +17,9 @@ from app.modules.appointments.schemas import (
     AppointmentItem,
     CalendarEventTemplate,
     CalendarEventTemplateUpdate,
+    NoticeSender,
+    NoticeSenderSignup,
+    NoticeSenderUpdate,
     NoticeSettings,
     NoticeSettingsUpdate,
 )
@@ -49,6 +52,28 @@ async def get_calendar_template(_user: User = Depends(require_admin)):
 @router.put("/calendar-template", response_model=CalendarEventTemplate)
 async def put_calendar_template(body: CalendarEventTemplateUpdate, _user: User = Depends(require_admin)):
     return await calendar_template.save_template(body.title_template, body.description_template)
+
+
+@router.get("/notice-sender", response_model=NoticeSender)
+async def get_notice_sender(user: User = Depends(require_admin)):
+    return await notice.get_sender(user.id)
+
+
+@router.put("/notice-sender", response_model=NoticeSender)
+async def put_notice_sender(body: NoticeSenderUpdate, user: User = Depends(require_admin)):
+    return await notice.save_sender(body.phone_number_id, user.id)
+
+
+@router.post("/notice-sender/embedded-signup", response_model=NoticeSender)
+async def post_notice_sender_signup(body: NoticeSenderSignup, user: User = Depends(require_admin)):
+    return await notice.link_sender(body.code, body.waba_id, body.phone_number_id, user.id)
+
+
+@router.post("/notice-sender/templates", response_model=NoticeSender)
+async def post_notice_sender_templates(user: User = Depends(require_admin)):
+    """Copia a la cuenta del número de avisos las plantillas de los avisos
+    que todavía no están ahí."""
+    return await notice.copy_templates(user.id)
 
 
 @router.get("/notices/{audience}", response_model=NoticeSettings)

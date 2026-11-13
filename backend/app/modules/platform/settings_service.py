@@ -229,6 +229,8 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef("appointment_staff_notice_enabled", "Avisar al equipo", "appointments", "Avisos de cita", secret=False, boolean=True, hidden=True),
     SettingDef("appointment_staff_notice_template_id", "Plantilla para el equipo", "appointments", "Avisos de cita", secret=False, hidden=True),
     SettingDef("appointment_staff_notice_parameters", "Campos de cada variable (equipo)", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_notice_phone_number_id", "Número de avisos (phone number id)", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_notice_waba_id", "Cuenta de WhatsApp Business del número de avisos", "appointments", "Avisos de cita", secret=False, hidden=True),
     # SMTP propio del negocio para invitaciones y avisos (pestaña Correo). Se
     # editan solo por app/modules/platform/email_settings.py, que valida el
     # conjunto: un host suelto sin remitente no sirve. Los nombres no
