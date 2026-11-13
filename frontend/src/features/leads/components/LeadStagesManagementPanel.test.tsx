@@ -53,13 +53,27 @@ describe('LeadStagesManagementPanel', () => {
     render(<LeadStagesManagementPanel />)
 
     await user.type(screen.getByLabelText('Nombre de la nueva etapa'), '  Cita pagada ')
-    await user.click(within(screen.getByRole('radiogroup', { name: 'Color de la nueva etapa' })).getByRole('radio', { name: 'Verde' }))
+    const color = screen.getByLabelText('Color de la nueva etapa hexadecimal')
+    await user.clear(color)
+    await user.type(color, '#12AB34')
     await user.click(screen.getByRole('button', { name: /Crear etapa/ }))
 
     expect(mocks.create).toHaveBeenCalledWith(
-      { name: 'Cita pagada', color: '#22c55e', kind: 'open', description: null },
+      { name: 'Cita pagada', color: '#12ab34', kind: 'open', description: null },
       expect.anything(),
     )
+  })
+
+  it('permite guardar un color libre en una etapa existente', async () => {
+    const user = userEvent.setup()
+    render(<LeadStagesManagementPanel />)
+
+    const color = screen.getByLabelText('Color de Calificado hexadecimal')
+    await user.clear(color)
+    await user.type(color, 'F0E1D2')
+    await user.click(screen.getByRole('button', { name: 'Guardar Calificado' }))
+
+    expect(mocks.update).toHaveBeenCalledWith({ key: 'calificado', color: '#f0e1d2' }, expect.anything())
   })
 
   it('reordena enviando el orden completo de claves', async () => {

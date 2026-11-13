@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Check, Columns3, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Columns3, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -53,31 +53,58 @@ interface ColorPickerProps {
   label: string
 }
 
-/** Paleta cerrada (ver LEAD_STAGE_COLORS): garantiza que la insignia derivada
- *  se lea en tema claro y oscuro. */
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+const colorInputClass =
+  'shrink-0 cursor-pointer rounded-lg border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:rounded-lg [&::-webkit-color-swatch-wrapper]:p-0'
+
+function normalizedHex(value: string): string | null {
+  const candidate = value.trim().startsWith('#') ? value.trim() : `#${value.trim()}`
+  return HEX_COLOR.test(candidate) ? candidate.toLowerCase() : null
+}
+
+/** El input de color abre el selector completo del navegador/sistema (rueda,
+ * brillo y cuentagotas cuando están disponibles). El texto permite pegar o
+ * escribir un color exacto sin impedir valores parciales mientras se edita. */
 function ColorPicker({ value, onChange, label }: ColorPickerProps) {
+  const [hex, setHex] = useState(value.toUpperCase())
+
+  useEffect(() => setHex(value.toUpperCase()), [value])
+
+  function handleHexChange(next: string) {
+    setHex(next.toUpperCase())
+    const normalized = normalizedHex(next)
+    if (normalized) onChange(normalized)
+  }
+
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
-      {LEAD_STAGE_COLORS.map(color => {
-        const selected = color.value === value
-        return (
-          <button
-            key={color.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={color.label}
-            title={color.label}
-            onClick={() => onChange(color.value)}
-            style={{ backgroundColor: color.value }}
-            className={`grid h-7 w-7 place-items-center rounded-full outline-none ring-offset-2 ring-offset-white transition-transform focus-visible:ring-2 focus-visible:ring-wa-primary-strong dark:ring-offset-wa-panel-dark ${
-              selected ? 'ring-2 ring-wa-text dark:ring-wa-text-dark' : 'hover:scale-110'
-            }`}
-          >
-            {selected && <Check className="h-3.5 w-3.5 text-white" aria-hidden="true" />}
-          </button>
-        )
-      })}
+    <div className="flex w-full max-w-xs items-center gap-2">
+      <input
+        type="color"
+        value={value}
+        onChange={event => onChange(event.target.value.toLowerCase())}
+        aria-label={label}
+        title="Abrir selector de color"
+        className={`h-10 w-12 ${colorInputClass}`}
+      />
+      <Input
+        value={hex}
+        onChange={event => handleHexChange(event.target.value)}
+        onBlur={() => {
+          const normalized = normalizedHex(hex)
+          if (normalized) {
+            setHex(normalized.toUpperCase())
+            onChange(normalized)
+          } else {
+            setHex(value.toUpperCase())
+          }
+        }}
+        aria-label={`${label} hexadecimal`}
+        inputMode="text"
+        spellCheck={false}
+        maxLength={7}
+        placeholder="#0EA5E9"
+        className="h-10 bg-white font-mono uppercase dark:bg-wa-head-dark"
+      />
     </div>
   )
 }

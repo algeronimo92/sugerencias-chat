@@ -90,4 +90,11 @@ describe('colores de etapa', () => {
 
     expect(DEFAULT_LEAD_STAGES.every(stage => palette.has(stage.color))).toBe(true)
   })
+
+  it.each(['#ffffff', '#000000', '#ffff00', '#ff00ff'])('mantiene legible un color libre %s', color => {
+    const badge = stageBadgeColors(color)
+
+    expect(contrastRatio(badge.lightText, badge.lightBackground)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(badge.darkText, badge.darkBackground)).toBeGreaterThanOrEqual(4.5)
+  })
 })

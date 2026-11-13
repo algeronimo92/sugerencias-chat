@@ -24,11 +24,9 @@ export const LEAD_STAGE_KIND_HINTS: Record<LeadStageKind, string> = {
 }
 
 /**
- * Paleta ofrecida al elegir el color de una etapa. Son tonos medios (500 de
- * Tailwind): se leen como punto y borde en claro y en oscuro, y la insignia
- * deriva de ellos un fondo suave y un texto con contraste suficiente (ver
- * STAGE_BADGE_CLASS). Un selector libre permitiría colores casi blancos o
- * casi negros que no se leerían en uno de los dos temas.
+ * Colores iniciales de las etapas y tonos de referencia. El catálogo permite
+ * cualquier hexadecimal; `stageBadgeColors` adapta el texto para conservar
+ * contraste incluso con colores casi blancos o negros.
  */
 export const LEAD_STAGE_COLORS: readonly { value: string; label: string }[] = [
   { value: '#0ea5e9', label: 'Celeste' },
@@ -190,11 +188,24 @@ const DARK_SURFACE = '#111b21'
  *  aclara en oscuro, con un contraste de al menos 4.5:1 para toda la paleta
  *  (ver leadStageMeta.test.ts). */
 export function stageBadgeColors(color: string) {
+  const lightBackground = mixColors(color, '#ffffff', 0.14)
+  const darkBackground = mixColors(color, DARK_SURFACE, 0.24)
+
+  const readableTint = (background: string, base: string, initialAmount: number) => {
+    for (let amount = initialAmount; amount >= 0; amount -= 0.05) {
+      const candidate = mixColors(color, base, amount)
+      if (contrastRatio(candidate, background) >= 4.5) return candidate
+    }
+    const black = contrastRatio('#000000', background)
+    const white = contrastRatio('#ffffff', background)
+    return black >= white ? '#000000' : '#ffffff'
+  }
+
   return {
-    lightBackground: mixColors(color, '#ffffff', 0.14),
-    lightText: mixColors(color, '#000000', 0.5),
-    darkBackground: mixColors(color, DARK_SURFACE, 0.24),
-    darkText: mixColors(color, '#ffffff', 0.45),
+    lightBackground,
+    lightText: readableTint(lightBackground, '#000000', 0.5),
+    darkBackground,
+    darkText: readableTint(darkBackground, '#ffffff', 0.45),
   }
 }
 
