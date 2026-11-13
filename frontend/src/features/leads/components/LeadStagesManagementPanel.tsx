@@ -22,6 +22,7 @@ useUpdateLeadStage,
 } from '../hooks/useLeadStages'
 import type { LeadStageAdminDefinition, LeadStageKind } from '../types'
 import { AppointmentStageSwitch } from './AppointmentStageSwitch'
+import { StageColorPicker } from './StageColorPicker'
 
 interface StageDraft {
   name: string
@@ -45,68 +46,6 @@ function changedFields(stage: LeadStageAdminDefinition, draft: StageDraft) {
   if (draft.kind !== original.kind) changes.kind = draft.kind
   if (draft.description.trim() !== original.description) changes.description = draft.description.trim()
   return changes
-}
-
-interface ColorPickerProps {
-  value: string
-  onChange: (color: string) => void
-  label: string
-}
-
-const HEX_COLOR = /^#[0-9a-f]{6}$/i
-const colorInputClass =
-  'shrink-0 cursor-pointer rounded-lg border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:rounded-lg [&::-webkit-color-swatch-wrapper]:p-0'
-
-function normalizedHex(value: string): string | null {
-  const candidate = value.trim().startsWith('#') ? value.trim() : `#${value.trim()}`
-  return HEX_COLOR.test(candidate) ? candidate.toLowerCase() : null
-}
-
-/** El input de color abre el selector completo del navegador/sistema (rueda,
- * brillo y cuentagotas cuando están disponibles). El texto permite pegar o
- * escribir un color exacto sin impedir valores parciales mientras se edita. */
-function ColorPicker({ value, onChange, label }: ColorPickerProps) {
-  const [hex, setHex] = useState(value.toUpperCase())
-
-  useEffect(() => setHex(value.toUpperCase()), [value])
-
-  function handleHexChange(next: string) {
-    setHex(next.toUpperCase())
-    const normalized = normalizedHex(next)
-    if (normalized) onChange(normalized)
-  }
-
-  return (
-    <div className="flex w-full max-w-xs items-center gap-2">
-      <input
-        type="color"
-        value={value}
-        onChange={event => onChange(event.target.value.toLowerCase())}
-        aria-label={label}
-        title="Abrir selector de color"
-        className={`h-10 w-12 ${colorInputClass}`}
-      />
-      <Input
-        value={hex}
-        onChange={event => handleHexChange(event.target.value)}
-        onBlur={() => {
-          const normalized = normalizedHex(hex)
-          if (normalized) {
-            setHex(normalized.toUpperCase())
-            onChange(normalized)
-          } else {
-            setHex(value.toUpperCase())
-          }
-        }}
-        aria-label={`${label} hexadecimal`}
-        inputMode="text"
-        spellCheck={false}
-        maxLength={7}
-        placeholder="#0EA5E9"
-        className="h-10 bg-white font-mono uppercase dark:bg-wa-head-dark"
-      />
-    </div>
-  )
 }
 
 function KindSelect({ value, onChange, id, label }: { value: LeadStageKind; onChange: (kind: LeadStageKind) => void; id?: string; label?: string }) {
@@ -267,7 +206,7 @@ export function LeadStagesManagementPanel() {
           </label>
           <div className="sm:col-span-2">
             <p className="mb-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">Color</p>
-            <ColorPicker label="Color de la nueva etapa" value={newStage.color} onChange={color => setNewStage(current => ({ ...current, color }))} />
+            <StageColorPicker label="Color de la nueva etapa" value={newStage.color} onChange={color => setNewStage(current => ({ ...current, color }))} />
           </div>
           <div className="sm:col-span-2">
             <Button type="submit" disabled={!newStage.name.trim() || createStage.isPending} className="h-10 bg-wa-primary-strong hover:bg-wa-primary-deep">
@@ -358,7 +297,7 @@ export function LeadStagesManagementPanel() {
                       aria-label={`Criterio de ${stage.name}`}
                       className="h-10 w-full bg-white dark:bg-wa-panel-dark"
                     />
-                    <ColorPicker label={`Color de ${stage.name}`} value={draft.color} onChange={color => setDraft(stage, { color })} />
+                    <StageColorPicker label={`Color de ${stage.name}`} value={draft.color} onChange={color => setDraft(stage, { color })} />
                     <AppointmentStageSwitch stageName={stage.name} checked={stage.on_appointment} available={stage.is_active} disabled={pending} onChange={value => handleAppointmentStage(stage, value)} />
                     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-wa-muted dark:text-wa-muted-dark">
                       <span style={stageColorStyle(draft.color)} className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${STAGE_BADGE_CLASS}`}>{draft.name.trim() || stage.name}</span>
