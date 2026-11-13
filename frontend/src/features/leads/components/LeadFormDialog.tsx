@@ -113,6 +113,13 @@ export function LeadFormDialog({
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
   }, [leadServices, createdServices])
 
+  // El chat puede moverse desde el kanban o una automatización mientras este
+  // diálogo sigue abierto. En ese caso la etapa del servidor vuelve a ser la
+  // fuente de verdad y el selector debe reflejarla sin obligar a cerrar.
+  useEffect(() => {
+    setStage(initialStage ?? '')
+  }, [initialStage])
+
   const phoneCheck = useMemo(
     () => (canEditPhone ? normalizePhone(phone, countryCode) : { status: 'empty' as const }),
     [phone, countryCode, canEditPhone],
@@ -451,7 +458,15 @@ export function LeadFormDialog({
               >
                 {stageOptions(stageCatalog, initialStage).map(option => (
                   <option key={option.key} value={option.key} disabled={!option.is_active}>
-                    {option.is_active ? option.name : `${option.name} (inactiva)`}
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        data-stage-color={option.color}
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: option.color }}
+                      />
+                      <span>{option.is_active ? option.name : `${option.name} (inactiva)`}</span>
+                    </span>
                   </option>
                 ))}
               </Select>

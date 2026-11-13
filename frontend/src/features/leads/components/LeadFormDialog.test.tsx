@@ -116,7 +116,10 @@ describe('LeadFormDialog catálogo de etapas', () => {
     )
 
     await user.click(screen.getByLabelText('Etapa del chat'))
-    await user.click(screen.getByRole('option', { name: 'Evaluación médica' }))
+    const customStage = screen.getByRole('option', { name: 'Evaluación médica' })
+    expect(customStage.querySelector('[data-stage-color="#14b8a6"]')).not.toBeNull()
+    await user.click(customStage)
+    expect(screen.getByLabelText('Etapa del chat').querySelector('[data-stage-color="#14b8a6"]')).not.toBeNull()
     await user.click(screen.getByRole('button', { name: 'Guardar' }))
 
     expect(onSubmit).toHaveBeenCalledWith(expect.any(Object), 'evaluacion_medica')
@@ -142,6 +145,27 @@ describe('LeadFormDialog catálogo de etapas', () => {
     )
 
     expect(screen.getByLabelText('Etapa del chat')).toHaveTextContent('Calificado (inactiva)')
+  })
+
+  it('actualiza la etapa mientras el editor está abierto si el chat se mueve desde otro lugar', () => {
+    const stageCatalog = buildStageCatalog(DEFAULT_LEAD_STAGES)
+    const commonProps = {
+      title: 'Editar lead',
+      submitLabel: 'Guardar',
+      initial: { name: 'Ana' },
+      stageCatalog,
+      canEditPhone: false,
+      isSubmitting: false,
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    }
+    const { rerender } = render(<LeadFormDialog {...commonProps} initialStage="nuevo" />)
+
+    expect(screen.getByLabelText('Etapa del chat')).toHaveTextContent('Nuevo')
+
+    rerender(<LeadFormDialog {...commonProps} initialStage="en_diagnostico" />)
+
+    expect(screen.getByLabelText('Etapa del chat')).toHaveTextContent('En diagnóstico')
   })
 })
 
