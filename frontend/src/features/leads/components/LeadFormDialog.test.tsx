@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { LeadFormDialog } from './LeadFormDialog'
+import { buildStageCatalog, DEFAULT_LEAD_STAGES } from '../domain/leadStageMeta'
 
 const mocks = vi.hoisted(() => ({ createService: vi.fn() }))
 
@@ -78,6 +79,69 @@ describe('LeadFormDialog service catalog', () => {
     await user.click(screen.getByRole('button', { name: 'Crear' }))
     expect(mocks.createService).toHaveBeenCalledWith('Hollywood Peel', expect.any(Object))
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+describe('LeadFormDialog catálogo de etapas', () => {
+  it('permite cambiar a una etapa añadida al catálogo del negocio', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    const stageCatalog = buildStageCatalog([
+      ...DEFAULT_LEAD_STAGES,
+      {
+        key: 'evaluacion_medica',
+        name: 'Evaluación médica',
+        color: '#14b8a6',
+        kind: 'open',
+        position: 20,
+        is_active: true,
+        description: null,
+        is_system: false,
+        on_appointment: false,
+      },
+    ])
+
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana' }}
+        initialStage="nuevo"
+        stageCatalog={stageCatalog}
+        canEditPhone={false}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByLabelText('Etapa del chat'))
+    await user.click(screen.getByRole('option', { name: 'Evaluación médica' }))
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.any(Object), 'evaluacion_medica')
+  })
+
+  it('conserva visible una etapa actual que fue desactivada', () => {
+    const stageCatalog = buildStageCatalog(DEFAULT_LEAD_STAGES.map(stage =>
+      stage.key === 'calificado' ? { ...stage, is_active: false } : stage,
+    ))
+
+    render(
+      <LeadFormDialog
+        title="Editar lead"
+        submitLabel="Guardar"
+        initial={{ name: 'Ana' }}
+        initialStage="calificado"
+        stageCatalog={stageCatalog}
+        canEditPhone={false}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('Etapa del chat')).toHaveTextContent('Calificado (inactiva)')
   })
 })
 
