@@ -14,7 +14,6 @@ export function GoogleCalendarIntegrationCard({ eventEditor }: { eventEditor?: R
       id="calendario"
       icon={GoogleCalendarMark}
       title="Google Calendar"
-      description="Cada cita agendada aparece en el calendario del negocio, con el formato que elijas."
       state={state}
       stateLabel={status?.connected && status.account_email ? `Conectado · ${status.account_email}` : undefined}
     >

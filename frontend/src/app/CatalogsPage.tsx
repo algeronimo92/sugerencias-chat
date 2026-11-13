@@ -32,14 +32,11 @@ export function CatalogsPage() {
       <main className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Catálogos</h1>
-          <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Organiza los servicios, etiquetas, categorías y etapas del embudo que usa tu equipo.
-          </p>
 
           <div
             role="group"
             aria-label="Catálogos disponibles"
-            className="mt-5 flex max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-wa-border bg-white p-1 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:w-fit"
+            className="mt-4 flex max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-wa-border bg-white p-1 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:w-fit"
           >
             {TABS.map(({ key, label, icon: Icon }) => (
               <button

@@ -18,7 +18,7 @@ import { Skeleton } from './Skeleton'
 interface CatalogPanelProps<T> {
   icon: LucideIcon
   title: string
-  description: string
+  description?: string
   createForm: ReactNode
   items: T[]
   getId: (item: T) => number
@@ -101,7 +101,7 @@ export function CatalogPanel<T>({
           <Icon className="h-5 w-5 text-wa-primary-strong dark:text-wa-primary" aria-hidden="true" />
           <h2 className="text-lg font-semibold text-wa-text dark:text-wa-text-dark">{title}</h2>
         </div>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">{description}</p>
+        {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">{description}</p>}
         <div className="mt-4">{createForm}</div>
         {formError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{formError}</p>}
       </div>

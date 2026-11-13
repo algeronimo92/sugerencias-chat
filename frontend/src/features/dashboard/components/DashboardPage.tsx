@@ -7,7 +7,7 @@ import { useDashboard } from '../hooks/useDashboard'
 import { useDashboardFilters, type DashboardView, type TabId } from '../hooks/useDashboardFilters'
 import { useSellers } from '../../platform/public/useUsers'
 import { sectionElementId } from './sectionLink'
-import { who, type DashboardSubject } from './subject'
+import type { DashboardSubject } from './subject'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
@@ -86,13 +86,6 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-wa-text dark:text-white">Dashboard CRM</h1>
-            <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-              {who(subject, {
-                me: 'Mis leads, mis flujos y mis citas',
-                team: 'Atención, seguimiento y distribución del equipo',
-                seller: (name) => `Leads, flujos y citas de ${name}`,
-              })}
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {data && (

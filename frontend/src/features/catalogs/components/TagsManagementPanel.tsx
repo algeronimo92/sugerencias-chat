@@ -87,7 +87,6 @@ export function TagsManagementPanel() {
     <CatalogPanel
       icon={Tags}
       title="Administrar etiquetas"
-      description="Define nombres y colores consistentes. Una etiqueta desactivada permanece en los leads existentes, pero no se puede volver a asignar."
       items={tags}
       getId={tag => tag.id}
       getName={tag => tag.name}

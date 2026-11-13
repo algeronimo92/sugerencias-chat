@@ -218,7 +218,6 @@ export function ErpIntegrationCard() {
       id="erp"
       icon={Database}
       title="ERP del negocio"
-      description="La lista de precios se trae del ERP cada hora: servicios y paquetes con los que cotiza el asistente IA."
       state={erp.state}
       stateLabel={erp.state === 'connected' ? `Conectado · ${hostOf(erp.savedUrl)}` : undefined}
       actions={erp.configured ? (
