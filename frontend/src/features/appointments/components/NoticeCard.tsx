@@ -16,7 +16,6 @@ const COPY = {
     id: 'aviso-cita-cliente',
     icon: CalendarCheck,
     title: 'Aviso de cita al cliente',
-    description: 'Al guardar una cita, el cliente recibe por WhatsApp una plantilla oficial con los datos de su cita, en el chat de su lead.',
     toggle: 'Avisar al cliente cuando se guarda una cita',
     previewLabel: 'Así le llega al cliente',
     previewHint: 'Solo sale si la cita está vinculada a un lead. Una variable cuyos datos están vacíos sale como "-". Las citas de prueba nunca avisan.',
@@ -25,7 +24,6 @@ const COPY = {
     id: 'aviso-cita-equipo',
     icon: BellRing,
     title: 'Aviso de venta al equipo',
-    description: 'Al guardar una cita, el responsable y los admins reciben por WhatsApp una plantilla oficial con la venta, en el número cargado en Usuarios. También se enteran en la app.',
     toggle: 'Avisar al equipo cuando se guarda una cita',
     previewLabel: 'Así le llega al equipo',
     previewHint: 'Solo le llega a quien tiene teléfono cargado en Usuarios. Una variable cuyos datos están vacíos sale como "-". Las citas de prueba nunca avisan.',
@@ -41,7 +39,6 @@ export function NoticeCard({ audience }: { audience: NoticeAudience }) {
       id={copy.id}
       icon={copy.icon}
       title={copy.title}
-      description={copy.description}
       state={data?.enabled ? 'connected' : 'unconfigured'}
       stateLabel={data?.enabled ? 'Activo' : 'Apagado'}
     >

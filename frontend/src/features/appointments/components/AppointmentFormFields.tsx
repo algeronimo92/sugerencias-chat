@@ -23,7 +23,6 @@ const HOURS = [...ALL_HOURS.slice(14), ...ALL_HOURS.slice(0, 14)]
 // debería venir de su definición en el catálogo (pendiente: help_text).
 const CUSTOM_HINTS: Record<string, string> = {
   [DEPOSIT_FIELD_KEY]: 'Monto que el cliente ya pagó para separar. Escribe 0 si aún no paga.',
-  dni: '8 dígitos.',
 }
 
 type FromLead = (key: string) => boolean
@@ -81,8 +80,8 @@ function BookingSection({ state, fromLead }: { state: AppointmentFormState; from
   const { form, busy, update, fieldErrors } = state
   const sellerNames = useSellerNames(form.vendedor)
   return (
-    <FormSection icon={CalendarClock} title="Reserva" description="Lo que acordaste con el cliente">
-      <Field id={FIELD_IDS.servicio} label="Tratamiento" required fromLead={fromLead('servicio')} hint="Busca en el catálogo o escribe el motivo." error={fieldErrors.servicio}>
+    <FormSection icon={CalendarClock} title="Reserva">
+      <Field id={FIELD_IDS.servicio} label="Tratamiento" required fromLead={fromLead('servicio')} error={fieldErrors.servicio}>
         {described => <ServiceCombobox id={FIELD_IDS.servicio} value={form.servicio} onChange={value => update('servicio', value)} disabled={busy} className={fieldClass} aria-describedby={described} invalid={Boolean(fieldErrors.servicio)} />}
       </Field>
       <div className="mt-4">
@@ -108,7 +107,7 @@ function BookingSection({ state, fromLead }: { state: AppointmentFormState; from
         <Field id={FIELD_IDS.hora} label="Hora" required error={fieldErrors.hora}>
           {described => <Select id={FIELD_IDS.hora} value={form.hora} onValueChange={value => update('hora', value)} disabled={busy} className={fieldClass} aria-describedby={described} aria-invalid={fieldErrors.hora ? true : undefined}><option value="">Elige la hora</option>{HOURS.map(hour => <option key={hour} value={hour}>{hour}</option>)}</Select>}
         </Field>
-        <Field id={FIELD_IDS.vendedor} label="Responsable" required fromLead={fromLead('vendedor')} hint="Quien queda a cargo de la cita." error={fieldErrors.vendedor}>
+        <Field id={FIELD_IDS.vendedor} label="Responsable" required fromLead={fromLead('vendedor')} error={fieldErrors.vendedor}>
           {described => <Select id={FIELD_IDS.vendedor} value={form.vendedor} onValueChange={value => update('vendedor', value)} disabled={busy} className={fieldClass} aria-describedby={described} aria-invalid={fieldErrors.vendedor ? true : undefined}><option value="">Elige a alguien</option>{sellerNames.map(name => <option key={name} value={name}>{name}</option>)}</Select>}
         </Field>
       </div>
@@ -144,8 +143,8 @@ function ClientSection({ state, fromLead, phoneLocked, compact }: { state: Appoi
   const { form, busy, update, fieldErrors } = state
   const others = state.definitions.filter(field => field.key !== DEPOSIT_FIELD_KEY)
   return (
-    <FormSection icon={UserRound} title="Cliente" description="Casi siempre viene del chat: revisa que esté bien">
-      <Field id={FIELD_IDS.nombreCompleto} label="Nombre completo" required fromLead={fromLead('nombreCompleto')} hint="Como figura en su DNI." error={fieldErrors.nombreCompleto}>
+    <FormSection icon={UserRound} title="Cliente">
+      <Field id={FIELD_IDS.nombreCompleto} label="Nombre completo" required fromLead={fromLead('nombreCompleto')} error={fieldErrors.nombreCompleto}>
         {described => <Input id={FIELD_IDS.nombreCompleto} value={form.nombreCompleto} onChange={event => update('nombreCompleto', event.target.value)} disabled={busy} className={fieldClass} autoComplete="off" aria-describedby={described} aria-invalid={fieldErrors.nombreCompleto ? true : undefined} />}
       </Field>
       <div className="mt-4">
@@ -154,7 +153,7 @@ function ClientSection({ state, fromLead, phoneLocked, compact }: { state: Appoi
           label="Teléfono"
           required
           fromLead={fromLead('telefono')}
-          hint={phoneLocked ? 'Es el número del chat: la cita queda en su ficha.' : 'Con código de país, ej. 51 987 654 321.'}
+          hint={phoneLocked ? 'Es el número del chat: la cita queda en su ficha.' : undefined}
           error={fieldErrors.telefono}
         >
           {described => <Input id={FIELD_IDS.telefono} type="tel" inputMode="tel" value={form.telefono} onChange={event => update('telefono', event.target.value)} disabled={busy} readOnly={phoneLocked} className={`${fieldClass} ${phoneLocked ? 'cursor-not-allowed opacity-80' : ''}`} aria-describedby={described} aria-invalid={fieldErrors.telefono ? true : undefined} />}
@@ -243,8 +242,8 @@ function LeadMark() {
   return <span className="rounded-full bg-wa-accent/15 px-2 py-0.5 text-[11px] font-semibold text-wa-primary-strong dark:text-wa-primary">Del lead</span>
 }
 
-function FormSection({ icon: Icon, title, description, children }: { icon: typeof CalendarClock; title: string; description: string; children: ReactNode }) {
-  return <section className="overflow-hidden rounded-xl border border-wa-border bg-wa-panel dark:border-wa-border-dark dark:bg-wa-panel-dark"><div className="border-b border-wa-border px-4 py-4 dark:border-wa-border-dark"><div className="flex gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark"><Icon className="h-4 w-4" /></span><div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-wa-muted">{description}</p></div></div></div><div className="p-4">{children}</div></section>
+function FormSection({ icon: Icon, title, description, children }: { icon: typeof CalendarClock; title: string; description?: string; children: ReactNode }) {
+  return <section className="overflow-hidden rounded-xl border border-wa-border bg-wa-panel dark:border-wa-border-dark dark:bg-wa-panel-dark"><div className="border-b border-wa-border px-4 py-4 dark:border-wa-border-dark"><div className="flex gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-wa-field text-wa-primary-strong dark:bg-wa-field-dark"><Icon className="h-4 w-4" /></span><div><h2 className="font-semibold">{title}</h2>{description && <p className="mt-1 text-sm text-wa-muted">{description}</p>}</div></div></div><div className="p-4">{children}</div></section>
 }
 
 /**

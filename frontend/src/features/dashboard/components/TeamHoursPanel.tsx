@@ -123,10 +123,6 @@ export function TeamHoursPanel({ hours }: { hours: DashboardHours | undefined })
               onRead={description => setPicked(`WhatsApp, fuera del CRM · ${description}`)}
             />
           </div>
-          <p className="self-center text-xs leading-5 text-wa-muted xl:col-span-2 dark:text-wa-muted-dark">
-            Salieron del WhatsApp Business del celular o de WhatsApp Web. WhatsApp no dice quién los escribió.
-            Incluye respuestas automáticas y difusiones.
-          </p>
         </section>
       )}
 

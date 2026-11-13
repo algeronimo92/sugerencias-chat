@@ -157,7 +157,6 @@ export function ServicesManagementPanel({ renderServiceExtras }: Props = {}) {
     <CatalogPanel
       icon={Sparkles}
       title="Administrar servicios"
-      description="Administra servicios, paquetes y fichas para tu equipo y el asistente IA."
       items={visibleServices}
       toolbar={erpCount > 0 ? <OriginFilter value={origin} counts={counts} onChange={setOrigin} /> : undefined}
       getId={service => service.id}

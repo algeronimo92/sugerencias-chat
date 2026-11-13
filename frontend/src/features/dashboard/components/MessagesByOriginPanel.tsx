@@ -132,7 +132,6 @@ export function MessagesByOriginPanel({ points, days }: { points: DashboardMessa
                     <span className="ml-1.5 text-wa-muted dark:text-wa-muted-dark">{item.share}%</span>
                   </span>
                 </div>
-                <p className="mt-0.5 pl-4 text-[11px] leading-snug text-wa-muted dark:text-wa-muted-dark">{item.hint}</p>
               </li>
             ))}
           </ul>

@@ -7,8 +7,7 @@ import { LEVEL_CLASS, MIN_DAYS_FOR_PATTERN, buildHoursGrid, formatAverage, perso
 export interface HoursReadingOption {
   key: HoursReading
   label: string
-  /** Qué mide, en una línea, bajo el selector. */
-  hint: string
+  hint?: string
 }
 
 // Muy pocos casos: borde punteado y sin relleno, para que no se lea como "0 %".
@@ -63,7 +62,7 @@ export function HoursHeatmap({ hours, days, readings, label, teamScale = false }
           onChange={key => { setReadingKey(key); setPicked(null) }}
         />
       )}
-      <p className="mb-3 text-[11px] text-wa-muted dark:text-wa-muted-dark">{reading.hint}</p>
+      {reading.hint && <p className="mb-3 text-[11px] text-wa-muted dark:text-wa-muted-dark">{reading.hint}</p>}
 
       {!grid.hasData ? <NoData label="Sin movimiento en el período" /> : (
         <>

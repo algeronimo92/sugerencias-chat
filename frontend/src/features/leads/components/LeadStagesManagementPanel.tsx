@@ -172,10 +172,6 @@ export function LeadStagesManagementPanel() {
           <Columns3 className="h-5 w-5 text-wa-primary-strong dark:text-wa-primary" aria-hidden="true" />
           <h2 className="text-lg font-semibold text-wa-text dark:text-wa-text-dark">Administrar etapas del embudo</h2>
         </div>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-          Son las columnas del embudo y las etapas que usan los filtros, las automatizaciones y el analista IA. Renombrar una etapa no mueve a sus leads. Una etapa en uso no se elimina: desactívala para que deje de ofrecerse.
-        </p>
-
         <form onSubmit={handleCreate} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
           <label htmlFor="new-stage-name" className="block text-sm font-medium text-wa-text dark:text-wa-text-dark">
             Nombre de la nueva etapa

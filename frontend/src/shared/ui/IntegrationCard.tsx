@@ -30,7 +30,7 @@ interface Props {
   /** Un icono de lucide o una marca de `BrandMarks`: cualquier componente con `className`. */
   icon: LucideIcon | ComponentType<{ className?: string }>
   title: string
-  description: string
+  description?: string
   state: IntegrationState
   stateLabel?: string
   /** Una sola acción primaria por tarjeta; el resto secundarias o ghost. */
@@ -68,7 +68,7 @@ export function IntegrationCard({ id, icon: Icon, title, description, state, sta
               <h2 id={headingId} tabIndex={-1} className="text-base font-semibold text-wa-text outline-none dark:text-wa-text-dark">{title}</h2>
               <IntegrationStatusBadge state={state} label={stateLabel} />
             </div>
-            <p className="mt-0.5 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">{description}</p>
+             {description && <p className="mt-0.5 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">{description}</p>}
           </div>
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
