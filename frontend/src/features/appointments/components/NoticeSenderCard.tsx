@@ -26,7 +26,6 @@ export function NoticeSenderCard() {
       id="numero-de-avisos"
       icon={Send}
       title="Número de avisos"
-      description="Los avisos de cita pueden salir de un número distinto al de los chats."
       state={chosen ? 'connected' : 'unconfigured'}
       stateLabel={chosen ? numberLabel(chosen) : 'Número del CRM'}
     >
