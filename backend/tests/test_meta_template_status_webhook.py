@@ -1,5 +1,7 @@
 """Cambios de plantillas que Meta informa por webhook (field de la WABA)."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.integrations.meta_webhook import processor
@@ -69,10 +71,14 @@ async def test_template_change_unlinked_is_acknowledged_without_broadcast(monkey
     monkeypatch.setattr(processor.meta_service, "get_whatsapp_template", fake_get)
     monkeypatch.setattr(processor, "replace_official_template_from_meta", fake_replace)
     monkeypatch.setattr(ws_manager.manager, "broadcast", unexpected_broadcast)
+    notice_account = AsyncMock(return_value=False)
+    monkeypatch.setattr(processor, "notice_account_template_changed", notice_account)
 
     await processor.process_change(
         _template_event("message_template_status_update", {"message_template_id": "META_EXTERNAL"})
     )
+    # Puede ser una copia de la WABA propia del número de avisos.
+    notice_account.assert_awaited_once_with(WABA_ID)
 
 
 def test_full_meta_mapper_replaces_category_status_content_and_components() -> None:

@@ -2918,6 +2918,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/notice-sender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Notice Sender */
+        get: operations["get_notice_sender_api_appointments_notice_sender_get"];
+        /** Put Notice Sender */
+        put: operations["put_notice_sender_api_appointments_notice_sender_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/notice-sender/embedded-signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Notice Sender Signup */
+        post: operations["post_notice_sender_signup_api_appointments_notice_sender_embedded_signup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/notice-sender/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Notice Sender Templates
+         * @description Copia a la cuenta del número de avisos las plantillas de los avisos
+         *     que todavía no están ahí.
+         */
+        post: operations["post_notice_sender_templates_api_appointments_notice_sender_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/notices/{audience}": {
         parameters: {
             query?: never;
@@ -6655,6 +6711,80 @@ export interface components {
             values: {
                 [key: string]: string;
             };
+        };
+        /**
+         * NoticeSender
+         * @description Desde qué número salen los avisos de cita. ``phone_number_id`` vacío:
+         *     del número del CRM. ``account`` vacío: el número está en la cuenta del
+         *     CRM y usa sus plantillas.
+         */
+        NoticeSender: {
+            /** Phone Number Id */
+            phone_number_id: string | null;
+            /** Numbers */
+            numbers: components["schemas"]["NoticeSenderNumber"][];
+            account?: components["schemas"]["NoticeSenderAccount"] | null;
+            /** Templates */
+            templates?: components["schemas"]["NoticeSenderTemplate"][];
+        };
+        /**
+         * NoticeSenderAccount
+         * @description La cuenta de WhatsApp Business propia del número de avisos.
+         */
+        NoticeSenderAccount: {
+            /** Waba Id */
+            waba_id: string;
+            /** Name */
+            name: string;
+        };
+        /** NoticeSenderNumber */
+        NoticeSenderNumber: {
+            /** Id */
+            id: string;
+            /** Display Phone Number */
+            display_phone_number: string;
+            /** Verified Name */
+            verified_name: string;
+            /** Is Crm */
+            is_crm: boolean;
+            /** Waba Id */
+            waba_id: string;
+        };
+        /**
+         * NoticeSenderSignup
+         * @description Lo que devuelve el Embedded Signup de Meta para el número de avisos.
+         */
+        NoticeSenderSignup: {
+            /** Code */
+            code: string;
+            /** Waba Id */
+            waba_id: string;
+            /** Phone Number Id */
+            phone_number_id?: string | null;
+        };
+        /**
+         * NoticeSenderTemplate
+         * @description Una plantilla de los avisos y su copia en la cuenta del número de
+         *     avisos. ``status``: el de Meta (``APPROVED``, ``PENDING``, ``REJECTED``…)
+         *     o ``MISSING`` si todavía no se copió.
+         */
+        NoticeSenderTemplate: {
+            /**
+             * Audience
+             * @enum {string}
+             */
+            audience: "client" | "staff";
+            /** Template Id */
+            template_id: number;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
+        /** NoticeSenderUpdate */
+        NoticeSenderUpdate: {
+            /** Phone Number Id */
+            phone_number_id?: string | null;
         };
         /**
          * NoticeSettings
@@ -13889,6 +14019,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notice_sender_api_appointments_notice_sender_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSender"];
+                };
+            };
+        };
+    };
+    put_notice_sender_api_appointments_notice_sender_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeSenderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSender"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_notice_sender_signup_api_appointments_notice_sender_embedded_signup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeSenderSignup"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSender"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_notice_sender_templates_api_appointments_notice_sender_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSender"];
                 };
             };
         };

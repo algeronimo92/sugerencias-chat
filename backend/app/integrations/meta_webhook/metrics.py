@@ -25,6 +25,11 @@ webhook_ignored_fields = Counter(
     "Changes de Meta de un field que el backend todavía no procesa",
     ["field"],
 )
+webhook_ignored_extra_number_messages = Counter(
+    "meta_webhook_ignored_extra_number_messages_total",
+    "Mensajes que llegaron al número de avisos de cita: no abren chats",
+    ["field"],
+)
 unrendered_messages = Counter(
     "meta_unrendered_messages_total",
     "Mensajes guardados con un tipo o subtipo que el contrato todavía no conoce",

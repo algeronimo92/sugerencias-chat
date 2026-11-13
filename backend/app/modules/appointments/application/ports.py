@@ -65,10 +65,54 @@ class NoticeMessenger(Protocol):
         """Encola la plantilla oficial en el chat del lead y devuelve el id
         del mensaje en el CRM. Levanta ``NoticeNotSent`` si no se pudo."""
 
-    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> str | None:
+    async def send_to_phone(
+        self, *, phone: str, template: dict, parameters: list[str], sender: str | None = None,
+    ) -> str | None:
         """Manda la plantilla directo a un número del equipo, sin abrir un
-        chat en el CRM, y devuelve el id que le dio Meta. Levanta
-        ``NoticeNotSent`` si Meta no la aceptó."""
+        chat en el CRM, y devuelve el id que le dio Meta. ``sender`` es el
+        número de avisos (su phone number id); sin él sale del número del
+        CRM. Levanta ``NoticeNotSent`` si Meta no la aceptó."""
+
+    async def send_to_lead_from(
+        self, *, chat_id: str, template: dict, parameters: list[str], sender: str,
+    ) -> str | None:
+        """Manda la plantilla al WhatsApp del lead desde el número de avisos,
+        sin pasar por su chat (el cliente la recibe de otro número: en el
+        chat del CRM sería una conversación que no existe). Devuelve el id
+        que le dio Meta. Levanta ``NoticeNotSent`` si no salió."""
+
+
+class NoticeSenders(Protocol):
+    async def numbers(self, extra_waba_id: str | None = None) -> list[dict]:
+        """Los números de la WABA del CRM y, si se pasa, los de la WABA del
+        número de avisos: ``{id, display_phone_number, verified_name,
+        waba_id, is_crm}``. Levanta ``NoticeAccountUnavailable`` si Meta no respondió
+        por la WABA del CRM."""
+
+    async def account_name(self, waba_id: str) -> str:
+        """El nombre de la cuenta de WhatsApp Business en Meta ("" si no se
+        pudo leer)."""
+
+    async def register(self, phone_number_id: str, waba_id: str | None = None) -> None:
+        """Deja que los estados de entrega de ese número (y los eventos de
+        plantillas de su WABA) lleguen al negocio."""
+
+    async def unregister(self, phone_number_id: str) -> None:
+        """Deja de recibir los webhooks del número que dejó de ser el de avisos."""
+
+    async def complete_signup(self, code: str, waba_id: str, phone_number_id: str | None) -> dict[str, str]:
+        """Cierra el Embedded Signup (con coexistencia o sin ella) de un número
+        nuevo sin tocar las credenciales del CRM, y devuelve
+        ``{phone_number_id, waba_id}``. Levanta ``NoticeSenderNotLinked`` si
+        Meta no lo dejó vinculado en el portfolio del negocio."""
+
+    async def templates(self, waba_id: str) -> list[dict]:
+        """Las plantillas de una WABA en Meta: ``{id, name, language, status}``.
+        Levanta ``NoticeAccountUnavailable`` si Meta no respondió."""
+
+    async def copy_template(self, meta_template_id: str, waba_id: str) -> None:
+        """Crea en esa WABA una copia de una plantilla de la WABA del CRM, que
+        Meta revisa de nuevo. Levanta ``NoticeAccountUnavailable`` si Meta la rechazó."""
 
 
 class StaffDirectory(Protocol):
@@ -99,6 +143,7 @@ class AppointmentPorts:
     messenger: NoticeMessenger
     staff: StaffDirectory
     notices: NoticeLog
+    senders: NoticeSenders
 
 
 _ports: AppointmentPorts | None = None

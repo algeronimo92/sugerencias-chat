@@ -109,6 +109,7 @@ class FakeMessenger:
     to_phones: list[dict] = field(default_factory=list)
     error: Exception | None = None
     failing_phones: set[str] = field(default_factory=set)
+    from_sender: list[dict] = field(default_factory=list)
 
     async def send_to_lead(self, **values) -> int | None:
         if self.error is not None:
@@ -116,11 +117,24 @@ class FakeMessenger:
         self.sent.append(values)
         return 9000 + len(self.sent)
 
-    async def send_to_phone(self, *, phone: str, template: dict, parameters: list[str]) -> str | None:
+    async def send_to_phone(
+        self, *, phone: str, template: dict, parameters: list[str], sender: str | None = None,
+    ) -> str | None:
         if phone in self.failing_phones and self.error is not None:
             raise self.error
-        self.to_phones.append({"phone": phone, "template_id": template["id"], "parameters": parameters})
+        sent = {"phone": phone, "template_id": template["id"], "parameters": parameters}
+        self.to_phones.append({**sent, "sender": sender} if sender else sent)
         return f"wamid.{phone}"
+
+    async def send_to_lead_from(
+        self, *, chat_id: str, template: dict, parameters: list[str], sender: str,
+    ) -> str | None:
+        if self.error is not None:
+            raise self.error
+        self.from_sender.append({
+            "chat_id": chat_id, "template_id": template["id"], "parameters": parameters, "sender": sender,
+        })
+        return f"wamid.lead.{chat_id}"
 
 
 @dataclass
@@ -147,6 +161,55 @@ class FakeNotices:
 
 
 @dataclass
+class FakeSenders:
+    available: list[dict] = field(default_factory=lambda: [
+        {"id": "CRM_ID", "display_phone_number": "+51 900 000 000", "verified_name": "Clínica",
+         "waba_id": "WABA_ID", "is_crm": True},
+        {"id": "AVISOS_ID", "display_phone_number": "+51 900 000 999", "verified_name": "Clínica avisos",
+         "waba_id": "WABA_ID", "is_crm": False},
+    ])
+    # Números de otras WABA del portfolio (la propia del número de avisos).
+    accounts: dict[str, list[dict]] = field(default_factory=dict)
+    # Plantillas en Meta de cada WABA: {name, language, status}.
+    account_templates: dict[str, list[dict]] = field(default_factory=dict)
+    registered: list[str] = field(default_factory=list)
+    registered_accounts: list[str | None] = field(default_factory=list)
+    unregistered: list[str] = field(default_factory=list)
+    signups: list[dict] = field(default_factory=list)
+    signup_error: Exception | None = None
+    signup_account: str | None = None
+    copies: list[tuple[str, str]] = field(default_factory=list)
+    copy_error: Exception | None = None
+
+    async def numbers(self, extra_waba_id: str | None = None) -> list[dict]:
+        return list(self.available) + list(self.accounts.get(extra_waba_id or "", []))
+
+    async def account_name(self, waba_id: str) -> str:
+        return f"Cuenta {waba_id}"
+
+    async def register(self, phone_number_id: str, waba_id: str | None = None) -> None:
+        self.registered.append(phone_number_id)
+        self.registered_accounts.append(waba_id)
+
+    async def unregister(self, phone_number_id: str) -> None:
+        self.unregistered.append(phone_number_id)
+
+    async def complete_signup(self, code: str, waba_id: str, phone_number_id: str | None) -> dict[str, str]:
+        self.signups.append({"code": code, "waba_id": waba_id, "phone_number_id": phone_number_id})
+        if self.signup_error is not None:
+            raise self.signup_error
+        return {"phone_number_id": phone_number_id or "AVISOS_ID", "waba_id": self.signup_account or waba_id}
+
+    async def templates(self, waba_id: str) -> list[dict]:
+        return list(self.account_templates.get(waba_id, []))
+
+    async def copy_template(self, meta_template_id: str, waba_id: str) -> None:
+        if self.copy_error is not None:
+            raise self.copy_error
+        self.copies.append((meta_template_id, waba_id))
+
+
+@dataclass
 class AppointmentWorld:
     repository: FakeAppointments
     calendar: FakeCalendar
@@ -156,6 +219,7 @@ class AppointmentWorld:
     messenger: FakeMessenger = field(default_factory=FakeMessenger)
     staff: FakeStaff = field(default_factory=FakeStaff)
     notices: FakeNotices = field(default_factory=FakeNotices)
+    senders: FakeSenders = field(default_factory=FakeSenders)
 
     def of(self, event_type):
         return [event for event in self.published if isinstance(event, event_type)]
@@ -182,7 +246,7 @@ def in_memory_appointments(monkeypatch) -> AppointmentWorld:
     )
     monkeypatch.setattr(ports, "_ports", AppointmentPorts(
         repository=world.repository, calendar=world.calendar, sync=world.sync, leads=world.leads,
-        messenger=world.messenger, staff=world.staff, notices=world.notices,
+        messenger=world.messenger, staff=world.staff, notices=world.notices, senders=world.senders,
     ))
     monkeypatch.setattr(uow, "get_sessionmaker", lambda: _FakeSession)
 

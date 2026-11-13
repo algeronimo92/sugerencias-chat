@@ -39,3 +39,24 @@ class NoticeNotSent(DomainError):
 
     status_code = 502
     code = "appointment_notice_not_sent"
+
+
+class NoticeSenderNotLinked(DomainError):
+    """Meta no dejó vinculado el número de avisos (o no en la WABA del CRM).
+
+    409 y no 502: detrás de Cloudflare un 502 del origen se reemplaza por la
+    página de error de Cloudflare y el admin nunca ve por qué falló (pasó al
+    probar la vinculación en coexistencia)."""
+
+    status_code = 409
+    code = "appointment_notice_sender_not_linked"
+
+
+class NoticeAccountUnavailable(DomainError):
+    """Meta no respondió por los números o las plantillas de una cuenta de
+    WhatsApp Business del negocio (o rechazó la copia de una plantilla).
+    409 por lo mismo que ``NoticeSenderNotLinked``: un 502 lo tapa
+    Cloudflare."""
+
+    status_code = 409
+    code = "appointment_notice_account_unavailable"

@@ -18,3 +18,10 @@ class AppointmentCreated(DomainEvent):
     seller_name: str
     title: str
     text: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class NoticeTemplatesChanged(DomainEvent):
+    """Meta cambió una plantilla de la cuenta propia del número de avisos
+    (las copias de los avisos). Esas copias no se guardan en el CRM: la
+    tarjeta del número de avisos las vuelve a leer de Meta."""

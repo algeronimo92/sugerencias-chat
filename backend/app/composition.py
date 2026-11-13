@@ -19,6 +19,7 @@ from app.modules.ai.infrastructure.native_provider import NativeAiProvider
 from app.modules.ai.infrastructure.routing_provider import RoutingAiProvider
 from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
 from app.modules.appointments.infrastructure.integrations import (
+    MetaNoticeSenders,
     GoogleCalendar,
     N8nAppointmentSync,
     TeamDirectory,
@@ -91,6 +92,7 @@ def register_adapters() -> None:
         messenger=WhatsAppNoticeMessenger(),
         staff=TeamDirectory(),
         notices=SqlAppointmentNotices(),
+        senders=MetaNoticeSenders(),
     ))
     provide_automation_ports(AutomationPorts(
         executions=SqlExecutionStore(),

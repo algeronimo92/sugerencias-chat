@@ -16,7 +16,7 @@ const COPY = {
     id: 'aviso-cita-cliente',
     icon: CalendarCheck,
     title: 'Aviso de cita al cliente',
-    description: 'Al guardar una cita, el cliente recibe por WhatsApp una plantilla oficial con los datos de su cita, en el chat de su lead.',
+    description: 'Al guardar una cita, el cliente recibe por WhatsApp una plantilla oficial con los datos de su cita.',
     toggle: 'Avisar al cliente cuando se guarda una cita',
     previewLabel: 'Así le llega al cliente',
     previewHint: 'Solo sale si la cita está vinculada a un lead. Una variable cuyos datos están vacíos sale como "-". Las citas de prueba nunca avisan.',
