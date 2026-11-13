@@ -14,6 +14,7 @@ import { useLeadCustomFieldValues, useUpdateLeadCustomFieldValues } from '../hoo
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
 import { LeadFormDialog } from './LeadFormDialog'
+import { useMoveLeadStage } from '../kanban-queries'
 
 interface Props {
   chat: Chat
@@ -58,9 +59,12 @@ export function LeadInfo({ chat }: Props) {
   const [editingCustomFields, setEditingCustomFields] = useState(false)
   const [customDraft, setCustomDraft] = useState<Record<string, unknown>>({})
   const navigate = useNavigate()
-  const { mutate: updateLead, isPending: isSaving } = useUpdateLead(chat.chat_id)
+  const updateLead = useUpdateLead(chat.chat_id)
+  const moveLeadStage = useMoveLeadStage()
+  const isSaving = updateLead.isPending || moveLeadStage.isPending
   const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
-  const stage = useLeadStageCatalog().get(chat.stage)
+  const stageCatalog = useLeadStageCatalog()
+  const stage = stageCatalog.get(chat.stage)
   const { data: customDefinitions = [] } = useCustomFields('lead')
   const { data: customValues = {} } = useLeadCustomFieldValues(chat.chat_id)
   const updateCustomValues = useUpdateLeadCustomFieldValues(chat.chat_id)
@@ -120,23 +124,30 @@ export function LeadInfo({ chat }: Props) {
     if (serviceRequest) setSearchParams(withoutEditField(searchParams), { replace: true })
   }
 
-  function handleUpdate(values: LeadUpdateInput) {
+  async function handleUpdate(values: LeadUpdateInput, selectedStage?: string) {
     if (isSaving) return
     setEditError(null)
     const cameFromCatalog = serviceRequest !== null
-    updateLead(values, {
-      onSuccess: (updated) => {
-        closeEditor()
-        // Cambió el número: el lead vive bajo otro chat_id, hay que seguirlo.
-        if (updated.chat_id !== chat.chat_id) navigate(`/chat/${updated.chat_id}`)
-        if (cameFromCatalog) {
-          toast.success('Servicio de interés actualizado', {
-            action: { label: 'Volver a Catálogos', onClick: () => navigate('/catalogs') },
-          })
-        }
-      },
-      onError: (err) => setEditError(extractErrorMessage(err)),
-    })
+    try {
+      const updated = await updateLead.mutateAsync(values)
+      if (selectedStage && selectedStage !== chat.stage) {
+        await moveLeadStage.mutateAsync({
+          chatId: chat.chat_id,
+          stage: selectedStage,
+          razonPerdido: values.razon_perdido,
+        })
+      }
+      closeEditor()
+      // Cambió el número: el lead vive bajo otro chat_id, hay que seguirlo.
+      if (updated.chat_id !== chat.chat_id) navigate(`/chat/${updated.chat_id}`)
+      if (cameFromCatalog) {
+        toast.success('Servicio de interés actualizado', {
+          action: { label: 'Volver a Catálogos', onClick: () => navigate('/catalogs') },
+        })
+      }
+    } catch (err) {
+      setEditError(extractErrorMessage(err))
+    }
   }
 
   return (
@@ -220,6 +231,8 @@ export function LeadInfo({ chat }: Props) {
             fecha_recontacto: chat.fecha_recontacto,
             proxima_cita: chat.proxima_cita,
           }}
+          initialStage={chat.stage}
+          stageCatalog={stageCatalog}
           isSubmitting={isSaving}
           error={editError}
           onSubmit={handleUpdate}

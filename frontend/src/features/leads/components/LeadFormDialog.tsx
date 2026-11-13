@@ -14,11 +14,17 @@ import { useCustomFields } from '../../catalogs/public/useCustomFields'
 import { useCreateLeadService, useLeadServices } from '../../catalogs/public/useLeadServices'
 import type { LeadService } from '../../catalogs/types'
 import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
+import { stageOptions, type LeadStageCatalog } from '../domain/leadStageMeta'
+import type { LeadStage } from '../types'
 
 interface Props {
   title: string
   submitLabel: string
   initial?: LeadUpdateInput
+  /** Solo al editar. Las opciones vienen del catálogo del negocio, no de una
+   * lista fija, para incluir también las etapas creadas por el administrador. */
+  initialStage?: LeadStage
+  stageCatalog?: LeadStageCatalog & { isLoading?: boolean }
   requirePhoneAndName?: boolean
   /** false cuando el lead ya tiene conversación Y teléfono resuelto: el
    * número es la identidad del chat en WhatsApp y cambiarlo lo redirigiría.
@@ -32,7 +38,7 @@ interface Props {
   phoneEditIsRisky?: boolean
   isSubmitting: boolean
   error?: string | null
-  onSubmit: (values: LeadUpdateInput) => void
+  onSubmit: (values: LeadUpdateInput, stage?: LeadStage) => void
   onCancel: () => void
   /** Al detectar que el número ya está cargado, abre ese chat en vez de crear. */
   onOpenExisting?: (chat: Chat) => void
@@ -55,6 +61,8 @@ export function LeadFormDialog({
   title,
   submitLabel,
   initial,
+  initialStage,
+  stageCatalog,
   requirePhoneAndName,
   canEditPhone = true,
   phoneEditIsRisky = false,
@@ -69,6 +77,7 @@ export function LeadFormDialog({
   const [secondaryPhone, setSecondaryPhone] = useState(initial?.secondary_phone ?? '')
   const [name, setName] = useState(initial?.name ?? '')
   const [servicioInteres, setServicioInteres] = useState(initial?.servicio_interes ?? '')
+  const [stage, setStage] = useState(initialStage ?? '')
   const [isAddingService, setIsAddingService] = useState(false)
   const [newServiceName, setNewServiceName] = useState('')
   const [createdServices, setCreatedServices] = useState<LeadService[]>([])
@@ -103,6 +112,13 @@ export function LeadFormDialog({
     const byId = new Map([...leadServices, ...createdServices].map(service => [service.id, service]))
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
   }, [leadServices, createdServices])
+
+  // El chat puede moverse desde el kanban o una automatización mientras este
+  // diálogo sigue abierto. En ese caso la etapa del servidor vuelve a ser la
+  // fuente de verdad y el selector debe reflejarla sin obligar a cerrar.
+  useEffect(() => {
+    setStage(initialStage ?? '')
+  }, [initialStage])
 
   const phoneCheck = useMemo(
     () => (canEditPhone ? normalizePhone(phone, countryCode) : { status: 'empty' as const }),
@@ -173,7 +189,7 @@ export function LeadFormDialog({
     e.preventDefault()
     if (isSubmitting || submitDisabled) return
     const sellerChanged = vendedorId !== (initial?.vendedor_id ?? null)
-    onSubmit({
+    const values: LeadUpdateInput = {
       // Se mandan los dígitos ya normalizados (el backend re-normaliza igual).
       // Con el teléfono bloqueado no viaja el campo: evita un re-key accidental.
       ...(canEditPhone
@@ -200,7 +216,9 @@ export function LeadFormDialog({
             // La hora local tipeada se manda en UTC (la columna es timestamptz).
             proxima_cita: proximaCita.trim() ? new Date(proximaCita).toISOString() : null,
           }),
-    })
+    }
+    if (initialStage) onSubmit(values, stage)
+    else onSubmit(values)
   }
 
   function handleCreateService() {
@@ -428,6 +446,35 @@ export function LeadFormDialog({
             )}
             {serviceError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{serviceError}</p>}
           </div>
+
+          {initialStage && stageCatalog && (
+            <div>
+              <label htmlFor="lead-stage" className={LABEL_CLASS}>Etapa del chat</label>
+              <Select
+                id="lead-stage"
+                value={stage}
+                onChange={(event) => setStage(event.target.value)}
+                disabled={stageCatalog.isLoading}
+              >
+                {stageOptions(stageCatalog, initialStage).map(option => (
+                  <option key={option.key} value={option.key} disabled={!option.is_active}>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        data-stage-color={option.color}
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: option.color }}
+                      />
+                      <span>{option.is_active ? option.name : `${option.name} (inactiva)`}</span>
+                    </span>
+                  </option>
+                ))}
+              </Select>
+              {stageCatalog.isLoading && (
+                <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">Cargando etapas…</p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className={LABEL_CLASS}>Vendedor</label>
