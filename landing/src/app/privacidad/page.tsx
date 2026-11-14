@@ -37,18 +37,35 @@ export default function Privacidad() {
       </Apartado>
 
       <Apartado n={2} titulo="Qué datos recogemos">
-        <p><strong>Los que nos entregas tú.</strong> El formulario de solicitud de acceso pide cinco cosas:</p>
+        <p>
+          <strong>Los que nos entregas tú.</strong> El formulario de cotización no
+          envía nada a nuestros servidores: arma un mensaje y abre tu WhatsApp para
+          que lo envíes tú. Si no lo envías, no recibimos nada. Si lo envías, nos
+          llega con tu número de WhatsApp y con lo que hayas completado:
+        </p>
         <ul>
-          <li>Tu nombre.</li>
-          <li>El nombre de tu negocio.</li>
-          <li>Tu correo electrónico.</li>
-          <li>Tu número de WhatsApp.</li>
-          <li>El rubro del negocio (centro estético, clínica dental, spa…).</li>
+          <li>Tu nombre y tu rol en el negocio.</li>
+          <li>
+            Sobre tu negocio: el tipo, el nombre, la ciudad, cuántas sedes tiene y,
+            si quieres, su Instagram o web. Según el tipo, cuántos especialistas
+            atienden, si venden paquetes de sesiones y si cobran un adelanto.
+          </li>
+          <li>
+            Cómo trabajan hoy: cuántas personas atienden WhatsApp, cuántas
+            consultas reciben, si ya usan un CRM y cuál, y dónde llevan la agenda.
+          </li>
+          <li>
+            El paquete que te interesa y, según el paquete, qué quieren resolver
+            primero, si pautan en Facebook o Instagram (con la inversión aproximada
+            y quién la maneja) y qué sistema de ventas usan.
+          </li>
+          <li>Cuándo quieren empezar y lo que escribas en el comentario libre.</li>
         </ul>
         <p>
-          No hay campos ocultos y no pedimos nada más. Si además nos escribes por
-          correo o por WhatsApp, tratamos lo que decidas contarnos en esa
-          conversación.
+          No hay campos ocultos y no pedimos nada más. El mensaje viaja por
+          WhatsApp, un servicio de Meta que usas con tu propia cuenta. Si además
+          nos escribes por correo o por WhatsApp, tratamos lo que decidas
+          contarnos en esa conversación.
         </p>
         <p>
           <strong>Los que genera tu visita.</strong> El servidor que sirve esta web
@@ -97,7 +114,7 @@ export default function Privacidad() {
       <Apartado n={5} titulo="Con qué legitimación los tratamos">
         <p>
           Tratamos tus datos con tu <strong>consentimiento</strong>, que das al
-          enviar el formulario, y —cuando ya eres cliente— porque son necesarios
+          enviarnos el mensaje del formulario, y —cuando ya eres cliente— porque son necesarios
           para <strong>ejecutar el contrato</strong> que nos une y para cumplir
           las obligaciones legales que se derivan de él. Todo ello conforme a la{" "}
           {MARCO.ley} y su reglamento, el {MARCO.reglamento}.

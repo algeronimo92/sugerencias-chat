@@ -39,13 +39,14 @@ export const MARCO = {
 };
 
 /** Fecha de la ultima revision del texto legal. Actualizar al tocarlo. */
-export const ACTUALIZADO = "13 de noviembre de 2026";
+export const ACTUALIZADO = "14 de noviembre de 2026";
 
 /**
  * Terceros que tratan datos por cuenta nuestra. Van en DOS listas porque no
- * intervienen en lo mismo: por la web solo pasa el formulario de contacto,
- * mientras que por el CRM pasan las conversaciones de pacientes. Meterlos en
- * una sola tabla daria a entender que OpenAI ve los datos de quien rellena el
+ * intervienen en lo mismo: por la web no pasan datos de contacto (el
+ * formulario de cotizacion solo abre WhatsApp con el mensaje armado), mientras
+ * que por el CRM pasan las conversaciones de pacientes. Meterlos en una sola
+ * tabla daria a entender que OpenAI ve los datos de quien rellena el
  * formulario de la landing, y no es asi.
  *
  * Si manana se cambia de proveedor, se actualiza aqui y las tablas de las dos

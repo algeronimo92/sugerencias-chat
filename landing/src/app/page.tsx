@@ -1,5 +1,7 @@
 import { ChatMock } from "@/components/chat-mock";
 import { FlujoMock } from "@/components/flujo-mock";
+import { FormularioSolicitud } from "@/components/formulario-solicitud";
+import { SeccionPaquetes } from "@/components/paquetes";
 import { Seccion, Cejilla, Boton, Tarjeta } from "@/components/secciones";
 import {
   IconoChat, IconoReloj, IconoIA, IconoKanban, IconoTarea,
@@ -7,25 +9,6 @@ import {
   IconoEscudo, IconoBusqueda, IconoTelefono,
 } from "@/components/iconos";
 import { CTA_TEXTO, CTA_SUBTEXTO } from "@/textos";
-
-const PLANES = [
-  {
-    nombre: "Consultorio", precio: "39", anual: "390",
-    para: "Consultorios y profesionales independientes.",
-    items: ["Hasta 3 usuarios", "Bandeja compartida de WhatsApp", "Embudo por etapas y tareas", "Agenda de citas", "Plantillas de respuesta", "Contador de 24 horas"],
-  },
-  {
-    nombre: "Clínica", precio: "89", anual: "890", destacado: true,
-    para: "Clínicas, spas y centros estéticos con equipo de ventas.",
-    items: ["Usuarios ilimitados", "Todo lo de Consultorio", "Constructor de automatizaciones", "Reparto automático (round robin)", "Sugerencias con IA", "Panel de control completo", "Notas internas"],
-  },
-  {
-    nombre: "Clínica Pro", precio: "179", anual: "1.790",
-    para: "Alto volumen de consultas y varios servicios.",
-    items: ["Todo lo de Clínica", "Configuramos tus flujos por ti", "Revisión mensual de resultados", "Soporte prioritario", "Capacitación para tu equipo"],
-  },
-];
-
 
 export default function Home() {
   return (
@@ -191,86 +174,8 @@ export default function Home() {
         </div>
       </Seccion>
 
-      {/* ---------------------------------------------------------- PRECIOS */}
-      <Seccion id="precios" className="border-y border-border bg-surface">
-        <div className="columna-lectura text-center">
-          <Cejilla>Precios</Cejilla>
-          <h2 className="text-h1">Se paga por negocio, no por persona</h2>
-          <p className="text-lead mt-5 text-text-muted">
-            Suma a toda tu recepción sin que la factura suba. Sin permanencia:
-            cancelas cuando quieras y te llevas tus datos.
-          </p>
-          <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-warning-soft px-4 py-2 text-caption font-medium text-warning">
-            Precio de lanzamiento · primeras 20 clínicas
-          </p>
-        </div>
-
-        {/* subgrid: las 6 filas (insignia, nombre, descripcion, precio, boton,
-            lista) se alinean entre las tres columnas aunque el texto de cada
-            plan tenga distinto largo. Sin esto, el precio destacado caia 79px
-            por debajo de los otros dos y la tabla se leia rota. */}
-        <div className="mt-12 grid gap-6 lg:grid-cols-3 lg:grid-rows-[auto_auto_auto_auto_auto_1fr]">
-          {PLANES.map((p) => (
-            <div
-              key={p.nombre}
-              className={`rounded-xl border bg-bg p-7 lg:row-span-6 lg:grid lg:grid-rows-subgrid ${
-                p.destacado
-                  ? "border-accent shadow-lg ring-1 ring-accent"
-                  : "border-border shadow-xs"
-              }`}
-            >
-              <div className={p.destacado ? "mb-4 lg:mb-0" : "hidden lg:block"}>
-                {p.destacado && (
-                  <span className="inline-block rounded-full bg-accent px-3 py-1 text-micro font-semibold tracking-wide text-accent-contrast uppercase">
-                    El que eligen la mayoría
-                  </span>
-                )}
-              </div>
-
-              <h3 className="text-h3">{p.nombre}</h3>
-
-              <p className="mt-1.5 text-body-sm text-text-muted">{p.para}</p>
-
-              <div className="mt-6">
-                <p className="flex items-baseline gap-1.5">
-                  <span className="font-display text-[44px] leading-none font-bold tracking-tight">
-                    ${p.precio}
-                  </span>
-                  <span className="text-body-sm text-text-muted">USD / mes</span>
-                </p>
-                <p className="mt-2 text-caption text-text-subtle">
-                  o ${p.anual} al año — pagas 10 meses, usas 12
-                </p>
-              </div>
-
-              <Boton
-                href="#acceso"
-                variante={p.destacado ? "primario" : "secundario"}
-                className="mt-6 w-full"
-              >
-                {CTA_TEXTO}
-              </Boton>
-
-              <ul className="mt-7 space-y-2.5 border-t border-border pt-6">
-                {p.items.map((i) => (
-                  <li key={i} className="flex gap-2.5 text-body-sm">
-                    <svg viewBox="0 0 16 16" aria-hidden="true"
-                      className="mt-1 h-3.5 w-3.5 shrink-0 text-accent">
-                      <path d="m3.4 8.3 2.9 2.9 6.3-6.4" fill="none" stroke="currentColor"
-                        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span className="text-text-muted">{i}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <p className="mt-8 text-center text-caption text-text-subtle">
-          Precios en dólares estadounidenses. Garantía de 30 días: si no te sirve,
-          te devolvemos el dinero.
-        </p>
-      </Seccion>
+      {/* --------------------------------------------------------- PAQUETES */}
+      <SeccionPaquetes />
 
       {/* -------------------------------------------------------- FUNDADOR */}
       <Seccion>
@@ -324,7 +229,7 @@ export default function Home() {
             ["¿Qué es eso de la ventana de 24 horas?",
              "Es una regla de WhatsApp, no nuestra: puedes responder libremente durante las 24 horas siguientes al último mensaje del paciente. CliniVentas te muestra un contador en cada chat para que veas cuánto te queda y no se te enfríe nadie. Pasado ese plazo hay que esperar a que el paciente escriba de nuevo."],
             ["¿Y si quiero irme? ¿Me llevo mis datos?",
-             "Sí. No hay permanencia ni penalidad. Exportas tus contactos y conversaciones cuando quieras, desconectas el CRM desde tu propia aplicación WhatsApp Business y tus chats siguen intactos en tu teléfono porque nunca dejaron de estar ahí."],
+             "Sí. No hay permanencia ni penalidad. Descargas en Excel un respaldo completo de tus leads, citas, tareas y catálogo cuando quieras, en cualquier paquete. Desconectas el CRM desde tu propia aplicación WhatsApp Business y tus chats siguen intactos en tu teléfono, porque nunca dejaron de estar ahí."],
             ["¿Están seguros los datos de mis pacientes?",
              "Cada negocio trabaja sobre su propia base, con acceso por usuario y permisos por rol. Te decimos con transparencia lo que hay: tomamos en serio la seguridad, pero todavía no tenemos certificaciones formales de cumplimiento y no vamos a decir que sí para cerrar una venta."],
             ["¿La inteligencia artificial le responde sola a mis pacientes?",
@@ -362,12 +267,22 @@ export default function Home() {
       {/* ------------------------------------------------------------ ACCESO */}
       <Seccion id="acceso">
         <div className="patron-conversacion overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-lg">
-          <div className="grid gap-10 p-8 sm:p-12 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-14">
+          {/* items-start: el formulario crece cuando aparecen las preguntas del
+              paquete, y centrado empujaría el texto de la izquierda. */}
+          <div className="grid gap-10 p-5 sm:p-12 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-14">
             <div>
               <h2 className="text-h1">Deja de perder pacientes en el chat</h2>
               <p className="text-lead mt-5 text-text-muted">
-                Cuéntanos de tu negocio y te activamos la cuenta. Te acompañamos en
-                la puesta en marcha para que tu equipo esté atendiendo el mismo día.
+                Cuéntanos de tu negocio y del paquete que te interesa. Te enviamos la
+                cotización por WhatsApp y te acompañamos en la puesta en marcha para
+                que tu equipo esté atendiendo el mismo día.
+              </p>
+              <p className="mt-4 text-body-sm text-text-muted">
+                ¿No sabes cuál elegir? Marca «Aún no lo sé» y te sugerimos uno según
+                tu equipo.{" "}
+                <a href="#comparar" className="font-medium text-accent-strong underline underline-offset-2">
+                  Ver qué incluye cada paquete
+                </a>
               </p>
               <ul className="mt-7 space-y-3 text-body-sm">
                 {[
@@ -385,50 +300,7 @@ export default function Home() {
               </ul>
             </div>
 
-            {/* TODO: conectar `action` a un endpoint de formulario antes de publicar. */}
-            <form className="rounded-xl border border-border bg-bg p-6 sm:p-7">
-              <div className="space-y-4">
-                {[
-                  { id: "nombre", etiqueta: "Tu nombre", tipo: "text", ph: "María Fernández", ac: "name" },
-                  { id: "negocio", etiqueta: "Nombre del negocio", tipo: "text", ph: "Centro Estético Aura", ac: "organization" },
-                  { id: "email", etiqueta: "Correo", tipo: "email", ph: "maria@centroaura.com", ac: "email" },
-                  { id: "whatsapp", etiqueta: "WhatsApp", tipo: "tel", ph: "+51 900 000 000", ac: "tel" },
-                ].map((c) => (
-                  <div key={c.id}>
-                    <label htmlFor={c.id} className="mb-1.5 block text-caption font-medium">
-                      {c.etiqueta}
-                    </label>
-                    <input
-                      id={c.id} name={c.id} type={c.tipo} required
-                      autoComplete={c.ac} placeholder={c.ph}
-                      className="w-full rounded-lg border border-border-field bg-surface px-3.5 py-2.5 text-body-sm placeholder:text-text-subtle focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label htmlFor="rubro" className="mb-1.5 block text-caption font-medium">
-                    Rubro
-                  </label>
-                  <select
-                    id="rubro" name="rubro"
-                    className="w-full rounded-lg border border-border-field bg-surface px-3.5 py-2.5 text-body-sm focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                  >
-                    {["Centro estético", "Clínica dental", "Centro médico", "Spa", "Consultorio", "Otro"].map((r) => (
-                      <option key={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="mt-6 w-full rounded-full bg-accent px-6 py-3 text-body-sm font-semibold text-accent-contrast transition-colors duration-[var(--duration-rapida)] ease-suave hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
-                {CTA_TEXTO}
-              </button>
-              <p className="mt-3 text-center text-micro text-text-subtle">
-                Te respondemos en menos de 24 horas hábiles.
-              </p>
-            </form>
+            <FormularioSolicitud />
           </div>
         </div>
       </Seccion>
