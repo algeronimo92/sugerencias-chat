@@ -1,7 +1,7 @@
 """Registro de exportaciones a Excel.
 
 Revision ID: c6f2a8d4e173
-Revises: a3d7e9b1c5f2
+Revises: c4e8b2a7d915
 
 Cada descarga de datos del negocio deja una fila con quién la pidió, qué
 reporte, de qué período y cuántas filas salieron.
@@ -14,7 +14,7 @@ from alembic import op
 
 
 revision: str = "c6f2a8d4e173"
-down_revision: Union[str, None] = "a3d7e9b1c5f2"
+down_revision: Union[str, None] = "c4e8b2a7d915"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
