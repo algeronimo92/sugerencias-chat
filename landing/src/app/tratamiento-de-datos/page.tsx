@@ -31,6 +31,12 @@ export const metadata: Metadata = {
  * Lo de los eventos de conversion (apartado 8) sale de la doc de la
  * Conversions API for Business Messaging y de las Business Tools Terms
  * (vigentes 3 nov 2025): sin datos de salud, Meta conserva hasta 2 anos.
+ * Ese apartado es el que lee quien revisa el permiso
+ * `whatsapp_business_manage_events`: los tres eventos que nombra tienen que
+ * ser los mismos que se ven en el video de la solicitud y los que el codigo
+ * envia (docs/analisis/14, apartado 10). La doc de Meta llama al ctwa_clid
+ * "a personal identifier, unique per click": por eso aqui no se dice que el
+ * evento viaja sin datos personales.
  * Si se cambia algo de lo que aqui se afirma sobre la IA o sobre WhatsApp,
  * revisar tambien las preguntas frecuentes de la portada (src/app/page.tsx).
  */
@@ -62,7 +68,7 @@ const PREGUNTAS = [
   ],
   [
     "¿Qué recibe Meta con los eventos de conversión?",
-    "Solo que una conversación que empezó en un anuncio de Meta terminó en un contacto válido, una cita o una compra, con la fecha y el identificador del clic que Meta mismo generó. Nunca recibe el contenido de los mensajes, el nombre o el teléfono del paciente, ni el tratamiento consultado. La clínica puede pedir que la desactivemos.",
+    "Nada, salvo que la clínica haya encendido esa función, que viene apagada. Si la enciende, Meta recibe que una conversación que empezó en uno de sus anuncios terminó en un contacto nuevo, una primera cita o una compra, con la fecha, el importe si hubo venta y el identificador del clic que Meta mismo generó. Nunca recibe el contenido de los mensajes, el nombre o el teléfono del paciente, ni el tratamiento consultado o comprado.",
   ],
   [
     "¿La clínica puede seguir usando WhatsApp en su celular?",
@@ -112,7 +118,7 @@ export default function TratamientoDeDatos() {
           <li><strong>Los archivos que el paciente envía</strong>: fotos, audios, vídeos y documentos, incluida la descripción o transcripción que el sistema genera de ellos.</li>
           <li><strong>Lo que genera la inteligencia artificial</strong> a partir de la conversación: el análisis, las respuestas sugeridas y las etiquetas o etapas propuestas (apartado 6).</li>
           <li><strong>Datos de gestión comercial</strong>: etiquetas, etapa del embudo, origen del lead, vendedor asignado, tareas y motivo de pérdida.</li>
-          <li><strong>El identificador del clic del anuncio</strong>, cuando el paciente llegó desde un anuncio de Meta que abre WhatsApp. Lo genera Meta y viene adjunto al primer mensaje (apartado 8).</li>
+          <li><strong>El identificador del clic del anuncio</strong>, cuando el paciente llegó desde un anuncio de Meta que abre WhatsApp. Lo genera Meta y viene adjunto al primer mensaje. Lo tratamos como un dato personal, porque a Meta le permite reconocer a esa persona (apartado 8).</li>
           <li><strong>Citas</strong> agendadas desde la conversación.</li>
           <li><strong>Notas internas</strong> que el equipo escribe sobre el paciente y que el paciente no ve.</li>
         </ul>
@@ -253,7 +259,8 @@ export default function TratamientoDeDatos() {
           Lo que recibimos de la plataforma de WhatsApp lo tratamos solo para
           que la clínica converse con esa persona. No lo compartimos con
           terceros distintos de los subencargados del apartado 10, salvo los
-          eventos de conversión del apartado 8; no lo
+          eventos de conversión del apartado 8 y solo si la clínica los
+          encendió; no lo
           vendemos ni lo licenciamos, tampoco en forma anónima o agregada, y
           no lo usamos para perfilar a los usuarios de WhatsApp fuera de la
           conversación.
@@ -376,23 +383,48 @@ export default function TratamientoDeDatos() {
       <Apartado n={8} titulo="Eventos de conversión para los anuncios de Meta">
         <p>
           Muchas clínicas captan pacientes con anuncios de Facebook e Instagram
-          que abren una conversación de WhatsApp. CliniVentas avisa a Meta de
-          que una de esas conversaciones
-          terminó en algo concreto (un contacto válido, una cita agendada, una
-          venta) para que Meta muestre esos anuncios a personas más parecidas a
-          las que sí agendan. Es la <strong>API de conversiones para mensajes de
-          negocio</strong> de Meta. La clínica puede pedirnos que la{" "}
-          <strong>desactivemos</strong> en su cuenta, y el resto del producto
-          sigue funcionando igual.
+          que abren una conversación de WhatsApp. Con esta función, CliniVentas
+          avisa a Meta de que una de esas conversaciones terminó en algo
+          concreto (un contacto nuevo, una primera cita, una venta) para que
+          Meta muestre esos anuncios a personas más parecidas a las que sí
+          agendan. Es la <strong>API de conversiones para mensajes de
+          negocio</strong> de Meta.
         </p>
+        {/* Apagada por defecto y no "se puede desactivar": quien envia datos a
+            Meta en nombre de otro declara, segun las Condiciones de las
+            herramientas comerciales, que tiene autoridad para hacerlo y para
+            obligarlo a esas condiciones. Esa autoridad solo existe si la
+            clinica la enciende a sabiendas. Si el interruptor
+            (`meta_capi_enabled`) pasara a nacer encendido, este parrafo y la
+            obligacion 6 del apartado 15 dejarian de ser verdad. */}
+        <p>
+          <strong>Está apagada por defecto.</strong> Se enciende solo cuando la
+          clínica lo autoriza y acepta las Condiciones de las herramientas
+          comerciales de Meta, que son las que rigen estos eventos. La clínica
+          puede apagarla cuando quiera, y el resto del producto sigue
+          funcionando igual.
+        </p>
+        <p>
+          Son tres eventos, de la lista cerrada que Meta define para
+          mensajería:
+        </p>
+        <Tabla
+          cabeceras={["Evento", "Cuándo se envía"]}
+          filas={[
+            ["LeadSubmitted (contacto nuevo)", "Cuando llega el primer mensaje de una persona que tocó un anuncio de la clínica"],
+            ["QualifiedLead (contacto calificado)", "Cuando la clínica registra la primera cita de esa persona"],
+            ["Purchase (compra)", "Cuando la clínica registra una venta a esa persona"],
+          ]}
+        />
+        <p>Esto es lo que lleva cada evento, y lo que no lleva nunca:</p>
         <Tabla
           cabeceras={["Se envía a Meta", "No se envía nunca"]}
           filas={[
-            ["El nombre del evento: contacto recibido, cita agendada o compra, entre los que Meta define", "El contenido de los mensajes, las fotos, los audios ni las notas internas"],
-            ["La fecha y hora del evento", "El tratamiento, el motivo de consulta o cualquier dato de salud, ni como nombre de evento ni como detalle"],
-            ["El identificador del clic del anuncio que Meta mismo generó y adjuntó al primer mensaje del paciente", "El número de teléfono ni el nombre del paciente"],
+            ["El nombre del evento, uno de los tres de arriba", "El contenido de los mensajes, las fotos, los audios ni las notas internas"],
+            ["La fecha y hora del evento", "El tratamiento, el paquete o servicio comprado, el motivo de consulta o cualquier dato de salud"],
+            ["El identificador del clic del anuncio, que Meta mismo generó y adjuntó al primer mensaje del paciente", "El número de teléfono, el nombre ni el correo del paciente, tampoco cifrados"],
             ["El identificador de la cuenta de WhatsApp Business de la clínica", "Datos de pacientes que no llegaron desde un anuncio de Meta"],
-            ["Opcionalmente, el importe y la moneda de una venta", ""],
+            ["En una compra, el importe total y la moneda", ""],
           ]}
         />
         {/* Solo se usa la via del identificador de clic (ctwa_clid). Si algun
@@ -400,17 +432,27 @@ export default function TratamientoDeDatos() {
             (hash), hay que cambiar la tabla y avisar a las clinicas: pasaria
             a enviarse un identificador del paciente. Las Condiciones de las
             herramientas comerciales de Meta prohiben compartir datos de salud,
-            tambien implicitos en el nombre del evento: por eso los eventos son
-            genericos y no llevan el servicio de interes. */}
+            "directa o indirectamente" y tambien implicitos en el nombre del
+            evento: por eso los eventos son genericos, la compra lleva solo
+            importe y moneda (nunca `content_name` ni el paquete) y la funcion
+            no se ofrece a especialidades que por si solas delatan una
+            condicion de salud. */}
         <p>
-          Las reglas que aplicamos: solo se envían eventos de conversaciones que
-          empezaron en un anuncio de Meta, los eventos son genéricos y nunca
-          describen un tratamiento ni un estado de salud, y no se envía ningún
-          dato que identifique al paciente por sí mismo. El conjunto de datos
-          donde Meta recibe los eventos es <strong>propiedad de la clínica</strong>,
-          dentro de su portafolio comercial de Meta; nosotros enviamos los
-          eventos en su nombre y con su autorización.
+          El identificador del clic es un código que Meta genera cuando alguien
+          toca el anuncio. A nosotros y a la clínica no nos dice quién es esa
+          persona, pero <strong>a Meta sí le permite reconocer qué usuario suyo
+          hizo el clic</strong>. Por eso lo tratamos como un dato personal: lo
+          guardamos junto a la conversación, solo se lo devolvemos a Meta y se
+          borra con ella.
         </p>
+        <p>Las reglas que aplicamos:</p>
+        <ul>
+          <li>Solo se envían eventos de conversaciones que empezaron en un anuncio de Meta. Quien escribió por otra vía no genera ninguno.</li>
+          <li>Los eventos son genéricos y nunca describen un tratamiento ni un estado de salud. De una venta viajan el importe total y la moneda, no qué se compró.</li>
+          <li><strong>No ofrecemos esta función a clínicas cuya especialidad, por sí sola, revele una condición de salud</strong> de quien agenda o compra. En esos casos el propio evento sería un dato de salud, y las condiciones de Meta prohíben compartirlo.</li>
+          <li>El conjunto de datos donde Meta recibe los eventos es <strong>propiedad de la clínica</strong>, dentro de su portafolio comercial de Meta; nosotros enviamos los eventos en su nombre y con su autorización.</li>
+          <li>Guardamos un registro de cada evento enviado (cuál, cuándo y sobre qué conversación) para no enviarlo dos veces y para que la clínica pueda comprobarlo. Ese registro se borra con el lead.</li>
+        </ul>
         <Nota>
           <p>
             <strong>Aquí Meta no es nuestro encargado.</strong> Los eventos los
@@ -423,10 +465,19 @@ export default function TratamientoDeDatos() {
             con fines de medición y publicidad, y tenga base legal para hacerlo.
           </p>
           <p>
-            Un paciente puede pedir a la clínica que no envíe eventos sobre su
-            conversación, y puede revisar y limitar desde su propia cuenta de
+            <strong>Para la clínica:</strong> en tu aviso de privacidad puedes
+            decirlo así: «Si llegaste desde uno de nuestros anuncios de
+            Facebook o Instagram, compartimos con Meta que tu consulta terminó
+            en una cita o en una compra y, en ese caso, su importe, para medir
+            y mejorar esos anuncios. No compartimos tus mensajes ni el
+            tratamiento que consultaste».
+          </p>
+          <p>
+            Un paciente puede revisar y limitar desde su propia cuenta de
             Facebook o Instagram la actividad que las empresas comparten con
-            Meta.
+            Meta. Si pide a la clínica que borre sus datos (apartado 14), no se
+            envía ningún evento más sobre su conversación; lo que Meta ya
+            recibió queda bajo las condiciones de Meta.
           </p>
         </Nota>
       </Apartado>
@@ -538,6 +589,14 @@ export default function TratamientoDeDatos() {
           seguridad se elimina conforme al ciclo de rotación de estas. Te
           confirmaremos por escrito cuando el borrado esté hecho.
         </p>
+        <p>
+          Si la clínica tenía encendidos los eventos de conversión
+          (apartado 8), al borrar eliminamos también el identificador del clic
+          del anuncio y nuestro registro de los eventos enviados, de modo que
+          no se envía ninguno más. <strong>Los que Meta ya recibió no podemos
+          retirarlos</strong>: los conserva bajo sus propias condiciones, hasta
+          dos años.
+        </p>
       </Apartado>
 
       <Apartado n={15} titulo="Obligaciones de la clínica">
@@ -548,7 +607,7 @@ export default function TratamientoDeDatos() {
           <li>Escribir únicamente a personas que le dieron su número y su permiso, y dejar de hacerlo cuando se lo pidan.</li>
           <li>No usar WhatsApp para prestar telemedicina ni para pedir o enviar información clínica que la normativa exija tratar en sistemas con requisitos más estrictos, ni para pedir números completos de tarjetas, cuentas bancarias o documentos de identidad.</li>
           <li>Revisar las sugerencias de la IA antes de enviarlas y mantener siempre una vía para que el paciente hable con una persona.</li>
-          <li>Informar a sus pacientes de que comparte con Meta eventos de conversión para medir y optimizar sus anuncios, y contar con base legal para ello, o pedirnos que desactivemos esa función.</li>
+          <li>Encender los eventos de conversión solo si ha informado a sus pacientes de que comparte con Meta esos eventos para medir y optimizar sus anuncios, cuenta con base legal para ello y ha aceptado las Condiciones de las herramientas comerciales de Meta.</li>
           <li>Gestionar las altas y bajas de su equipo y el nivel de acceso de cada persona.</li>
           <li>Atender los derechos que ejerzan sus pacientes.</li>
           <li>Conectar el número desde la aplicación WhatsApp Business (no la versión personal), mantener ese teléfono activo y decidir de forma informada si comparte el historial al conectar.</li>
