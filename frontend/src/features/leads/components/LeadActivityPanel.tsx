@@ -17,6 +17,7 @@ const EVENT_LABELS: Record<string, string> = {
   internal_note_updated: 'Nota interna modificada',
   internal_note_deleted: 'Nota interna eliminada',
   appointment_scheduled: 'Cita agendada',
+  meta_conversion_sent: 'Informado a Meta',
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -43,6 +44,9 @@ const FIELD_LABELS: Record<string, string> = {
   hora: 'Hora',
   servicio: 'Servicio',
   responsable: 'Responsable',
+  // Evento informado a la API de Conversiones (meta_conversion_sent).
+  evento: 'Evento',
+  monto: 'Monto',
 }
 
 const HIDDEN_FIELDS = new Set(['vendedor_id'])

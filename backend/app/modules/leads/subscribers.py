@@ -9,11 +9,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.core.events import Phase, subscribe
 from app.modules.catalogs.public import USAGE_ITEMS, ServiceDeletionRequested, ServiceRenamed, describe_usage
 from app.modules.conversations.public import InternalNoteWritten
+from app.modules.leads.attribution.commands import queue_appointment_conversions
 from app.modules.leads.application.commands import record_note_activity, rename_service
 from app.modules.leads.domain.events import (
+    LeadAppointmentScheduled,
     LeadChangedOutside,
     LeadCreated,
     LeadDeleted,
@@ -27,6 +31,8 @@ from app.modules.leads.domain.events import (
 from app.modules.leads.domain.lead import BOOKKEEPING_FIELDS, Actor
 from app.modules.leads.queries import service_usage
 from app.realtime.ws_manager import manager
+
+logger = logging.getLogger(__name__)
 
 @subscribe(LeadCreated, phase=Phase.AFTER_COMMIT)
 async def lead_created(event: LeadCreated) -> None:
@@ -107,3 +113,17 @@ async def stages_changed(event: LeadStagesChanged) -> None:
     # Kanban, filtros y fichas abiertas rotulan con estas etapas: sin el
     # aviso, un renombre no se vería hasta el siguiente refresco.
     await manager.broadcast({"type": "lead_stages_updated"})
+
+
+
+@subscribe(LeadAppointmentScheduled, phase=Phase.TRANSACTION)
+async def queue_appointment_conversion(event: LeadAppointmentScheduled) -> None:
+    """En la transacción de la cita: si la cita se revierte, el evento para
+    Meta no existe. El envío lo hace el worker después. Un fallo acá queda en
+    su savepoint y nunca impide guardar la cita."""
+    try:
+        await queue_appointment_conversions(
+            event.lead_id, appointment_id=event.appointment_id, adelanto=event.adelanto,
+        )
+    except Exception:
+        logger.exception("No se pudo encolar la conversión de la cita %s", event.appointment_id)

@@ -17,6 +17,7 @@ from app.modules.leads.application.ports import lead_repository
 from app.modules.leads.domain.errors import LeadNotFound, SellerNotFound, ServiceNotInCatalog, TagNotAvailable
 from app.modules.leads.domain.events import (
     ConversationStarted,
+    LeadAppointmentScheduled,
     LeadCreated,
     LeadDeleted,
     LeadNoShowRegistered,
@@ -222,6 +223,10 @@ async def register_appointment(
                 lead_id=lead_id, actor=actor, fields=changes.fields, event_type=changes.event_type,
                 values=audit_safe(changes.new),
             ))
+        collect(LeadAppointmentScheduled(
+            lead_id=lead_id, actor=actor, appointment_id=appointment["id"],
+            adelanto=float(appointment.get("adelanto") or 0),
+        ))
 
         target = await repository.appointment_stage()
         if target is not None:
@@ -392,3 +397,16 @@ async def merge_leads(source_id: str, target_id: str, *, actor: Actor) -> None:
     async with unit_of_work():
         await lead_repository().merge(source_id, target_id)
         collect(LeadsMerged(lead_id=target_id, actor=actor, source_id=source_id))
+
+
+async def record_conversion_activity(lead_id: str, *, event: str, amount: str | None) -> None:
+    """Meta confirmó un evento de conversión del lead: queda en su historial
+    para que la dueña vea que llegó sin entrar al Administrador de eventos.
+    ``event`` y ``amount`` ya vienen como se muestran."""
+    new_value: dict = {"evento": event}
+    if amount:
+        new_value["monto"] = amount
+    async with unit_of_work():
+        await lead_repository().record_activity(lead_id, ActivityRecord(
+            "meta_conversion_sent", Actor.system(), new_value=new_value,
+        ))

@@ -576,3 +576,62 @@ class DashboardMetrics(BaseModel):
     activity: DashboardActivity
     hours: DashboardHours
     generated_at: str
+
+
+class MetaConversionItem(BaseModel):
+    """Un evento informado (o por informar) a la API de Conversiones."""
+
+    id: int
+    lead_id: str
+    lead_name: str | None = None
+    event_name: str
+    status: Literal["pending", "sent", "failed", "skipped"]
+    skip_reason: str | None = None
+    value: float | None = None
+    currency: str | None = None
+    last_error: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None
+
+
+class MetaConversionCounts(BaseModel):
+    """Cuántos eventos de un tipo hubo en el período, por estado."""
+
+    event_name: str
+    sent: int
+    pending: int
+    skipped: int
+    failed: int
+
+
+class MetaConversionError(BaseModel):
+    last_error: str
+    event_name: str
+    created_at: datetime
+
+
+class MetaConversionsStatus(BaseModel):
+    """El panel de la API de Conversiones de Meta."""
+
+    enabled: bool
+    # Quién aceptó las Condiciones de las herramientas comerciales de Meta y
+    # cuándo: la política de datos promete que sin eso no se enciende.
+    accepted_by: str | None = None
+    accepted_at: datetime | None = None
+    dataset_id: str | None = None
+    test_event_code: str | None = None
+    days: int
+    events: list[MetaConversionCounts]
+    last_error: MetaConversionError | None = None
+    leads_total: int
+    leads_with_click: int
+    recent: list[MetaConversionItem]
+
+
+class MetaConversionsUpdate(BaseModel):
+    enabled: bool
+    # Obligatorio para encender: la clínica acepta las Condiciones de las
+    # herramientas comerciales de Meta.
+    accept_terms: bool = False
+    # None deja el que estaba; "" lo borra.
+    test_event_code: str | None = Field(default=None, max_length=64)

@@ -1,6 +1,6 @@
 # 14 · Diseño: eventos de conversión a Meta (API de Conversiones para WhatsApp)
 
-Fecha: 2026-11-09 · Estado: **propuesta, sin código** · Origen: la auditoría 11 (hallazgo N5, "métricas de operación, no de ROI") y la revisión del panel de Meta de la app CliniVentas.
+Fecha: 2026-11-09 · Estado: **implementado (2026-11-14), apagado por defecto** · Origen: la auditoría 11 (hallazgo N5, "métricas de operación, no de ROI") y la revisión del panel de Meta de la app CliniVentas.
 
 ## 1. Qué se quiere y por qué
 
@@ -199,6 +199,19 @@ El apartado 8 de `cliniventas.com/tratamiento-de-datos` es lo que lee quien revi
 | "Si pide a la clínica que borre sus datos, no se envía ningún evento más" | Las filas `pending` del lead borrado desaparecen con la cascada antes de que el worker las reclame |
 
 Pendiente de comprobar antes de pedir el permiso: qué manda hoy el subworkflow `pixel lead` de n8n. Si incluye el teléfono, aunque sea con hash, la tabla "no se envía nunca" es falsa hasta que se apague (paso 4 de §8).
+
+## 11. Lo implementado y en qué se aparta (2026-11-14)
+
+Código en `backend/app/modules/leads/attribution/`. Se siguió el diseño salvo en esto:
+
+- **`Purchase` sale de la cita con adelanto**, no de `record_sale`: el registro de compras se quitó (`a8e469c2`) y la venta del negocio es la separación de la cita. Una por cita (`<lead>:Purchase:<cita>`), con el adelanto y la moneda del perfil. `QualifiedLead` y `Purchase` cuelgan del mismo evento, `LeadAppointmentScheduled`.
+- **Sin `revoked_at`**: las citas no se borran, así que no hay nada que lo marque (§7).
+- **Sin clic no se escribe nada**, ni como `skipped` (§3 "sin clic, sin evento"). La proporción de leads con clic la da el panel aparte.
+- **Ruta `/api/whatsapp/conversions`** (GET y PUT, solo admin) en vez de `/api/platform/meta/conversions`: `/api/platform/*` solo responde en hosts de plataforma y el panel vive en el CRM del negocio.
+- **`meta_capi_enabled` no aparece en la lista genérica de claves**: se enciende solo desde el panel, que exige aceptar las Condiciones y guarda quién y cuándo (`meta_capi_accepted_by`, `meta_capi_accepted_at`), como pide §10.
+- **Moneda**: `leads/dashboard/currency.business_currency`, que ya lee `AIProfile.currency` por el contrato de `ai` y descarta lo que no es ISO 4217 (Meta lo exige). No hizo falta `ai/ports/profile.py`.
+- **Un solo PR** para esquema y envío, en vez de los dos del §8: la función nace apagada igual.
+- **Al encender** el panel ya pide el dataset (`POST /{WABA}/dataset`): si el token no trae el permiso, falla ahí y no se enciende. El worker lo vuelve a pedir solo si falta.
 
 ## Fuentes
 

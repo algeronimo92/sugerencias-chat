@@ -196,6 +196,68 @@ class WhatsappAdConversion(Base):
         Index("idx_wsp_ad_lead", lead_id),
         Index("idx_wsp_ad_telefono", telefono),
         Index("idx_wsp_ad_ctwaclid", ctwaclid),
+        # Un clic se guarda una sola vez: mientras n8n (SUB - save CTWA) y la
+        # captura nativa convivan, el segundo que llega no duplica la fila.
+        Index(
+            "uq_wsp_ad_ctwaclid", ctwaclid, unique=True,
+            postgresql_where=text("ctwaclid IS NOT NULL"),
+        ),
+    )
+
+
+class MetaConversionEvent(Base):
+    """Libro mayor de los eventos de conversión que se informan a Meta (API de
+    Conversiones para mensajería): es a la vez la cola del worker y la
+    deduplicación, que Meta no hace para estos eventos. Ver
+    docs/analisis/14-diseno-api-conversiones-meta-ctwa.md.
+
+    ``event_key`` fija cuántas veces puede existir cada hecho:
+    ``<lead>:LeadSubmitted`` y ``<lead>:QualifiedLead`` una vez por lead,
+    ``<lead>:Purchase:<cita>`` una por cita con adelanto. Se borra con el lead
+    (la política de datos lo promete) y con el clic al que se atribuyó.
+    """
+
+    __tablename__ = "meta_conversion_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False
+    )
+    # El clic atribuido: el que originó el lead para LeadSubmitted, el último
+    # anterior al hecho para los demás.
+    wsp_ad_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("wsp_ad.id", ondelete="CASCADE"), nullable=False
+    )
+    event_key: Mapped[str] = mapped_column(Text, nullable=False)
+    event_name: Mapped[str] = mapped_column(Text, nullable=False)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Solo ``value`` y ``currency``, tal como salieron: la política de datos
+    # promete que no viaja qué se compró.
+    custom_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    skip_reason: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    # El fbtrace_id de la respuesta: con él el soporte de Meta encuentra el envío.
+    meta_trace_id: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'sent', 'failed', 'skipped')",
+            name="ck_meta_conversion_events_status",
+        ),
+        Index("uq_meta_conversion_events_key", event_key, unique=True),
+        Index("idx_meta_conversion_events_claim", status, next_attempt_at),
+        Index("idx_meta_conversion_events_lead", lead_id),
+        Index("idx_meta_conversion_events_wsp_ad", wsp_ad_id),
+        Index("idx_meta_conversion_events_created", created_at.desc()),
     )
 
 

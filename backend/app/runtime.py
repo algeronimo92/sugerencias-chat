@@ -54,6 +54,7 @@ from app.modules.conversations.infrastructure.outbox_worker import forget_outbox
 from app.modules.conversations.infrastructure.scheduled_worker import POLL_SECONDS as SCHEDULED_POLL_SECONDS
 from app.modules.conversations.infrastructure.scheduled_worker import forget_scheduled, scheduled_tick
 from app.modules.catalogs.erp_catalog import SYNC_INTERVAL_SECONDS as ERP_CATALOG_SYNC_SECONDS
+from app.modules.leads.attribution.worker import conversions_tick, wait_for_conversions_work
 from app.modules.catalogs.erp_catalog import erp_catalog_tick
 from app.modules.platform.meta_costs import SYNC_INTERVAL_SECONDS as META_COSTS_SYNC_SECONDS
 from app.modules.platform.meta_costs import sync_meta_costs
@@ -437,6 +438,7 @@ BACKGROUND_LOOPS = (
     TenantLoop("message-outbox", outbox_tick, wait_for_outbox_work, forget_outbox),
     TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS), forget_scheduled),
     TenantLoop("meta-costs", meta_costs_tick, sleeping(META_COSTS_SYNC_SECONDS)),
+    TenantLoop("meta-conversions", conversions_tick, wait_for_conversions_work),
     # La pasada decide sola si le toca (mira la última sincronización): el
     # sondeo corto solo sirve para recoger pronto una URL recién configurada.
     TenantLoop("erp-catalog", erp_catalog_tick, sleeping(ERP_CATALOG_SYNC_SECONDS / 12)),
