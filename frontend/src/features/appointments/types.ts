@@ -73,6 +73,11 @@ export interface AppointmentListItem {
   calendar_sync_status: 'not_configured' | 'pending' | 'synced' | 'error' | 'skipped'
   calendar_sync_error: string | null
   created_at: string
+  /** Desestimada por un admin (una prueba hecha en modo real, por ejemplo):
+   *  no cuenta en el panel ni en las exportaciones de ventas. */
+  dismissed_at?: string | null
+  dismissed_by_name?: string | null
+  dismissed_reason?: string | null
   /** Avisos de WhatsApp de la cita (al cliente y a cada miembro del equipo). */
   notices?: AppointmentNotice[]
 }

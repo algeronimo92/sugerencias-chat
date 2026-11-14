@@ -15,6 +15,12 @@ class TestAppointmentNotSynced(Conflict):
     code = "test_appointment_not_synced"
 
 
+class DismissedAppointmentNotSynced(Conflict):
+    """La cita está desestimada: restáurala antes de mandarla al calendario"""
+
+    code = "dismissed_appointment_not_synced"
+
+
 class CalendarNotConfigured(Conflict):
     """Activa Google Calendar y guarda su configuración antes de sincronizar"""
 

@@ -11,7 +11,12 @@ from fastapi import HTTPException
 from app.modules.appointments import api as appointments
 from app.modules.appointments.application import calendar_template, commands
 from app.modules.appointments.domain.appointment import SyncResult
-from app.modules.appointments.domain.errors import CalendarNotConfigured
+from app.modules.appointments.domain.errors import (
+    AppointmentNotFound,
+    CalendarNotConfigured,
+    DismissedAppointmentNotSynced,
+)
+from app.modules.appointments.schemas import AppointmentDismiss
 from app.modules.appointments.domain.events import AppointmentCreated
 from app.modules.appointments.schemas import AppointmentCreate
 from tests.appointment_fakes import in_memory_appointments  # noqa: F401
@@ -167,3 +172,48 @@ async def test_existing_appointment_explains_when_calendar_is_disabled(dependenc
 
     assert exc.value.status_code == 409
     assert "Activa Google Calendar" in exc.value.detail
+
+
+ADMIN = SimpleNamespace(id=1, role="admin")
+
+
+async def test_dismissed_appointment_keeps_who_and_why_and_can_be_restored(dependencies):
+    appointment_id = await _stored(dependencies, calendar_sync_status="not_configured")
+
+    dismissed = await appointments.dismiss_appointment(
+        appointment_id, AppointmentDismiss(reason="  Prueba del permiso de Meta  "), ADMIN,
+    )
+
+    assert dismissed["dismissed_at"] is not None
+    assert dismissed["dismissed_by_user_id"] == ADMIN.id
+    assert dismissed["dismissed_reason"] == "Prueba del permiso de Meta"
+    # Deja de ser la cita de ejemplo de las vistas previas.
+    assert await dependencies.repository.latest_real() is None
+
+    restored = await appointments.restore_appointment(appointment_id, ADMIN)
+
+    assert (restored["dismissed_at"], restored["dismissed_reason"]) == (None, None)
+    assert (await dependencies.repository.latest_real())["id"] == appointment_id
+
+
+async def test_dismissing_without_reason_stores_none(dependencies):
+    appointment_id = await _stored(dependencies, calendar_sync_status="not_configured")
+
+    dismissed = await appointments.dismiss_appointment(appointment_id, AppointmentDismiss(reason="   "), ADMIN)
+
+    assert dismissed["dismissed_reason"] is None
+
+
+async def test_dismissing_a_missing_appointment_is_not_found(dependencies):
+    with pytest.raises(AppointmentNotFound):
+        await appointments.dismiss_appointment(999, AppointmentDismiss(), ADMIN)
+
+
+async def test_dismissed_appointment_is_not_sent_to_the_calendar(dependencies):
+    appointment_id = await _stored(dependencies, calendar_sync_status="not_configured")
+    await appointments.dismiss_appointment(appointment_id, AppointmentDismiss(), ADMIN)
+
+    with pytest.raises(DismissedAppointmentNotSynced):
+        await appointments.sync_appointment_calendar(appointment_id, SELLER)
+
+    assert dependencies.calendar.calls == []

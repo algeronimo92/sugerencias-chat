@@ -3037,6 +3037,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/{appointment_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Appointment
+         * @description Solo admin: sacar una cita de las cifras de ventas es decidir qué plata
+         *     entró, no algo que haga quien la registró.
+         */
+        post: operations["dismiss_appointment_api_appointments__appointment_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/{appointment_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Appointment */
+        post: operations["restore_appointment_api_appointments__appointment_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/custom-fields": {
         parameters: {
             query?: never;
@@ -4156,6 +4194,11 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** AppointmentDismiss */
+        AppointmentDismiss: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** AppointmentItem */
         AppointmentItem: {
             /** Id */
@@ -4222,6 +4265,12 @@ export interface components {
             calendar_sync_error?: string | null;
             /** Created At */
             created_at: string;
+            /** Dismissed At */
+            dismissed_at?: string | null;
+            /** Dismissed By Name */
+            dismissed_by_name?: string | null;
+            /** Dismissed Reason */
+            dismissed_reason?: string | null;
             /** Notices */
             notices?: components["schemas"]["AppointmentNoticeItem"][];
         };
@@ -14400,6 +14449,72 @@ export interface operations {
         };
     };
     sync_appointment_calendar_api_appointments__appointment_id__sync_calendar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_appointment_api_appointments__appointment_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppointmentDismiss"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_appointment_api_appointments__appointment_id__restore_post: {
         parameters: {
             query?: never;
             header?: never;

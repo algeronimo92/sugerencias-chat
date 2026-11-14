@@ -37,13 +37,14 @@ async def _user(name: str) -> int:
 
 async def _separation(user_id: int, *, phone: str, adelanto: str = "0", custom=None, status: str = "created",
                       test: bool = False, days_ago: int = 0, treatment: str = "Hifu12D",
-                      lead_id: str | None = None) -> None:
+                      lead_id: str | None = None, dismissed: bool = False) -> None:
     async with session_scope() as session:
         session.add(Appointment(
             created_by_user_id=user_id, lead_id=lead_id, nombre_completo="Cliente", telefono=phone, tratamiento=treatment,
             fecha=date(2026, 12, 1), hora="10:00", vendedor="x", status=status, test_mode=test,
             adelanto=Decimal(adelanto), custom_fields={"adelanto": custom} if custom is not None else {},
             created_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+            dismissed_at=datetime.now(timezone.utc) if dismissed else None,
         ))
 
 
@@ -57,6 +58,7 @@ async def test_separations_sum_deposits_from_both_fields_and_skip_what_is_not_a_
         await _separation(lucia, phone="333", custom="yape")              # texto que no es número: 0
         await _separation(lucia, phone="444", custom=80, status="duplicate")
         await _separation(lucia, phone="555", custom=80, test=True)
+        await _separation(lucia, phone="888", adelanto="500", dismissed=True)  # prueba en modo real, desestimada
         await _separation(marco, phone="666", custom=200)
         await _separation(lucia, phone="777", custom=40, days_ago=40)     # ventana anterior
 

@@ -1,4 +1,4 @@
-import { CalendarClock, ExternalLink, FlaskConical, Loader2, RefreshCw, Search } from 'lucide-react'
+import { ArchiveX, CalendarClock, ExternalLink, FlaskConical, Loader2, RefreshCw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
@@ -8,6 +8,7 @@ import { useMe } from '../../../shared/auth'
 import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../constants'
 import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
+import { AppointmentDismissAction } from './AppointmentDismissAction'
 import { AppointmentNotices } from './AppointmentNotices'
 
 const ALL_STATUSES = Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]
@@ -33,6 +34,7 @@ export function AppointmentHistoryList() {
   const [search, setSearch] = useState('')
   const [activeStatuses, setActiveStatuses] = useState<Set<AppointmentStatus>>(new Set(ALL_STATUSES))
   const [hideTestMode, setHideTestMode] = useState(false)
+  const [hideDismissed, setHideDismissed] = useState(false)
   const syncCalendar = useSyncAppointmentCalendar()
 
   const hidingFailed = FAILED_STATUSES.every(status => !activeStatuses.has(status))
@@ -60,10 +62,11 @@ export function AppointmentHistoryList() {
     return data.filter(item => {
       if (!activeStatuses.has(item.status)) return false
       if (hideTestMode && item.test_mode) return false
+      if (hideDismissed && item.dismissed_at) return false
       if (query && !matches(item, query)) return false
       return true
     })
-  }, [data, search, activeStatuses, hideTestMode])
+  }, [data, search, activeStatuses, hideTestMode, hideDismissed])
 
   const { data: calendar } = useGoogleCalendarStatus()
   const { data: me } = useMe()
@@ -125,6 +128,17 @@ export function AppointmentHistoryList() {
         >
           Ocultar pruebas
         </button>
+        <button
+          type="button"
+          onClick={() => setHideDismissed(v => !v)}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+            hideDismissed
+              ? 'bg-wa-primary text-white'
+              : 'bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark'
+          }`}
+        >
+          Ocultar desestimadas
+        </button>
       </div>
 
       {isLoading ? (
@@ -152,7 +166,7 @@ export function AppointmentHistoryList() {
       ) : (
         <div className="space-y-3">
           {visible.map(item => (
-            <article key={item.id} className="rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
+            <article key={item.id} className={`rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark ${item.dismissed_at ? 'opacity-75' : ''}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -160,6 +174,11 @@ export function AppointmentHistoryList() {
                     {item.test_mode && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
                         <FlaskConical className="h-3 w-3" /> Prueba
+                      </span>
+                    )}
+                    {item.dismissed_at && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-wa-field px-2 py-0.5 text-[10px] font-semibold text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
+                        <ArchiveX className="h-3 w-3" /> Desestimada
                       </span>
                     )}
                   </div>
@@ -173,6 +192,13 @@ export function AppointmentHistoryList() {
                   <p className="text-wa-muted dark:text-wa-muted-dark">{item.hora}</p>
                 </div>
               </div>
+
+              {item.dismissed_at && (
+                <p className="mt-2 rounded-lg bg-wa-field px-3 py-1.5 text-xs text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
+                  No cuenta en el panel ni en las ventas. Desestimada{item.dismissed_by_name ? ` por ${item.dismissed_by_name}` : ''} · {formatDateTime(item.dismissed_at)}
+                  {item.dismissed_reason ? ` · ${item.dismissed_reason}` : ''}
+                </p>
+              )}
 
               {item.message && (
                 <p className="mt-2 rounded-lg bg-wa-field px-3 py-1.5 text-xs text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">{item.message}</p>
@@ -203,7 +229,7 @@ export function AppointmentHistoryList() {
                 {item.adelanto > 0 && <span>Pago: S/{item.adelanto.toFixed(2)}</span>}
                 {item.calendar_sync_status === 'error' && <span className="text-amber-700 dark:text-amber-300">Google Calendar pendiente</span>}
                 <span>Registrado por {item.created_by_name} · {formatDateTime(item.created_at)}</span>
-                {!item.test_mode && item.calendar_sync_status !== 'synced' && calendarConnected && (
+                {!item.test_mode && !item.dismissed_at && item.calendar_sync_status !== 'synced' && calendarConnected && (
                   <button
                     type="button"
                     onClick={() => syncCalendar.mutate(item.id)}
@@ -219,6 +245,7 @@ export function AppointmentHistoryList() {
                     <ExternalLink className="h-3.5 w-3.5" /> Ver en Calendar
                   </a>
                 )}
+                {me?.role === 'admin' && !item.test_mode && <AppointmentDismissAction item={item} />}
               </footer>
             </article>
           ))}
