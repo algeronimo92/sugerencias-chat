@@ -18,5 +18,5 @@ test('"Separar cita" abre el formulario del lead con el botón de confirmar a la
 
   await form.getByRole('button', { name: 'Cerrar' }).click()
   await expect(form).toBeHidden()
-  await expectFullyOnScreen(page.getByPlaceholder('Escribe un mensaje...'))
+  await expectFullyOnScreen(page.getByLabel('Escribe un mensaje', { exact: true }))
 })

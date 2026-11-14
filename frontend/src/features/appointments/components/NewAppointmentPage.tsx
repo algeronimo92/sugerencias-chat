@@ -11,8 +11,10 @@ import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar
 import { AppointmentFormFields } from './AppointmentFormFields'
 import { AppointmentHistoryList } from './AppointmentHistoryList'
 
+// whitespace-nowrap y shrink-0: en el celular "Nueva cita" se partía en dos
+// líneas; si no entran, la barra ya se desliza (overflow-x-auto).
 const tabClass = (active: boolean) =>
-  `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong ${active ? 'bg-wa-panel text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary' : 'text-wa-muted hover:bg-wa-hover dark:hover:bg-wa-hover-dark'}`
+  `inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong ${active ? 'bg-wa-panel text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary' : 'text-wa-muted hover:bg-wa-hover dark:hover:bg-wa-hover-dark'}`
 type Tab = 'form' | 'calendar' | 'history'
 const DRAFT_KEY = 'nueva-cita-draft-v2'
 

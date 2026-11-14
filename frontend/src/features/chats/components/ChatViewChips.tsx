@@ -20,8 +20,10 @@ interface Props {
   canSave: boolean
 }
 
+// En el celular el chip mide 32 px y su botón lo ocupa entero (self-stretch):
+// antes el área tocable era el texto, de 17 px de alto.
 const chipClass = (active: boolean) =>
-  `flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
+  `flex min-h-8 shrink-0 items-center gap-1 rounded-full border px-3 text-xs font-medium outline-none md:min-h-0 md:px-2.5 md:py-1 md:text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
     active
       ? 'border-wa-primary/50 bg-wa-primary/10 text-wa-primary-strong dark:bg-wa-primary/15 dark:text-wa-primary'
       : 'border-wa-border text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark dark:hover:text-wa-text-dark'
@@ -69,7 +71,7 @@ export function ChatViewChips({ filters, onChange, canSave }: Props) {
     >
       {views.map((view) => (
         <span key={view.id} className={chipClass(activeId === view.id)}>
-          <button type="button" onClick={() => toggle(view)} aria-pressed={activeId === view.id} className="outline-none">
+          <button type="button" onClick={() => toggle(view)} aria-pressed={activeId === view.id} className="flex items-center self-stretch outline-none">
             {view.label}
           </button>
           {!view.builtIn && (
@@ -104,7 +106,7 @@ export function ChatViewChips({ filters, onChange, canSave }: Props) {
             maxLength={30}
             placeholder="Nombre de la vista"
             aria-label="Nombre de la vista"
-            className="h-6 w-36 rounded-full border border-wa-primary/50 bg-white px-2.5 text-[11px] text-wa-text outline-none dark:bg-wa-head-dark dark:text-wa-text-dark"
+            className="h-8 w-36 rounded-full border border-wa-primary/50 bg-white px-2.5 text-xs text-wa-text outline-none md:h-6 md:text-[11px] dark:bg-wa-head-dark dark:text-wa-text-dark"
           />
         </form>
       )}

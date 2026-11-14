@@ -425,16 +425,19 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
 
   return (
     <div className="h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
-      <main className="mx-auto w-full max-w-[1200px] px-4 py-6 pb-10 sm:px-6 lg:px-8 lg:py-8">
+      {/* En el celular la descripción, los filtros, los contadores y
+          "Completar todas" llenaban la primera pantalla y la lista quedaba
+          debajo: se compactan para que las tareas se vean sin bajar. */}
+      <main className="mx-auto w-full max-w-[1200px] px-4 py-4 pb-10 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Tareas</h1>
-          <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
+          <p className="mt-1.5 hidden max-w-prose text-sm leading-6 text-wa-muted sm:block dark:text-wa-muted-dark">
             Revisa qué se venció, qué toca hoy y abre el chat del lead para continuar.
           </p>
         </header>
 
         {(tasks.length > 0 || isAdmin) && !isError && (
-          <section aria-label="Filtros de tareas" className="mt-6 flex flex-col gap-3 rounded-xl border border-wa-border bg-white p-4 sm:flex-row sm:items-end dark:border-wa-border-dark dark:bg-wa-panel-dark">
+          <section aria-label="Filtros de tareas" className="mt-4 flex flex-col gap-3 rounded-xl border border-wa-border bg-white p-3 sm:mt-6 sm:flex-row sm:items-end sm:p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
             {tasks.length > 0 && (
               <label className="block min-w-0 flex-1 text-sm font-medium text-wa-text dark:text-wa-text-dark">
                 Buscar tarea o lead
@@ -460,7 +463,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
         )}
 
         {searched.length > 0 && !isError && (
-          <section aria-label="Filtrar por vencimiento" className="mt-5 flex flex-wrap gap-2">
+          <section aria-label="Filtrar por vencimiento" className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:mt-5 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&>*]:shrink-0">
             {TASK_GROUPS.map(item => (
               <StatChip key={item.key} icon={item.icon} label={item.label} hint={item.hint} tone={item.tone} count={counts[item.key] ?? 0} selected={group === item.key} onSelect={() => setGroup(item.key)} compact />
             ))}
@@ -494,8 +497,8 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
           </div>
 
           {tasks.length > 0 && !isError && !isLoading && (
-            <div className="mb-3 flex flex-col gap-2 rounded-lg border border-wa-border bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-wa-border-dark dark:bg-wa-panel-dark">
-              <p className="text-sm leading-5 text-wa-muted dark:text-wa-muted-dark">
+            <div className="mb-3 flex flex-col gap-2 rounded-lg border border-wa-border bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+              <p className="hidden text-sm leading-5 text-wa-muted sm:block dark:text-wa-muted-dark">
                 Completar todas afecta las <strong className="font-semibold text-wa-text dark:text-wa-text-dark">{tasks.length} tareas de {scopeLabel.toLowerCase()}</strong>, incluso las ocultas por filtros.
               </p>
               <ConfirmDialog

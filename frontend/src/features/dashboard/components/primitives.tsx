@@ -16,8 +16,8 @@ interface MetricCardProps {
 export function MetricCard({ label, value, hint, icon: Icon, danger = false, onClick }: MetricCardProps) {
   const content = (
     <>
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-xs font-medium text-wa-muted dark:text-wa-muted-dark">{label}</p>
           <p className={`mt-1 text-2xl font-semibold ${danger ? 'text-red-600 dark:text-red-400' : 'text-wa-text dark:text-white'}`}>
             {typeof value === 'number' ? formatNumber(value) : value}
@@ -36,7 +36,7 @@ export function MetricCard({ label, value, hint, icon: Icon, danger = false, onC
       <button
         type="button"
         onClick={onClick}
-        className="rounded-xl border border-wa-border bg-white p-4 text-left shadow-sm transition-colors hover:border-wa-primary/40 hover:shadow-md dark:border-wa-border-dark dark:bg-wa-panel-dark dark:hover:border-green-800"
+        className="rounded-xl border border-wa-border bg-white p-3 text-left shadow-sm transition-colors sm:p-4 hover:border-wa-primary/40 hover:shadow-md dark:border-wa-border-dark dark:bg-wa-panel-dark dark:hover:border-green-800"
       >
         {content}
       </button>
@@ -44,7 +44,7 @@ export function MetricCard({ label, value, hint, icon: Icon, danger = false, onC
   }
 
   return (
-    <div className="rounded-xl border border-wa-border bg-white p-4 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
+    <div className="rounded-xl border border-wa-border bg-white p-3 shadow-sm sm:p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
       {content}
     </div>
   )
