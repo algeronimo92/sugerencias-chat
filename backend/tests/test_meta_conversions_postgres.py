@@ -84,6 +84,26 @@ async def test_a_repeated_click_is_stored_once_and_lead_submitted_queued_once(te
     assert (event.event_name, event.event_key, event.status) == ("LeadSubmitted", f"{lead_id}:LeadSubmitted", "pending")
 
 
+async def test_clicks_n8n_already_duplicated_do_not_break_the_capture(tenant):
+    """n8n (SUB - save CTWA) guardó el mismo clic dos veces con datos
+    distintos: por eso no hay índice único y el despliegue del 2026-11-14
+    falló al crearlo. La captura nativa lo encuentra y no agrega otra fila."""
+    with tenant_context(tenant):
+        await _enable()
+        lead_id = await _lead()
+        async with session_scope() as session:
+            session.add_all([
+                WhatsappAdConversion(lead_id=lead_id, telefono="51999000111", ctwaclid="clid-n8n", nombre="Ana"),
+                WhatsappAdConversion(lead_id=lead_id, telefono="51999000111", ctwaclid="clid-n8n", valor_venta=120),
+            ])
+        assert not await commands.record_ad_click(lead_id, _referral("clid-n8n"), phone=None, occurred_at=NOW)
+        async with session_scope() as session:
+            copies = (await session.scalars(
+                select(WhatsappAdConversion.id).where(WhatsappAdConversion.ctwaclid == "clid-n8n")
+            )).all()
+    assert len(copies) == 2
+
+
 async def test_with_the_function_off_the_click_is_kept_but_nothing_is_queued(tenant):
     with tenant_context(tenant):
         lead_id = await _lead()

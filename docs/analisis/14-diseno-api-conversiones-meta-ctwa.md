@@ -210,6 +210,7 @@ Código en `backend/app/modules/leads/attribution/`. Se siguió el diseño salvo
 - **Ruta `/api/whatsapp/conversions`** (GET y PUT, solo admin) en vez de `/api/platform/meta/conversions`: `/api/platform/*` solo responde en hosts de plataforma y el panel vive en el CRM del negocio.
 - **`meta_capi_enabled` no aparece en la lista genérica de claves**: se enciende solo desde el panel, que exige aceptar las Condiciones y guarda quién y cuándo (`meta_capi_accepted_by`, `meta_capi_accepted_at`), como pide §10.
 - **Moneda**: `leads/dashboard/currency.business_currency`, que ya lee `AIProfile.currency` por el contrato de `ai` y descarta lo que no es ISO 4217 (Meta lo exige). No hizo falta `ai/ports/profile.py`.
+- **Sin índice único en `wsp_ad.ctwaclid`** (§5.2): el despliegue del 2026-11-14 falló en DermicaPro porque n8n guardó el mismo clic más de una vez con datos distintos y el índice no se pudo crear. La migración no toca `wsp_ad`; la captura nativa bloquea por clic (`pg_advisory_xact_lock`) y solo inserta si no existe. Los eventos siguen saliendo una vez por `event_key`. Limpiar los duplicados de n8n queda para cuando se apague `SUB - save CTWA` (§8 paso 4).
 - **Un solo PR** para esquema y envío, en vez de los dos del §8: la función nace apagada igual.
 - **Al encender** el panel ya pide el dataset (`POST /{WABA}/dataset`): si el token no trae el permiso, falla ahí y no se enciende. El worker lo vuelve a pedir solo si falta.
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models.leads import MetaConversionEvent, WhatsappAdConversion
@@ -14,15 +14,22 @@ from app.db.uow import session_scope
 
 async def insert_click(values: dict) -> int | None:
     """Guarda el clic; ``None`` si ese ``ctwaclid`` ya estaba (un reintento del
-    webhook, o n8n lo guardó antes)."""
+    webhook, o n8n lo guardó antes).
+
+    No hay índice único que lo garantice (n8n ya dejó duplicados): un bloqueo
+    por clic hasta el fin de la transacción ordena a dos entregas simultáneas
+    del mismo webhook, y la segunda encuentra la fila de la primera."""
     async with session_scope() as session:
+        await session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtext(values["ctwaclid"])))
+        )
+        exists = await session.scalar(
+            select(WhatsappAdConversion.id).where(WhatsappAdConversion.ctwaclid == values["ctwaclid"]).limit(1)
+        )
+        if exists is not None:
+            return None
         return await session.scalar(
-            insert(WhatsappAdConversion)
-            .values(**values)
-            .on_conflict_do_nothing(
-                index_elements=["ctwaclid"], index_where=text("ctwaclid IS NOT NULL"),
-            )
-            .returning(WhatsappAdConversion.id)
+            insert(WhatsappAdConversion).values(**values).returning(WhatsappAdConversion.id)
         )
 
 
