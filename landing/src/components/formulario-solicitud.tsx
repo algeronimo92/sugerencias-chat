@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { EVENTO_PAQUETE } from "@/components/boton-paquete";
+import { Selector, type OpcionSelector } from "@/components/selector";
 import { PAQUETES, paqueteSugerido, type IdPaquete } from "@/paquetes";
 import { WHATSAPP_VENTAS } from "@/textos";
 
@@ -79,18 +80,14 @@ function Grupo({ titulo, children }: { titulo: string; children: ReactNode }) {
   );
 }
 
-function Lista({ id, etiqueta, valores, requerido = false, opcional = false }: {
-  id: string; etiqueta: string; valores: readonly string[]; requerido?: boolean; opcional?: boolean;
+function Lista({ id, etiqueta, valores, requerido = false, valor, cambiar }: {
+  id: string; etiqueta: string; valores: readonly OpcionSelector[]; requerido?: boolean;
+  valor?: string; cambiar?: (valor: string) => void;
 }) {
   return (
     <div>
-      <label htmlFor={id} className={CLASE_ETIQUETA}>
-        {etiqueta} {opcional && <span className="font-normal text-text-subtle">(opcional)</span>}
-      </label>
-      <select id={id} name={id} required={requerido} defaultValue="" className={CLASE_CAMPO}>
-        <option value="">Elige una opción</option>
-        {valores.map((v) => <option key={v} value={v}>{v}</option>)}
-      </select>
+      <label htmlFor={id} className={CLASE_ETIQUETA}>{etiqueta}</label>
+      <Selector id={id} name={id} opciones={valores} requerido={requerido} valor={valor} cambiar={cambiar} />
     </div>
   );
 }
@@ -188,27 +185,27 @@ export function FormularioSolicitud() {
   return (
     <form onSubmit={enviar} className="space-y-5 rounded-xl border border-border bg-bg p-5 sm:p-7">
       <Grupo titulo="El paquete">
-        <div className="grid grid-cols-2 gap-2">
-          {([...PAQUETES.map((p) => p.id), "no-se"] as Eleccion[]).map((id) => (
+        {/* Una fila igual por opción: en dos columnas, "Aún no lo sé" se
+            partía en dos líneas y dejaba Crecimiento más alto que el resto. */}
+        <div className="grid gap-2">
+          {[
+            ...PAQUETES.map((p) => ({ id: p.id as Eleccion, detalle: p.personasCorto })),
+            { id: "no-se" as Eleccion, detalle: "Te sugerimos uno" },
+          ].map(({ id, detalle }) => (
             <label key={id} className={CLASE_OPCION}>
               <input type="radio" name="paquete" value={id} required
                 checked={paquete === id} onChange={() => setPaquete(id)}
                 className="accent-[var(--color-accent)]" />
-              {NOMBRE[id]}
+              <span className="font-medium">{NOMBRE[id]}</span>
+              <span className="ml-auto text-caption text-text-subtle">{detalle}</span>
             </label>
           ))}
         </div>
       </Grupo>
 
       <Grupo titulo="Tu negocio">
-        <div>
-          <label htmlFor="tipo" className={CLASE_ETIQUETA}>Tipo de negocio</label>
-          <select id="tipo" name="tipo" required value={tipo} className={CLASE_CAMPO}
-            onChange={(e) => { setTipo(e.target.value as Tipo); setPaquetesSesiones(""); setAdelanto(""); }}>
-            <option value="">Elige una opción</option>
-            {TIPOS.map(([id, texto]) => <option key={id} value={id}>{texto}</option>)}
-          </select>
-        </div>
+        <Lista id="tipo" etiqueta="Tipo de negocio" valores={TIPOS} requerido valor={tipo}
+          cambiar={(v) => { setTipo(v as Tipo); setPaquetesSesiones(""); setAdelanto(""); }} />
         {tipo === "otro" && (
           <div>
             <label htmlFor="tipo_otro" className={CLASE_ETIQUETA}>¿Qué tipo de negocio es?</label>
@@ -248,14 +245,8 @@ export function FormularioSolicitud() {
 
       <Grupo titulo="Cómo trabajan hoy">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="personas" className={CLASE_ETIQUETA}>¿Cuántos atienden WhatsApp?</label>
-            <select id="personas" name="personas" required className={CLASE_CAMPO}
-              value={personas} onChange={(e) => setPersonas(e.target.value)}>
-              <option value="">Elige una opción</option>
-              {PERSONAS.map(([id, texto]) => <option key={id} value={id}>{texto}</option>)}
-            </select>
-          </div>
+          <Lista id="personas" etiqueta="¿Cuántos atienden WhatsApp?" valores={PERSONAS} requerido
+            valor={personas} cambiar={setPersonas} />
           <Lista id="consultas" etiqueta="Consultas que reciben al día" valores={CONSULTAS} />
         </div>
         {paquete === "esencial" && personas !== "" && personas !== "1-3" && (

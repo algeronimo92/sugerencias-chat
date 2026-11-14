@@ -18,6 +18,8 @@ export interface Paquete {
   nombre: string;
   para: string;
   personas: string;
+  /** Lo mismo en corto, para la opción del formulario. */
+  personasCorto: string;
   destacado?: boolean;
   /** Lo que lo distingue del anterior, en tres o cuatro lineas. */
   claves: string[];
@@ -29,6 +31,7 @@ export const PAQUETES: Paquete[] = [
     nombre: "Esencial",
     para: "Consultorios y profesionales que atienden con un equipo chico.",
     personas: "Hasta 3 personas atendiendo",
+    personasCorto: "Hasta 3 personas",
     claves: [
       "Bandeja compartida con tu mismo número",
       "Embudo, tareas y agenda de citas con Google Calendar",
@@ -41,6 +44,7 @@ export const PAQUETES: Paquete[] = [
     nombre: "Profesional",
     para: "Clínicas y centros estéticos con equipo de ventas.",
     personas: "Hasta 10 personas atendiendo",
+    personasCorto: "Hasta 10 personas",
     destacado: true,
     claves: [
       "Todo lo de Esencial",
@@ -53,7 +57,8 @@ export const PAQUETES: Paquete[] = [
     id: "crecimiento",
     nombre: "Crecimiento",
     para: "Negocios que invierten en anuncios y quieren escalar.",
-    personas: "Personas sin límite",
+    personas: "Sin límite de personas atendiendo",
+    personasCorto: "Sin límite de personas",
     claves: [
       "Todo lo de Profesional",
       "Le avisa a Meta qué anuncios traen citas",

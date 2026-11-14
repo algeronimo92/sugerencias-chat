@@ -590,6 +590,20 @@
 }
 
 
+/* Menu de los selectores (components/selector.tsx): abre como el del CRM,
+   desde el borde del boton y en 140ms. */
+@keyframes selector-entrar {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.selector-contenido {
+  transform-origin: var(--radix-select-content-transform-origin);
+}
+.selector-contenido[data-state="open"] {
+  animation: selector-entrar 140ms ease-out;
+}
+
+
 /* --------------------------------------------------------------------------
    7. CAPA BASE — reset propio y ajustes tipograficos
    Va encima del preflight de Tailwind.

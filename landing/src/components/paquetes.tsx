@@ -95,15 +95,18 @@ export function SeccionPaquetes() {
           <table className="w-full table-fixed border-collapse text-left">
             <caption className="sr-only">Funciones incluidas en Esencial, Profesional y Crecimiento</caption>
             <colgroup>
-              <col className="w-[43%] sm:w-[46%]" />
+              {/* En el celular la columna de funciones cede ancho: con 43%
+                  "Crecimiento" y "Profesional" se partían a mitad de palabra
+                  y el encabezado dejaba de alinearse con "Esencial". */}
+              <col className="w-[34%] sm:w-[46%]" />
               <col /><col /><col />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-surface">
-                <th scope="col" className="px-3 py-3 text-caption font-medium text-text-muted sm:px-5">Función</th>
+                <th scope="col" className="px-2.5 py-3 text-caption font-medium text-text-muted sm:px-5">Función</th>
                 {PAQUETES.map((p) => (
                   <th key={p.id} scope="col"
-                    className={`px-1 py-3 text-center text-caption font-semibold break-words sm:px-3 sm:text-body-sm ${p.destacado ? "text-accent-strong" : ""}`}>
+                    className={`px-0.5 py-3 text-center text-micro font-semibold whitespace-nowrap sm:px-3 sm:text-body-sm ${p.destacado ? "text-accent-strong" : ""}`}>
                     {p.nombre}
                   </th>
                 ))}
@@ -119,7 +122,7 @@ export function SeccionPaquetes() {
                 </tr>
                 {grupo.funciones.map((f) => (
                   <tr key={f.nombre} className="border-t border-border">
-                    <th scope="row" className="px-3 py-3 align-top font-normal sm:px-5">
+                    <th scope="row" className="px-2.5 py-3 align-top font-normal sm:px-5">
                       <span className="block text-caption text-text sm:text-body-sm">{f.nombre}</span>
                       {f.detalle && <span className="mt-0.5 block text-caption text-text-subtle">{f.detalle}</span>}
                     </th>
