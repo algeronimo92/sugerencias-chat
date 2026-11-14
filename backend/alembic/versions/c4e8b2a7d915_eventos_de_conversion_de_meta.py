@@ -1,7 +1,7 @@
 """Eventos de conversión para la API de Conversiones de Meta.
 
 Revision ID: c4e8b2a7d915
-Revises: f2a9c6d14e83
+Revises: a3d7e9b1c5f2
 
 Cuando un lead que llegó por un anuncio Click-to-WhatsApp agenda una cita, el
 CRM se lo informa a Meta (``LeadSubmitted`` con el ``ctwa_clid`` del clic)
@@ -24,7 +24,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "c4e8b2a7d915"
-down_revision: Union[str, None] = "f2a9c6d14e83"
+down_revision: Union[str, None] = "a3d7e9b1c5f2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
