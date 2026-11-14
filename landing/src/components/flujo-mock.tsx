@@ -224,7 +224,9 @@ export function FlujoMock() {
         <div className="patron-conversacion flex min-w-0 flex-1 items-center overflow-x-auto bg-bg py-4">
           <svg
             viewBox="0 0 1070 350"
-            className="h-auto w-full min-w-[760px]"
+            // En el celular el lienzo se dibuja más grande y se desliza: a
+            // 760 px el texto de los nodos quedaba en unos 6 px, ilegible.
+            className="h-auto w-full min-w-[1000px] md:min-w-[760px]"
             role="img"
             aria-label="Lienzo del constructor: entra un lead nuevo, se le envía la plantilla de bienvenida y una pregunta con botones abre dos ramas. «Ver precios» envía la lista y espera respuesta hasta 24 horas; «Agendar cita» reparte el lead entre los vendedores y crea la tarea de llamada. Al final, una condición pregunta si respondió y ramifica en Sí y No."
           >
