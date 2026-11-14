@@ -149,13 +149,19 @@ class WhatsappAdConversion(Base):
     ``referral`` del primer mensaje (wsp_messages.provider_payload). lead_id
     se resuelve por telefono contra whatsapp_identities al insertar, pero
     puede quedar NULL si todavía no existe un lead con ese número.
+
+    La fila trae datos personales (teléfono, nombre, email, identificador del
+    clic) y la política de datos promete que se van con el lead. Por eso la FK
+    es CASCADE y no SET NULL, que dejaba la fila entera al borrar el lead. Las
+    que nunca tuvieron ``lead_id`` las borra ``SqlLeadRepository.delete`` por
+    teléfono.
     """
 
     __tablename__ = "wsp_ad"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     lead_id: Mapped[str | None] = mapped_column(
-        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE")
     )
     telefono: Mapped[str] = mapped_column(Text, nullable=False)
     ctwaclid: Mapped[str | None] = mapped_column(Text)
