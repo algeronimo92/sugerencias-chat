@@ -3,7 +3,7 @@
 from app.db.base import Base
 from app.db.models.control import Organization, OrganizationBranding, OrganizationDomain, WhatsAppConnection, TenantSchemaVersion, PlatformSetting, PlatformUser, PlatformSession, WebhookInbox, KnowledgeTemplate
 from app.db.models.ai import AIJob, KnowledgeDocument, KnowledgeDocumentService, AIProfile, KnowledgeChunk
-from app.db.models.leads import Lead, WhatsAppIdentity, WhatsappAdConversion, LeadStage, LeadTagAssignment, LeadActivity, LeadNote, LeadNoteMention, LeadAssignmentTurn
+from app.db.models.leads import Lead, WhatsAppIdentity, WhatsappAdConversion, MetaConversionEvent, LeadStage, LeadTagAssignment, LeadActivity, LeadNote, LeadNoteMention, LeadAssignmentTurn
 from app.db.models.conversations import WspMessage, WhatsAppMessageEvent, WhatsAppEntryPointWindow, MessageOutbox, ScheduledMessage
 from app.db.models.platform import WhatsAppPricingDaily
 from app.db.models.settings import AppSetting
@@ -36,6 +36,7 @@ __all__ = [
     'Lead',
     'WhatsAppIdentity',
     'WhatsappAdConversion',
+    'MetaConversionEvent',
     'WspMessage',
     'WhatsAppMessageEvent',
     'WhatsAppEntryPointWindow',

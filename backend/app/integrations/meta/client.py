@@ -772,3 +772,33 @@ async def fetch_pricing_analytics(start: datetime, end: datetime) -> dict:
     for block in ((body.get("pricing_analytics") or {}).get("data") or []):
         points.extend(point for point in (block.get("data_points") or []) if isinstance(point, dict))
     return {"currency": body.get("currency"), "data_points": points}
+
+
+async def ensure_dataset() -> str:
+    """El dataset de la API de Conversiones de la WABA del negocio.
+    ``POST /{waba}/dataset`` lo crea o devuelve el existente. Pide el permiso
+    ``whatsapp_business_manage_events`` en el token del negocio."""
+    token, _phone_number_id, waba_id = await _config()
+    body = await _request("POST", _graph_url(f"{waba_id}/dataset"), token, timeout=20.0)
+    dataset_id = body.get("id") if isinstance(body, dict) else None
+    if not isinstance(dataset_id, str) or not dataset_id:
+        raise MetaApiError("Meta no devolvió el dataset de la cuenta de WhatsApp Business")
+    return dataset_id
+
+
+async def configured_waba_id() -> str:
+    _token, _phone_number_id, waba_id = await _config()
+    return waba_id
+
+
+async def send_conversion_events(dataset_id: str, events: list[dict], test_event_code: str | None = None) -> dict:
+    """Manda un lote a ``/{dataset}/events`` (hasta 1000). Meta responde
+    ``events_received`` y ``fbtrace_id``; un evento inválido rechaza el lote."""
+    token, _phone_number_id, _waba_id = await _config()
+    payload: dict = {"data": events}
+    if test_event_code:
+        payload["test_event_code"] = test_event_code
+    body = await _request(
+        "POST", _graph_url(f"{dataset_id}/events"), token, json_body=payload, timeout=30.0,
+    )
+    return body if isinstance(body, dict) else {}

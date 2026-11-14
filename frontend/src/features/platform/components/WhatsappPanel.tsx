@@ -6,6 +6,7 @@ import { extractErrorMessage } from "../../../shared/utils/errors";
 import { useMetaEmbeddedSignup } from "../hooks/useMetaEmbeddedSignup";
 import { useCompleteMetaEmbeddedSignup } from "../hooks/useSettings";
 import { useWhatsappStatus } from "../hooks/useWhatsapp";
+import { MetaConversionsPanel } from "./MetaConversionsPanel";
 import { WhatsappCostsPanel } from "./WhatsappCostsPanel";
 interface Props {
   onGoToClaves: () => void;
@@ -100,6 +101,7 @@ export function WhatsappPanel({ onGoToClaves }: Props) {
     <div className="space-y-4">
       <MetaEmbeddedSignupPanel />
       {whatsappStatus?.state === "open" && <WhatsappCostsPanel />}
+      {whatsappStatus?.state === "open" && <MetaConversionsPanel />}
       <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
         También puedes completar el token, el waba id y el phone number id{" "}
         <button

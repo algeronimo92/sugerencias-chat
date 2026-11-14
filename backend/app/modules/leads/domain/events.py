@@ -48,6 +48,15 @@ class ConversationStarted(LeadEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class LeadAppointmentScheduled(LeadEvent):
+    """Se agendó una cita real para el lead. La atribución la informa a Meta
+    como ``QualifiedLead`` (la primera) y ``Purchase`` si trae adelanto."""
+
+    appointment_id: int
+    adelanto: float = 0
+
+
+@dataclass(frozen=True, kw_only=True)
 class LeadNoShowRegistered(LeadEvent):
     count: int
 
