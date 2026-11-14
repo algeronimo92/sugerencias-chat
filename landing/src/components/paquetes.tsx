@@ -93,11 +93,11 @@ export function SeccionPaquetes() {
         <h3 className="text-h2 text-center">Qué incluye cada paquete</h3>
         <div className="mx-auto mt-8 max-w-4xl overflow-hidden rounded-xl border border-border bg-bg">
           <table className="w-full table-fixed border-collapse text-left">
-            <caption className="sr-only">Funciones incluidas en Esencial, Profesional y Crecimiento</caption>
+            <caption className="sr-only">Funciones incluidas en Básico, Esencial y Profesional</caption>
             <colgroup>
               {/* En el celular la columna de funciones cede ancho: con 43%
-                  "Crecimiento" y "Profesional" se partían a mitad de palabra
-                  y el encabezado dejaba de alinearse con "Esencial". */}
+                  los nombres largos de los paquetes se partían a mitad de
+                  palabra y el encabezado dejaba de verse alineado. */}
               <col className="w-[34%] sm:w-[46%]" />
               <col /><col /><col />
             </colgroup>

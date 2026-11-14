@@ -18,8 +18,8 @@ import { WHATSAPP_VENTAS } from "@/textos";
  * Las preguntas buscan llegar a la primera llamada sabiendo quién es: qué
  * tipo de negocio tiene (cambia lo que se pregunta: paquetes de sesiones en
  * estética, especialistas en salud), cómo trabaja hoy (si ya tiene un CRM,
- * cómo agenda) y qué paquete quiere (a Profesional le importa qué
- * automatizar; a Crecimiento, sus anuncios).
+ * cómo agenda) y qué paquete quiere (a Esencial le importa qué
+ * automatizar; a Profesional, sus anuncios).
  */
 
 type Eleccion = IdPaquete | "no-se";
@@ -64,7 +64,7 @@ const QUIEN_PAUTA = ["Yo", "Alguien del equipo", "Una agencia"];
 const CUANDO = ["Esta semana", "Este mes", "En los próximos meses", "Solo estoy averiguando"];
 
 const NOMBRE: Record<Eleccion, string> = {
-  esencial: "Esencial", profesional: "Profesional", crecimiento: "Crecimiento", "no-se": "Aún no lo sé",
+  basico: "Básico", esencial: "Esencial", profesional: "Profesional", "no-se": "Aún no lo sé",
 };
 
 /** Un bloque del formulario. Un grupo con título y no un fieldset: la
@@ -131,7 +131,7 @@ export function FormularioSolicitud() {
   }, []);
 
   const sugerido = paquete === "no-se" ? paqueteSugerido(personas, pauta) : null;
-  const preguntaPauta = paquete === "crecimiento" || paquete === "no-se";
+  const preguntaPauta = paquete === "profesional" || paquete === "no-se";
   const listo = WHATSAPP_VENTAS !== "";
 
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
@@ -186,7 +186,7 @@ export function FormularioSolicitud() {
     <form onSubmit={enviar} className="space-y-5 rounded-xl border border-border bg-bg p-5 sm:p-7">
       <Grupo titulo="El paquete">
         {/* Una fila igual por opción: en dos columnas, "Aún no lo sé" se
-            partía en dos líneas y dejaba Crecimiento más alto que el resto. */}
+            partía en dos líneas y dejaba una caja más alta que las demás. */}
         <div className="grid gap-2">
           {[
             ...PAQUETES.map((p) => ({ id: p.id as Eleccion, detalle: p.personasCorto })),
@@ -249,9 +249,9 @@ export function FormularioSolicitud() {
             valor={personas} cambiar={setPersonas} />
           <Lista id="consultas" etiqueta="Consultas que reciben al día" valores={CONSULTAS} />
         </div>
-        {paquete === "esencial" && personas !== "" && personas !== "1-3" && (
+        {paquete === "basico" && personas !== "" && personas !== "1-3" && (
           <p className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-caption text-warning" role="status">
-            Esencial es para hasta 3 personas. Con tu equipo te conviene Profesional.
+            Básico es para hasta 3 personas. Con tu equipo te conviene Esencial.
           </p>
         )}
         <Lista id="atencion" etiqueta="¿Cómo atienden WhatsApp?" valores={ATENCION_HOY} />
@@ -274,7 +274,7 @@ export function FormularioSolicitud() {
           </div>
         )}
         <Lista id="agenda" etiqueta="¿Dónde llevan la agenda de citas?" valores={AGENDA_HOY} />
-        {paquete === "crecimiento" && (
+        {paquete === "profesional" && (
           <div>
             <label htmlFor="sistema" className={CLASE_ETIQUETA}>
               Sistema de ventas o caja <span className="font-normal text-text-subtle">(opcional)</span>
@@ -284,9 +284,9 @@ export function FormularioSolicitud() {
         )}
       </Grupo>
 
-      {(paquete === "profesional" || preguntaPauta) && (
+      {(paquete === "esencial" || preguntaPauta) && (
         <Grupo titulo="Lo que necesitan">
-          {paquete === "profesional" && (
+          {paquete === "esencial" && (
             <fieldset>
               <legend className={CLASE_ETIQUETA}>¿Qué quieren resolver primero?</legend>
               <div className="space-y-2">
