@@ -625,7 +625,15 @@ class MetaConversionsStatus(BaseModel):
     last_error: MetaConversionError | None = None
     leads_total: int
     leads_with_click: int
-    recent: list[MetaConversionItem]
+
+
+class MetaConversionPage(BaseModel):
+    """Una página del historial de eventos de la API de Conversiones."""
+
+    items: list[MetaConversionItem]
+    total: int
+    page: int
+    page_size: int
 
 
 class MetaConversionsUpdate(BaseModel):

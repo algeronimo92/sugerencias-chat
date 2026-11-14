@@ -8,7 +8,7 @@ from app.modules.leads.attribution.commands import (
     ENABLED_KEY,
     TEST_CODE_KEY,
 )
-from app.modules.leads.attribution.queries import conversions_summary
+from app.modules.leads.attribution.queries import conversion_events, conversions_summary
 
 __all__ = [
     "ACCEPTED_AT_KEY",
@@ -16,5 +16,6 @@ __all__ = [
     "DATASET_KEY",
     "ENABLED_KEY",
     "TEST_CODE_KEY",
+    "conversion_events",
     "conversions_summary",
 ]

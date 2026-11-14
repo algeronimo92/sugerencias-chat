@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchMetaConversionEvents, fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
 
@@ -55,6 +55,18 @@ export function useMetaConversions(enabled = true) {
     queryFn: fetchMetaConversions,
     enabled,
     refetchInterval: (query) => (query.state.data?.events.some((row) => row.pending > 0) ? 10_000 : false),
+  })
+}
+
+export const CONVERSION_EVENTS_PAGE_SIZE = 20
+
+/** Una página del historial de eventos; se pide solo con el modal abierto. */
+export function useMetaConversionEvents(page: number, enabled = true) {
+  return useQuery({
+    queryKey: whatsappKeys.conversionEvents(page),
+    queryFn: () => fetchMetaConversionEvents(page, CONVERSION_EVENTS_PAGE_SIZE),
+    enabled,
+    placeholderData: keepPreviousData,
   })
 }
 

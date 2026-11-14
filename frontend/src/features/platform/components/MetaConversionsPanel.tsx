@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Clock, Loader2, Megaphone, MinusCircle } from 'lucide-react'
+import { History, Loader2, Megaphone } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -6,43 +6,16 @@ import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMetaConversions, useSaveMetaConversions } from '../hooks/useWhatsapp'
-import type { MetaConversionItem, MetaConversionsStatus, MetaConversionsUpdate } from '../types'
+import type { MetaConversionsStatus, MetaConversionsUpdate } from '../types'
+import { eventLabel } from './metaConversionLabels'
+import { MetaConversionsHistoryDialog } from './MetaConversionsHistoryDialog'
 
 const TERMS_URL = 'https://www.facebook.com/legal/commercial_terms'
 
-// Los tres eventos que la política de datos enumera.
-const EVENT_LABELS: Record<string, string> = {
-  LeadSubmitted: 'Lead desde un anuncio',
-  QualifiedLead: 'Lead calificado (primera cita)',
-  Purchase: 'Compra (adelanto de la cita)',
-}
-
-const STATUS_LABELS: Record<MetaConversionItem['status'], string> = {
-  sent: 'Enviado a Meta',
-  pending: 'En cola',
-  skipped: 'Omitido',
-  failed: 'No se pudo enviar',
-}
-
-const STATUS_ICONS: Record<MetaConversionItem['status'], { Icon: typeof Clock; className: string }> = {
-  sent: { Icon: CheckCircle2, className: 'text-wa-primary-strong dark:text-wa-primary' },
-  failed: { Icon: AlertCircle, className: 'text-red-500 dark:text-red-400' },
-  skipped: { Icon: MinusCircle, className: 'text-amber-600 dark:text-amber-400' },
-  pending: { Icon: Clock, className: 'text-wa-muted dark:text-wa-muted-dark' },
-}
 
 const muted = 'text-wa-muted dark:text-wa-muted-dark'
 
 type Submit = (payload: MetaConversionsUpdate, success: string, onSuccess?: () => void) => void
-
-function eventLabel(name: string) {
-  return EVENT_LABELS[name] ?? name
-}
-
-function StatusIcon({ status }: { status: MetaConversionItem['status'] }) {
-  const { Icon, className } = STATUS_ICONS[status]
-  return <Icon className={`h-3.5 w-3.5 shrink-0 ${className}`} aria-hidden="true" />
-}
 
 function PendingSpinner({ show }: { show: boolean }) {
   return show ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null
@@ -154,38 +127,10 @@ function CountsTable({ data }: { data: MetaConversionsStatus }) {
   )
 }
 
-function RecentItem({ item }: { item: MetaConversionItem }) {
-  const amount = item.value == null ? '' : ` · ${item.value.toFixed(2)}${item.currency ? ` ${item.currency}` : ''}`
-  const reason = item.status === 'skipped' && item.skip_reason ? `: ${item.skip_reason}` : ''
-  return (
-    <li className="flex items-start gap-2 py-1.5">
-      <StatusIcon status={item.status} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-wa-text dark:text-wa-text-dark">
-          {item.lead_name || 'Lead'} · {eventLabel(item.event_name)}
-          <span className={muted}>{amount}</span>
-        </p>
-        <p className={`text-[11px] ${muted}`}>
-          {STATUS_LABELS[item.status]}{reason} · {new Date(item.sent_at ?? item.created_at).toLocaleString()}
-        </p>
-      </div>
-    </li>
-  )
-}
-
-function RecentList({ items }: { items: MetaConversionItem[] }) {
-  if (items.length === 0) {
-    return <p className={`text-xs ${muted}`}>Todavía no hay eventos de leads que llegaron por un anuncio.</p>
-  }
-  return (
-    <ul className="divide-y divide-wa-border text-xs dark:divide-wa-border-dark">
-      {items.map((item) => <RecentItem key={item.id} item={item} />)}
-    </ul>
-  )
-}
 
 function ConversionsBody({ data }: { data: MetaConversionsStatus }) {
   const { mutate: save, isPending } = useSaveMetaConversions()
+  const [historyOpen, setHistoryOpen] = useState(false)
   const submit: Submit = (payload, success, onSuccess) => {
     save(payload, {
       onSuccess: () => {
@@ -202,7 +147,13 @@ function ConversionsBody({ data }: { data: MetaConversionsStatus }) {
         : <DisabledControls submit={submit} isPending={isPending} />}
       <TestCodeField data={data} submit={submit} isPending={isPending} />
       <CountsTable data={data} />
-      <RecentList items={data.recent} />
+      <div>
+        <Button variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
+          <History className="h-3.5 w-3.5" aria-hidden="true" />
+          Ver historial de eventos
+        </Button>
+      </div>
+      {historyOpen && <MetaConversionsHistoryDialog onClose={() => setHistoryOpen(false)} />}
     </>
   )
 }

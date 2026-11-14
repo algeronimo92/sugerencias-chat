@@ -2051,6 +2051,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/conversions/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Conversion Events
+         * @description El historial de eventos informados (o por informar) a Meta, paginado.
+         */
+        get: operations["whatsapp_conversion_events_api_whatsapp_conversions_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -6712,6 +6732,20 @@ export interface components {
             sent_at?: string | null;
         };
         /**
+         * MetaConversionPage
+         * @description Una página del historial de eventos de la API de Conversiones.
+         */
+        MetaConversionPage: {
+            /** Items */
+            items: components["schemas"]["MetaConversionItem"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /**
          * MetaConversionsStatus
          * @description El panel de la API de Conversiones de Meta.
          */
@@ -6735,8 +6769,6 @@ export interface components {
             leads_total: number;
             /** Leads With Click */
             leads_with_click: number;
-            /** Recent */
-            recent: components["schemas"]["MetaConversionItem"][];
         };
         /** MetaConversionsUpdate */
         MetaConversionsUpdate: {
@@ -12188,6 +12220,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaConversionsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatsapp_conversion_events_api_whatsapp_conversions_events_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaConversionPage"];
                 };
             };
             /** @description Validation Error */
