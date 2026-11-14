@@ -3209,6 +3209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/export/{report}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Report */
+        get: operations["export_report_api_dashboard_export__report__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/automations": {
         parameters: {
             query?: never;
@@ -5552,6 +5569,11 @@ export interface components {
          * @enum {string}
          */
         ExecutionStartSource: "system" | "manual" | "flow";
+        /**
+         * ExportReport
+         * @enum {string}
+         */
+        ExportReport: "separaciones" | "vendedoras" | "leads" | "respaldo";
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /** Email */
@@ -14764,6 +14786,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardMetrics"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_report_api_dashboard_export__report__get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                report: components["schemas"]["ExportReport"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archivo de Excel */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
                 };
             };
             /** @description Validation Error */

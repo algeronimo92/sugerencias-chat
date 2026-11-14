@@ -180,3 +180,72 @@ async def collect(scope: DashboardScope) -> dict:
         "funnel": funnel,
         "pipeline": pipeline,
     }
+
+
+# --- Exportación a Excel ------------------------------------------------------
+
+async def lead_export_rows(start=None) -> list[dict]:
+    """Leads con su estado, uno por fila. Con `start`, solo los que entraron
+    desde esa fecha; sin él, todos (el respaldo)."""
+    stmt = (
+        select(
+            Lead.id.label("id"),
+            Lead.nombre.label("name"),
+            Lead.telefono.label("phone"),
+            func.coalesce(LeadStage.name, Lead.estado).label("stage"),
+            Lead.servicio_interes.label("service"),
+            Lead.origen.label("origin"),
+            func.coalesce(User.name, Lead.vendedor).label("seller"),
+            Lead.created_at.label("created_at"),
+            Lead.ultimo_mensaje_at.label("last_message_at"),
+            Lead.razon_perdido.label("lost_reason"),
+            Lead.tipo_objecion.label("objection"),
+            Lead.contador_noshow.label("no_shows"),
+            Lead.toques_seguimiento.label("follow_ups"),
+            Lead.notas.label("notes"),
+            Lead.custom_fields.label("custom_fields"),
+        )
+        .outerjoin(LeadStage, LeadStage.key == Lead.estado)
+        .outerjoin(User, User.id == Lead.vendedor_id)
+        .order_by(Lead.created_at, Lead.id)
+    )
+    if start is not None:
+        stmt = stmt.where(Lead.created_at >= start)
+    return [dict(row) for row in await execute_mapping(stmt)]
+
+
+async def leads_by_user(scope: DashboardScope) -> list[dict]:
+    """Por persona del equipo, los leads que entraron en la ventana y cómo
+    terminaron hasta hoy. Incluye a quien no tuvo leads, para que su fila
+    exista en el reporte, y los leads sin vendedora como una fila aparte."""
+    won = func.count(Lead.id).filter(Lead.estado.in_(_stage_keys(LeadStageKind.WON)))
+    lost = func.count(Lead.id).filter(Lead.estado.in_(_stage_keys(LeadStageKind.LOST)))
+    counts, people = await asyncio.gather(
+        execute_mapping(
+            select(Lead.vendedor_id.label("user_id"), func.count(Lead.id).label("leads"), won.label("won"), lost.label("lost"))
+            .where(Lead.created_at >= scope.start)
+            .group_by(Lead.vendedor_id)
+        ),
+        execute_mapping(
+            select(User.id.label("user_id"), User.name.label("name"), User.is_active.label("is_active"))
+            .where(User.role.in_(("admin", "vendedor")))
+            .order_by(User.name)
+        ),
+    )
+    by_user = {row["user_id"]: row for row in counts}
+
+    def totals(user_id) -> dict:
+        found = by_user.get(user_id)
+        return {
+            "leads": int(found["leads"]) if found else 0,
+            "won": int(found["won"]) if found else 0,
+            "lost": int(found["lost"]) if found else 0,
+        }
+
+    rows = [
+        {"user_id": person["user_id"], "name": str(person["name"]), "is_active": bool(person["is_active"]), **totals(person["user_id"])}
+        for person in people
+    ]
+    if None in by_user:
+        rows.append({"user_id": None, "name": "Sin asignar", "is_active": True, **totals(None)})
+    return rows

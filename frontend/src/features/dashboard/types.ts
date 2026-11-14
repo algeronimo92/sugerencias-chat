@@ -1,3 +1,5 @@
+import type { ApiSchemas } from '../../shared/http/contract'
+
 export interface DashboardMetricItem {
   name: string
   value: number
@@ -11,6 +13,14 @@ export interface DashboardPoint {
 /** 'mine' = los leads y los flujos del propio vendedor; 'team' = todo. Los
  *  rankings comparativos vienen en los dos casos. */
 export type DashboardScope = 'mine' | 'team'
+
+/** Reportes que se bajan en Excel desde el dashboard. */
+export type DashboardExportReport = ApiSchemas['ExportReport']
+
+export interface DashboardExportFile {
+  blob: Blob
+  filename: string
+}
 
 export interface DashboardFunnelStep extends DashboardMetricItem {
   /** Porcentaje sobre los leads creados en el período, o null si no hubo. */

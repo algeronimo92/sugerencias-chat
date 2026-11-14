@@ -9,7 +9,7 @@ from app.db.models.auth import User
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
 from app.db.uow import session_scope
-from app.modules.tasks.types import TaskStatus
+from app.modules.tasks.types import TaskPriority, TaskStatus, TaskType
 
 
 def _task(row):
@@ -62,3 +62,37 @@ async def get_task(task_id: int):
     async with session_scope() as session:
         row = (await session.execute(_task_query().where(LeadTask.id == task_id))).mappings().one_or_none()
     return _task(row) if row else None
+
+
+_TYPE_LABELS = {
+    TaskType.WHATSAPP: "WhatsApp", TaskType.CALL: "Llamada", TaskType.QUOTE: "Cotización",
+    TaskType.APPOINTMENT: "Cita", TaskType.FOLLOW_UP: "Seguimiento", TaskType.OTHER: "Otro",
+}
+_STATUS_LABELS = {TaskStatus.PENDING: "Pendiente", TaskStatus.COMPLETED: "Completada", TaskStatus.CANCELED: "Cancelada"}
+_PRIORITY_LABELS = {TaskPriority.LOW: "Baja", TaskPriority.NORMAL: "Normal", TaskPriority.HIGH: "Alta"}
+
+
+async def export_tasks() -> list[dict]:
+    """Todas las tareas del negocio para el respaldo en Excel, sin el tope de
+    500 de la lista: un respaldo incompleto no sirve para irse con los datos."""
+    stmt = (
+        select(
+            Lead.nombre.label("lead_name"), Lead.telefono.label("lead_phone"), LeadTask.title, LeadTask.description,
+            LeadTask.task_type, LeadTask.status, LeadTask.priority, LeadTask.due_at,
+            User.name.label("assigned_user_name"), LeadTask.created_at, LeadTask.completed_at,
+        )
+        .join(Lead, Lead.id == LeadTask.lead_id)
+        .join(User, User.id == LeadTask.assigned_user_id)
+        .order_by(LeadTask.created_at, LeadTask.id)
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [
+        {
+            **dict(row),
+            "task_type": _TYPE_LABELS.get(row["task_type"], row["task_type"]),
+            "status": _STATUS_LABELS.get(row["status"], row["status"]),
+            "priority": _PRIORITY_LABELS.get(row["priority"], row["priority"]),
+        }
+        for row in rows
+    ]
