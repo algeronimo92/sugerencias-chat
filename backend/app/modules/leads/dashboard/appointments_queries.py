@@ -463,3 +463,87 @@ async def collect(scope: DashboardScope) -> dict:
         "no_shows": no_shows,
         "linkage": linkage,
     }
+
+
+# --- Exportación a Excel ------------------------------------------------------
+# Las mismas citas que cuenta el panel, una por fila, para cuadrar con la caja
+# y pagar comisiones. Siempre del equipo completo: exportar es de quien dirige.
+
+def _appointment_export_stmt(condition):
+    owner = case(
+        (Appointment.lead_id.is_(None), "Sin lead vinculado"),
+        else_=func.coalesce(Owner.name, "Lead sin vendedora"),
+    )
+    return (
+        select(
+            Appointment.created_at.label("created_at"),
+            Appointment.fecha.label("date"),
+            Appointment.hora.label("time"),
+            Appointment.nombre_completo.label("name"),
+            Appointment.dni.label("dni"),
+            Appointment.telefono.label("phone"),
+            Appointment.tratamiento.label("treatment"),
+            DEPOSIT.label("amount"),
+            Appointment.comprobante_filename.label("receipt"),
+            Appointment.status.label("status"),
+            func.coalesce(User.name, "Sin asignar").label("registered_by"),
+            owner.label("owner"),
+            Lead.origen.label("origin"),
+        )
+        .outerjoin(User, User.id == Appointment.created_by_user_id)
+        .outerjoin(Lead, Lead.id == Appointment.lead_id)
+        .outerjoin(Owner, Owner.id == Lead.vendedor_id)
+        .where(condition)
+        .order_by(Appointment.created_at, Appointment.id)
+    )
+
+
+def _appointment_export_rows(rows) -> list[dict]:
+    return [
+        {
+            **dict(row),
+            "amount": _money(row["amount"]),
+            "status": STATUS_LABELS.get(row["status"], str(row["status"])),
+            "time": str(row["time"]) if row["time"] is not None else None,
+        }
+        for row in rows
+    ]
+
+
+async def separation_export_rows(scope: DashboardScope) -> list[dict]:
+    """Separaciones de la ventana con la misma regla que la pestaña Ventas."""
+    return _appointment_export_rows(await execute_mapping(_appointment_export_stmt(_booked(scope, scope.start))))
+
+
+async def appointment_export_rows() -> list[dict]:
+    """Todas las citas reales para el respaldo, también las duplicadas o que
+    fallaron: es una copia de los datos, no una métrica."""
+    return _appointment_export_rows(
+        await execute_mapping(_appointment_export_stmt(Appointment.test_mode.is_(False)))
+    )
+
+
+async def separations_by_user(scope: DashboardScope) -> dict[str, dict[int | None, dict]]:
+    """Separaciones y adelantos por persona, de las dos formas que mira la
+    dueña: las que registró y las de su cartera."""
+    current = _booked(scope, scope.start)
+
+    def by(column, *joins):
+        stmt = select(
+            column.label("user_id"),
+            func.count(Appointment.id).label("count"),
+            func.coalesce(func.sum(DEPOSIT), 0).label("amount"),
+        )
+        for target, on in joins:
+            stmt = stmt.outerjoin(target, on)
+        return stmt.where(current).group_by(column)
+
+    registered, owned = await asyncio.gather(
+        execute_mapping(by(Appointment.created_by_user_id)),
+        execute_mapping(by(Lead.vendedor_id, (Lead, Lead.id == Appointment.lead_id))),
+    )
+
+    def keyed(rows):
+        return {row["user_id"]: {"count": int(row["count"]), "amount": _money(row["amount"])} for row in rows}
+
+    return {"registered": keyed(registered), "owned": keyed(owned)}

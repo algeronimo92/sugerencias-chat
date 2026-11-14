@@ -11,6 +11,7 @@ import type { DashboardSubject } from './subject'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
+import { ExportMenu } from './ExportMenu'
 import { FlowsTab } from './FlowsTab'
 import { PipelineTab } from './PipelineTab'
 import { SalesTab } from './SalesTab'
@@ -83,7 +84,7 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
   return (
     <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-wa-text dark:text-white">Dashboard CRM</h1>
           </div>
@@ -135,6 +136,7 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
               <option value={30}>Últimos 30 días</option>
               <option value={90}>Últimos 90 días</option>
             </Select>
+            {(isAdmin || isAnalyst) && <ExportMenu isAdmin={isAdmin} days={days} />}
           </div>
         </div>
 

@@ -335,3 +335,33 @@ class LeadAssignmentTurn(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     last_assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class DataExport(Base):
+    """Quién bajó qué datos del negocio a Excel, y cuándo.
+
+    Un archivo exportado sale del sistema con teléfonos y DNI de pacientes:
+    cuando una vendedora se va con la cartera, la dueña necesita saber quién
+    la descargó. Solo se agregan filas; nadie las edita.
+    """
+
+    __tablename__ = "data_exports"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # SET NULL: el registro sobrevive aunque se borre al usuario, que es
+    # justo cuando más se lo consulta.
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    report: Mapped[str] = mapped_column(Text)
+    # None en el respaldo completo, que no tiene período.
+    period_days: Mapped[int | None] = mapped_column(Integer)
+    row_count: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "report IN ('separaciones', 'vendedoras', 'leads', 'respaldo')",
+            name="data_exports_report_check",
+        ),
+        Index("idx_data_exports_created", created_at.desc()),
+        Index("idx_data_exports_user", user_id),
+    )

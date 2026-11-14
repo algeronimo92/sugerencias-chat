@@ -103,3 +103,19 @@ async def collect(scope: DashboardScope) -> dict:
         "by_user": items(by_user),
         "trend": series(trend, scope),
     }
+
+
+async def tag_names_by_lead(start=None) -> dict[str, list[str]]:
+    """Etiquetas de cada lead, para la columna del Excel. Con `start`, solo de
+    los leads que entraron desde esa fecha."""
+    stmt = (
+        select(LeadTagAssignment.lead_id.label("lead_id"), LeadTag.name.label("name"))
+        .join(LeadTag, LeadTag.id == LeadTagAssignment.tag_id)
+        .order_by(LeadTagAssignment.lead_id, LeadTag.name)
+    )
+    if start is not None:
+        stmt = stmt.join(Lead, Lead.id == LeadTagAssignment.lead_id).where(Lead.created_at >= start)
+    names: dict[str, list[str]] = {}
+    for row in await execute_mapping(stmt):
+        names.setdefault(str(row["lead_id"]), []).append(str(row["name"]))
+    return names

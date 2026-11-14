@@ -30,6 +30,9 @@ prometheus-fastapi-instrumentator==7.0.0
 # Firma y envía el payload de Web Push (VAPID) contra los endpoints de
 # Chrome/Firefox/Edge cuando llega un reporte de incidencia o una mención.
 pywebpush==2.0.0
+# Reportes del dashboard en .xlsx. Solo escribe (no lee planillas), sin
+# dependencias, y permite apagar la conversión de textos a fórmulas.
+XlsxWriter==3.2.9
 # Tipo ``vector`` de pgvector para el ORM y para que ``alembic check`` lo
 # reconozca (registra el tipo al importarse). Sin dependencias.
 pgvector==0.5.1

@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { DashboardMetrics, DashboardScope } from './types'
+import type { DashboardExportFile, DashboardExportReport, DashboardMetrics, DashboardScope } from './types'
 
 export async function fetchDashboard(days: number, scope: DashboardScope | null, sellerId: number | null = null): Promise<DashboardMetrics> {
   return (
@@ -11,4 +11,16 @@ export async function fetchDashboard(days: number, scope: DashboardScope | null,
         params: { days, ...(sellerId ? { seller_id: sellerId } : scope ? { scope } : {}) },
       })
     ).data
+}
+
+export async function downloadDashboardExport(report: DashboardExportReport, days: number): Promise<DashboardExportFile> {
+  const response = await client.get<ApiResponse<'/api/dashboard/export/{report}', 'get'>>(`/api/dashboard/export/${report}`, {
+    params: { days },
+    responseType: 'blob',
+  })
+  // El contrato tipa solo cuerpos JSON; este trae el .xlsx en binario.
+  const blob = response.data as unknown as Blob
+  const disposition = String(response.headers['content-disposition'] ?? '')
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${report}.xlsx`
+  return { blob, filename }
 }
