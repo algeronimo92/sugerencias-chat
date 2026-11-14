@@ -2,6 +2,7 @@ import { BadgeCheck, Clock3, FileText, History, Loader2, Search, Star, UserRound
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
+import { useLayout } from '../../../shared/hooks/useBreakpoint'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useRecordTemplateUse, useTemplates, useToggleTemplateFavorite } from '../hooks/useTemplates'
 import type { Chat } from '../../leads/types'
@@ -13,6 +14,7 @@ interface Props { chat: Chat; sentMessages: string[]; onSelect: (text: string) =
 export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, onSendMultimedia }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const isMobile = useLayout() === 'mobile'
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => { setOpen(false); setSearch('') })
   const { data = [] } = useTemplates()
   const favorite = useToggleTemplateFavorite()
@@ -61,9 +63,14 @@ export function TemplatePicker({ chat, sentMessages, onSelect, onSaveHistory, on
     if (!items.length) return null; const Icon=icon
     return <section><div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-wa-muted"><Icon className="h-3 w-3"/>{title}</div>{items.map(row)}</section>
   }
-  return <div ref={containerRef} className="relative"><button type="button" aria-label="Plantillas y respuestas rápidas" aria-haspopup="dialog" aria-expanded={open} title="Respuestas rápidas y plantillas oficiales" onClick={()=>setOpen(!open)} className="flex h-9 w-9 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark"><FileText className="h-4 w-4"/></button>
-    {open&&<div className="absolute bottom-11 left-0 z-30 w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 rounded-lg bg-wa-field px-2 dark:bg-wa-panel-dark"><Search className="h-4 w-4 text-wa-muted"/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar respuesta o /atajo" className="w-full bg-transparent py-2 text-sm text-gray-800 outline-none dark:text-wa-text-dark"/></div>
-      <div className="mt-1 max-h-80 overflow-auto">{section('Favoritas',Star,favorites)}{!search&&section('Usadas recientemente',Clock3,recent)}{section(search?'Resultados':'Todas las plantillas',FileText,remaining)}
+  // En el celular el panel se ancla al composer entero (`sm:relative` acá y
+  // `relative` en el <form>) y no enfoca el buscador. Anclado a este botón,
+  // que queda a ~90 px del borde, medía "100vw - 2rem" y se salía ~70 px por
+  // la derecha; el foco automático en un campo fuera de pantalla hacía que el
+  // navegador corriera la interfaz entera y además abría el teclado.
+  return <div ref={containerRef} className="sm:relative"><button type="button" aria-label="Plantillas y respuestas rápidas" aria-haspopup="dialog" aria-expanded={open} title="Respuestas rápidas y plantillas oficiales" onClick={()=>setOpen(!open)} className="flex h-9 w-9 items-center justify-center rounded-lg text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark"><FileText className="h-4 w-4"/></button>
+    {open&&<div role="dialog" aria-label="Plantillas y respuestas rápidas" className="absolute inset-x-2 bottom-full z-30 mb-2 rounded-xl border border-wa-border bg-white p-2 shadow-xl sm:inset-x-auto sm:bottom-11 sm:left-0 sm:mb-0 sm:w-96 sm:max-w-[calc(100vw-2rem)] dark:border-wa-border-dark dark:bg-wa-head-dark"><div className="flex items-center gap-2 rounded-lg bg-wa-field px-2 dark:bg-wa-panel-dark"><Search className="h-4 w-4 text-wa-muted"/><input autoFocus={!isMobile} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar respuesta o /atajo" aria-label="Buscar respuesta o atajo" className="w-full bg-transparent py-2 text-sm text-gray-800 outline-none dark:text-wa-text-dark"/></div>
+      <div className="mt-1 max-h-[45dvh] overflow-auto sm:max-h-80">{section('Favoritas',Star,favorites)}{!search&&section('Usadas recientemente',Clock3,recent)}{section(search?'Resultados':'Todas las plantillas',FileText,remaining)}
         {!search&&sentMessages.length>0&&<section><div className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-wa-muted"><History className="h-3 w-3"/>Mensajes enviados recientemente</div>{sentMessages.map((message,index)=><div key={`${message}-${index}`} className="group flex items-center rounded-lg hover:bg-wa-hover dark:hover:bg-wa-active-dark"><button type="button" onClick={()=>{onSelect(message);setOpen(false)}} className="min-w-0 flex-1 px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300"><p className="line-clamp-2">{message}</p></button><button type="button" aria-label="Guardar este mensaje como plantilla" title="Guardar como plantilla" onClick={()=>{onSaveHistory(message);setOpen(false)}} className="mr-2 rounded p-1.5 text-wa-muted hover:text-wa-primary-strong"><FileText className="h-4 w-4"/></button></div>)}</section>}
         {relevant.length===0&&sentMessages.length===0&&<p className="p-4 text-center text-sm text-wa-muted">Sin respuestas rápidas</p>}</div></div>}
   </div>

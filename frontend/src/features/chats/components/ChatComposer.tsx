@@ -493,7 +493,8 @@ export function ChatComposer({
     <>
       <form
         onSubmit={handleSend}
-        className="border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
+        // relative: en el celular el panel de plantillas se ancla al composer.
+        className="relative border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
       >
         <div className="mb-2 flex items-center justify-between gap-3">
           <span className="text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>
