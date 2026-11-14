@@ -19,7 +19,9 @@ from sqlalchemy.exc import IntegrityError
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
 from app.db.models.catalogs import LeadService, LeadTag
-from app.db.models.leads import Lead as LeadRow, LeadActivity, LeadStage, LeadTagAssignment, WhatsAppIdentity
+from app.db.models.leads import (
+    Lead as LeadRow, LeadActivity, LeadStage, LeadTagAssignment, WhatsAppIdentity, WhatsappAdConversion,
+)
 from app.db.uow import current_session, session_scope
 from app.integrations.whatsapp.connection import ANY_CONNECTION
 from app.integrations.whatsapp.identity import WA_ID
@@ -108,6 +110,27 @@ class SqlLeadRepository:
         lead = await session.get(LeadRow, lead_id)
         if lead is None:
             return False
+        # Lo que apunta al lead cae por las FK en CASCADE. Los clics de anuncio
+        # que n8n guardó antes de que el lead existiera no apuntan a nadie
+        # (lead_id NULL) y solo el teléfono los une a esta persona: quedaban
+        # con su nombre, email e identificador del clic después del borrado,
+        # contra lo que promete la política de datos. Va antes de borrar el
+        # lead porque sus identidades de WhatsApp se van con él. Se compara
+        # solo contra whatsapp_identities, donde el wa_id es único: un número
+        # que coincide dígito a dígito no puede ser de otro lead.
+        await session.execute(
+            delete(WhatsappAdConversion)
+            .where(
+                WhatsappAdConversion.lead_id.is_(None),
+                func.regexp_replace(WhatsappAdConversion.telefono, r"\D", "", "g").in_(
+                    select(WhatsAppIdentity.identifier).where(
+                        WhatsAppIdentity.lead_id == lead_id,
+                        WhatsAppIdentity.kind == WA_ID,
+                    )
+                ),
+            )
+            .execution_options(synchronize_session=False)
+        )
         await session.delete(lead)
         await session.flush()
         return True

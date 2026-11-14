@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, insert, select, update
 
 from app.db.models.automations import AutomationExecution
-from app.db.models.leads import Lead, LeadActivity, LeadNote, LeadTagAssignment, WhatsAppIdentity
+from app.db.models.leads import Lead, LeadActivity, LeadNote, LeadTagAssignment, WhatsAppIdentity, WhatsappAdConversion
 from app.db.models.tasks import LeadTask
 from app.db.models.conversations import MessageOutbox, ScheduledMessage, WspMessage
 from app.db.models.notifications import UserNotification
@@ -45,6 +45,9 @@ _OWNED_BY_LEAD = (
     (LeadTask, LeadTask.lead_id),
     (UserNotification, UserNotification.lead_id),
     (AutomationExecution, AutomationExecution.lead_id),
+    # El clic del anuncio es la atribución del contacto: sigue a la ficha que
+    # sobrevive. Desde que su FK es CASCADE, sin esto se borraría con el origen.
+    (WhatsappAdConversion, WhatsappAdConversion.lead_id),
 )
 
 # Campos que el destino adopta del origen solo si los tiene vacíos. El lead
