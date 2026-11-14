@@ -103,7 +103,20 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
         boolean=True,
     ),
-    SettingDef("elevenlabs_api_key", "API key", "elevenlabs", "ElevenLabs (texto a voz)", secret=True),
+    # API de Conversiones: avisar a Meta qué leads de anuncios agendaron cita.
+    # Se activa desde su tarjeta (platform/whatsapp_api.py), que además busca
+    # o crea el dataset de la WABA: por eso no se listan como campos sueltos.
+    SettingDef(
+        "meta_conversions_enabled",
+        "Enviar las citas de leads de anuncios a la API de Conversiones",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=False,
+        boolean=True,
+        hidden=True,
+    ),
+    SettingDef("meta_dataset_id", "Dataset de la API de Conversiones", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
+    SettingDef("elevenlabs_api_key","API key", "elevenlabs", "ElevenLabs (texto a voz)", secret=True),
     SettingDef("elevenlabs_voice_id", "ID de voz", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
     SettingDef("elevenlabs_model_id", "Modelo", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
     SettingDef("elevenlabs_stability", "Estabilidad (0-1)", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),

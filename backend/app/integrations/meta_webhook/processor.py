@@ -21,6 +21,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.integrations.meta import client as meta_service
+from app.modules.leads.ports.ad_conversions import record_ad_click
 from app.modules.leads.ports.ad_referral_service import (rehost_referral_image)
 from app.modules.appointments.ports.notice_delivery import notice_account_template_changed, record_notice_delivery
 from app.modules.conversations.ports.inbound import (
@@ -122,6 +123,18 @@ async def _rehost_referral(stored: dict, message: dict) -> None:
     media_url = await rehost_referral_image(message.get("referral"))
     if media_url:
         await set_message_payload(stored["id"], {**(stored.get("payload") or {}), "referral_thumbnail_url": media_url})
+
+
+async def _record_ad_click(message: dict, chat_id: str) -> None:
+    """El ``ctwa_clid`` del anuncio, para informar después a Meta si el lead
+    agendó. Es un extra: si falla, el mensaje ya quedó guardado."""
+    phone = message.get("from") if isinstance(message.get("from"), str) else None
+    try:
+        await record_ad_click(
+            chat_id, message.get("referral"), phone=phone, at=_timestamp(message.get("timestamp")),
+        )
+    except Exception:
+        logger.exception("No se pudo registrar el clic de anuncio del mensaje %s", message.get("id"))
 
 
 async def _store_message(
@@ -258,6 +271,8 @@ async def _conversation_message(
             await _learn_changed_number(message, resolved.chat_id, identity.phone_number_id)
         if message.get("referral"):
             await _rehost_referral(stored, message)
+            if inbound:
+                await _record_ad_click(message, resolved.chat_id)
     # Fuera del ``if created``: en un reintento el mensaje ya existe pero el
     # adjunto puede seguir pendiente.
     await _import_media(stored, message)

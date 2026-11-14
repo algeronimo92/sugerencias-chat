@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchStatus, fetchWhatsappCosts, syncWhatsappCosts } from '../api'
+import { fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
 
@@ -44,5 +44,24 @@ export function useSyncWhatsappCosts(month: string) {
       // Otros meses pueden haber cambiado con la misma sincronización.
       void queryClient.invalidateQueries({ queryKey: whatsappKeys.costsAll, refetchType: 'none' })
     },
+  })
+}
+
+/** Citas de leads de anuncios informadas a la API de Conversiones. El worker
+ *  las manda en segundos: mientras queda alguna pendiente se reconsulta. */
+export function useMetaConversions(enabled = true) {
+  return useQuery({
+    queryKey: whatsappKeys.conversions,
+    queryFn: fetchMetaConversions,
+    enabled,
+    refetchInterval: (query) => (query.state.data?.pending ? 10_000 : false),
+  })
+}
+
+export function useSaveMetaConversions() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: saveMetaConversions,
+    onSuccess: (data) => queryClient.setQueryData(whatsappKeys.conversions, data),
   })
 }

@@ -2023,6 +2023,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Conversions
+         * @description La API de Conversiones de Meta: si el negocio la activó y los eventos
+         *     de cita que se mandaron por leads de anuncios.
+         */
+        get: operations["whatsapp_conversions_api_whatsapp_conversions_get"];
+        /**
+         * Update Whatsapp Conversions
+         * @description Activa o pausa el envío. Al activar busca (o crea) el dataset de la
+         *     WABA en Meta: si el token no tiene ``whatsapp_business_manage_events``,
+         *     Meta lo rechaza acá y no se activa nada.
+         */
+        put: operations["update_whatsapp_conversions_api_whatsapp_conversions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -6598,6 +6625,68 @@ export interface components {
              * @default false
              */
             total_capped: boolean;
+        };
+        /**
+         * MetaConversionItem
+         * @description Un evento de la API de Conversiones: la cita de un lead de anuncio.
+         */
+        MetaConversionItem: {
+            /** Id */
+            id: number;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Lead Name */
+            lead_name?: string | null;
+            /** Appointment Id */
+            appointment_id?: number | null;
+            /** Event Name */
+            event_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "sent" | "failed";
+            /** Value */
+            value?: number | null;
+            /** Currency */
+            currency?: string | null;
+            /** Attempts */
+            attempts: number;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Sent At */
+            sent_at?: string | null;
+        };
+        /**
+         * MetaConversionsStatus
+         * @description La tarjeta de la API de Conversiones: si está activa, con qué dataset
+         *     de Meta y cómo van los envíos de los últimos ``days`` días.
+         */
+        MetaConversionsStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Days */
+            days: number;
+            /** Sent */
+            sent: number;
+            /** Pending */
+            pending: number;
+            /** Failed */
+            failed: number;
+            /** Recent */
+            recent: components["schemas"]["MetaConversionItem"][];
+        };
+        /** MetaConversionsUpdate */
+        MetaConversionsUpdate: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** MetaEmbeddedSignupRequest */
         MetaEmbeddedSignupRequest: {
@@ -11984,6 +12073,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WhatsappCostsSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatsapp_conversions_api_whatsapp_conversions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaConversionsStatus"];
+                };
+            };
+        };
+    };
+    update_whatsapp_conversions_api_whatsapp_conversions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaConversionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaConversionsStatus"];
                 };
             };
             /** @description Validation Error */

@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionsStatus, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -49,6 +49,16 @@ export async function fetchWhatsappCosts(month: string): Promise<WhatsappCostsSu
 
 export async function syncWhatsappCosts(month: string): Promise<WhatsappCostsSummary> {
   const { data } = await client.post<ApiResponse<'/api/whatsapp/costs/sync', 'post'>>('/api/whatsapp/costs/sync', null, { params: { month } })
+  return data
+}
+
+export async function fetchMetaConversions(): Promise<MetaConversionsStatus> {
+  const { data } = await client.get<ApiResponse<'/api/whatsapp/conversions', 'get'>>('/api/whatsapp/conversions')
+  return data
+}
+
+export async function saveMetaConversions(enabled: boolean): Promise<MetaConversionsStatus> {
+  const { data } = await client.put<ApiResponse<'/api/whatsapp/conversions', 'put'>>('/api/whatsapp/conversions', { enabled })
   return data
 }
 

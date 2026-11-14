@@ -576,3 +576,37 @@ class DashboardMetrics(BaseModel):
     activity: DashboardActivity
     hours: DashboardHours
     generated_at: str
+
+
+class MetaConversionItem(BaseModel):
+    """Un evento de la API de Conversiones: la cita de un lead de anuncio."""
+
+    id: int
+    lead_id: str | None = None
+    lead_name: str | None = None
+    appointment_id: int | None = None
+    event_name: str
+    status: Literal["pending", "sent", "failed"]
+    value: float | None = None
+    currency: str | None = None
+    attempts: int
+    last_error: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None
+
+
+class MetaConversionsStatus(BaseModel):
+    """La tarjeta de la API de Conversiones: si está activa, con qué dataset
+    de Meta y cómo van los envíos de los últimos ``days`` días."""
+
+    enabled: bool
+    dataset_id: str | None = None
+    days: int
+    sent: int
+    pending: int
+    failed: int
+    recent: list[MetaConversionItem]
+
+
+class MetaConversionsUpdate(BaseModel):
+    enabled: bool

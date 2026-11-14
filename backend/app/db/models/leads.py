@@ -193,6 +193,60 @@ class WhatsappAdConversion(Base):
     )
 
 
+class MetaConversionEvent(Base):
+    """Evento de conversión para la API de Conversiones de Meta: el lead que
+    llegó por un anuncio Click-to-WhatsApp agendó una cita. Meta lo atribuye
+    al anuncio por el ``ctwa_clid`` del clic y así optimiza la campaña hacia
+    gente que agenda, no solo hacia gente que escribe.
+
+    La fila se crea al guardar la cita y la manda un worker con reintentos:
+    Meta caído o un token vencido no pierden el evento. Uno por clic y tipo
+    de evento: dos citas del mismo clic no cuentan dos conversiones.
+    ``dataset_id`` y ``waba_id`` se copian al crearla, como estaban entonces.
+    """
+
+    __tablename__ = "meta_conversion_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str | None] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="SET NULL")
+    )
+    # Sin FK: la cita es de otro módulo y el evento vale aunque se borre.
+    appointment_id: Mapped[int | None] = mapped_column(BigInteger)
+    event_name: Mapped[str] = mapped_column(Text, nullable=False)
+    ctwa_clid: Mapped[str] = mapped_column(Text, nullable=False)
+    dataset_id: Mapped[str] = mapped_column(Text, nullable=False)
+    waba_id: Mapped[str] = mapped_column(Text, nullable=False)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    # El id de rastreo que devuelve Meta: con él su soporte encuentra el envío.
+    fbtrace_id: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'sent', 'failed')", name="ck_meta_conversion_events_status"
+        ),
+        Index("uq_meta_conversion_events_click", ctwa_clid, event_name, unique=True),
+        Index(
+            "idx_meta_conversion_events_pending",
+            next_attempt_at,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index("idx_meta_conversion_events_created", created_at.desc()),
+    )
+
+
 class LeadStage(Base):
     """Etapa del embudo, administrable por cada negocio.
 

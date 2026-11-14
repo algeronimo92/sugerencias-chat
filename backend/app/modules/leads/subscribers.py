@@ -9,9 +9,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.core.events import Phase, subscribe
+from app.modules.appointments.public import AppointmentCreated
 from app.modules.catalogs.public import USAGE_ITEMS, ServiceDeletionRequested, ServiceRenamed, describe_usage
 from app.modules.conversations.public import InternalNoteWritten
+from app.modules.leads.ad_conversions import queue_appointment_conversion
 from app.modules.leads.application.commands import record_note_activity, rename_service
 from app.modules.leads.domain.events import (
     LeadChangedOutside,
@@ -27,6 +31,8 @@ from app.modules.leads.domain.events import (
 from app.modules.leads.domain.lead import BOOKKEEPING_FIELDS, Actor
 from app.modules.leads.queries import service_usage
 from app.realtime.ws_manager import manager
+
+logger = logging.getLogger(__name__)
 
 @subscribe(LeadCreated, phase=Phase.AFTER_COMMIT)
 async def lead_created(event: LeadCreated) -> None:
@@ -107,3 +113,16 @@ async def stages_changed(event: LeadStagesChanged) -> None:
     # Kanban, filtros y fichas abiertas rotulan con estas etapas: sin el
     # aviso, un renombre no se vería hasta el siguiente refresco.
     await manager.broadcast({"type": "lead_stages_updated"})
+
+
+@subscribe(AppointmentCreated, phase=Phase.AFTER_COMMIT)
+async def report_appointment_conversion(event: AppointmentCreated) -> None:
+    """La cita guardada desde el formulario es la conversión del anuncio por
+    el que llegó el lead. Después del commit: un fallo acá no deshace la cita,
+    y una cita que se revirtió no llega a Meta."""
+    try:
+        await queue_appointment_conversion(
+            appointment_id=event.appointment_id, lead_id=event.lead_id, adelanto=event.adelanto,
+        )
+    except Exception:
+        logger.exception("No se pudo encolar la conversión de la cita %s", event.appointment_id)

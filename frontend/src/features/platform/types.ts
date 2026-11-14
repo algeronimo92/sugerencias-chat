@@ -38,6 +38,9 @@ export type InvitationLink = Delivered<ApiSchemas['InvitationLinkOut']>
 export type WhatsappStatus = Delivered<ApiSchemas['WhatsappStatusItem']>
 export type WhatsappState = WhatsappStatus['state']
 export type WhatsappCostsSummary = Delivered<ApiSchemas['WhatsappCostsSummary']>
+/** La API de Conversiones de Meta: citas de leads de anuncios informadas a Meta. */
+export type MetaConversionsStatus = Delivered<ApiSchemas['MetaConversionsStatus']>
+export type MetaConversionItem = MetaConversionsStatus['recent'][number]
 
 export interface StatusOptions {
   enabled?: boolean
