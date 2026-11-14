@@ -200,3 +200,41 @@ async def test_migrate_check_detects_registry_or_schema_drift(monkeypatch) -> No
     monkeypatch.setattr(migrate_script, "_actual_tenant_revision", actual)
 
     assert await migrate_script._check_tenants(object(), "head") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upgrade_keeps_a_live_business_serving(monkeypatch) -> None:
+    """2026-11-14: una migración que falló en DermicaPro la marcó como
+    organización ``failed`` y la sacó del ruteo, con blue todavía arriba. Su
+    esquema había quedado entero en la revisión anterior: el negocio sigue
+    activo, el registro vuelve a como estaba y el próximo despliegue reintenta."""
+    marks: list[tuple] = []
+
+    async def active(engine):
+        return [(CONTEXT, "old", "current")]
+
+    async def actual(engine, context):
+        return "old"
+
+    async def mark_running(context):
+        marks.append(("running", context.organization_id))
+
+    async def migrate_schema(context):
+        raise RuntimeError("índice único imposible")
+
+    async def mark_upgrade_failed(context, revision, status, error):
+        marks.append(("upgrade_failed", revision, status, type(error).__name__))
+
+    monkeypatch.setattr(migrate_script, "_active_tenants", active)
+    monkeypatch.setattr(migrate_script, "_actual_tenant_revision", actual)
+    monkeypatch.setattr(migrate_script, "_mark_running", mark_running)
+    monkeypatch.setattr(migrate_script, "_migrate_schema", migrate_schema)
+    monkeypatch.setattr(migrate_script, "_mark_upgrade_failed", mark_upgrade_failed)
+
+    assert await migrate_script._upgrade_tenants(object()) == 1
+    assert marks == [
+        ("running", CONTEXT.organization_id),
+        ("upgrade_failed", "old", "current", "RuntimeError"),
+    ]
+    # Nada de lo que corrió apaga la organización.
+    assert not hasattr(migrate_script, "_mark_failed")

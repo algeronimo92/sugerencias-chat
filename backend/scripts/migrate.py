@@ -41,7 +41,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.models.control import TenantSchemaVersion
 from app.db.session import close_engine, control_session, get_engine
 from app.tenancy.context import TenantContext, validate_schema_name
-from app.tenancy.provisioning import _mark_active, _mark_failed, _migrate_schema
+from app.tenancy.provisioning import _mark_active, _migrate_schema
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -180,6 +180,35 @@ async def _mark_running(context: TenantContext) -> None:
         version.last_error = None
 
 
+async def _mark_upgrade_failed(
+    context: TenantContext,
+    registered_revision: str | None,
+    migration_status: str | None,
+    error: Exception,
+) -> None:
+    """Un negocio que ya funcionaba no se cae porque falló su actualización.
+
+    Cada negocio migra en su propia transacción: si falla, su esquema queda
+    entero en la revisión de antes y la versión que está sirviendo lo sigue
+    atendiendo. Se usaba ``_mark_failed`` del alta, que además pone la
+    organización en ``failed``: el 2026-11-14 eso sacó a DermicaPro del ruteo
+    y dejó producción caída aunque el despliegue se había cortado a tiempo
+    (blue seguía arriba). Además, en ``failed`` ni el próximo despliegue ni
+    "Reactivar" lo vuelven a tomar.
+
+    Acá solo se deshace la marca de ``_mark_running`` y queda el error para
+    el panel; la organización no se toca. El próximo despliegue lo reintenta.
+    """
+    async with control_session() as session:
+        version = await session.get(TenantSchemaVersion, str(context.organization_id))
+        if version is None:
+            return
+        version.revision = registered_revision
+        version.migration_status = migration_status or "pending"
+        # Sin SQL ni valores: el tipo alcanza para el panel, el detalle va al log.
+        version.last_error = type(error).__name__
+
+
 async def _check_tenants(engine, head: str) -> int:
     pending = 0
     for context, registered_revision, migration_status in await _active_tenants(engine):
@@ -214,7 +243,7 @@ async def _upgrade_tenants(engine) -> int:
             await _mark_active(context)
         except Exception as exc:  # el siguiente tenant debe poder continuar
             failures += 1
-            await _mark_failed(context, exc)
+            await _mark_upgrade_failed(context, registered_revision, migration_status, exc)
             print(
                 f"Falló tenant {context.organization_id}: {type(exc).__name__}",
                 file=sys.stderr,
