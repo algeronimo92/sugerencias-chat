@@ -195,13 +195,9 @@ class WhatsappAdConversion(Base):
     __table_args__ = (
         Index("idx_wsp_ad_lead", lead_id),
         Index("idx_wsp_ad_telefono", telefono),
+        # Sin índice único: n8n (SUB - save CTWA) ya guardó el mismo clic más
+        # de una vez con datos distintos. La captura nativa evita repetirlo.
         Index("idx_wsp_ad_ctwaclid", ctwaclid),
-        # Un clic se guarda una sola vez: mientras n8n (SUB - save CTWA) y la
-        # captura nativa convivan, el segundo que llega no duplica la fila.
-        Index(
-            "uq_wsp_ad_ctwaclid", ctwaclid, unique=True,
-            postgresql_where=text("ctwaclid IS NOT NULL"),
-        ),
     )
 
 
