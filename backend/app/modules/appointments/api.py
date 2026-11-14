@@ -14,6 +14,7 @@ from app.modules.auth.public import User
 from app.modules.appointments.schemas import (
     AppointmentCreate,
     AppointmentCreated,
+    AppointmentDismiss,
     AppointmentItem,
     CalendarEventTemplate,
     CalendarEventTemplateUpdate,
@@ -94,6 +95,18 @@ async def sync_appointment_calendar(
     _user: User = Depends(get_current_user),
 ):
     return await commands.sync_calendar(appointment_id)
+
+
+@router.post("/{appointment_id}/dismiss", response_model=AppointmentItem)
+async def dismiss_appointment(appointment_id: int, body: AppointmentDismiss, user: User = Depends(require_admin)):
+    """Solo admin: sacar una cita de las cifras de ventas es decidir qué plata
+    entró, no algo que haga quien la registró."""
+    return await commands.dismiss(appointment_id, user_id=user.id, reason=body.reason)
+
+
+@router.post("/{appointment_id}/restore", response_model=AppointmentItem)
+async def restore_appointment(appointment_id: int, _user: User = Depends(require_admin)):
+    return await commands.restore(appointment_id)
 
 
 def _attachment(body: AppointmentCreate):

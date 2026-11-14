@@ -18,7 +18,12 @@ class AppointmentRepository(Protocol):
     async def get(self, appointment_id: int) -> dict | None: ...
 
     async def latest_real(self) -> dict | None:
-        """La última cita que no es de prueba (para las vistas previas)."""
+        """La última cita que no es de prueba ni está desestimada (para las
+        vistas previas)."""
+
+    async def set_dismissed(self, appointment_id: int, *, user_id: int | None, reason: str | None) -> dict | None:
+        """Desestima la cita a nombre de ``user_id``, o la restaura si es
+        None. Devuelve la cita actualizada, o None si no existe."""
 
     async def record_integrations(self, appointment_id: int, **values) -> dict:
         """Guarda el resultado de las integraciones. ``clear_calendar_sync_error``

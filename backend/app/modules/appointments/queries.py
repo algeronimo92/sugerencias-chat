@@ -11,6 +11,7 @@ from app.core.time_format import iso_utc
 
 Creator = aliased(User)
 Owner = aliased(User)
+Dismisser = aliased(User)
 
 
 def _serialize(row) -> dict:
@@ -41,6 +42,9 @@ def _serialize(row) -> dict:
         "calendar_sync_status": row["calendar_sync_status"],
         "calendar_sync_error": row["calendar_sync_error"],
         "created_at": iso_utc(row["created_at"]),
+        "dismissed_at": iso_utc(row["dismissed_at"]) if row["dismissed_at"] else None,
+        "dismissed_by_name": row["dismissed_by_name"],
+        "dismissed_reason": row["dismissed_reason"],
     }
 
 
@@ -73,12 +77,16 @@ def _query():
             Appointment.calendar_sync_status,
             Appointment.calendar_sync_error,
             Appointment.created_at,
+            Appointment.dismissed_at,
+            Dismisser.name.label("dismissed_by_name"),
+            Appointment.dismissed_reason,
         )
         .join(Creator, Creator.id == Appointment.created_by_user_id)
         # Ambos por fuera: la cita puede no estar vinculada a un lead, y un lead
         # vinculado puede no tener vendedor asignado.
         .outerjoin(Lead, Lead.id == Appointment.lead_id)
         .outerjoin(Owner, Owner.id == Lead.vendedor_id)
+        .outerjoin(Dismisser, Dismisser.id == Appointment.dismissed_by_user_id)
     )
 
 
