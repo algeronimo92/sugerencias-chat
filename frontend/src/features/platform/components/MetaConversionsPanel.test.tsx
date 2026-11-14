@@ -14,8 +14,14 @@ vi.mock('../hooks/useWhatsapp', () => ({
   useSaveMetaConversions: () => ({ mutate: mocks.save, isPending: false }),
 }))
 
+const counts = (event_name: string, values: Record<string, number> = {}) => ({
+  event_name, sent: 0, pending: 0, skipped: 0, failed: 0, ...values,
+})
+
 const status = (overrides: Record<string, unknown> = {}) => ({
-  enabled: false, dataset_id: null, days: 30, sent: 0, pending: 0, failed: 0, recent: [], ...overrides,
+  enabled: false, accepted_by: null, accepted_at: null, dataset_id: null, test_event_code: null, days: 30,
+  events: [counts('LeadSubmitted'), counts('QualifiedLead'), counts('Purchase')],
+  last_error: null, leads_total: 0, leads_with_click: 0, recent: [], ...overrides,
 })
 
 describe('MetaConversionsPanel', () => {
@@ -23,40 +29,51 @@ describe('MetaConversionsPanel', () => {
     mocks.save.mockReset()
   })
 
-  it('pausado: explica que no se informa nada y deja activarlo', async () => {
+  it('apagado: no se activa sin aceptar las condiciones de Meta', async () => {
     const user = userEvent.setup()
     mocks.data = status()
     render(<MetaConversionsPanel />)
 
-    expect(screen.getByText('Pausado: las citas no se informan a Meta.')).toBeInTheDocument()
-    expect(screen.getByText('Todavía no hay citas de leads que llegaron por un anuncio.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Activar' }))
-    expect(mocks.save).toHaveBeenCalledWith(true, expect.anything())
+    expect(screen.getByText('Apagado: no se informa nada a Meta.')).toBeInTheDocument()
+    const activate = screen.getByRole('button', { name: 'Activar' })
+    expect(activate).toBeDisabled()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Aceptar las condiciones' }))
+    await user.click(activate)
+    expect(mocks.save).toHaveBeenCalledWith({ enabled: true, accept_terms: true }, expect.anything())
   })
 
-  it('activo: muestra cada cita informada con su estado y el error si falló', async () => {
+  it('activo: muestra quién aceptó, los contadores por evento y lo omitido con su motivo', async () => {
     const user = userEvent.setup()
     mocks.data = status({
-      enabled: true, dataset_id: '123456', sent: 1, failed: 1,
-      recent: [
-        {
-          id: 2, lead_id: 'l2', lead_name: 'Rosa Díaz', appointment_id: 88, event_name: 'LeadSubmitted', status: 'failed',
-          value: null, currency: null, attempts: 8, last_error: 'Meta Graph API respondió 400', created_at: '2026-11-13T15:00:00Z', sent_at: null,
-        },
-        {
-          id: 1, lead_id: 'l1', lead_name: 'Ana Pérez', appointment_id: 87, event_name: 'LeadSubmitted', status: 'sent',
-          value: 50, currency: 'PEN', attempts: 1, last_error: null, created_at: '2026-11-13T14:00:00Z', sent_at: '2026-11-13T14:00:10Z',
-        },
-      ],
+      enabled: true, dataset_id: '123456', accepted_by: 'Gerson (admin@example.test)', accepted_at: '2026-11-13T15:00:00Z',
+      events: [counts('LeadSubmitted', { sent: 4 }), counts('QualifiedLead', { sent: 2 }), counts('Purchase', { skipped: 1 })],
+      leads_total: 10, leads_with_click: 4,
+      recent: [{
+        id: 3, lead_id: 'l1', lead_name: 'Ana Pérez', event_name: 'Purchase', status: 'skipped',
+        skip_reason: 'sin moneda configurada', value: 80, currency: null, last_error: null,
+        created_at: '2026-11-13T15:00:00Z', sent_at: null,
+      }],
     })
     render(<MetaConversionsPanel />)
 
     expect(screen.getByText(/dataset 123456/)).toBeInTheDocument()
-    expect(screen.getByText('Últimos 30 días: 1 enviados · 0 en cola · 1 con error')).toBeInTheDocument()
-    expect(screen.getByText(/Ana Pérez/)).toHaveTextContent('Ana Pérez · cita #87')
-    expect(screen.getByText(/LeadSubmitted · Enviado a Meta/)).toBeInTheDocument()
-    expect(screen.getByText('Meta Graph API respondió 400')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Pausar' }))
-    expect(mocks.save).toHaveBeenCalledWith(false, expect.anything())
+    expect(screen.getByText(/Condiciones aceptadas por Gerson/)).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Lead desde un anuncio 4 0 0 0/ })).toBeInTheDocument()
+    expect(screen.getByText(/4 de 10 leads del período/)).toBeInTheDocument()
+    expect(screen.getByText(/Omitido: sin moneda configurada/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Apagar' }))
+    expect(mocks.save).toHaveBeenCalledWith({ enabled: false }, expect.anything())
+  })
+
+  it('guarda el código de prueba sin volver a pedir la aceptación', async () => {
+    const user = userEvent.setup()
+    mocks.data = status({ enabled: true })
+    render(<MetaConversionsPanel />)
+
+    await user.type(screen.getByLabelText(/Código de prueba/), 'TEST123')
+    await user.click(screen.getByRole('button', { name: 'Guardar código' }))
+    expect(mocks.save).toHaveBeenCalledWith({ enabled: true, test_event_code: 'TEST123' }, expect.anything())
   })
 })

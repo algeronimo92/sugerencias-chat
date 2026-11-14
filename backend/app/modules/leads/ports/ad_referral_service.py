@@ -3,5 +3,6 @@
 from app.modules.leads.ad_referral_service import (
     rehost_referral_image,
 )
+from app.modules.leads.attribution.commands import record_ad_click
 
-__all__ = ['rehost_referral_image']
+__all__ = ['record_ad_click', 'rehost_referral_image']

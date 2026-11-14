@@ -1,20 +1,22 @@
-"""Eventos de conversión para la API de Conversiones de Meta.
+"""Libro mayor de eventos de conversión de Meta y un clic por ctwa_clid.
 
 Revision ID: c4e8b2a7d915
 Revises: a3d7e9b1c5f2
 
-Cuando un lead que llegó por un anuncio Click-to-WhatsApp agenda una cita, el
-CRM se lo informa a Meta (``LeadSubmitted`` con el ``ctwa_clid`` del clic)
-para que la campaña optimice hacia gente que agenda. Cada evento queda en
-``meta_conversion_events`` y lo manda un worker con reintentos.
+Ver docs/analisis/14-diseno-api-conversiones-meta-ctwa.md §4.2 y §5.
 
-El clic se guardaba solo dentro del ``referral`` del primer mensaje; desde
-ahora el webhook lo registra también en ``wsp_ad``, que existía para esto y
-nadie escribía. Se copian los clics de los últimos 7 días, la ventana en la
-que Meta todavía atribuye una conversión: los más viejos ya no sirven.
+1. ``meta_conversion_events``: la cola del worker y la deduplicación que Meta
+   no hace (``event_key`` único). Se borra con el lead y con su clic.
+2. ``uq_wsp_ad_ctwaclid``: un clic se guarda una sola vez, aunque lo inserten
+   n8n (``SUB - save CTWA``) y la captura nativa del webhook. Antes se borran
+   los duplicados exactos conservando la fila más antigua; si quedaran
+   duplicados con datos distintos el índice no se puede crear y la migración
+   falla, a propósito: se resuelven a mano antes de desplegar.
 
-Plano tenant: corre en cada schema, también en `public`, donde producción no
-tiene `leads`. Solo crea la tabla donde el lead existe.
+No copia histórico: Meta rechaza eventos de más de 7 días.
+
+Plano tenant: corre en cada schema, también en `public`, donde producción
+puede no tener `leads` ni `wsp_ad`.
 """
 
 from typing import Sequence, Union
@@ -29,6 +31,15 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 TABLE = "meta_conversion_events"
+CLICKS = "wsp_ad"
+
+# Todas las columnas de datos de wsp_ad: dos filas iguales en todas son el
+# mismo clic guardado dos veces.
+_CLICK_COLUMNS = (
+    "lead_id", "telefono", "ctwaclid", "id_transaccion", "source_id", "nombre", "apellido",
+    "email", "ciudad", "provincia", "pais", "moneda", "valor_venta", "item_id", "item_nombre",
+    "mensaje", "cta", "source_url", "thumbnail_url", "estado_transaccion", "plataforma",
+)
 
 
 def _table_exists(bind, table: str) -> bool:
@@ -41,76 +52,63 @@ def _table_exists(bind, table: str) -> bool:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    if not _table_exists(bind, "leads") or _table_exists(bind, TABLE):
+    if not _table_exists(bind, "leads") or not _table_exists(bind, CLICKS):
+        return
+
+    same = " AND ".join(f"newer.{column} IS NOT DISTINCT FROM older.{column}" for column in _CLICK_COLUMNS)
+    bind.execute(sa.text(f"""
+        DELETE FROM {CLICKS} newer
+        USING {CLICKS} older
+        WHERE newer.ctwaclid IS NOT NULL
+          AND {same}
+          AND (older.created_at, older.id) < (newer.created_at, newer.id)
+    """))
+    op.create_index(
+        "uq_wsp_ad_ctwaclid", CLICKS, ["ctwaclid"], unique=True,
+        postgresql_where=sa.text("ctwaclid IS NOT NULL"),
+    )
+
+    if _table_exists(bind, TABLE):
         return
     op.create_table(
         TABLE,
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column(
             "lead_id", postgresql.UUID(as_uuid=False),
-            sa.ForeignKey("leads.id", ondelete="SET NULL"), nullable=True,
+            sa.ForeignKey("leads.id", ondelete="CASCADE"), nullable=False,
         ),
-        sa.Column("appointment_id", sa.BigInteger(), nullable=True),
+        sa.Column(
+            "wsp_ad_id", sa.BigInteger(),
+            sa.ForeignKey(f"{CLICKS}.id", ondelete="CASCADE"), nullable=False,
+        ),
+        sa.Column("event_key", sa.Text(), nullable=False),
         sa.Column("event_name", sa.Text(), nullable=False),
-        sa.Column("ctwa_clid", sa.Text(), nullable=False),
-        sa.Column("dataset_id", sa.Text(), nullable=False),
-        sa.Column("waba_id", sa.Text(), nullable=False),
         sa.Column("event_time", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("value", sa.Numeric(12, 2), nullable=True),
-        sa.Column("currency", sa.Text(), nullable=True),
+        sa.Column("custom_data", postgresql.JSONB(), nullable=True),
         sa.Column("status", sa.Text(), server_default="pending", nullable=False),
+        sa.Column("skip_reason", sa.Text(), nullable=True),
         sa.Column("attempts", sa.Integer(), server_default="0", nullable=False),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("last_error", sa.Text(), nullable=True),
-        sa.Column("fbtrace_id", sa.Text(), nullable=True),
+        sa.Column("meta_trace_id", sa.Text(), nullable=True),
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint(
-            "status IN ('pending', 'sent', 'failed')", name="ck_meta_conversion_events_status"
+            "status IN ('pending', 'sent', 'failed', 'skipped')",
+            name="ck_meta_conversion_events_status",
         ),
     )
-    op.create_index(
-        "uq_meta_conversion_events_click", TABLE, ["ctwa_clid", "event_name"], unique=True,
-    )
-    op.create_index(
-        "idx_meta_conversion_events_pending", TABLE, ["next_attempt_at"],
-        postgresql_where=sa.text("status = 'pending'"),
-    )
-    op.create_index(
-        "idx_meta_conversion_events_created", TABLE, [sa.text("created_at DESC")],
-    )
-
-    if _table_exists(bind, "wsp_ad") and _table_exists(bind, "wsp_messages"):
-        # Un clic por ctwa_clid, el primer mensaje que lo trajo.
-        bind.execute(sa.text("""
-            INSERT INTO wsp_ad (
-                lead_id, telefono, ctwaclid, mensaje, source_url,
-                plataforma, procesado, fecha_interaccion
-            )
-            SELECT DISTINCT ON (m.provider_payload->'referral'->>'ctwa_clid')
-                l.id,
-                COALESCE(m.provider_payload->>'from', l.telefono, ''),
-                m.provider_payload->'referral'->>'ctwa_clid',
-                m.provider_payload->'referral'->>'body',
-                m.provider_payload->'referral'->>'source_url',
-                'whatsapp_ctwa',
-                false,
-                m.sent_at
-            FROM wsp_messages m
-            JOIN leads l ON l.id::text = m.chat_id::text
-            WHERE m.sender = 'cliente'
-              AND m.sent_at >= now() - interval '7 days'
-              AND COALESCE(m.provider_payload->'referral'->>'ctwa_clid', '') <> ''
-              AND NOT EXISTS (
-                  SELECT 1 FROM wsp_ad a
-                  WHERE a.ctwaclid = m.provider_payload->'referral'->>'ctwa_clid'
-              )
-            ORDER BY m.provider_payload->'referral'->>'ctwa_clid', m.sent_at
-        """))
+    op.create_index("uq_meta_conversion_events_key", TABLE, ["event_key"], unique=True)
+    op.create_index("idx_meta_conversion_events_claim", TABLE, ["status", "next_attempt_at"])
+    op.create_index("idx_meta_conversion_events_lead", TABLE, ["lead_id"])
+    op.create_index("idx_meta_conversion_events_wsp_ad", TABLE, ["wsp_ad_id"])
+    op.create_index("idx_meta_conversion_events_created", TABLE, [sa.text("created_at DESC")])
 
 
 def downgrade() -> None:
-    # Los clics copiados a wsp_ad se quedan: son datos válidos del negocio.
-    if not _table_exists(op.get_bind(), TABLE):
-        return
-    op.drop_table(TABLE)
+    # Los duplicados borrados no vuelven: eran copias exactas.
+    bind = op.get_bind()
+    if _table_exists(bind, TABLE):
+        op.drop_table(TABLE)
+    if _table_exists(bind, CLICKS):
+        op.drop_index("uq_wsp_ad_ctwaclid", table_name=CLICKS, if_exists=True)

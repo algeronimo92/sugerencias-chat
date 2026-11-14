@@ -64,3 +64,20 @@ outbound_payload_mismatch = Counter(
     "meta_outbound_payload_mismatch_total",
     "Envíos cuyo cuerpo final difiere del registrado en el outbox más allá de to y los ids de medios",
 )
+
+# API de Conversiones (eventos de anuncios Click-to-WhatsApp hacia Meta).
+meta_conversions_sent = Counter(
+    "meta_conversions_sent_total",
+    "Eventos de conversión que Meta confirmó recibir",
+    ["event_name"],
+)
+meta_conversions_failed = Counter(
+    "meta_conversions_failed_total",
+    "Eventos de conversión que Meta rechazó de forma definitiva, por código de error",
+    ["code"],
+)
+meta_conversions_skipped = Counter(
+    "meta_conversions_skipped_total",
+    "Eventos de conversión que no se mandan, por motivo",
+    ["reason"],
+)

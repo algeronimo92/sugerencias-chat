@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionsStatus, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -57,8 +57,8 @@ export async function fetchMetaConversions(): Promise<MetaConversionsStatus> {
   return data
 }
 
-export async function saveMetaConversions(enabled: boolean): Promise<MetaConversionsStatus> {
-  const { data } = await client.put<ApiResponse<'/api/whatsapp/conversions', 'put'>>('/api/whatsapp/conversions', { enabled })
+export async function saveMetaConversions(payload: MetaConversionsUpdate): Promise<MetaConversionsStatus> {
+  const { data } = await client.put<ApiResponse<'/api/whatsapp/conversions', 'put'>>('/api/whatsapp/conversions', payload)
   return data
 }
 

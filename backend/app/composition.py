@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import importlib
 
+import httpx
+
+from app.integrations.meta import client as meta_client
 from app.integrations.whatsapp.channels import current_channel
 from app.modules.ai.application.ports import AssistantPorts, provide_ai_provider, provide_assistant_ports
 from app.modules.ai.infrastructure.assistant_adapters import PlatformAiAccess, SqlAiJobs, SqlAssistantContext
@@ -43,6 +46,7 @@ from app.modules.conversations.infrastructure.sql_messages import SqlMessageStor
 from app.modules.conversations.infrastructure.sql_outbox import SqlOutboxStore
 from app.modules.conversations.infrastructure.sql_scheduled import SqlScheduledStore
 from app.modules.leads.application.ports import provide_lead_repository
+from app.modules.leads.attribution.ports import ConversionSendError, provide_conversion_sender
 from app.modules.leads.infrastructure.repository import SqlLeadRepository
 from app.modules.tasks.task_reminder import provide_reminder_delivery
 from app.realtime.ws_manager import manager
@@ -65,8 +69,39 @@ SUBSCRIBER_MODULES: tuple[str, ...] = (
 _configured = False
 
 
+class MetaConversionSender:
+    """La API de Conversiones de Meta detrás del puerto de ``leads``: traduce
+    los rechazos de la Graph API a lo que el worker necesita para decidir
+    (reintentar, descartar o avisar por el token)."""
+
+    async def is_configured(self) -> bool:
+        return await meta_client.is_configured()
+
+    async def waba_id(self) -> str:
+        return await self._call(meta_client.configured_waba_id)
+
+    async def ensure_dataset(self) -> str:
+        return await self._call(meta_client.ensure_dataset)
+
+    async def send(self, dataset_id: str, events: list[dict], test_event_code: str | None) -> dict:
+        return await self._call(meta_client.send_conversion_events, dataset_id, events, test_event_code)
+
+    @staticmethod
+    async def _call(operation, *args):
+        try:
+            return await operation(*args)
+        except meta_client.MetaApiError as exc:
+            raise ConversionSendError(
+                str(exc), status_code=exc.status_code,
+                code=exc.error.get("code"), subcode=exc.error.get("error_subcode"),
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ConversionSendError(f"Meta no respondió: {exc}") from exc
+
+
 def register_adapters() -> None:
     provide_lead_repository(SqlLeadRepository())
+    provide_conversion_sender(MetaConversionSender())
     provide_conversation_ports(ConversationPorts(
         outbox=SqlOutboxStore(),
         inbox=SqlInboxState(),

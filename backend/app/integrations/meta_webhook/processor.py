@@ -21,8 +21,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.integrations.meta import client as meta_service
-from app.modules.leads.ports.ad_conversions import record_ad_click
-from app.modules.leads.ports.ad_referral_service import (rehost_referral_image)
+from app.modules.leads.ports.ad_referral_service import record_ad_click, rehost_referral_image
 from app.modules.appointments.ports.notice_delivery import notice_account_template_changed, record_notice_delivery
 from app.modules.conversations.ports.inbound import (
     attach_media,
@@ -126,12 +125,13 @@ async def _rehost_referral(stored: dict, message: dict) -> None:
 
 
 async def _record_ad_click(message: dict, chat_id: str) -> None:
-    """El ``ctwa_clid`` del anuncio, para informar después a Meta si el lead
-    agendó. Es un extra: si falla, el mensaje ya quedó guardado."""
+    """El ``ctwa_clid`` del anuncio: la atribución del lead y, si el negocio
+    lo activó, su ``LeadSubmitted`` para Meta. Es un extra: si falla, el
+    mensaje ya quedó guardado."""
     phone = message.get("from") if isinstance(message.get("from"), str) else None
     try:
         await record_ad_click(
-            chat_id, message.get("referral"), phone=phone, at=_timestamp(message.get("timestamp")),
+            chat_id, message.get("referral"), phone=phone, occurred_at=_timestamp(message.get("timestamp")),
         )
     except Exception:
         logger.exception("No se pudo registrar el clic de anuncio del mensaje %s", message.get("id"))

@@ -1,7 +1,20 @@
-"""Contrato explícito para otros módulos: clics de anuncios y su envío a
-la API de Conversiones de Meta."""
+"""Contrato explícito para otros módulos: el estado de la API de
+Conversiones de Meta y las claves de su configuración."""
 
-from app.modules.leads.ad_conversions import record_ad_click, send_pending_conversions
-from app.modules.leads.ad_conversions_queries import conversions_summary
+from app.modules.leads.attribution.commands import (
+    ACCEPTED_AT_KEY,
+    ACCEPTED_BY_KEY,
+    DATASET_KEY,
+    ENABLED_KEY,
+    TEST_CODE_KEY,
+)
+from app.modules.leads.attribution.queries import conversions_summary
 
-__all__ = ["conversions_summary", "record_ad_click", "send_pending_conversions"]
+__all__ = [
+    "ACCEPTED_AT_KEY",
+    "ACCEPTED_BY_KEY",
+    "DATASET_KEY",
+    "ENABLED_KEY",
+    "TEST_CODE_KEY",
+    "conversions_summary",
+]

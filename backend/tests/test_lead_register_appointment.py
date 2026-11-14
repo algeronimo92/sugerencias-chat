@@ -12,7 +12,7 @@ import pytest
 
 from app.modules.leads.application import commands
 from app.modules.leads.domain.errors import LeadNotFound
-from app.modules.leads.domain.events import LeadStageChanged, LeadUpdated
+from app.modules.leads.domain.events import LeadAppointmentScheduled, LeadStageChanged, LeadUpdated
 from app.modules.leads.domain.lead import Actor
 
 SELLER = Actor.user(7)
@@ -38,9 +38,23 @@ async def test_sets_the_next_appointment_and_leaves_it_in_the_activity(in_memory
     assert updated.metadata == {"source": "appointment", "appointment_id": 41}
     assert scheduled.event_type == "appointment_scheduled"
     assert scheduled.new_value == {"fecha": "2026-11-12", "hora": "10:00", "servicio": "Limpieza", "responsable": "Luis"}
-    [event] = in_memory_leads.published
+    event, scheduled_event = in_memory_leads.published
     assert isinstance(event, LeadUpdated)
     assert event.fields == ("proxima_cita",)
+    # La atribución lo informa a Meta como QualifiedLead (y Purchase con adelanto).
+    assert isinstance(scheduled_event, LeadAppointmentScheduled)
+    assert (scheduled_event.appointment_id, scheduled_event.adelanto) == (41, 0)
+
+
+async def test_the_deposit_travels_with_the_scheduled_appointment(in_memory_leads):
+    lead_id = in_memory_leads.repository.seed()
+
+    await commands.register_appointment(
+        lead_id, actor=SELLER, appointment={**APPOINTMENT, "adelanto": "80.50"}, starts_at=STARTS_AT,
+    )
+
+    [scheduled] = [e for e in in_memory_leads.published if isinstance(e, LeadAppointmentScheduled)]
+    assert scheduled.adelanto == 80.5
 
 
 async def test_carries_the_corrections_the_seller_asked_for(in_memory_leads):

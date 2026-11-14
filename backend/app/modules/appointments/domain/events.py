@@ -18,10 +18,6 @@ class AppointmentCreated(DomainEvent):
     seller_name: str
     title: str
     text: str
-    # El lead de la cita, si se pudo vincular; con él ``leads`` informa a
-    # Meta la conversión del anuncio por el que llegó.
-    lead_id: str | None = None
-    adelanto: float = 0
 
 
 @dataclass(frozen=True, kw_only=True)

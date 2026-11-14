@@ -103,19 +103,19 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
         boolean=True,
     ),
-    # API de Conversiones: avisar a Meta qué leads de anuncios agendaron cita.
-    # Se activa desde su tarjeta (platform/whatsapp_api.py), que además busca
-    # o crea el dataset de la WABA: por eso no se listan como campos sueltos.
-    SettingDef(
-        "meta_conversions_enabled",
-        "Enviar las citas de leads de anuncios a la API de Conversiones",
-        "meta",
-        "Meta Cloud API (WhatsApp)",
-        secret=False,
-        boolean=True,
-        hidden=True,
-    ),
-    SettingDef("meta_dataset_id", "Dataset de la API de Conversiones", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
+    # API de Conversiones de Meta (docs/analisis/14-diseno-api-conversiones-meta-ctwa.md §4.5).
+    # El interruptor no se lista entre las claves: la política de datos
+    # promete que se enciende solo cuando la clínica acepta las Condiciones de
+    # las herramientas comerciales de Meta, y eso lo registra su panel
+    # (platform/whatsapp_api.py) con quién y cuándo. Un switch genérico se lo
+    # saltaría.
+    SettingDef("meta_capi_enabled", "Enviar eventos de conversión a Meta", "meta", "Meta Cloud API (WhatsApp)", secret=False, boolean=True, hidden=True),
+    SettingDef("meta_capi_accepted_by", "Quién aceptó las Condiciones de las herramientas comerciales", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
+    SettingDef("meta_capi_accepted_at", "Cuándo se aceptaron las Condiciones de las herramientas comerciales", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
+    # Mientras tenga valor se manda en cada petición: los eventos aparecen en
+    # "Probar eventos" del Administrador de eventos y no cuentan en informes.
+    SettingDef("meta_capi_test_event_code", "Código de prueba de eventos (Administrador de eventos)", "meta", "Meta Cloud API (WhatsApp)", secret=False),
+    SettingDef("meta_capi_dataset_id", "Dataset de la API de Conversiones", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
     SettingDef("elevenlabs_api_key","API key", "elevenlabs", "ElevenLabs (texto a voz)", secret=True),
     SettingDef("elevenlabs_voice_id", "ID de voz", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),
     SettingDef("elevenlabs_model_id", "Modelo", "elevenlabs", "ElevenLabs (texto a voz)", secret=False),

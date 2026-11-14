@@ -47,14 +47,14 @@ export function useSyncWhatsappCosts(month: string) {
   })
 }
 
-/** Citas de leads de anuncios informadas a la API de Conversiones. El worker
- *  las manda en segundos: mientras queda alguna pendiente se reconsulta. */
+/** Eventos de leads de anuncios informados a la API de Conversiones. El
+ *  worker los manda en segundos: mientras queda alguno en cola se reconsulta. */
 export function useMetaConversions(enabled = true) {
   return useQuery({
     queryKey: whatsappKeys.conversions,
     queryFn: fetchMetaConversions,
     enabled,
-    refetchInterval: (query) => (query.state.data?.pending ? 10_000 : false),
+    refetchInterval: (query) => (query.state.data?.events.some((row) => row.pending > 0) ? 10_000 : false),
   })
 }
 

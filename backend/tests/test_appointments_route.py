@@ -54,9 +54,6 @@ async def test_local_appointment_is_saved_without_n8n(dependencies):
     [announced] = dependencies.of(AppointmentCreated)
     assert (announced.appointment_id, announced.created_by_user_id) == (41, SELLER.id)
     assert announced.title == "Nueva cita: Ana Pérez"
-    # Con el lead, ``leads`` informa a Meta la conversión del anuncio.
-    assert announced.lead_id == result["appointment"]["lead_id"]
-    assert announced.adelanto == float(result["appointment"]["adelanto"] or 0)
 
 
 async def test_calendar_error_does_not_lose_local_appointment(dependencies):
