@@ -28,6 +28,8 @@ export const whatsappKeys = {
   costsAll: ['whatsapp', 'costs'] as const,
   costs: (month: string) => ['whatsapp', 'costs', month] as const,
   conversions: ['whatsapp', 'conversions'] as const,
+  // Dentro de `conversions`: invalidar el panel también refresca el historial.
+  conversionEvents: (page: number) => ['whatsapp', 'conversions', 'events', page] as const,
 }
 
 /** Panel de plataforma: su propia sesión y sus propios datos. */

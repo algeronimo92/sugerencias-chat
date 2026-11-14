@@ -12,9 +12,10 @@ from app.modules.leads.ports.ad_conversions import (
     DATASET_KEY,
     ENABLED_KEY,
     TEST_CODE_KEY,
+    conversion_events,
     conversions_summary,
 )
-from app.modules.leads.schemas import MetaConversionsStatus, MetaConversionsUpdate
+from app.modules.leads.schemas import MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate
 from app.modules.platform.meta_costs import sync_meta_costs
 from app.modules.platform.meta_costs_queries import monthly_costs
 from app.modules.platform.schemas import WhatsappCostsSummary, WhatsappStatusItem
@@ -83,6 +84,15 @@ async def whatsapp_conversions():
     """La API de Conversiones de Meta: si está encendida, quién la autorizó
     y cómo van los eventos de los leads que llegaron por anuncios."""
     return await _conversions_status()
+
+
+@router.get("/conversions/events", response_model=MetaConversionPage)
+async def whatsapp_conversion_events(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+):
+    """El historial de eventos informados (o por informar) a Meta, paginado."""
+    return await conversion_events(page=page, page_size=page_size)
 
 
 @router.put("/conversions", response_model=MetaConversionsStatus)

@@ -14,6 +14,7 @@ from app.db.models.leads import LeadActivity, MetaConversionEvent, WhatsappAdCon
 from app.db.uow import session_scope, unit_of_work
 from app.modules.leads.application.commands import create_lead, delete_lead
 from app.modules.leads.attribution import commands, repository, worker
+from app.modules.leads.attribution.queries import conversion_events
 from app.modules.leads.attribution import ports as attribution_ports
 from app.modules.leads.domain.lead import Actor
 from app.modules.platform.settings_service import get_effective, update_settings
@@ -197,3 +198,21 @@ async def test_two_concurrent_passes_never_claim_the_same_event(tenant):
 
     assert len(claimed_first) == 1
     assert claimed_second == []
+
+
+async def test_the_event_history_comes_in_pages_newest_first(tenant):
+    with tenant_context(tenant):
+        await _enable()
+        for index in range(3):
+            lead_id = await _lead(f"5199900020{index}")
+            await commands.record_ad_click(
+                lead_id, _referral(f"clid-pagina-{index}"), phone=None, occurred_at=NOW + timedelta(minutes=index),
+            )
+
+        first = await conversion_events(page=1, page_size=2)
+        second = await conversion_events(page=2, page_size=2)
+
+    assert (first["total"], first["page"], first["page_size"]) == (3, 1, 2)
+    assert len(first["items"]) == 2 and len(second["items"]) == 1
+    ids = [item["id"] for item in first["items"] + second["items"]]
+    assert ids == sorted(ids, reverse=True)

@@ -1,6 +1,8 @@
 """Lo que muestra el panel de la API de Conversiones: cómo van los envíos de
 los últimos días por tipo de evento, el último error y qué proporción de los
-leads trae un clic de anuncio (solo una parte lo trae: calibra expectativas)."""
+leads trae un clic de anuncio (solo una parte lo trae: calibra expectativas).
+El historial de eventos va aparte y paginado: dentro de la tarjeta ocupaba
+más que todo lo demás."""
 
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from app.db.uow import session_scope
 from app.modules.leads.attribution.events import EVENT_NAMES
 
 SUMMARY_DAYS = 30
-RECENT_LIMIT = 10
+MAX_PAGE_SIZE = 50
 STATUSES = ("sent", "pending", "skipped", "failed")
 
 
@@ -31,17 +33,6 @@ async def conversions_summary(*, now: datetime | None = None) -> dict:
             .order_by(MetaConversionEvent.created_at.desc())
             .limit(1)
         )).mappings().first()
-        recent = (await session.execute(
-            select(
-                MetaConversionEvent.id, MetaConversionEvent.lead_id, Lead.nombre.label("lead_name"),
-                MetaConversionEvent.event_name, MetaConversionEvent.status, MetaConversionEvent.skip_reason,
-                MetaConversionEvent.custom_data, MetaConversionEvent.last_error,
-                MetaConversionEvent.created_at, MetaConversionEvent.sent_at,
-            )
-            .join(Lead, Lead.id == MetaConversionEvent.lead_id)
-            .order_by(MetaConversionEvent.created_at.desc(), MetaConversionEvent.id.desc())
-            .limit(RECENT_LIMIT)
-        )).mappings().all()
         leads_total = await session.scalar(select(func.count()).select_from(Lead).where(Lead.created_at >= since))
         leads_with_click = await session.scalar(
             select(func.count(distinct(WhatsappAdConversion.lead_id)))
@@ -58,12 +49,40 @@ async def conversions_summary(*, now: datetime | None = None) -> dict:
         "last_error": dict(last_error) if last_error else None,
         "leads_total": int(leads_total or 0),
         "leads_with_click": int(leads_with_click or 0),
-        "recent": [
+    }
+
+
+async def conversion_events(*, page: int = 1, page_size: int = 20) -> dict:
+    """El historial de eventos, del más nuevo al más viejo, de a una página."""
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
+    async with session_scope() as session:
+        total = await session.scalar(
+            select(func.count()).select_from(MetaConversionEvent)
+            .join(Lead, Lead.id == MetaConversionEvent.lead_id)
+        )
+        rows = (await session.execute(
+            select(
+                MetaConversionEvent.id, MetaConversionEvent.lead_id, Lead.nombre.label("lead_name"),
+                MetaConversionEvent.event_name, MetaConversionEvent.status, MetaConversionEvent.skip_reason,
+                MetaConversionEvent.custom_data, MetaConversionEvent.last_error,
+                MetaConversionEvent.created_at, MetaConversionEvent.sent_at,
+            )
+            .join(Lead, Lead.id == MetaConversionEvent.lead_id)
+            .order_by(MetaConversionEvent.created_at.desc(), MetaConversionEvent.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).mappings().all()
+    return {
+        "items": [
             {
                 **{key: value for key, value in row.items() if key != "custom_data"},
                 "value": (row["custom_data"] or {}).get("value"),
                 "currency": (row["custom_data"] or {}).get("currency"),
             }
-            for row in recent
+            for row in rows
         ],
+        "total": int(total or 0),
+        "page": page,
+        "page_size": page_size,
     }
