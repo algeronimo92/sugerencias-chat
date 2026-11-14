@@ -894,11 +894,13 @@ export function TemplatesPage() {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    {/* p-2.5 en el celular: con p-1 eran blancos de 24 px. */}
                     <button
                       type="button"
                       title="Editar"
+                      aria-label={`Editar ${template.name}`}
                       onClick={() => openEditForm(template)}
-                      className="rounded-md p-1 hover:bg-wa-field dark:hover:bg-wa-active-dark"
+                      className="rounded-md p-2.5 hover:bg-wa-field sm:p-1 dark:hover:bg-wa-active-dark"
                     >
                       <Pencil className="h-4 w-4 text-wa-muted hover:text-wa-primary-strong" />
                     </button>
@@ -909,7 +911,7 @@ export function TemplatesPage() {
                       aria-label={isTogglingActive ? 'Actualizando estado de la plantilla' : template.is_active ? 'Desactivar plantilla' : 'Activar plantilla'}
                       title={isTogglingActive ? 'Actualizando…' : template.is_active ? 'Desactivar' : 'Activar'}
                       onClick={() => handleToggleActive(template.id, !template.is_active)}
-                      className="rounded-md p-1 hover:bg-wa-field disabled:cursor-wait disabled:opacity-50 dark:hover:bg-wa-active-dark"
+                      className="rounded-md p-2.5 hover:bg-wa-field disabled:cursor-wait disabled:opacity-50 sm:p-1 dark:hover:bg-wa-active-dark"
                     >
                       {isTogglingActive
                         ? <Loader2 className="h-4 w-4 animate-spin text-wa-muted" />
@@ -934,7 +936,7 @@ export function TemplatesPage() {
                         aria-busy={isDeleting}
                         aria-label={isDeleting ? 'Eliminando plantilla' : `Eliminar ${template.name}`}
                         title={isDeleting ? 'Eliminando…' : 'Eliminar'}
-                        className="rounded-md p-1 text-red-500 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                        className="rounded-md p-2.5 text-red-500 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50 sm:p-1 dark:text-red-400 dark:hover:bg-red-950/40"
                       >
                         {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </button>

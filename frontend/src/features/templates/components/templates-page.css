@@ -21,9 +21,11 @@
 .templates-eyebrow { display: flex; align-items: center; gap: .6rem; margin-bottom: .75rem; }
 .templates-eyebrow-icon { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .7rem; background: rgba(0, 168, 132, .12); }
 
+/* 140px y no 210: en el celular entraba una tarjeta por fila y los cuatro
+   números ocupaban toda la primera pantalla antes de la lista. */
 .templates-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
   gap: .75rem;
   margin-bottom: 1.25rem;
 }
@@ -94,6 +96,7 @@
 .dark .templates-empty { border-color: #35444a; background: rgba(23, 35, 41, .7); }
 
 @media (max-width: 720px) {
+  .templates-summary-card { min-height: 4.5rem; padding: .8rem .9rem; }
   .templates-hero { align-items: stretch; flex-direction: column; }
   .templates-hero-actions { justify-content: stretch; }
   .templates-hero-actions button { flex: 1 1 11rem; }

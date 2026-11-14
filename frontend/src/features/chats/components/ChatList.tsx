@@ -42,8 +42,9 @@ const LeadFormDialog = lazy(() =>
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
+// En el celular 36 px de alto: con py-1.5 medían 28 y se erraba el toque.
 const segmentClass = (active: boolean) =>
-  `flex-1 whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
+  `flex-1 whitespace-nowrap rounded-md px-2 py-2 text-xs font-semibold outline-none md:py-1.5 transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
     active
       ? "bg-white text-wa-primary-strong shadow-sm ring-1 ring-black/[0.03] dark:bg-wa-active-dark dark:text-wa-primary dark:ring-white/[0.04]"
       : "text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark"

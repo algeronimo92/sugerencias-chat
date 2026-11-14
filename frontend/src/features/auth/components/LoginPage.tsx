@@ -576,14 +576,16 @@ export function LoginPage() {
 
                       <div>
                         <label htmlFor="login-mfa" className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                          Código de verificación (si activaste 2FA)
+                          Código de verificación o de recuperación (si activaste 2FA)
                         </label>
+                        {/* El texto de ayuda largo se cortaba en el celular;
+                            lo del código de recuperación pasó a la etiqueta. */}
                         <Input
                           id="login-mfa"
                           {...register("mfa_code")}
                           autoComplete="one-time-code"
                           inputMode="text"
-                          placeholder="6 dígitos o código de recuperación"
+                          placeholder="Código de 6 dígitos"
                           className={authFieldClass}
                         />
                       </div>

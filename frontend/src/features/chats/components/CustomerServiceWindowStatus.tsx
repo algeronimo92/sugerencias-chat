@@ -50,7 +50,13 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const remaining = useRemainingSeconds(data?.expires_at)
   const freeEntryRemaining = useRemainingSeconds(data?.free_entry_point_expires_at)
   if (isLoading && !data) {
-    return <span className="text-[10px] text-wa-muted dark:text-wa-muted-dark">Comprobando plazo de respuesta…</span>
+    // Corto y en una línea en el celular, como los demás estados: el texto
+    // largo se partía en tres líneas y se montaba sobre el nombre del lead.
+    return (
+      <span className="whitespace-nowrap text-[10px] text-wa-muted dark:text-wa-muted-dark">
+        <Compact short="Comprobando…" full="Comprobando plazo de respuesta…" />
+      </span>
+    )
   }
   const isOpen = !!data?.is_open && remaining > 0
   // Sin mensajes del cliente nunca hubo ventana de 24 h: no es un vencimiento.

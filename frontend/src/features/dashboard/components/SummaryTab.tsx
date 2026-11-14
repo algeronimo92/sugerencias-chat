@@ -75,7 +75,9 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
   const sellerAmounts = separations.by_seller.slice(0, 8).map((item) => ({ name: item.name, value: Math.round(item.amount) }))
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      {/* Dos por fila desde el celular: de a una, los indicadores ocupaban
+          casi dos pantallas antes del primer gráfico. */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Citas registradas" value={summary.appointments_created} hint={period} icon={CalendarCheck} />
         <MetricCard label={who(subject, { me: 'Flujos que inicié', team: 'Flujos iniciados', seller: (name) => `Flujos que inició ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} sin terminar`} icon={Send} onClick={onOpenFlows} />
         <MetricCard

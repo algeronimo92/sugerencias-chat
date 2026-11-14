@@ -85,6 +85,10 @@ export function MainLayout() {
     openIssueReport: () => setIsIssueReportOpen(true),
   };
 
+  function signOut() {
+    logout(undefined, { onSettled: () => navigate("/") });
+  }
+
   function openSettings(tab: SettingsTab = "general") {
     setSettingsInitialTab(tab);
     setIsSettingsOpen(true);
@@ -153,7 +157,10 @@ export function MainLayout() {
       {/* Barra superior — nivel global, más profundo que los headers locales. */}
       {/* min-h-12 y no h-12: con pt-safe la barra crece lo que mida el notch
           para que su verde llegue hasta el borde de la pantalla. */}
-      <div className="flex min-h-14 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-border bg-white px-3 pt-safe shadow-[0_1px_0_rgba(17,27,33,0.03)] sm:px-5 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      {/* En el celular, dentro de una conversación, se oculta: el hilo tiene
+          su propia barra con la flecha para volver, y la global le quitaba
+          56 px al chat y al composer. */}
+      <div className={`${isMobile && chatId ? "hidden" : "flex"} min-h-14 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-border bg-white px-3 pt-safe shadow-[0_1px_0_rgba(17,27,33,0.03)] sm:px-5 dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
         <BrandLogo sizeClass="h-8 w-8" iconClass="h-4 w-4" />
         <span className="min-w-0 truncate text-sm font-bold tracking-[-0.02em] text-wa-text dark:text-white">
           {brand.name}
@@ -187,7 +194,9 @@ export function MainLayout() {
           enabled={isAdmin}
           className={headerIconButtonClass}
         />
-        {isAdmin && (
+        {/* En el celular, configuración, reportar, tema y cerrar sesión viven
+            en "Más" (MobileNavBar). */}
+        {isAdmin && !isMobile && (
           <Tooltip content="Configuración">
             <button
               type="button"
@@ -199,7 +208,7 @@ export function MainLayout() {
             </button>
           </Tooltip>
         )}
-        {!isAnalyst && (
+        {!isAnalyst && !isMobile && (
           <Tooltip content="Reportar un problema">
             <button
               type="button"
@@ -218,38 +227,40 @@ export function MainLayout() {
             onNewNotification={showInternalMention}
           />
         )}
-        <Tooltip
-          content={
-            theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"
-          }
-        >
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={
+        {!isMobile && (
+          <Tooltip
+            content={
               theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"
             }
-            className={headerIconButtonClass}
           >
-            {theme === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-          </button>
-        </Tooltip>
-        <Tooltip content="Cerrar sesión">
-          <button
-            type="button"
-            onClick={() =>
-              logout(undefined, { onSettled: () => navigate("/") })
-            }
-            aria-label="Cerrar sesión"
-            className={headerIconButtonClass}
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"
+              }
+              className={headerIconButtonClass}
+            >
+              {theme === "dark" ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
+            </button>
+          </Tooltip>
+        )}
+        {!isMobile && (
+          <Tooltip content="Cerrar sesión">
+            <button
+              type="button"
+              onClick={signOut}
+              aria-label="Cerrar sesión"
+              className={headerIconButtonClass}
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
       </div>
 
       {/* Primeros pasos del negocio: solo admins y, en móvil, fuera de un
@@ -351,6 +362,13 @@ export function MainLayout() {
         <MobileNavBar
           role={me?.role}
           unreadCount={unreadCount}
+          account={{
+            onOpenSettings: isAdmin ? () => openSettings("general") : undefined,
+            onOpenIssueReport: isAnalyst ? undefined : () => setIsIssueReportOpen(true),
+            theme,
+            onToggleTheme: toggleTheme,
+            onLogout: signOut,
+          }}
         />
       )}
     </div>

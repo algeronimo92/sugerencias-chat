@@ -17,7 +17,7 @@ test.describe('escribir en un chat', () => {
 
     // El cuadro quedó una vez debajo de la barra del sistema: existía, pero
     // fuera del área visible. Por eso se afirma la posición y no solo que esté.
-    const box = page.getByPlaceholder('Escribe un mensaje...')
+    const box = page.getByLabel('Escribe un mensaje', { exact: true })
     await expectFullyOnScreen(box)
     await expectNoPageOverflow(page)
 

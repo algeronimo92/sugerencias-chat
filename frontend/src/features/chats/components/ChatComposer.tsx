@@ -2,6 +2,7 @@ import { MessageSquareLock, Send, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useActivityHold } from '../../../shared/activity'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
+import { useLayout } from '../../../shared/hooks/useBreakpoint'
 import { VoiceRecorder } from '../../../shared/ui/VoiceRecorder'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { compressImage, uploadSizeError } from '../../../shared/utils/media'
@@ -98,6 +99,7 @@ export function ChatComposer({
   sendError,
 }: Props) {
   const [draft, setDraft] = useChatDraft(chat.chat_id)
+  const isMobile = useLayout() === 'mobile'
   const [slashIndex, setSlashIndex] = useState(0)
   const [slashDismissed, setSlashDismissed] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -531,7 +533,9 @@ export function ChatComposer({
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        {/* gap-1 en el celular: con gap-2 los cuatro botones dejaban al
+            cuadro de texto en ~170 px y "Escribe un mensaje..." se partía. */}
+        <div className="flex items-end gap-1 sm:gap-2">
           <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
 
           {!isRecordingAudio && (
@@ -605,7 +609,12 @@ export function ChatComposer({
                 }}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="Escribe un mensaje..."
+                // Corto en el celular, donde el campo va a 16 px (index.css,
+                // para que iOS no haga zoom) y el texto largo no entraba.
+                placeholder={isMobile ? 'Mensaje' : 'Escribe un mensaje...'}
+                // Nombre fijo para lectores de pantalla y pruebas: el texto
+                // de ayuda cambia según el ancho y no es una etiqueta.
+                aria-label="Escribe un mensaje"
                 rows={1}
                 className="w-full max-h-32 resize-none overflow-y-hidden text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
               />
