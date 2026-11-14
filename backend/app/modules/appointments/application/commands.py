@@ -23,6 +23,7 @@ from app.modules.appointments.domain.errors import (
     AppointmentNotFound,
     CalendarNotConfigured,
     CalendarSyncFailed,
+    DismissedAppointmentNotSynced,
     TestAppointmentNotSynced,
 )
 from app.modules.appointments.domain.events import AppointmentCreated
@@ -170,6 +171,8 @@ async def sync_calendar(appointment_id: int) -> dict:
         raise AppointmentNotFound()
     if appointment["test_mode"]:
         raise TestAppointmentNotSynced()
+    if appointment.get("dismissed_at"):
+        raise DismissedAppointmentNotSynced()
     if appointment["calendar_sync_status"] == "synced" and appointment["calendar_event_id"]:
         return appointment
 
@@ -187,3 +190,20 @@ async def sync_calendar(appointment_id: int) -> dict:
     if result["status"] == "error":
         raise CalendarSyncFailed(result["error"])
     return updated
+
+
+async def dismiss(appointment_id: int, *, user_id: int, reason: str | None) -> dict:
+    """La cita deja de contar como cita y como ingreso, sin borrarse: los
+    avisos que ya salieron y el evento del calendario quedan como estaban."""
+    reason = (reason or "").strip() or None
+    appointment = await appointment_ports().repository.set_dismissed(appointment_id, user_id=user_id, reason=reason)
+    if appointment is None:
+        raise AppointmentNotFound()
+    return appointment
+
+
+async def restore(appointment_id: int) -> dict:
+    appointment = await appointment_ports().repository.set_dismissed(appointment_id, user_id=None, reason=None)
+    if appointment is None:
+        raise AppointmentNotFound()
+    return appointment

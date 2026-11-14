@@ -48,6 +48,13 @@ class Appointment(Base):
     calendar_sync_status: Mapped[str] = mapped_column(Text, default="not_configured", server_default="not_configured")
     calendar_sync_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Desestimada: la cita existió (se mandaron los avisos, quizá un evento a
+    # Meta) pero no cuenta como cita ni como ingreso. Pensado para las pruebas
+    # hechas en modo real, que el modo prueba no cubre porque no corre el
+    # flujo completo. Se puede deshacer: por eso no se borra la fila.
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismissed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    dismissed_reason: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(

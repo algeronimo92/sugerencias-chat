@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { copyNoticeTemplates, fetchAppointments, createAppointment, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
+import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
 import type { NoticeAudience, NoticeUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
@@ -42,6 +42,20 @@ export function useCreateAppointment() {
 export function useSyncAppointmentCalendar() {
   return useMutation({
     mutationFn: syncAppointmentCalendar,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+  })
+}
+
+export function useDismissAppointment() {
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) => dismissAppointment(id, reason),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+  })
+}
+
+export function useRestoreAppointment() {
+  return useMutation({
+    mutationFn: restoreAppointment,
     onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
   })
 }

@@ -50,12 +50,26 @@ class SqlAppointmentRepository:
 
     async def latest_real(self) -> dict | None:
         stmt = (
-            _query().where(Appointment.test_mode.is_(False))
+            _query().where(Appointment.test_mode.is_(False), Appointment.dismissed_at.is_(None))
             .order_by(Appointment.created_at.desc(), Appointment.id.desc()).limit(1)
         )
         async with session_scope() as session:
             row = (await session.execute(stmt)).mappings().first()
         return _serialize(row) if row is not None else None
+
+    async def set_dismissed(self, appointment_id: int, *, user_id: int | None, reason: str | None) -> dict | None:
+        """Marca la cita como desestimada, o la restaura con ``user_id=None``."""
+        values = (
+            {"dismissed_at": datetime.now(timezone.utc), "dismissed_by_user_id": user_id, "dismissed_reason": reason}
+            if user_id is not None
+            else {"dismissed_at": None, "dismissed_by_user_id": None, "dismissed_reason": None}
+        )
+        async with session_scope() as session:
+            result = await session.execute(update(Appointment).where(Appointment.id == appointment_id).values(**values))
+            if not result.rowcount:
+                return None
+            row = (await session.execute(_query().where(Appointment.id == appointment_id))).mappings().one()
+        return _serialize(row)
 
     async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
         changes = {key: value for key, value in values.items() if key in _INTEGRATION_FIELDS and value is not None}

@@ -36,8 +36,19 @@ class FakeAppointments:
         return dict(row) if row else None
 
     async def latest_real(self) -> dict | None:
-        real = [row for row in self.rows.values() if not row.get("test_mode")]
+        real = [row for row in self.rows.values() if not row.get("test_mode") and not row.get("dismissed_at")]
         return dict(real[-1]) if real else None
+
+    async def set_dismissed(self, appointment_id: int, *, user_id: int | None, reason: str | None) -> dict | None:
+        row = self.rows.get(appointment_id)
+        if row is None:
+            return None
+        row.update(
+            {"dismissed_at": "2026-11-14T15:00:00Z", "dismissed_by_user_id": user_id, "dismissed_reason": reason}
+            if user_id is not None
+            else {"dismissed_at": None, "dismissed_by_user_id": None, "dismissed_reason": None}
+        )
+        return dict(row)
 
     async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
         row = self.rows[appointment_id]

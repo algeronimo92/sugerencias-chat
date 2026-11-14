@@ -41,9 +41,13 @@ UPCOMING_LIMIT = 15
 
 Owner = aliased(User)
 
+# Una cita desestimada (una prueba hecha en modo real, por ejemplo) no es una
+# cita ni una venta: no cuenta en ninguna cifra del panel.
+COUNTS = Appointment.dismissed_at.is_(None)
+
 
 def _scoped(stmt, scope: DashboardScope):
-    return stmt.where(scope.mine(Appointment.created_by_user_id))
+    return stmt.where(scope.mine(Appointment.created_by_user_id), COUNTS)
 
 
 async def _upcoming(scope: DashboardScope) -> list[dict]:
@@ -157,6 +161,7 @@ def _booked(scope: DashboardScope, start, end=None):
         Appointment.created_at >= start,
         Appointment.status.in_(BOOKED_STATUSES),
         Appointment.test_mode.is_(False),
+        COUNTS,
         scope.mine(Appointment.created_by_user_id),
     ]
     if end is not None:
@@ -279,6 +284,7 @@ def _separation_ranking_stmt(scope: DashboardScope, name, *joins):
             Appointment.created_at >= scope.start,
             Appointment.status.in_(BOOKED_STATUSES),
             Appointment.test_mode.is_(False),
+            COUNTS,
         )
         .group_by(name)
         .order_by(func.sum(DEPOSIT).desc(), func.count(Appointment.id).desc())
@@ -395,7 +401,7 @@ async def collect(scope: DashboardScope) -> dict:
     by_user_stmt = (
         select(creator.label("name"), func.count(Appointment.id).label("value"))
         .outerjoin(User, User.id == Appointment.created_by_user_id)
-        .where(Appointment.created_at >= scope.start)
+        .where(Appointment.created_at >= scope.start, COUNTS)
         .group_by(creator)
         .order_by(func.count(Appointment.id).desc())
         .limit(12)
@@ -407,7 +413,7 @@ async def collect(scope: DashboardScope) -> dict:
         select(owner.label("name"), func.count(Appointment.id).label("value"))
         .outerjoin(Lead, Lead.id == Appointment.lead_id)
         .outerjoin(Owner, Owner.id == Lead.vendedor_id)
-        .where(Appointment.created_at >= scope.start)
+        .where(Appointment.created_at >= scope.start, COUNTS)
         .group_by(owner)
         .order_by(func.count(Appointment.id).desc())
         .limit(12)
@@ -486,6 +492,7 @@ def _appointment_export_stmt(condition):
             DEPOSIT.label("amount"),
             Appointment.comprobante_filename.label("receipt"),
             Appointment.status.label("status"),
+            Appointment.dismissed_at.label("dismissed_at"),
             func.coalesce(User.name, "Sin asignar").label("registered_by"),
             owner.label("owner"),
             Lead.origen.label("origin"),
@@ -498,12 +505,15 @@ def _appointment_export_stmt(condition):
     )
 
 
+DISMISSED_LABEL = "Desestimada"
+
+
 def _appointment_export_rows(rows) -> list[dict]:
     return [
         {
             **dict(row),
             "amount": _money(row["amount"]),
-            "status": STATUS_LABELS.get(row["status"], str(row["status"])),
+            "status": DISMISSED_LABEL if row["dismissed_at"] else STATUS_LABELS.get(row["status"], str(row["status"])),
             "time": str(row["time"]) if row["time"] is not None else None,
         }
         for row in rows
@@ -516,8 +526,9 @@ async def separation_export_rows(scope: DashboardScope) -> list[dict]:
 
 
 async def appointment_export_rows() -> list[dict]:
-    """Todas las citas reales para el respaldo, también las duplicadas o que
-    fallaron: es una copia de los datos, no una métrica."""
+    """Todas las citas reales para el respaldo, también las duplicadas, las que
+    fallaron y las desestimadas (marcadas como tales): es una copia de los
+    datos, no una métrica."""
     return _appointment_export_rows(
         await execute_mapping(_appointment_export_stmt(Appointment.test_mode.is_(False)))
     )

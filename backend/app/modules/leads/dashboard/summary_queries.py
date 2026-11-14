@@ -98,6 +98,7 @@ async def collect(scope: DashboardScope) -> dict:
             Appointment.created_at >= scope.start,
             Appointment.status == "created",
             Appointment.test_mode.is_(False),
+            Appointment.dismissed_at.is_(None),
             scope.mine(Appointment.created_by_user_id),
         )
         .scalar_subquery()

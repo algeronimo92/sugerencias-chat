@@ -36,6 +36,22 @@ export async function syncAppointmentCalendar(appointmentId: number): Promise<Ap
     ).data
 }
 
+export async function dismissAppointment(appointmentId: number, reason: string): Promise<AppointmentListItem> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/{appointment_id}/dismiss', 'post'>>(
+      `/api/appointments/${appointmentId}/dismiss`, { reason: reason.trim() || null },
+    )
+  ).data
+}
+
+export async function restoreAppointment(appointmentId: number): Promise<AppointmentListItem> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/{appointment_id}/restore', 'post'>>(
+      `/api/appointments/${appointmentId}/restore`,
+    )
+  ).data
+}
+
 export async function fetchCalendarEventTemplate(): Promise<CalendarEventTemplate> {
   return (await client.get<ApiResponse<'/api/appointments/calendar-template', 'get'>>('/api/appointments/calendar-template')).data
 }

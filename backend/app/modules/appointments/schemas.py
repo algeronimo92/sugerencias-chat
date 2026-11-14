@@ -46,6 +46,10 @@ class AppointmentCreate(BaseModel):
     lead_updates: AppointmentLeadUpdates | None = None
 
 
+class AppointmentDismiss(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)
+
+
 class AppointmentItem(BaseModel):
     id: int
     created_by_user_id: int
@@ -75,6 +79,10 @@ class AppointmentItem(BaseModel):
     calendar_sync_status: Literal["not_configured", "pending", "synced", "error", "skipped"] = "not_configured"
     calendar_sync_error: str | None = None
     created_at: str
+    # Desestimada: no cuenta en el panel ni en las exportaciones de ventas.
+    dismissed_at: str | None = None
+    dismissed_by_name: str | None = None
+    dismissed_reason: str | None = None
     notices: list["AppointmentNoticeItem"] = Field(default_factory=list)
 
 
