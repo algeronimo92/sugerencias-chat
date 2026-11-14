@@ -7,7 +7,8 @@
  * es que este archivo no se ha completado.
  *
  * El texto esta redactado para PERU (Ley N.o 29733 de Proteccion de Datos
- * Personales y su reglamento, D.S. 003-2013-JUS). Si el titular de la web esta
+ * Personales y su reglamento, D.S. 016-2024-JUS, que derogo al
+ * D.S. 003-2013-JUS y rige desde fines de marzo de 2025). Si el titular de la web esta
  * en otro pais, hay que revisar las referencias legales de ambas paginas:
  * Colombia (Ley 1581 de 2012), Mexico (LFPDPPP), Chile (Ley 19.628), etc.
  */
@@ -32,13 +33,13 @@ export const EMPRESA = {
 /** Ley y autoridad de control que se citan en el texto. */
 export const MARCO = {
   ley: "Ley N.º 29733, Ley de Protección de Datos Personales",
-  reglamento: "Decreto Supremo N.º 003-2013-JUS",
+  reglamento: "Decreto Supremo N.º 016-2024-JUS",
   autoridad:
     "Autoridad Nacional de Protección de Datos Personales del Ministerio de Justicia y Derechos Humanos",
 };
 
 /** Fecha de la ultima revision del texto legal. Actualizar al tocarlo. */
-export const ACTUALIZADO = "9 de noviembre de 2026";
+export const ACTUALIZADO = "13 de noviembre de 2026";
 
 /**
  * Terceros que tratan datos por cuenta nuestra. Van en DOS listas porque no
