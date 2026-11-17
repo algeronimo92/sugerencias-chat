@@ -3,6 +3,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hold, LEASE_FRESH_MS, resetActivity } from '../shared/activity'
 import { resetPwaUpdateStore, setPwaCurrentChatId, usePwaUpdatePending } from '../shared/pwaUpdate'
+import { resetReloadGuard } from './pwaReload'
 import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS, UPDATE_TOAST_MS } from './PwaUpdatePrompt'
 
 // Doble de `useRegisterSW`: el test decide cuándo "aparece" un worker nuevo
@@ -13,13 +14,16 @@ const sw = vi.hoisted(() => ({
     void registration
   },
   updateServiceWorker: vi.fn(),
+  // Lo que el plugin llama cuando el worker nuevo toma el control.
+  needReload: () => {},
 }))
 
 vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: (options: { onRegisteredSW?: (url: string, registration?: ServiceWorkerRegistration) => void }) => {
+  useRegisterSW: (options: { onNeedReload?: () => void, onRegisteredSW?: (url: string, registration?: ServiceWorkerRegistration) => void }) => {
     const [needRefresh, setNeedRefresh] = useState(false)
     sw.setNeedRefresh = setNeedRefresh
     sw.register = (url, registration) => options.onRegisteredSW?.(url, registration)
+    sw.needReload = () => options.onNeedReload?.()
     return {
       needRefresh: [needRefresh, setNeedRefresh],
       offlineReady: [false, () => {}],
@@ -61,7 +65,11 @@ vi.mock('sonner', () => ({ toast: toastMock }))
 const reload = vi.hoisted(() => ({ page: vi.fn() }))
 vi.mock('./pwaReload', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./pwaReload')>()
-  return { ...actual, reloadWhenActivated: (registration: ServiceWorkerRegistration | null) => actual.reloadWhenActivated(registration, reload.page) }
+  return {
+    ...actual,
+    reloadPageOnce: () => actual.reloadPageOnce(reload.page),
+    reloadWhenActivated: (registration: ServiceWorkerRegistration | null) => actual.reloadWhenActivated(registration, reload.page),
+  }
 })
 
 /** Worker en `waiting` que el test puede pasar a otro estado. */
@@ -136,6 +144,7 @@ describe('PwaUpdatePrompt', () => {
     toastMock.error.mockClear()
     sw.updateServiceWorker.mockClear()
     reload.page.mockClear()
+    resetReloadGuard()
     vi.spyOn(console, 'info').mockImplementation(() => {})
     setVisibility('visible')
   })
@@ -343,6 +352,17 @@ describe('PwaUpdatePrompt', () => {
       act(() => sw.setNeedRefresh(true))
       act(() => lastOfferOptions().action.onClick())
       expect(reload.page).not.toHaveBeenCalled()
+      act(() => registration.waiting!.activate())
+      expect(reload.page).toHaveBeenCalledTimes(1)
+    })
+
+    it('recarga una sola vez aunque el plugin y el respaldo avisen los dos', () => {
+      // Dos recargas seguidas dejaban sin la barra de botones del sistema a
+      // la PWA instalada en Android (2026-11-17).
+      const registration = mount().registration
+      act(() => sw.setNeedRefresh(true))
+      act(() => lastOfferOptions().action.onClick())
+      act(() => sw.needReload())
       act(() => registration.waiting!.activate())
       expect(reload.page).toHaveBeenCalledTimes(1)
     })

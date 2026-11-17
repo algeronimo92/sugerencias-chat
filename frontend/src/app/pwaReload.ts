@@ -3,6 +3,30 @@ export function reloadPage() {
   window.location.reload()
 }
 
+let reloading = false
+
+/**
+ * Recarga una sola vez por carga de página.
+ *
+ * Al aplicar una versión nueva hay dos avisos que piden recargar: el de
+ * vite-plugin-pwa (`controlling`, el worker nuevo toma el control) y el de
+ * `reloadWhenActivated` (el worker queda `activated`). Llegan con
+ * milisegundos de diferencia y antes se hacían dos `location.reload()`
+ * seguidos. En la PWA instalada en Android (visto en Xiaomi, 2026-11-17) la
+ * segunda recarga cae mientras Chrome rearma la ventana y la barra de
+ * botones del sistema desaparecía hasta recargar a mano.
+ */
+export function reloadPageOnce(reload: () => void = reloadPage) {
+  if (reloading) return
+  reloading = true
+  reload()
+}
+
+/** Solo para tests: en el navegador la recarga reinicia el módulo. */
+export function resetReloadGuard() {
+  reloading = false
+}
+
 /**
  * Recarga en cuanto el worker nuevo queda activo, o ya mismo si no queda
  * ninguno esperando.
@@ -18,13 +42,13 @@ export function reloadWhenActivated(registration: ServiceWorkerRegistration | nu
   const worker = registration?.waiting
   if (!worker) {
     // Otra pestaña ya lo activó: recargar alcanza para tomar la versión nueva.
-    reload()
+    reloadPageOnce(reload)
     return
   }
   const onStateChange = () => {
     if (worker.state !== 'activated') return
     worker.removeEventListener('statechange', onStateChange)
-    reload()
+    reloadPageOnce(reload)
   }
   worker.addEventListener('statechange', onStateChange)
 }
