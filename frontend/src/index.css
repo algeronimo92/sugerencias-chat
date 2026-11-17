@@ -253,11 +253,16 @@ html.dark {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  /* 100vh en móvil incluye la barra de URL retraíble: el composer del chat
-     quedaba tapado bajo ella. dvh sigue la altura visible real; el 100vh de
-     arriba es el fallback para navegadores viejos. */
-  height: 100vh;
-  height: 100dvh;
+  /* 100% y no unidades de viewport: html y body ya miden el alto visible
+     (el bloque inicial), y la página nunca se desplaza, así que la barra de
+     URL tampoco se esconde.
+     100vh incluía la barra de URL retraíble y tapaba el composer del chat.
+     100dvh, que lo reemplazó, falla en la PWA instalada en Android: tras una
+     recarga por código (la de "Actualizar") Chrome calcula dvh como si
+     hubiera una barra de URL escondida. Medido en un Xiaomi (2026-11-17):
+     innerHeight 816 y html 816, pero 100dvh = 872, y la barra inferior de la
+     app quedaba 56 px por debajo del borde hasta cerrar y abrir la app. */
+  height: 100%;
   overflow: hidden;
   background: #f0f2f5;
 }
