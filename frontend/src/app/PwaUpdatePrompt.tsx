@@ -13,7 +13,7 @@ import {
 import { useChatSocketConnected } from '../realtime/useRealtime'
 import { usePendingSends } from '../features/chats/public/usePendingSends'
 import { describeUpdateBlocker, updateBlocker } from './pwaUpdateGuard'
-import { reloadWhenActivated } from './pwaReload'
+import { reloadPageOnce, reloadWhenActivated } from './pwaReload'
 
 // Id fijo para que el aviso no se apile si el efecto vuelve a correr.
 const UPDATE_TOAST_ID = 'pwa-update'
@@ -92,6 +92,11 @@ export function PwaUpdatePrompt() {
     needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW({
+    // Sin esto el plugin hace su propio `location.reload()` al tomar el
+    // control el worker nuevo, además del de `reloadWhenActivated`: ver
+    // `reloadPageOnce`. También cubre la recarga que llega cuando otra
+    // pestaña aplicó la versión.
+    onNeedReload: () => reloadPageOnce(),
     onRegisteredSW: (_swUrl, swRegistration) => {
       // Registrar ya comprueba si hay versión nueva: la cuenta como la
       // última comprobación para no repetirla al primer evento.
@@ -127,9 +132,10 @@ export function PwaUpdatePrompt() {
     toast.dismiss(UPDATE_TOAST_ID)
     setApplying(true)
     rememberUpdateApplied()
-    // `true` recarga la página una vez que el worker nuevo toma el control,
-    // pero solo si la página ya estaba controlada al cargar; el respaldo
-    // recarga igual cuando el worker queda activo.
+    // El plugin recarga (vía `onNeedReload`) cuando el worker nuevo toma el
+    // control, pero solo si la página ya estaba controlada al cargar; el
+    // respaldo recarga cuando el worker queda activo. Entre los dos hay una
+    // sola recarga. En la 1.3.0 del plugin el argumento ya no cambia nada.
     reloadWhenActivated(registration)
     void updateServiceWorker(true)
     return true
