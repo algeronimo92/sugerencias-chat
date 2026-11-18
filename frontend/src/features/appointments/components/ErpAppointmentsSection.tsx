@@ -38,12 +38,13 @@ export function ErpAppointmentsSection() {
 }
 
 function ConnectionFields({ form }: { form: ErpAppointmentsForm }) {
-  const tokenPlaceholder = form.tokenConfigured ? 'Guardado · escribe para cambiarlo' : 'El mismo que se configuró en el ERP'
+  const tokenPlaceholder = form.tokenConfigured ? 'Guardado · escribe para cambiarlo' : 'Pega el que generaste en el ERP'
   return (
     <div className="mt-3 grid gap-3 sm:grid-cols-2">
       <div>
         <label htmlFor="erp-appointments-url" className={labelClass}>Dirección del ERP</label>
-        <Input id="erp-appointments-url" type="url" inputMode="url" value={form.draft.url} onChange={event => form.setUrl(event.target.value)} placeholder="https://mi-erp.com" />
+        <Input id="erp-appointments-url" type="url" inputMode="url" value={form.draft.url} onChange={event => form.setUrl(event.target.value)} placeholder="https://mi-erp.com" aria-describedby="erp-appointments-url-hint" />
+        <p id="erp-appointments-url-hint" className={`mt-1 ${mutedClass}`}>La muestra el ERP junto al token, al generarlo.</p>
       </div>
       <div>
         <label htmlFor="erp-appointments-token" className={labelClass}>Token de la integración</label>
@@ -53,7 +54,7 @@ function ConnectionFields({ form }: { form: ErpAppointmentsForm }) {
           aria-describedby="erp-appointments-token-hint"
         />
         <p id="erp-appointments-token-hint" className={`mt-1 ${mutedClass}`}>
-          Es el valor de CRM_INTEGRATION_TOKEN en el ERP. No se vuelve a mostrar.
+          Se genera en el ERP, en Configuración → Integración con el CRM. Acá no se vuelve a mostrar.
         </p>
       </div>
     </div>
