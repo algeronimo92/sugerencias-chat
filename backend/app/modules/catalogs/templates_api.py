@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
-from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, MetaTemplateRaw, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
+from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, MetaTemplateRaw, TemplateAttachmentOrder, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
 from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
 from app.modules.catalogs.queries import get_lead_service_by_name
 from app.modules.catalogs.template_service import (
@@ -17,6 +17,7 @@ from app.modules.catalogs.template_service import (
     record_template_use,
     replace_official_template_from_meta,
     remove_template_attachment,
+    reorder_template_attachments,
     set_template_favorite,
     update_template,
 )
@@ -376,6 +377,17 @@ async def post_library_attachment(
     if item is None:
         raise HTTPException(404, "Plantilla no encontrada")
     return item
+
+
+@router.put("/{template_id}/attachments/order", response_model=list[TemplateAttachmentItem])
+async def put_attachment_order(template_id: int, body: TemplateAttachmentOrder, _admin: User = Depends(require_admin)):
+    """El orden de los adjuntos: el texto de la plantilla va como pie del
+    primero que lo admite, así que elegir cuál va primero cambia el mensaje."""
+    with _template_errors():
+        items = await reorder_template_attachments(template_id, body.attachment_ids)
+    if items is None:
+        raise HTTPException(404, "Plantilla no encontrada")
+    return items
 
 
 @router.delete("/attachments/{attachment_id}")
