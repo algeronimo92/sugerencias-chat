@@ -33,6 +33,20 @@ def template(**overrides):
     return {**defaults, **overrides}
 
 
+def official_template(**overrides):
+    """Una plantilla de Meta aprobada, como la arma Plantillas: variables
+    posicionales y el valor de cada una configurado con variables del lead."""
+    return {
+        "template_type": "official", "content": "Hola {{1}}, ¿seguimos con {{2}}?",
+        "official_name": "seguimiento", "official_language": "es",
+        "official_status": "APPROVED", "official_parameter_values": ["{{ nombre }}", "{{servicio}}"],
+        "official_header_type": "none", "official_header_text": None,
+        "official_header_media_url": None, "official_header_media_filename": None,
+        "official_footer": None, "official_buttons": [],
+        **overrides,
+    }
+
+
 def attachment(**overrides):
     defaults = {
         "id": 1, "media_url": "/media/foto.jpg", "content_type": "image/jpeg",
@@ -394,15 +408,17 @@ class TestSendTemplate:
         assert len(items) == 1
         assert items[0]["message"]["type"] == "image"
 
-    @pytest.mark.parametrize("bad", [
-        {"is_active": False},
-        {"template_type": "official"},
-        {"interactive_type": "button"},
+    @pytest.mark.parametrize(("bad", "reason"), [
+        ({"is_active": False}, "desactivada"),
+        ({"interactive_type": "button"}, "botones o lista"),
+        (official_template(official_status="PAUSED"), "no está aprobada"),
+        (official_template(official_parameter_values=["{{nombre}}", "{{cita.fecha}}"]), "datos de la cita"),
+        (official_template(official_parameter_values=[]), "Falta configurar"),
     ])
-    async def test_rejects_templates_that_are_no_longer_automatable(self, deps, outbox, bad):
+    async def test_rejects_templates_that_are_no_longer_automatable(self, deps, outbox, bad, reason):
         action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
         invalid = deps_with_template(deps, template(**bad))
-        with pytest.raises(ValueError, match="plantilla interna válida"):
+        with pytest.raises(ValueError, match=reason):
             await execute_action(action, make_chat(), make_execution(), make_rule(), invalid)
         assert outbox.enqueued == []
 
@@ -411,6 +427,55 @@ class TestSendTemplate:
         huge = deps_with_template(deps, template(content="x" * 5000))
         with pytest.raises(ValueError, match="no es válido"):
             await execute_action(action, make_chat(), make_execution(), make_rule(), huge)
+
+
+class TestSendOfficialTemplate:
+    """Una plantilla de Meta aprobada sale aunque la ventana esté cerrada, con
+    el mismo armado que el envío manual desde el chat."""
+
+    @staticmethod
+    def closed(deps):
+        async def closed_window(chat_id):
+            return {"is_open": False, "seconds_remaining": 0}
+
+        return dataclasses.replace(
+            deps_with_template(deps, template(**official_template())), get_customer_service_window=closed_window,
+        )
+
+    async def test_sends_with_the_window_closed_and_lead_values(self, deps, outbox, recorder):
+        action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
+        result = await execute_action(
+            action, make_chat(servicio_interes="Limpieza facial"), make_execution(), make_rule(), self.closed(deps),
+        )
+
+        [(_chat_id, [item])] = outbox.enqueued
+        assert item["message"]["type"] == "template"
+        assert item["message"]["template"]["name"] == "seguimiento"
+        assert item["message"]["template"]["components"] == [{"type": "body", "parameters": [
+            {"type": "text", "text": "Ana"}, {"type": "text", "text": "Limpieza facial"},
+        ]}]
+        assert item["content"] == "Hola Ana, ¿seguimos con Limpieza facial?"
+        assert result["template_id"] == 5
+        assert recorder.of(AutomationMessagesQueued)
+
+    async def test_fails_when_a_variable_is_empty_for_the_lead(self, deps, outbox):
+        # Meta rechaza un parámetro vacío: mejor fallar con un motivo claro.
+        action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
+        with pytest.raises(ValueError, match="quedó vacía"):
+            await execute_action(
+                action, make_chat(servicio_interes=None), make_execution(), make_rule(), self.closed(deps),
+            )
+        assert outbox.enqueued == []
+
+    async def test_carries_the_step_dedupe_key(self, deps, outbox):
+        # Un reintento tras un crash no le manda (ni le cobra) dos veces.
+        action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 5}
+        await execute_action(
+            action, make_chat(servicio_interes="Limpieza facial"), make_execution(), make_rule(),
+            self.closed(deps), position=2,
+        )
+        [(_chat_id, [item])] = outbox.enqueued
+        assert item["dedupe_key"].startswith("automation:")
 
 
 class TestSendMessage:

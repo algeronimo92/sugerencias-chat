@@ -252,6 +252,14 @@ async def send_template(
     return sent
 
 
+async def official_template_items(template: dict, parameters: list[str]) -> list[dict]:
+    """Los ítems de outbox de una plantilla oficial con sus parámetros ya
+    resueltos, para quien encola por su cuenta (las automatizaciones, con sus
+    propias claves de deduplicación). Es el mismo armado que el envío manual
+    desde el chat."""
+    return await _official_items(template, "", "", parameters)
+
+
 async def official_template_message(
     template: dict, parameters: list[str], *, header_media_id: str | None = None,
 ) -> dict:

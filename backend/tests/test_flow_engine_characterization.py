@@ -200,7 +200,36 @@ def simulator(in_memory_automations, deps, monkeypatch):
         deps,
         fetch_chat=AsyncMock(return_value=make_chat(last_message="hola", last_message_sender="cliente")),
         get_customer_service_window=closed_window,
+        load_template=AsyncMock(return_value=INTERNAL_TEMPLATE),
     )
+
+
+INTERNAL_TEMPLATE = {
+    "id": 1, "content": "Hola {{nombre}}", "is_active": True,
+    "template_type": "internal", "interactive_type": "none", "attachments": [],
+}
+APPROVED_META_TEMPLATE = {
+    **INTERNAL_TEMPLATE, "template_type": "official", "content": "Hola {{1}}",
+    "official_status": "APPROVED", "official_parameter_values": ["{{nombre}}"],
+}
+
+
+@pytest.mark.parametrize(("stored", "status", "detail"), [
+    (APPROVED_META_TEMPLATE, "would_run", "Plantilla de Meta: se envía aunque la ventana de 24 horas esté cerrada"),
+    ({**APPROVED_META_TEMPLATE, "official_status": "PAUSED"}, "would_fail", "La plantilla de Meta no está aprobada"),
+    (None, "would_fail", "La plantilla ya no existe"),
+])
+async def test_simulator_sends_meta_templates_with_the_window_closed(simulator, monkeypatch, stored, status, detail):
+    action = {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 1}
+    monkeypatch.setattr(simulation, "validate_visual_flow", AsyncMock(
+        return_value={"conditions": {}, "flow_definition": _single_action_flow(action)},
+    ))
+
+    result = await simulation.simulate_visual_flow(
+        1, "lead-1", dataclasses.replace(simulator, load_template=AsyncMock(return_value=stored)),
+    )
+
+    assert (result["path"][1]["status"], result["path"][1]["detail"]) == (status, detail)
 
 
 async def test_simulator_walks_every_node_type(simulator):
