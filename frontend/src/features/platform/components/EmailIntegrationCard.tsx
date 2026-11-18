@@ -82,7 +82,7 @@ function EmailSettingsView({ status }: { status: EmailSettingsStatus }) {
       {canTest && (
         <div className={cardClass}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className={hintClass}>Te enviamos un correo de prueba a tu cuenta para comprobar que todo funciona.</p>
+            <p className={hintClass}>Comprueba que el envío funciona.</p>
             <Button variant="secondary" onClick={() => test.mutate()} disabled={test.isPending}>
               {test.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
               Enviar prueba
@@ -123,8 +123,7 @@ function StatusNote({ status }: { status: EmailSettingsStatus }) {
   if (status.platform_available) {
     return (
       <p className="rounded-lg border border-wa-border bg-wa-hover px-3 py-2 text-[11px] text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark">
-        Por ahora se envía desde el correo de la plataforma. Conecta el tuyo para que tu equipo reciba las invitaciones
-        desde tu negocio.
+        Por ahora las invitaciones salen del correo de la plataforma.
       </p>
     )
   }

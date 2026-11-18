@@ -26,7 +26,7 @@ function EnabledControls({ data, submit, isPending }: { data: MetaConversionsSta
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-wa-text dark:text-wa-text-dark">
-        Activo{data.dataset_id && <span className={muted}> · dataset {data.dataset_id}</span>}
+        Activo
         {data.accepted_by && data.accepted_at && (
           <span className={`block text-[11px] ${muted}`}>
             Condiciones aceptadas por {data.accepted_by} el {new Date(data.accepted_at).toLocaleString()}
@@ -46,7 +46,6 @@ function DisabledControls({ submit, isPending }: { submit: Submit; isPending: bo
   const [accepted, setAccepted] = useState(false)
   return (
     <div className="space-y-2 rounded-md bg-wa-field/60 p-2 dark:bg-wa-field-dark/60">
-      <p className="text-xs text-wa-text dark:text-wa-text-dark">Apagado: no se informa nada a Meta.</p>
       <label className="flex items-start gap-2 text-xs text-wa-text dark:text-wa-text-dark">
         <Checkbox checked={accepted} onCheckedChange={setAccepted} aria-label="Aceptar las condiciones" />
         <span>
@@ -73,7 +72,7 @@ function TestCodeField({ data, submit, isPending }: { data: MetaConversionsStatu
     <div className="flex flex-wrap items-end gap-2">
       <div className="min-w-0 flex-1">
         <label htmlFor="meta-capi-test-code" className={`text-[11px] ${muted}`}>
-          Código de prueba (Administrador de eventos → Probar eventos). Mientras tenga valor, los eventos no cuentan en los informes.
+          Código de prueba (los eventos no cuentan mientras esté puesto)
         </label>
         <Input id="meta-capi-test-code" value={value} onChange={(event) => setCode(event.target.value)} placeholder="TEST12345" className="text-xs" />
       </div>
@@ -115,8 +114,7 @@ function CountsTable({ data }: { data: MetaConversionsStatus }) {
         </tbody>
       </table>
       <p className={`text-[11px] ${muted}`}>
-        {data.leads_with_click} de {data.leads_total} leads del período llegaron con el identificador de un anuncio. Meta no
-        lo manda en todos los casos (por ejemplo, en anuncios de Estados).
+        {data.leads_with_click} de {data.leads_total} leads del período llegaron desde un anuncio identificado.
       </p>
       {data.last_error && (
         <p className="break-words text-[11px] text-red-600 dark:text-red-400">
@@ -175,9 +173,7 @@ export function MetaConversionsPanel() {
         Conversiones de anuncios (Meta)
       </h3>
       <p className={`text-[11px] ${muted}`}>
-        Cuando un cliente escribe desde un anuncio de clic a WhatsApp, agenda su primera cita o paga el adelanto, se le
-        informa a Meta solo con el identificador del clic y, en la compra, el monto y la moneda. Nunca viajan el teléfono,
-        el nombre ni el tratamiento. Así la campaña aprende qué anuncios traen citas y ventas.
+        Le avisa a Meta qué anuncios traen citas y ventas, sin enviar teléfono, nombre ni tratamiento.
       </p>
       {body}
     </section>

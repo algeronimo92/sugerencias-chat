@@ -48,8 +48,7 @@ export function GoogleCalendarPanel({ eventEditor }: { eventEditor?: ReactNode }
           Google Calendar
         </div>
         <p className={hintClass}>
-          Cada cita que se registre en el CRM se crea también como evento en el calendario que elijas. Es opcional:
-          las citas siempre quedan guardadas en la app.
+          Las citas del CRM se crean también como eventos en el calendario que elijas.
         </p>
         {status.oauth_available ? (
           <Button onClick={() => connect.mutate()} disabled={connect.isPending}>
@@ -104,7 +103,7 @@ function ConnectedCalendar({ status, onReconnect, reconnecting, eventEditor }: C
       <p className={hintClass}>
         {status.account_email
           ? <>Cuenta: <span className="font-medium text-wa-text dark:text-wa-text-dark">{status.account_email}</span></>
-          : 'Conectado con credenciales cargadas a mano. Reconecta para pasar a la conexión directa con Google.'}
+          : 'Reconecta con Google para mantener la conexión al día.'}
       </p>
 
       {needsReconnect ? (

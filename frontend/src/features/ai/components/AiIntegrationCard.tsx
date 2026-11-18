@@ -216,12 +216,11 @@ export function AiIntegrationCard() {
           />
         </AdvancedModelSettings>
 
-        <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-          {status.ready
-            ? 'Lo consume tu cuenta del proveedor.'
-            : 'Guarda al menos una clave que pase la prueba: mientras tanto el chat no ofrece sugerencias.'}
-          {' '}El análisis automático del lead sigue en el servicio de la plataforma.
-        </p>
+        {!status.ready && (
+          <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
+            Guarda una clave válida para activar las sugerencias del chat.
+          </p>
+        )}
       </div>
     </IntegrationCard>
   )

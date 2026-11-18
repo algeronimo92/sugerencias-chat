@@ -47,7 +47,7 @@ describe('AiIntegrationCard', () => {
     expect(screen.getByText('Sin configurar')).toBeInTheDocument()
     expect(screen.getAllByText('Sin clave')).toHaveLength(2)
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
-    expect(screen.getByText(/mientras tanto el chat no ofrece sugerencias/)).toBeInTheDocument()
+    expect(screen.getByText(/Guarda una clave válida para activar las sugerencias del chat/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Probar' })[0]).toBeDisabled()
   })
 
@@ -86,8 +86,7 @@ describe('AiIntegrationCard', () => {
     render(<AiIntegrationCard />)
 
     expect(screen.getByText('Conectado · tus claves')).toBeInTheDocument()
-    expect(screen.getByText(/Lo consume tu cuenta del proveedor/)).toBeInTheDocument()
-    expect(screen.getByText(/análisis automático del lead sigue en el servicio de la plataforma/)).toBeInTheDocument()
+    expect(screen.queryByText(/Guarda una clave válida/)).not.toBeInTheDocument()
   })
 
   it('los parámetros de los modelos quedan plegados en "Configuración avanzada"', async () => {

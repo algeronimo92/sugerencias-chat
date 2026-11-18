@@ -62,7 +62,7 @@ export function EmailConnectCard({ status }: { status: EmailSettingsStatus }) {
         Conectar tu correo
       </div>
       <p className={hintClass}>
-        Entra con tu cuenta y autoriza el envío. No hace falta contraseña ni datos del servidor.
+        Entra con tu cuenta y autoriza el envío.
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {available.map((provider) => (

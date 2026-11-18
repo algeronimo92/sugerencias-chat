@@ -44,7 +44,6 @@ describe('MetaConversionsPanel', () => {
     mocks.data = status()
     render(<MetaConversionsPanel />)
 
-    expect(screen.getByText('Apagado: no se informa nada a Meta.')).toBeInTheDocument()
     const activate = screen.getByRole('button', { name: 'Activar' })
     expect(activate).toBeDisabled()
 
@@ -62,7 +61,8 @@ describe('MetaConversionsPanel', () => {
     })
     render(<MetaConversionsPanel />)
 
-    expect(screen.getByText(/dataset 123456/)).toBeInTheDocument()
+    expect(screen.getByText('Activo')).toBeInTheDocument()
+    expect(screen.queryByText(/123456/)).not.toBeInTheDocument()
     expect(screen.getByText(/Condiciones aceptadas por Gerson/)).toBeInTheDocument()
     expect(screen.getByRole('row', { name: /Lead desde un anuncio 4 0 0 0/ })).toBeInTheDocument()
     expect(screen.getByText(/4 de 10 leads del período/)).toBeInTheDocument()

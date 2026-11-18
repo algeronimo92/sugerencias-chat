@@ -67,10 +67,7 @@ export function IntegrationsPage() {
       <main className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
           <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Integraciones</h1>
-          <p className="mt-1.5 max-w-prose text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            Conecta WhatsApp, tu calendario, la lista de precios, las sugerencias con IA, la voz de los audios y el correo de envío.
-          </p>
-          <p aria-live="polite" className="mt-1 text-sm text-wa-muted dark:text-wa-muted-dark">{summary}</p>
+          <p aria-live="polite" className="mt-1.5 text-sm text-wa-muted dark:text-wa-muted-dark">{summary}</p>
         </header>
 
         {statuses.loading ? (

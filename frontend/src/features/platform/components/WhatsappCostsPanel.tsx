@@ -104,7 +104,7 @@ export function WhatsappCostsPanel() {
         <p className="text-xs text-red-600 dark:text-red-400">No se pudieron cargar los costos.</p>
       ) : !hasData ? (
         <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-          Todavía no hay datos de Meta para este mes. Se copian solos cada 6 horas; con «Actualizar» los pides ahora.
+          Todavía no hay datos de este mes.
         </p>
       ) : (
         <>
@@ -147,9 +147,6 @@ export function WhatsappCostsPanel() {
                 style={{ width: `${freePercent}%` }}
               />
             </div>
-            <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-              Pasadas las {freeLimit.toLocaleString()} respuestas del mes, Meta cobra cada mensaje dentro de la ventana de 24 h.
-            </p>
           </div>
 
           <table className="w-full text-xs">
@@ -178,8 +175,8 @@ export function WhatsappCostsPanel() {
       )}
 
       <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-        Cifras aproximadas que informa Meta en la moneda de tu cuenta de WhatsApp; la factura de Meta es la referencia final.
-        {data?.last_synced_at && ` Última actualización: ${new Date(data.last_synced_at).toLocaleString()}.`}
+        Cifras aproximadas de Meta.
+        {data?.last_synced_at && ` Actualizado: ${new Date(data.last_synced_at).toLocaleString()}.`}
       </p>
     </section>
   )

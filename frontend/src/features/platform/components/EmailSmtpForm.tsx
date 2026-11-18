@@ -146,8 +146,7 @@ export function EmailSmtpForm({ status }: { status: EmailSettingsStatus }) {
       </div>
       <p className={`${hintClass} flex items-start gap-1.5`}>
         <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        Si tu cuenta tiene verificación en dos pasos, crea una contraseña de aplicación en la seguridad de tu cuenta; la
-        contraseña normal no funciona.
+        Con verificación en dos pasos, usa una contraseña de aplicación.
       </p>
 
       {save.isError && <p className={errorClass} role="alert">{extractErrorMessage(save.error)}</p>}
