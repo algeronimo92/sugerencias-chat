@@ -39,8 +39,7 @@ export function automaticTemplatePreviewText(template: MessageTemplate): string 
 }
 
 export function templateSendHint(template: MessageTemplate | null): string {
-  if (template && isMetaTemplate(template)) {
-    return 'Plantilla de Meta: se envía aunque el cliente no haya escrito en las últimas 24 horas. Meta cobra cada envío. Si un dato del lead está vacío, el paso falla.'
-  }
-  return 'Puede llevar imagen, video, audio o documento. Solo se envía si el cliente escribió en las últimas 24 horas.'
+  // Una línea: el detalle está en el «?» del bloque (domain/blockHelp.ts).
+  if (template && isMetaTemplate(template)) return 'De Meta: sale sin ventana de 24 h · Meta cobra el envío'
+  return 'Interna: necesita la ventana de 24 h abierta'
 }

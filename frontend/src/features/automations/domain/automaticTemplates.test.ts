@@ -47,7 +47,7 @@ describe('automaticTemplatePreviewText', () => {
 
 describe('templateSendHint', () => {
   it('avisa que una de Meta sale sin ventana y se cobra', () => {
-    expect(templateSendHint(metaTemplate())).toMatch(/aunque el cliente no haya escrito.*Meta cobra/)
-    expect(templateSendHint(null)).toMatch(/últimas 24 horas/)
+    expect(templateSendHint(metaTemplate())).toMatch(/sin ventana de 24 h.*Meta cobra/)
+    expect(templateSendHint(null)).toMatch(/ventana de 24 h abierta/)
   })
 })
