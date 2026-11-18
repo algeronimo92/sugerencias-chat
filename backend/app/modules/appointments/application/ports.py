@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 from app.modules.appointments.domain.appointment import SyncResult
 from app.modules.appointments.domain.calendar_event import EventContent
+from app.modules.appointments.domain.erp_push import Receipt
 
 
 class AppointmentRepository(Protocol):
@@ -27,7 +28,7 @@ class AppointmentRepository(Protocol):
 
     async def record_integrations(self, appointment_id: int, **values) -> dict:
         """Guarda el resultado de las integraciones. ``clear_calendar_sync_error``
-        borra un error anterior del calendario."""
+        y ``clear_erp_sync_error`` borran un error anterior de cada una."""
 
 
 class CalendarProvider(Protocol):
@@ -35,6 +36,50 @@ class CalendarProvider(Protocol):
         """El evento de la cita con el título y la descripción ya armados.
         ``{status, event_id, event_link, error}``; ``status`` es
         ``synced``, ``not_configured`` o ``error``. Nunca levanta."""
+
+
+class ErpAppointments(Protocol):
+    """El ERP del negocio, que recibe la cita para ponerla en su agenda."""
+
+    async def active(self) -> bool:
+        """El negocio activó el envío y tiene con qué hacerlo (dirección,
+        token y el catálogo del ERP conectado, de donde salen los paquetes)."""
+
+    async def config(self) -> dict:
+        """``{enabled, url, token_configured, catalog_connected}``. El token
+        nunca sale: solo si está cargado."""
+
+    async def save_config(self, *, enabled: bool, url: str, token: str | None) -> None:
+        """Guarda la conexión. ``token`` None conserva el que ya estaba.
+        Levanta ``ValueError`` si la dirección no es válida."""
+
+    async def external_id(self, appointment_id: int) -> str:
+        """Con qué identificador conoce el ERP a esa cita: repetir un envío
+        con el mismo le devuelve la cita que ya creó, sin duplicarla."""
+
+    async def push(self, form: dict[str, str], receipt: Receipt | None) -> dict:
+        """Manda la cita. ``{status, erp_appointment_id, erp_link, error}``;
+        ``status`` es ``synced``, ``not_configured`` o ``error``. Nunca levanta."""
+
+    async def ping(self, url: str | None, token: str | None) -> dict:
+        """Prueba la dirección y el token sin crear nada: ``{ok, error}``.
+        Lo que venga vacío se toma de lo guardado. Nunca levanta."""
+
+
+class PackageCatalog(Protocol):
+    async def packages(self, service_name: str) -> list[dict]:
+        """Los paquetes activos del servicio con ese nombre:
+        ``{id, name, sessions, position, external_id}``. ``external_id`` es
+        su id en el ERP, None si el paquete se cargó a mano en el CRM."""
+
+
+class ReceiptStore(Protocol):
+    async def save(self, receipt: Receipt) -> str | None:
+        """Guarda el comprobante y devuelve dónde quedó, o None si no se
+        pudo: la cita no se pierde por eso."""
+
+    async def load(self, url: str, filename: str | None) -> Receipt | None:
+        """El comprobante guardado, o None si ya no está."""
 
 
 class AppointmentSync(Protocol):
@@ -136,6 +181,11 @@ class StaffDirectory(Protocol):
         los admins activos, sin repetir. ``phone`` es None si no lo cargaron:
         el aviso queda registrado como no enviado por eso."""
 
+    async def email_for(self, seller_name: str, fallback_user_id: int | None) -> str | None:
+        """El correo del responsable de la cita (por nombre) o, si ya no está
+        en el equipo, el de quien la registró. El ERP busca con él a su
+        propio usuario para atribuirle la cita."""
+
 
 class NoticeLog(Protocol):
     async def record(self, appointment_id: int, notices: list[dict]) -> None:
@@ -159,6 +209,9 @@ class AppointmentPorts:
     staff: StaffDirectory
     notices: NoticeLog
     senders: NoticeSenders
+    erp: ErpAppointments
+    catalog: PackageCatalog
+    receipts: ReceiptStore
 
 
 _ports: AppointmentPorts | None = None

@@ -47,6 +47,21 @@ class Appointment(Base):
     calendar_event_id: Mapped[str | None] = mapped_column(Text)
     calendar_sync_status: Mapped[str] = mapped_column(Text, default="not_configured", server_default="not_configured")
     calendar_sync_error: Mapped[str | None] = mapped_column(Text)
+    # Envío de la cita al ERP del negocio, para que aparezca en su agenda
+    # (appointments/application/erp_sync.py). ``erp_package_id`` es el id del
+    # paquete EN el ERP (el ``external_id`` del catálogo sincronizado) y
+    # ``package_name`` su nombre al agendar: el catálogo puede cambiar después.
+    erp_package_id: Mapped[str | None] = mapped_column(Text)
+    package_name: Mapped[str | None] = mapped_column(Text)
+    # Cómo se pagó el adelanto: el ERP lo exige para registrar el pago.
+    payment_method: Mapped[str | None] = mapped_column(Text)
+    # Dónde quedó guardado el comprobante. Antes solo se reenviaba a n8n y se
+    # perdía: sin él, reintentar el envío al ERP mandaría el pago sin su foto.
+    comprobante_url: Mapped[str | None] = mapped_column(Text)
+    erp_appointment_id: Mapped[str | None] = mapped_column(Text)
+    erp_link: Mapped[str | None] = mapped_column(Text)
+    erp_sync_status: Mapped[str] = mapped_column(Text, default="not_configured", server_default="not_configured")
+    erp_sync_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Desestimada: la cita existió (se mandaron los avisos, quizá un evento a
     # Meta) pero no cuenta como cita ni como ingreso. Pensado para las pruebas
@@ -65,6 +80,14 @@ class Appointment(Base):
         CheckConstraint(
             "calendar_sync_status IN ('not_configured', 'pending', 'synced', 'error', 'skipped')",
             name="ck_appointments_calendar_sync",
+        ),
+        CheckConstraint(
+            "erp_sync_status IN ('not_configured', 'pending', 'synced', 'error', 'skipped')",
+            name="ck_appointments_erp_sync",
+        ),
+        CheckConstraint(
+            "payment_method IS NULL OR payment_method IN ('cash', 'card', 'transfer', 'yape', 'plin')",
+            name="ck_appointments_payment_method",
         ),
         Index("idx_appointments_created", created_at.desc()),
         Index("idx_appointments_date_time", fecha, hora),

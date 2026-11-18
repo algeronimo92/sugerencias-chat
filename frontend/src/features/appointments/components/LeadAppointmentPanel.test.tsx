@@ -21,7 +21,10 @@ vi.mock('../../catalogs/public/useLeadServices', () => ({
   useLeadServices: () => ({ data: [{ id: 7, name: 'Limpieza' }], isLoading: false }),
   useCreateLeadService: () => ({ isPending: false, mutate: vi.fn() }),
 }))
-vi.mock('../queries', () => ({ useCreateAppointment: () => ({ isPending: false, mutate: mocks.mutate }) }))
+vi.mock('../queries', () => ({
+  useCreateAppointment: () => ({ isPending: false, mutate: mocks.mutate }),
+  useErpAppointmentsConfig: () => ({ data: { active: false } }),
+}))
 
 const LEAD = {
   id: '6f1c2e3a-0b4d-4c5e-8f9a-1b2c3d4e5f60', name: 'Ana', phone: '51987654321',

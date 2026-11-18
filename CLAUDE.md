@@ -21,7 +21,7 @@ Fuente completa: [docs/arquitectura-modular.md](docs/arquitectura-modular.md).
 |---|---|---|
 | `backend/app/{bootstrap,composition,runtime}.py` | Composición FastAPI, raíz de DI, arranque y workers | `backend/main.py` solo reexporta `app` |
 | `backend/app/modules/<capacidad>/` | 13 módulos: leads, conversations, automations, appointments, ai, auth, platform, catalogs, media, notifications, tasks, issue_reports | [backend/app/modules/README.md](backend/app/modules/README.md) (forma de cada módulo) |
-| `backend/app/{core,tenancy,db,realtime,integrations,workers}/` | Config/errores/eventos; resolución de tenant por `Host`; sesiones y modelos (`db/models/<módulo>.py`); WebSocket; Meta, n8n, storage, Google, correo, TTS | |
+| `backend/app/{core,tenancy,db,realtime,integrations,workers}/` | Config/errores/eventos; resolución de tenant por `Host`; sesiones y modelos (`db/models/<módulo>.py`); WebSocket; Meta, n8n, storage, Google, correo, TTS, ERP del negocio (citas) | |
 | `backend/alembic/versions/` | **Única fuente del esquema** (un solo head) | [backend/migrations/README.md](backend/migrations/README.md): los `.sql` están congelados |
 | `backend/tests/test_layering.py` · `frontend/src/test/architecture.test.ts` | Reglas de arquitectura como tests | ver abajo |
 | `frontend/src/{app,features/<15>,shared,realtime}` | Composición; una carpeta por feature; piezas sin reglas de negocio; bus de tiempo real | [frontend/src/app/README.md](frontend/src/app/README.md), [frontend/src/shared/README.md](frontend/src/shared/README.md) |

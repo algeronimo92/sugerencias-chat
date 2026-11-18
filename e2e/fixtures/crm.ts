@@ -227,6 +227,10 @@ export function crmDefaults(api: MockApi) {
     .on('get', '/api/services', [
       { id: 1, name: 'HIFU 12D', is_active: true, packages: [], external_id: null, created_by_user_id: null, created_by_name: null, created_at: null },
     ])
+    // Sin envío de citas al ERP: el formulario de cita no pide nada de más.
+    .on('get', '/api/appointments/erp-sync', {
+      active: false, enabled: false, url: null, token_configured: false, catalog_connected: false,
+    })
     .on('get', '/api/custom-fields', [])
     .on('get', '/api/custom-fields/lead-values/{lead_id}', { values: {} })
     .on('get', '/api/ai/profile', {

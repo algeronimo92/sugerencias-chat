@@ -17,7 +17,7 @@ from app.modules.appointments.domain.calendar_event import EventContent
 from app.integrations.whatsapp.channel import SEND_FAILURES
 from app.integrations.whatsapp.channels import current_channel
 from app.modules.appointments.domain.errors import NoticeAccountUnavailable, NoticeNotSent, NoticeSenderNotLinked
-from app.modules.auth.ports.users import list_active_sellers, staff_phones
+from app.modules.auth.ports.users import emails_by_ids, list_active_sellers, staff_phones
 from app.modules.conversations.ports.template_sending import (
     ChatMessagingError,
     official_template_message,
@@ -190,3 +190,15 @@ class TeamDirectory:
         phones = await staff_phones(ids)
         names = {member["id"]: member["name"] for member in team}
         return [{"id": user_id, "name": names[user_id], "phone": phones.get(user_id)} for user_id in ids]
+
+    async def email_for(self, seller_name: str, fallback_user_id: int | None) -> str | None:
+        wanted = seller_name.strip().casefold()
+        seller_id = next(
+            (member["id"] for member in await list_active_sellers()
+             if wanted and member["name"].strip().casefold() == wanted),
+            None,
+        )
+        user_id = seller_id if seller_id is not None else fallback_user_id
+        if user_id is None:
+            return None
+        return (await emails_by_ids([user_id])).get(user_id)

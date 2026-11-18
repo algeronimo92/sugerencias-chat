@@ -20,3 +20,32 @@ test('"Separar cita" abre el formulario del lead con el botón de confirmar a la
   await expect(form).toBeHidden()
   await expectFullyOnScreen(page.getByLabel('Escribe un mensaje', { exact: true }))
 })
+
+test('con el envío de citas al ERP, lo que se pide de más no saca de la pantalla el botón de confirmar', async ({ page, api }) => {
+  api
+    .on('get', '/api/appointments/erp-sync', {
+      active: true, enabled: true, url: 'https://erp.example', token_configured: true, catalog_connected: true,
+    })
+    .on('get', '/api/services', [
+      {
+        id: 1, name: 'HIFU 12D', is_active: true, external_id: 'svc-1', created_by_user_id: null, created_by_name: null, created_at: null,
+        packages: [
+          { id: 11, service_id: 1, name: 'x3', sessions: 3, price: '400.00', notes: null, position: 1, is_active: true, external_id: 'pk-3' },
+          { id: 10, service_id: 1, name: 'Individual', sessions: 1, price: '150.00', notes: null, position: 0, is_active: true, external_id: 'pk-1' },
+        ],
+      },
+    ])
+
+  await page.goto(`/chat/${CHAT_ID}`)
+  await page.getByRole('button', { name: 'Separar cita para este lead' }).click()
+
+  const form = page.getByRole('dialog')
+  // El paquete llega elegido (el de menos sesiones) y se pide el DNI.
+  await expect(form.getByLabel(/^Paquete/)).toBeVisible()
+  await expect(form.getByText('Individual · 1 sesión · S/ 150.00').first()).toBeVisible()
+  await expect(form.getByLabel(/^DNI/)).toBeVisible()
+
+  await expectFullyOnScreen(form.getByRole('button', { name: 'Separar cita' }))
+  await expectFullyOnScreen(form.getByRole('button', { name: 'Cerrar' }))
+})
+

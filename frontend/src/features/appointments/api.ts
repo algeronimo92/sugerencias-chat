@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate } from './types';
+import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, ErpAppointmentsConfig, ErpAppointmentsConfigUpdate, ErpAppointmentsTestResult, NoticeAudience, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
   return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
@@ -25,6 +25,8 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
         filename: input.comprobante.filename,
       },
       test_mode: input.testMode,
+      package_id: input.packageId ?? null,
+      payment_method: input.paymentMethod ?? null,
       lead_id: input.leadId ?? null,
       lead_updates: input.leadUpdates ?? null,
     })).data
@@ -34,6 +36,29 @@ export async function syncAppointmentCalendar(appointmentId: number): Promise<Ap
   return (
       await client.post<ApiResponse<'/api/appointments/{appointment_id}/sync-calendar', 'post'>>(`/api/appointments/${appointmentId}/sync-calendar`)
     ).data
+}
+
+export async function syncAppointmentErp(appointmentId: number): Promise<AppointmentListItem> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/{appointment_id}/sync-erp', 'post'>>(`/api/appointments/${appointmentId}/sync-erp`)
+  ).data
+}
+
+export async function fetchErpAppointmentsConfig(): Promise<ErpAppointmentsConfig> {
+  return (await client.get<ApiResponse<'/api/appointments/erp-sync', 'get'>>('/api/appointments/erp-sync')).data
+}
+
+export async function saveErpAppointmentsConfig(values: ErpAppointmentsConfigUpdate): Promise<ErpAppointmentsConfig> {
+  return (await client.put<ApiResponse<'/api/appointments/erp-sync', 'put'>>('/api/appointments/erp-sync', values)).data
+}
+
+export async function testErpAppointments(values: { url: string; token: string }): Promise<ErpAppointmentsTestResult> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/erp-sync/test', 'post'>>('/api/appointments/erp-sync/test', {
+      url: values.url || null,
+      token: values.token || null,
+    })
+  ).data
 }
 
 export async function dismissAppointment(appointmentId: number, reason: string): Promise<AppointmentListItem> {

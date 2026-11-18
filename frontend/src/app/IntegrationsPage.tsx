@@ -16,6 +16,9 @@ import { AiIntegrationCard, useAiProviders } from '../features/ai/public/aiInteg
 const CalendarEventTemplateEditor = lazy(() =>
   import('../features/appointments/public/CalendarEventTemplateEditor').then(module => ({ default: module.CalendarEventTemplateEditor })),
 )
+const ErpAppointmentsSection = lazy(() =>
+  import('../features/appointments/public/ErpAppointmentsSection').then(module => ({ default: module.ErpAppointmentsSection })),
+)
 const NoticeCard = lazy(() =>
   import('../features/appointments/public/NoticeCard').then(module => ({ default: module.NoticeCard })),
 )
@@ -97,7 +100,13 @@ export function IntegrationsPage() {
               <NoticeCard audience="client" />
               <NoticeCard audience="staff" />
             </Suspense>
-            <ErpIntegrationCard />
+            <ErpIntegrationCard
+              appointments={(
+                <Suspense fallback={null}>
+                  <ErpAppointmentsSection />
+                </Suspense>
+              )}
+            />
             <AiIntegrationCard />
             <ElevenLabsIntegrationCard />
             <EmailIntegrationCard />

@@ -27,7 +27,9 @@ from app.modules.appointments.domain.errors import (
     TestAppointmentNotSynced,
 )
 from app.modules.appointments.domain.events import AppointmentCreated
+from app.modules.appointments.application import erp_sync
 from app.modules.appointments.application.calendar_template import event_content
+from app.modules.appointments.domain.erp_push import Receipt
 from app.modules.platform.public import business_timezone, effective_country_code
 
 logger = logging.getLogger(__name__)
@@ -100,14 +102,23 @@ async def create_appointment(
     created_by_user_id: int,
     files: dict | None,
     lead: LeadLink | None = None,
+    receipt: Receipt | None = None,
 ) -> dict:
     """Con ``lead`` la cita se agendó desde la ficha: va atada a ese lead y,
     salvo en modo prueba, el lead se entera en la misma transacción (próxima
     cita, actividad, nota interna, etapa y los datos que el vendedor corrigió). Sin él, el
     lead se adivina por teléfono y no se toca; si ningún lead tiene ese
     teléfono se crea uno, que se entera de la cita como si viniera de su
-    ficha. Con dos candidatos no se vincula ni se crea: sería un duplicado."""
+    ficha. Con dos candidatos no se vincula ni se crea: sería un duplicado.
+
+    ``receipt`` es el comprobante del adelanto: con el envío al ERP activo se
+    guarda y viaja con la cita."""
     ports = appointment_ports()
+    # Antes de tocar nada: si al ERP le falta un dato, la cita no se guarda a
+    # medias ni se crea un lead por una cita que se va a rechazar.
+    erp_active = not request.test_mode and await ports.erp.active()
+    if erp_active:
+        request = await erp_sync.prepare(request, receipt)
     if lead is not None:
         if not await ports.leads.exists(lead.lead_id):
             raise AppointmentLeadNotFound()
@@ -120,7 +131,7 @@ async def create_appointment(
             lead = LeadLink(lead_id) if lead_id is not None else None
     async with unit_of_work():
         appointment = await ports.repository.add(request.record(
-            created_by_user_id=created_by_user_id, lead_id=lead_id,
+            created_by_user_id=created_by_user_id, lead_id=lead_id, erp_active=erp_active,
         ))
         if lead is not None and not request.test_mode:
             await ports.leads.register(
@@ -140,8 +151,11 @@ async def create_appointment(
         calendar_sync_status=calendar["status"],
         calendar_sync_error=calendar["error"],
     )
+    erp = await erp_sync.push(appointment, receipt) if erp_active else None
+    if erp is not None:
+        appointment = await erp_sync.record(appointment["id"], erp)
     sync = await ports.sync.submit(test_mode=request.test_mode, form=request.n8n_form(), files=files)
-    result = outcome(calendar, sync, appointment.get("event_link"))
+    result = outcome(calendar, sync, appointment.get("event_link"), erp)
 
     async with unit_of_work():
         appointment = await ports.repository.record_integrations(
@@ -158,6 +172,7 @@ async def create_appointment(
         **result.payload, "success": True, "message": result.message,
         "appointment": appointment, "eventLink": result.event_link,
         "calendarSyncStatus": appointment["calendar_sync_status"],
+        "erpSyncStatus": appointment.get("erp_sync_status") or "not_configured",
         "integrationErrors": result.integration_errors,
     }
 

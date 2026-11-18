@@ -2,10 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { toast } from 'sonner'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useCustomFields } from '../../catalogs/public/useCustomFields'
+import { useLeadServices } from '../../catalogs/public/useLeadServices'
+import { erpPackages, isValidDni, selectedPackage } from '../domain/erpFields'
 import type { LeadUpdatesInput } from '../domain/leadPrefill'
-import { useCreateAppointment, type AppointmentAttachmentInput, type AppointmentResult } from '../queries'
+import { useCreateAppointment, useErpAppointmentsConfig, type AppointmentAttachmentInput, type AppointmentResult } from '../queries'
+import type { PaymentMethod } from '../types'
 
-export const EMPTY_APPOINTMENT_FORM = { nombreCompleto: '', telefono: '', servicio: '', detalle: '', fecha: '', hora: '', vendedor: '', durationMinutes: '60' }
+// ``dni``, ``packageId`` y ``paymentMethod`` solo se piden y se envían con el
+// envío de citas al ERP activo (ver domain/erpFields.ts).
+export const EMPTY_APPOINTMENT_FORM = { nombreCompleto: '', telefono: '', servicio: '', detalle: '', fecha: '', hora: '', vendedor: '', durationMinutes: '60', dni: '', packageId: '', paymentMethod: '' }
 export type AppointmentFormValues = typeof EMPTY_APPOINTMENT_FORM
 
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf'])
@@ -19,6 +24,10 @@ interface Draft { form: AppointmentFormValues; customFields: Record<string, unkn
  *  misma que lee el backend, CUSTOM_ADELANTO_KEY). */
 export const DEPOSIT_FIELD_KEY = 'adelanto'
 
+/** Clave del campo personalizado donde algunos negocios ya cargan el DNI (la
+ *  misma que lee el backend, CUSTOM_DNI_KEY). Si existe, el DNI se pide ahí. */
+export const DNI_FIELD_KEY = 'dni'
+
 /** Id de cada campo en pantalla: la validación lleva el foco al primero que
  *  falta y la ayuda y el error se enlazan por `aria-describedby`. */
 export const FIELD_IDS: Record<keyof AppointmentFormValues, string> = {
@@ -30,6 +39,9 @@ export const FIELD_IDS: Record<keyof AppointmentFormValues, string> = {
   nombreCompleto: 'appointment-name',
   telefono: 'appointment-phone',
   detalle: 'appointment-notes',
+  dni: 'appointment-dni',
+  packageId: 'appointment-package',
+  paymentMethod: 'appointment-payment-method',
 }
 
 export const customFieldId = (key: string) => `custom-field-appointment-${key}`
@@ -125,6 +137,16 @@ export function useAppointmentForm(draftKey: string) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [result, setResult] = useState<AppointmentResult | null>(null)
   const createAppointment = useCreateAppointment()
+  // Con el envío de citas al ERP activo el formulario pide lo que el ERP
+  // exige. Mientras no se sabe, se comporta como si estuviera apagado: el
+  // backend lo vuelve a comprobar al guardar.
+  const erpActive = useErpAppointmentsConfig().data?.active ?? false
+  const { data: services = [] } = useLeadServices()
+  const packages = useMemo(() => erpActive ? erpPackages(services, form.servicio) : [], [erpActive, services, form.servicio])
+  const chosenPackage = selectedPackage(packages, form.packageId)
+  const hasDniField = definitions.some(field => field.key === DNI_FIELD_KEY)
+  const depositAmount = Number(customFields[DEPOSIT_FIELD_KEY] ?? 0)
+  const needsPaymentMethod = erpActive && depositAmount > 0
   // ``dirty``: hay cambios del usuario sin pasar al borrador. ``hasDraft``:
   // existe un borrador guardado de este formulario (restaurado o escrito).
   const [dirty, setDirty] = useState(false)
@@ -134,7 +156,8 @@ export function useAppointmentForm(draftKey: string) {
   useDraftAutosave(draftKey, draft, dirty, markSaved)
 
   function update<K extends keyof AppointmentFormValues>(key: K, value: AppointmentFormValues[K]) {
-    setForm(current => ({ ...current, [key]: value }))
+    // Otro tratamiento tiene otros paquetes: el elegido ya no vale.
+    setForm(current => ({ ...current, [key]: value, ...(key === 'servicio' ? { packageId: '' } : {}) }))
     setResult(null)
     setDirty(true)
     clearFieldError(key)
@@ -218,14 +241,21 @@ export function useAppointmentForm(draftKey: string) {
       let message: string | null = null
       if (field.required && field.field_type !== 'boolean' && empty) message = `Completa ${field.label.toLowerCase()}.`
       else if (field.key === DEPOSIT_FIELD_KEY && !empty && Number(value) < 0) message = 'El adelanto no puede ser negativo.'
+      else if (erpActive && field.key === DNI_FIELD_KEY && !isValidDni(value)) message = 'El ERP necesita el DNI del cliente: 8 dígitos.'
       return { key: customErrorKey(field.key), id: customFieldId(field.key), label: field.label, message }
     }
     const deposit = ordered.filter(field => field.key === DEPOSIT_FIELD_KEY).map(customCheck)
     checks.push(...deposit)
+    if (needsPaymentMethod) {
+      checks.push({ key: 'paymentMethod', id: FIELD_IDS.paymentMethod, label: 'Método de pago', message: form.paymentMethod ? null : 'Elige con qué se pagó el adelanto.' })
+    }
     checks.push(
       { key: 'nombreCompleto', id: FIELD_IDS.nombreCompleto, label: 'Nombre', message: form.nombreCompleto.trim() ? null : 'Escribe el nombre del cliente.' },
       { key: 'telefono', id: FIELD_IDS.telefono, label: 'Teléfono', message: form.telefono.trim() ? null : 'Escribe el teléfono.' },
     )
+    if (erpActive && !hasDniField) {
+      checks.push({ key: 'dni', id: FIELD_IDS.dni, label: 'DNI', message: isValidDni(form.dni) ? null : 'El ERP necesita el DNI del cliente: 8 dígitos.' })
+    }
     checks.push(...ordered.filter(field => field.key !== DEPOSIT_FIELD_KEY).map(customCheck))
 
     const failed = checks.filter(check => check.message)
@@ -248,13 +278,15 @@ export function useAppointmentForm(draftKey: string) {
       catch { setError('No se pudo preparar el adjunto.'); return }
     }
     createAppointment.mutate({
-      nombreCompleto: form.nombreCompleto.trim(), dni: '', telefono: form.telefono.trim(),
+      nombreCompleto: form.nombreCompleto.trim(), dni: erpActive && !hasDniField ? form.dni.trim() : '', telefono: form.telefono.trim(),
       tratamiento: form.servicio.trim(), detalle: form.detalle.trim(), fecha: form.fecha,
       hora: form.hora, vendedor: form.vendedor, adelanto: 0, durationMinutes: Number(form.durationMinutes),
       customFields: Object.fromEntries(definitions.map(field => [
         field.key,
         customFields[field.key] ?? (field.field_type === 'boolean' ? false : null),
       ])), comprobante: prepared, testMode, leadId, leadUpdates,
+      packageId: erpActive ? chosenPackage?.id ?? null : null,
+      paymentMethod: needsPaymentMethod ? form.paymentMethod as PaymentMethod : null,
     }, {
       onSuccess: value => {
         const feedback = appointmentResultMessage(value)
@@ -271,6 +303,7 @@ export function useAppointmentForm(draftKey: string) {
     customFieldsError: customFieldsQuery.isError,
     refetchCustomFields: customFieldsQuery.refetch,
     busy: createAppointment.isPending,
+    erp: { active: erpActive, packages, chosenPackage, showDni: erpActive && !hasDniField, needsPaymentMethod },
     update, setCustomField, load, acceptFile, handleFile, removeAttachment: () => setAttachment(null),
     reset, hasDraft, discardDraft, validate, submit, setError,
   }

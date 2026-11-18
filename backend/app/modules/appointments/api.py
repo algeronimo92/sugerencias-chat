@@ -5,7 +5,8 @@ import base64
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.modules.appointments.application import calendar_template, commands, notice
+from app.modules.appointments.application import calendar_template, commands, erp_sync, notice
+from app.modules.appointments.domain.erp_push import Receipt
 from app.modules.appointments.domain.notice import Audience
 from app.modules.appointments.domain.appointment import CUSTOM_ADELANTO_KEY, AppointmentRequest, LeadLink
 from app.modules.appointments.queries import list_appointments
@@ -18,6 +19,10 @@ from app.modules.appointments.schemas import (
     AppointmentItem,
     CalendarEventTemplate,
     CalendarEventTemplateUpdate,
+    ErpAppointmentsConfig,
+    ErpAppointmentsConfigUpdate,
+    ErpAppointmentsTest,
+    ErpAppointmentsTestResult,
     NoticeSender,
     NoticeSenderSignup,
     NoticeSenderUpdate,
@@ -89,6 +94,29 @@ async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User 
     )
 
 
+@router.get("/erp-sync", response_model=ErpAppointmentsConfig)
+async def get_erp_sync(user: User = Depends(get_current_user)):
+    """Cualquiera del equipo: el formulario de cita necesita saber si el
+    envío al ERP está activo para pedir el DNI, el paquete y el método de
+    pago. La dirección del ERP solo la recibe el admin."""
+    return await erp_sync.get_config(is_admin=user.role == "admin")
+
+
+@router.put("/erp-sync", response_model=ErpAppointmentsConfig)
+async def put_erp_sync(body: ErpAppointmentsConfigUpdate, _user: User = Depends(require_admin)):
+    return await erp_sync.save_config(enabled=body.enabled, url=body.url, token=body.token)
+
+
+@router.post("/erp-sync/test", response_model=ErpAppointmentsTestResult)
+async def test_erp_sync(body: ErpAppointmentsTest, _user: User = Depends(require_admin)):
+    return await erp_sync.test_connection(body.url, body.token)
+
+
+@router.post("/{appointment_id}/sync-erp", response_model=AppointmentItem)
+async def sync_appointment_erp(appointment_id: int, _user: User = Depends(get_current_user)):
+    return await erp_sync.sync_erp(appointment_id)
+
+
 @router.post("/{appointment_id}/sync-calendar", response_model=AppointmentItem)
 async def sync_appointment_calendar(
     appointment_id: int,
@@ -154,9 +182,19 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
         fecha=body.fecha, hora=body.hora, vendedor=body.vendedor, dni=body.dni, detalle=body.detalle,
         adelanto=body.adelanto, duration_minutes=body.duration_minutes, custom_fields=custom_fields,
         comprobante_filename=body.comprobante.filename if body.comprobante else None,
-        test_mode=body.test_mode,
+        test_mode=body.test_mode, package_id=body.package_id, payment_method=body.payment_method,
     )
-    return await commands.create_appointment(request, created_by_user_id=user.id, files=files, lead=lead)
+    return await commands.create_appointment(
+        request, created_by_user_id=user.id, files=files, lead=lead, receipt=_receipt(files),
+    )
+
+
+def _receipt(files: dict | None) -> Receipt | None:
+    """El mismo comprobante ya validado que va a n8n, para el ERP."""
+    if not files:
+        return None
+    filename, raw, content_type = files["Comprobante"]
+    return Receipt(filename, raw, content_type)
 
 
 async def _lead_link(body: AppointmentCreate) -> LeadLink | None:

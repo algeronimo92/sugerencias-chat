@@ -21,6 +21,11 @@ from app.modules.ai.infrastructure.n8n_provider import N8nAiProvider
 from app.modules.ai.infrastructure.native_provider import NativeAiProvider
 from app.modules.ai.infrastructure.routing_provider import RoutingAiProvider
 from app.modules.appointments.application.ports import AppointmentPorts, provide_appointment_ports
+from app.modules.appointments.infrastructure.erp import (
+    CatalogPackages,
+    ErpAppointmentsGateway,
+    MediaReceiptStore,
+)
 from app.modules.appointments.infrastructure.integrations import (
     MetaNoticeSenders,
     GoogleCalendar,
@@ -128,6 +133,9 @@ def register_adapters() -> None:
         staff=TeamDirectory(),
         notices=SqlAppointmentNotices(),
         senders=MetaNoticeSenders(),
+        erp=ErpAppointmentsGateway(),
+        catalog=CatalogPackages(),
+        receipts=MediaReceiptStore(),
     ))
     provide_automation_ports(AutomationPorts(
         executions=SqlExecutionStore(),

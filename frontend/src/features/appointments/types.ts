@@ -22,11 +22,25 @@ export interface CreateAppointmentInput {
   customFields: Record<string, unknown>
   comprobante: AppointmentAttachmentInput | null
   testMode: boolean
+  /** Con el envío de citas al ERP activo: el paquete del catálogo que se
+   *  vendió y con qué se pagó el adelanto. */
+  packageId?: number | null
+  paymentMethod?: PaymentMethod | null
   /** Agendada desde la ficha del lead: va atada a él sin buscar por teléfono. */
   leadId?: string | null
   /** Lo que el vendedor corrigió y pidió llevar también al lead. */
   leadUpdates?: LeadUpdatesInput | null
 }
+
+/** Con qué se pagó el adelanto, en los términos del ERP que registra el pago. */
+export type PaymentMethod = NonNullable<ApiSchemas['AppointmentCreate']['payment_method']>
+
+/** Envío de las citas al ERP del negocio: si está activo y, para el admin,
+ *  la conexión cargada. */
+export type ErpAppointmentsConfig = Delivered<ApiSchemas['ErpAppointmentsConfig']>
+export type ErpAppointmentsConfigUpdate = ApiSchemas['ErpAppointmentsConfigUpdate']
+export type ErpAppointmentsTestResult = Delivered<ApiSchemas['ErpAppointmentsTestResult']>
+export type SyncStatus = 'not_configured' | 'pending' | 'synced' | 'error' | 'skipped'
 
 /** Resultado de registrar una cita; trae además lo que devolvió el workflow
  * de n8n (por ejemplo `citaDuplicada`). */
@@ -70,8 +84,16 @@ export interface AppointmentListItem {
   message: string | null
   event_link: string | null
   calendar_event_id: string | null
-  calendar_sync_status: 'not_configured' | 'pending' | 'synced' | 'error' | 'skipped'
+  calendar_sync_status: SyncStatus
   calendar_sync_error: string | null
+  /** Envío al ERP del negocio; `erp_link` abre la cita en su agenda. */
+  package_name?: string | null
+  payment_method?: PaymentMethod | null
+  comprobante_url?: string | null
+  erp_appointment_id?: string | null
+  erp_link?: string | null
+  erp_sync_status?: SyncStatus
+  erp_sync_error?: string | null
   created_at: string
   /** Desestimada por un admin (una prueba hecha en modo real, por ejemplo):
    *  no cuenta en el panel ni en las exportaciones de ventas. */

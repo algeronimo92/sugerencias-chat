@@ -18,4 +18,6 @@ export const appointmentKeys = {
   noticeSender: ['appointment-notice', 'sender'] as const,
   // Moneda del negocio para el símbolo del adelanto: cambia casi nunca.
   businessCurrency: ['appointment-business-currency'] as const,
+  // Si las citas se envían al ERP: decide qué pide el formulario de cita.
+  erpConfig: ['appointment-erp-config'] as const,
 }

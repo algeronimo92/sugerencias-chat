@@ -7,8 +7,9 @@ import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
 import { useMe } from '../../../shared/auth'
 import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../constants'
-import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
+import { useAppointments, useErpAppointmentsConfig, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
 import { AppointmentDismissAction } from './AppointmentDismissAction'
+import { AppointmentErpStatus } from './AppointmentErpStatus'
 import { AppointmentNotices } from './AppointmentNotices'
 
 const ALL_STATUSES = Object.keys(APPOINTMENT_STATUS_LABELS) as AppointmentStatus[]
@@ -71,6 +72,7 @@ export function AppointmentHistoryList() {
   const { data: calendar } = useGoogleCalendarStatus()
   const { data: me } = useMe()
   const calendarConnected = calendar?.connected !== false
+  const erpActive = useErpAppointmentsConfig().data?.active ?? false
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -214,6 +216,8 @@ export function AppointmentHistoryList() {
                   {extractErrorMessage(syncCalendar.error)}
                 </p>
               )}
+
+              <AppointmentErpStatus item={item} erpActive={erpActive} />
 
               <AppointmentNotices notices={item.notices ?? []} leadId={item.lead_id} />
 

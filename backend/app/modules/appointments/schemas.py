@@ -4,6 +4,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# Con qué se pagó el adelanto, en los términos del ERP que registra el pago.
+PaymentMethod = Literal["cash", "card", "transfer", "yape", "plin"]
+SyncStatus = Literal["not_configured", "pending", "synced", "error", "skipped"]
+
+
 class AppointmentAttachment(BaseModel):
     content_type: str = Field(min_length=1, max_length=100)
     data_base64: str = Field(min_length=1)
@@ -32,6 +37,11 @@ class AppointmentCreate(BaseModel):
     duration_minutes: int = Field(default=60, ge=5, le=1440)
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     comprobante: AppointmentAttachment | None = None
+    # Solo cuentan con el envío de citas al ERP activo: el paquete del
+    # catálogo que se vendió (sin él va el de menos sesiones) y cómo se pagó
+    # el adelanto.
+    package_id: int | None = Field(default=None, ge=1)
+    payment_method: PaymentMethod | None = None
     # Solo admins pueden activarlo (ver app/modules/appointments/api.py): manda
     # formMode="test" en vez de "production" en el payload a n8n, igual que
     # hacía el Form Trigger nativo al probarse desde su URL de test.
@@ -76,8 +86,17 @@ class AppointmentItem(BaseModel):
     message: str | None = None
     event_link: str | None = None
     calendar_event_id: str | None = None
-    calendar_sync_status: Literal["not_configured", "pending", "synced", "error", "skipped"] = "not_configured"
+    calendar_sync_status: SyncStatus = "not_configured"
     calendar_sync_error: str | None = None
+    # Envío al ERP del negocio. ``erp_link`` abre la cita en su agenda.
+    package_name: str | None = None
+    payment_method: PaymentMethod | None = None
+    comprobante_url: str | None = None
+    erp_package_id: str | None = None
+    erp_appointment_id: str | None = None
+    erp_link: str | None = None
+    erp_sync_status: SyncStatus = "not_configured"
+    erp_sync_error: str | None = None
     created_at: str
     # Desestimada: no cuenta en el panel ni en las exportaciones de ventas.
     dismissed_at: str | None = None
@@ -115,7 +134,40 @@ class AppointmentCreated(BaseModel):
     appointment: AppointmentItem
     eventLink: str | None = None
     calendarSyncStatus: str
+    erpSyncStatus: str = "not_configured"
     integrationErrors: list[str]
+
+
+class ErpAppointmentsConfig(BaseModel):
+    """Envío de las citas al ERP del negocio. ``active``: está encendido y
+    tiene todo para funcionar, así que el formulario de cita pide lo que el
+    ERP exige. ``url`` solo viaja para el admin; el token nunca."""
+
+    active: bool
+    enabled: bool
+    url: str | None = None
+    token_configured: bool
+    # Sin el catálogo del ERP sincronizado no hay paquetes que enviar.
+    catalog_connected: bool
+
+
+class ErpAppointmentsConfigUpdate(BaseModel):
+    enabled: bool
+    url: str = Field(default="", max_length=500)
+    # Vacío o ausente conserva el token guardado.
+    token: str | None = Field(default=None, max_length=500)
+
+
+class ErpAppointmentsTest(BaseModel):
+    """Lo que venga vacío se prueba con lo ya guardado."""
+
+    url: str | None = Field(default=None, max_length=500)
+    token: str | None = Field(default=None, max_length=500)
+
+
+class ErpAppointmentsTestResult(BaseModel):
+    ok: bool
+    error: str | None = None
 
 
 class CalendarEventField(BaseModel):

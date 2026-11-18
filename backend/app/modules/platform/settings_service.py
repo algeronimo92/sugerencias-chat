@@ -141,6 +141,12 @@ SETTING_DEFS: list[SettingDef] = [
         secret=False,
     ),
     SettingDef("erp_catalog_synced_at", "Última sincronización", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    # Envío de las citas al ERP para que aparezcan en su agenda. Se editan solo
+    # desde su sección de Integraciones (appointments/application/erp_sync.py),
+    # que prueba la conexión antes de dejar activarlo.
+    SettingDef("erp_appointments_enabled", "Enviar las citas al ERP", "erp", "ERP del negocio (lista de precios)", secret=False, boolean=True, hidden=True),
+    SettingDef("erp_appointments_url", "Dirección del ERP", "erp", "ERP del negocio (lista de precios)", secret=False, hidden=True),
+    SettingDef("erp_appointments_token", "Token de la integración con el ERP", "erp", "ERP del negocio (lista de precios)", secret=True, hidden=True),
     # Claves de IA del propio negocio, una por proveedor. Hoy solo las usan
     # las sugerencias; si otra función de IA las necesita, las comparte.
     SettingDef("ai_gemini_api_key", "API key de Google Gemini", "ai", "IA del negocio (claves y sugerencias)", secret=True),
@@ -349,6 +355,18 @@ def validate_business_timezone(value: str) -> str:
     return normalized
 
 
+def validate_erp_base_url(value: str) -> str:
+    """La dirección del ERP a la que se envían las citas: http(s) con host,
+    sin la barra final (las rutas de la integración se le agregan después)."""
+    normalized = value.strip().rstrip("/")
+    if not normalized:
+        return ""
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError("La dirección del ERP debe empezar con http:// o https://")
+    return normalized
+
+
 def validate_erp_catalog_url(value: str) -> str:
     """Solo http(s) con host: el worker la va a pedir a ciegas cada hora."""
     normalized = value.strip()
@@ -539,6 +557,13 @@ async def update_settings(values: dict[str, str]) -> None:
     values = dict(values)
     if "erp_catalog_url" in values:
         values["erp_catalog_url"] = validate_erp_catalog_url(values["erp_catalog_url"])
+    if "erp_appointments_url" in values:
+        values["erp_appointments_url"] = validate_erp_base_url(values["erp_appointments_url"])
+    if "erp_appointments_enabled" in values:
+        enabled = values["erp_appointments_enabled"].strip().lower()
+        if enabled not in {"", "true", "false"}:
+            raise ValueError("El envío de citas al ERP debe ser true o false")
+        values["erp_appointments_enabled"] = enabled
     for key in ("ai_suggestions_primary_model", "ai_suggestions_fallback_model"):
         if values.get(key):
             values[key] = validate_ai_model(values[key])

@@ -50,11 +50,16 @@ class FakeAppointments:
         )
         return dict(row)
 
-    async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
+    async def record_integrations(
+        self, appointment_id: int, *,
+        clear_calendar_sync_error: bool = False, clear_erp_sync_error: bool = False, **values,
+    ) -> dict:
         row = self.rows[appointment_id]
         row.update({key: value for key, value in values.items() if value is not None})
         if clear_calendar_sync_error:
             row["calendar_sync_error"] = None
+        if clear_erp_sync_error:
+            row["erp_sync_error"] = None
         return dict(row)
 
 
@@ -73,6 +78,79 @@ class FakeCalendar:
         if self.order is not None:
             self.order.append("calendar")
         return dict(self.result)
+
+
+@dataclass
+class FakeErp:
+    """El ERP del negocio. Apagado por defecto: las citas de los demás tests
+    no lo tocan."""
+
+    is_active: bool = False
+    result: dict = field(default_factory=lambda: {
+        "status": "synced", "erp_appointment_id": "erp-1",
+        "erp_link": "https://erp.example/appointments/erp-1", "error": None,
+    })
+    pushed: list[dict] = field(default_factory=list)
+    saved: list[dict] = field(default_factory=list)
+    pings: list[tuple] = field(default_factory=list)
+    stored: dict = field(default_factory=lambda: {
+        "enabled": False, "url": "", "token_configured": False, "catalog_connected": True,
+    })
+    save_error: Exception | None = None
+    order: list[str] | None = None
+
+    async def active(self) -> bool:
+        return self.is_active
+
+    async def config(self) -> dict:
+        return dict(self.stored)
+
+    async def save_config(self, *, enabled: bool, url: str, token: str | None) -> None:
+        if self.save_error is not None:
+            raise self.save_error
+        self.saved.append({"enabled": enabled, "url": url, "token": token})
+        self.stored.update(enabled=enabled, url=url)
+        if token is not None:
+            self.stored["token_configured"] = True
+
+    async def external_id(self, appointment_id: int) -> str:
+        return f"negocio:{appointment_id}"
+
+    async def push(self, form: dict, receipt) -> dict:
+        self.pushed.append({"form": form, "receipt": receipt})
+        if self.order is not None:
+            self.order.append("erp")
+        return dict(self.result)
+
+    async def ping(self, url: str | None, token: str | None) -> dict:
+        self.pings.append((url, token))
+        return {"ok": True, "error": None}
+
+
+@dataclass
+class FakeCatalog:
+    """Paquetes por nombre de servicio (en minúsculas)."""
+
+    by_service: dict[str, list[dict]] = field(default_factory=dict)
+
+    async def packages(self, service_name: str) -> list[dict]:
+        return [dict(package) for package in self.by_service.get(service_name.strip().casefold(), [])]
+
+
+@dataclass
+class FakeReceipts:
+    files: dict[str, object] = field(default_factory=dict)
+    fail: bool = False
+
+    async def save(self, receipt) -> str | None:
+        if self.fail:
+            return None
+        url = f"/media/comprobante-{len(self.files) + 1}"
+        self.files[url] = receipt
+        return url
+
+    async def load(self, url: str, filename: str | None):
+        return self.files.get(url)
 
 
 @dataclass
@@ -170,9 +248,15 @@ class FakeStaff:
     team: list[dict] = field(default_factory=list)
     asked: list[str] = field(default_factory=list)
 
+    emails: dict[str, str] = field(default_factory=dict)
+    fallback_emails: dict[int, str] = field(default_factory=dict)
+
     async def recipients(self, seller_name: str) -> list[dict]:
         self.asked.append(seller_name)
         return list(self.team)
+
+    async def email_for(self, seller_name: str, fallback_user_id: int | None) -> str | None:
+        return self.emails.get(seller_name) or self.fallback_emails.get(fallback_user_id)
 
 
 @dataclass
@@ -248,6 +332,9 @@ class AppointmentWorld:
     staff: FakeStaff = field(default_factory=FakeStaff)
     notices: FakeNotices = field(default_factory=FakeNotices)
     senders: FakeSenders = field(default_factory=FakeSenders)
+    erp: FakeErp = field(default_factory=FakeErp)
+    catalog: FakeCatalog = field(default_factory=FakeCatalog)
+    receipts: FakeReceipts = field(default_factory=FakeReceipts)
 
     def of(self, event_type):
         return [event for event in self.published if isinstance(event, event_type)]
@@ -271,10 +358,12 @@ def in_memory_appointments(monkeypatch) -> AppointmentWorld:
         sync=FakeSync(order=repository.order),
         leads=FakeLeads(),
         published=[],
+        erp=FakeErp(order=repository.order),
     )
     monkeypatch.setattr(ports, "_ports", AppointmentPorts(
         repository=world.repository, calendar=world.calendar, sync=world.sync, leads=world.leads,
         messenger=world.messenger, staff=world.staff, notices=world.notices, senders=world.senders,
+        erp=world.erp, catalog=world.catalog, receipts=world.receipts,
     ))
     monkeypatch.setattr(uow, "get_sessionmaker", lambda: _FakeSession)
 

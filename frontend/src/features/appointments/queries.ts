@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
+import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, fetchCalendarEventTemplate, fetchErpAppointmentsConfig, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveErpAppointmentsConfig, saveNotice, saveNoticeSender, syncAppointmentCalendar, syncAppointmentErp, testErpAppointments } from './api'
 import { appointmentKeys } from './keys'
 import type { NoticeAudience, NoticeUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
@@ -44,6 +44,34 @@ export function useSyncAppointmentCalendar() {
     mutationFn: syncAppointmentCalendar,
     onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
   })
+}
+
+export function useSyncAppointmentErp() {
+  return useMutation({
+    mutationFn: syncAppointmentErp,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+  })
+}
+
+/** Si las citas se envían al ERP. Cambia casi nunca y el formulario lo
+ *  consulta cada vez que se abre: se da por bueno unos minutos. */
+export function useErpAppointmentsConfig() {
+  return useQuery({
+    queryKey: appointmentKeys.erpConfig,
+    queryFn: fetchErpAppointmentsConfig,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useSaveErpAppointmentsConfig() {
+  return useMutation({
+    mutationFn: saveErpAppointmentsConfig,
+    onSuccess: (config) => queryClient.setQueryData(appointmentKeys.erpConfig, config),
+  })
+}
+
+export function useTestErpAppointments() {
+  return useMutation({ mutationFn: testErpAppointments })
 }
 
 export function useDismissAppointment() {

@@ -1,5 +1,5 @@
 import { AlertTriangle, Database, Loader2, Lock, PlugZap, Unlink } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -209,7 +209,12 @@ function ErpTestArea({ erp }: { erp: ErpConnection }) {
  * fallaría en silencio cada hora. Al guardar se dispara la primera
  * sincronización para que el admin vea de inmediato que funciona.
  */
-export function ErpIntegrationCard() {
+export function ErpIntegrationCard({ appointments }: {
+  /** El envío de citas al ERP: es de la feature de citas (capa superior),
+   *  así que lo arma app/ y llega como prop. Solo con el catálogo conectado:
+   *  los paquetes de la cita salen de él. */
+  appointments?: ReactNode
+}) {
   const erp = useErpConnection()
   const [disconnecting, setDisconnecting] = useState(false)
 
@@ -241,6 +246,7 @@ export function ErpIntegrationCard() {
         </div>
         <ErpTestArea erp={erp} />
         {erp.configured && <ErpSyncCard />}
+        {erp.configured && appointments}
       </div>
       <ConfirmDialog
         open={disconnecting}
