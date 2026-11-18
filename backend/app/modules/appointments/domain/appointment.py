@@ -33,6 +33,14 @@ class AppointmentRequest:
     custom_fields: dict[str, Any] = field(default_factory=dict)
     comprobante_filename: str | None = None
     test_mode: bool = False
+    # Solo cuentan con el envío de citas al ERP activo (erp_sync.py).
+    # ``package_id`` es el paquete que eligió el vendedor en el catálogo del
+    # CRM; ``erp_package_id`` y ``package_name`` son ese paquete ya resuelto.
+    package_id: int | None = None
+    payment_method: str | None = None
+    erp_package_id: str | None = None
+    package_name: str | None = None
+    comprobante_url: str | None = None
 
     @property
     def effective_dni(self) -> str:
@@ -65,9 +73,9 @@ class AppointmentRequest:
         except ValueError:
             return None
 
-    def record(self, *, created_by_user_id: int, lead_id: str | None) -> dict:
+    def record(self, *, created_by_user_id: int, lead_id: str | None, erp_active: bool = False) -> dict:
         """Los valores con los que se guarda la cita, antes de cualquier
-        integración."""
+        integración. ``erp_active``: el negocio manda sus citas al ERP."""
         return {
             "created_by_user_id": created_by_user_id,
             "lead_id": lead_id,
@@ -89,6 +97,13 @@ class AppointmentRequest:
             "message": "Cita guardada en la app",
             "event_link": None,
             "calendar_sync_status": "skipped" if self.test_mode else "pending",
+            "payment_method": self.payment_method,
+            "erp_package_id": self.erp_package_id,
+            "package_name": self.package_name,
+            "comprobante_url": self.comprobante_url,
+            "erp_sync_status": (
+                "skipped" if self.test_mode else "pending" if erp_active else "not_configured"
+            ),
         }
 
     def n8n_form(self) -> dict:
@@ -160,10 +175,15 @@ class AppointmentOutcome:
     integration_errors: list[str]
 
 
-def outcome(calendar: dict, sync: SyncResult, stored_event_link: str | None) -> AppointmentOutcome:
+def outcome(
+    calendar: dict, sync: SyncResult, stored_event_link: str | None, erp: dict | None = None,
+) -> AppointmentOutcome:
     errors: list[str] = []
     if calendar["status"] == "error":
         errors.append(calendar["error"])
+    # Con prefijo: los otros dos errores ya nombran a Google o a n8n.
+    if erp is not None and erp["status"] == "error":
+        errors.append(f"ERP: {erp['error']}")
     payload = dict(sync.payload)
     if not sync.configured:
         payload["message"] = "Cita guardada en el calendario de la app."

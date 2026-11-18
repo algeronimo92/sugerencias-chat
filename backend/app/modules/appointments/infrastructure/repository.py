@@ -25,6 +25,8 @@ CHAT_MENTION_WINDOW = timedelta(days=7)
 _INTEGRATION_FIELDS = (
     "status", "n8n_status", "message", "event_link",
     "calendar_event_id", "calendar_sync_status", "calendar_sync_error",
+    "erp_package_id", "package_name",
+    "erp_appointment_id", "erp_link", "erp_sync_status", "erp_sync_error",
 )
 
 
@@ -71,10 +73,15 @@ class SqlAppointmentRepository:
             row = (await session.execute(_query().where(Appointment.id == appointment_id))).mappings().one()
         return _serialize(row)
 
-    async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
+    async def record_integrations(
+        self, appointment_id: int, *,
+        clear_calendar_sync_error: bool = False, clear_erp_sync_error: bool = False, **values,
+    ) -> dict:
         changes = {key: value for key, value in values.items() if key in _INTEGRATION_FIELDS and value is not None}
         if clear_calendar_sync_error:
             changes["calendar_sync_error"] = None
+        if clear_erp_sync_error:
+            changes["erp_sync_error"] = None
         async with session_scope() as session:
             if changes:
                 await session.execute(update(Appointment).where(Appointment.id == appointment_id).values(**changes))

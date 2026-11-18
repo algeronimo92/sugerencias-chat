@@ -1,6 +1,6 @@
 """Errores de dominio de las citas."""
 
-from app.core.errors import Conflict, DomainError, NotFound
+from app.core.errors import Conflict, DomainError, Invalid, NotFound
 
 
 class AppointmentNotFound(NotFound):
@@ -32,6 +32,41 @@ class CalendarSyncFailed(DomainError):
 
     status_code = 502
     code = "calendar_sync_failed"
+
+
+class ErpDataRequired(Invalid):
+    """A la cita le falta un dato que el ERP exige."""
+
+    code = "appointment_erp_data_required"
+
+
+class TestAppointmentNotSentToErp(Conflict):
+    """Las citas de prueba no se envían al ERP"""
+
+    code = "test_appointment_not_sent_to_erp"
+
+
+class DismissedAppointmentNotSentToErp(Conflict):
+    """La cita está desestimada: restáurala antes de enviarla al ERP"""
+
+    code = "dismissed_appointment_not_sent_to_erp"
+
+
+class ErpNotConfigured(Conflict):
+    """Activa el envío de citas al ERP en Integraciones antes de enviarla"""
+
+    code = "appointment_erp_not_configured"
+
+
+class ErpSyncFailed(DomainError):
+    """El ERP no aceptó la cita.
+
+    409 por lo mismo que ``NoticeSenderNotLinked``: detrás de Cloudflare un
+    502 del origen se reemplaza por su página de error y quien reintenta nunca
+    ve el motivo."""
+
+    status_code = 409
+    code = "appointment_erp_sync_failed"
 
 
 class AppointmentLeadNotFound(NotFound):

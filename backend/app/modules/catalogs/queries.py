@@ -86,6 +86,32 @@ async def list_lead_services(include_inactive: bool = False) -> list[dict]:
     ]
 
 
+async def sellable_packages(service_name: str) -> list[dict]:
+    """Los paquetes que se pueden vender hoy del servicio con ese nombre, en
+    el orden en que el negocio los muestra. ``external_id`` es el id del
+    paquete en el ERP (None si se cargó a mano en el CRM): con él la cita se
+    registra allá sobre el mismo paquete."""
+    stmt = (
+        select(
+            ServicePackage.id,
+            ServicePackage.name,
+            ServicePackage.sessions,
+            ServicePackage.position,
+            ServicePackage.external_id,
+        )
+        .join(LeadService, LeadService.id == ServicePackage.service_id)
+        .where(
+            func.lower(LeadService.name) == service_name.strip().casefold(),
+            LeadService.is_active == true(),
+            ServicePackage.is_active == true(),
+        )
+        .order_by(ServicePackage.position, ServicePackage.id)
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [dict(row) for row in rows]
+
+
 async def get_lead_service_by_name(name: str, active_only: bool = True) -> dict | None:
     stmt = select(
         LeadService.id,

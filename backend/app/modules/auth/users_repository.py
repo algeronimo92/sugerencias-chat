@@ -68,6 +68,19 @@ async def names_by_ids(user_ids: Iterable[int]) -> dict[int, str]:
     return {user_id: name for user_id, name in rows}
 
 
+async def emails_by_ids(user_ids: Iterable[int]) -> dict[int, str]:
+    """Correo de cada usuario pedido, incluidos los inactivos: identifica a la
+    misma persona en otro sistema del negocio (el ERP), aunque acá ya no
+    esté en el equipo."""
+    wanted = {int(user_id) for user_id in user_ids if user_id is not None}
+    if not wanted:
+        return {}
+    stmt = select(User.id, User.email).where(User.id.in_(wanted))
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).all()
+    return {user_id: email for user_id, email in rows}
+
+
 async def create_user(email: str, name: str, password_hash: str, role: str) -> dict:
     now = datetime.now(timezone.utc)
     stmt = insert(User).values(
