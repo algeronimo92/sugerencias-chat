@@ -357,6 +357,19 @@ ACTION_HANDLERS = {
 }
 
 
+# Las acciones cuyo handler llama a ``require_service_window``. El simulador
+# las usa para anticipar el fallo: antes solo lo hacía con SEND_TEMPLATE y
+# daba por buenos los envíos de texto, audio o archivo con la ventana cerrada.
+# Un test compara esta lista con los handlers.
+SERVICE_WINDOW_ACTIONS = frozenset({
+    AutomationActionType.SEND_TEMPLATE,
+    AutomationActionType.SEND_MESSAGE,
+    AutomationActionType.SEND_AUDIO,
+    AutomationActionType.SEND_ATTACHMENT,
+    AutomationActionType.SEND_MEDIA,
+})
+
+
 def with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -> AutomationDeps:
     """Claves de deduplicación estables por ejecución y paso: un reintento
     tras un crash no vuelve a encolar lo que ya quedó en la outbox."""

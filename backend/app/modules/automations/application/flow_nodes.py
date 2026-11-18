@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus, FlowHandle, FlowNodeType, QuestionHandle, WaitAnyConditionKind
 
 from app.modules.automations.application.actions import (
+    SERVICE_WINDOW_ACTIONS,
     execute_action,
     require_service_window,
     send_buttons_message,
@@ -136,6 +137,14 @@ class ConditionNode(FlowNodeHandler):
         return simulation.edges[(node["id"], branch)]
 
 
+_WINDOW_CLOSED_DETAIL = "La ventana de 24 horas está cerrada"
+
+
+async def _service_window_closed(simulation: FlowSimulation) -> bool:
+    window = await simulation.deps.get_customer_service_window(simulation.chat["chat_id"])
+    return not window or not window["is_open"]
+
+
 class ActionNode(FlowNodeHandler):
     def failure_type(self, node: dict) -> str:
         return node["data"].get("action", {}).get("type", FlowNodeType.ACTION)
@@ -150,10 +159,8 @@ class ActionNode(FlowNodeHandler):
     async def simulate(self, node: dict, simulation: FlowSimulation) -> str | None:
         action = node["data"]["action"]
         result = {"type": action["type"], "status": "would_run"}
-        if action["type"] == AutomationActionType.SEND_TEMPLATE:
-            window = await simulation.deps.get_customer_service_window(simulation.chat["chat_id"])
-            if not window or not window["is_open"]:
-                result.update(status="would_fail", detail="La ventana de 24 horas está cerrada")
+        if action["type"] in SERVICE_WINDOW_ACTIONS and await _service_window_closed(simulation):
+            result.update(status="would_fail", detail=_WINDOW_CLOSED_DETAIL)
         simulation.record(node["id"], **result)
         return simulation.edges[(node["id"], FlowHandle.NEXT)]
 
@@ -285,9 +292,13 @@ class QuestionNode(FlowNodeHandler):
         })
 
     async def simulate(self, node: dict, simulation: FlowSimulation) -> str | None:
+        # La pregunta se manda como mensaje de botones: con la ventana
+        # cerrada falla igual que cualquier envío (ver execute).
+        closed = await _service_window_closed(simulation)
         simulation.record(
-            node["id"], type=FlowNodeType.QUESTION, status="would_wait",
+            node["id"], type=FlowNodeType.QUESTION, status="would_fail" if closed else "would_wait",
             text=node["data"].get("text"), buttons=node["data"].get("buttons", []),
+            **({"detail": _WINDOW_CLOSED_DETAIL} if closed else {}),
         )
         return simulation.edges[(node["id"], QuestionHandle.TIMEOUT)]
 
