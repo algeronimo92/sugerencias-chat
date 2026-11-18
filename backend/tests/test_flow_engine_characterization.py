@@ -243,11 +243,80 @@ async def test_simulator_marks_templates_that_would_fail_and_closing_ends(simula
     assert [(step["node_id"], step["type"], step["status"]) for step in result["path"]] == [
         ("t", "trigger", "matched"),
         ("a", "send_template", "would_fail"),
-        ("q", "question", "would_wait"),
+        # La pregunta también es un envío: con la ventana cerrada fallaría.
+        ("q", "question", "would_fail"),
         ("e", "set_conversation_state", "would_run"),
         ("e", "end", "completed"),
     ]
     assert result["path"][2]["buttons"] == [{"id": "btn_1", "label": "Sí"}]
+    assert result["path"][2]["detail"] == "La ventana de 24 horas está cerrada"
+
+
+def _single_action_flow(action):
+    return {
+        "conditions": {},
+        "nodes": [
+            _node("t", "trigger", trigger_type="manual"),
+            _node("a", "action", action=action),
+            _node("e", "end", label="Fin"),
+        ],
+        "edges": [_edge("t", "a"), _edge("a", "e")],
+    }
+
+
+SENDING_ACTIONS = [
+    {"type": AutomationActionType.SEND_TEMPLATE, "template_id": 1},
+    {"type": AutomationActionType.SEND_MESSAGE, "text": "Hola"},
+    {"type": AutomationActionType.SEND_AUDIO, "media_asset_id": 1},
+    {"type": AutomationActionType.SEND_ATTACHMENT, "media_asset_id": 1},
+    {"type": AutomationActionType.SEND_MEDIA, "media_asset_id": 1, "caption": ""},
+]
+
+
+@pytest.mark.parametrize("action", SENDING_ACTIONS, ids=lambda action: str(action["type"]))
+async def test_simulator_marks_every_send_that_needs_the_window(simulator, monkeypatch, action):
+    # Antes solo SEND_TEMPLATE se marcaba: el simulador daba por buenos los
+    # envíos de texto, audio o archivo que al ejecutarse fallaban.
+    monkeypatch.setattr(simulation, "validate_visual_flow", AsyncMock(
+        return_value={"conditions": {}, "flow_definition": _single_action_flow(action)},
+    ))
+
+    result = await simulation.simulate_visual_flow(1, "lead-1", simulator)
+
+    step = result["path"][1]
+    assert (step["type"], step["status"], step["detail"]) == (
+        action["type"], "would_fail", "La ventana de 24 horas está cerrada",
+    )
+
+
+@pytest.mark.parametrize("action", SENDING_ACTIONS, ids=lambda action: str(action["type"]))
+async def test_simulator_lets_sends_run_with_the_window_open(simulator, monkeypatch, action):
+    monkeypatch.setattr(simulation, "validate_visual_flow", AsyncMock(
+        return_value={"conditions": {}, "flow_definition": _single_action_flow(action)},
+    ))
+
+    async def open_window(chat_id):
+        return {"is_open": True}
+
+    result = await simulation.simulate_visual_flow(
+        1, "lead-1", dataclasses.replace(simulator, get_customer_service_window=open_window),
+    )
+
+    assert result["path"][1]["status"] == "would_run"
+    assert "detail" not in result["path"][1]
+
+
+def test_service_window_actions_match_the_handlers_that_require_it():
+    import inspect
+
+    from app.modules.automations.application.actions import ACTION_HANDLERS, SERVICE_WINDOW_ACTIONS
+
+    requiring = {
+        action_type for action_type, handler in ACTION_HANDLERS.items()
+        if "require_service_window(" in inspect.getsource(handler)
+    }
+    assert requiring == SERVICE_WINDOW_ACTIONS
+    assert {action["type"] for action in SENDING_ACTIONS} == SERVICE_WINDOW_ACTIONS
 
 
 def test_every_flow_node_type_has_a_handler():
