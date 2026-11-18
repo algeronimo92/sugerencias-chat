@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useNodesInitialized, type FitViewOptions, type ReactFlowInstance } from '@xyflow/react'
 
 /** Destello del bloque al que se acaba de ir (index.css). */
@@ -20,9 +20,22 @@ export function useFocusNodes(
 ): FitViewOptions | undefined {
   const [initialFocus] = useState(focus)
   const nodesInitialized = useNodesInitialized()
+  // Cada pedido de "ir a" (su `key`) se aplica una sola vez. Elegir un bloque
+  // lo rearma y React Flow lo vuelve a medir: `nodesInitialized` pasa a false
+  // y vuelve a true, y antes eso repetía el último acercamiento. Al hacer
+  // clic en cualquier bloque la vista saltaba al último bloque al que se
+  // había ido (el abierto desde el historial, el de la búsqueda o «Ver»).
+  const appliedKey = useRef<number | null>(null)
+  // El temporizador que apaga el destello vive fuera del efecto: si fuera su
+  // limpieza, la siguiente vuelta del efecto (que ahora sale sin hacer nada)
+  // lo cancelaría y el bloque quedaría destellando.
+  const pulseTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (pulseTimer.current != null) window.clearTimeout(pulseTimer.current) }, [])
 
   useEffect(() => {
     if (!focus || !focus.ids.length || !nodesInitialized) return
+    if (appliedKey.current === focus.key) return
+    appliedKey.current = focus.key
     void fitView({ nodes: focus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1, duration: 450 })
     // Directo en el DOM y no por props, para no volver a dibujar el lienzo.
     const targets = focus.ids
@@ -33,8 +46,8 @@ export function useFocusNodes(
       void element.offsetWidth // reinicia la animación si ya destellaba
       element.classList.add(PULSE_CLASS)
     }
-    const timer = window.setTimeout(() => targets.forEach(element => element.classList.remove(PULSE_CLASS)), 2600)
-    return () => window.clearTimeout(timer)
+    if (pulseTimer.current != null) window.clearTimeout(pulseTimer.current)
+    pulseTimer.current = window.setTimeout(() => targets.forEach(element => element.classList.remove(PULSE_CLASS)), 2600)
   }, [focus, nodesInitialized, fitView, wrapper])
 
   return initialFocus?.ids.length ? { nodes: initialFocus.ids.map(id => ({ id })), padding: 0.5, maxZoom: 1 } : undefined
