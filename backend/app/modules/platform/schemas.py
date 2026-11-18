@@ -167,7 +167,18 @@ class WhatsappStatusItem(BaseModel):
     instance: str | None = None
 
 
+class WhatsappCostAccount(BaseModel):
+    """Lo de una WABA en el mes: ``chats`` (la del CRM) o ``notices`` (la
+    propia del número de avisos de cita)."""
+
+    account: Literal["chats", "notices"]
+    total_cost: float
+    billed_messages: int
+    free_messages: int
+
+
 class WhatsappCostBreakdownItem(BaseModel):
+    account: Literal["chats", "notices"]
     # Valores literales de Meta (MARKETING, UTILITY, SERVICE, AUTHENTICATION…
     # y REGULAR, FREE_CUSTOMER_SERVICE, FREE_ENTRY_POINT).
     pricing_category: str
@@ -193,6 +204,7 @@ class WhatsappCostsSummary(BaseModel):
     free_messages: int
     free_service_used: int
     free_service_limit: int
+    accounts: list[WhatsappCostAccount]
     breakdown: list[WhatsappCostBreakdownItem]
     days: list[WhatsappCostDay]
     last_synced_at: str | None = None

@@ -23,6 +23,9 @@ class WhatsAppPricingDaily(Base):
     __tablename__ = "whatsapp_pricing_daily"
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    # De qué WABA vino el punto: "chats" (la del CRM) o "notices" (la propia
+    # del número de avisos de cita, que Meta crea aparte en coexistencia).
+    account: Mapped[str] = mapped_column(Text, nullable=False, server_default="chats")
     # Día del negocio al que corresponde el punto. Meta corta los días en la
     # zona horaria de la WABA, así que ``period_start`` en UTC puede caer el
     # día anterior; el día es la fecha UTC del punto medio del período, que
@@ -49,7 +52,7 @@ class WhatsAppPricingDaily(Base):
     __table_args__ = (
         Index(
             "uq_whatsapp_pricing_daily_point",
-            day, country, pricing_category, pricing_type, tier,
+            account, day, country, pricing_category, pricing_type, tier,
             unique=True,
         ),
     )

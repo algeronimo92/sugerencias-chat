@@ -6,6 +6,11 @@ estado dice si un mensaje se cobra y con qué tarifa, no cuánto). Desde el
 gratis del mes y las plantillas utility dentro de la ventana de 24 h: sin
 esta copia el negocio no ve el gasto hasta que llega la factura.
 
+El número de avisos de cita vinculado con coexistencia vive en su propia
+WABA (Meta no deja elegir una existente) y Meta informa los montos por WABA:
+cada fila dice de qué cuenta vino (``CHATS`` o ``NOTICES``) y cada cuenta se
+sincroniza y se reemplaza por separado.
+
 El cliente de Meta llega inyectado (``fetch``): este módulo no habla con la
 Graph API por su cuenta (ver ``META_ALLOWED`` en ``test_layering``).
 """
@@ -21,7 +26,12 @@ from sqlalchemy import delete, func, select
 from app.db.models.platform import WhatsAppPricingDaily
 from app.db.uow import session_scope
 
-PricingFetcher = Callable[[datetime, datetime], Awaitable[dict]]
+# (inicio, fin, WABA o None para la del CRM) -> respuesta de Meta.
+PricingFetcher = Callable[[datetime, datetime, str | None], Awaitable[dict]]
+
+# Valores de ``WhatsAppPricingDaily.account``.
+CHATS = "chats"
+NOTICES = "notices"
 
 # Meta corrige las cifras de los últimos días: cada pasada vuelve a pedirlos.
 RESYNC_DAYS = 3
@@ -54,7 +64,7 @@ def business_day(period_start: datetime, period_end: datetime) -> date:
     return (period_start + (period_end - period_start) / 2).date()
 
 
-def _rows(points: list[dict], currency: str | None, synced_at: datetime) -> list[dict]:
+def _rows(points: list[dict], currency: str | None, synced_at: datetime, account: str = CHATS) -> list[dict]:
     """Un punto de Meta por fila; si Meta repite la combinación, se suman."""
     rows: dict[tuple, dict] = {}
     for point in points:
@@ -70,7 +80,7 @@ def _rows(points: list[dict], currency: str | None, synced_at: datetime) -> list
         row = rows.get(key)
         if row is None:
             rows[key] = {
-                "day": key[0], "country": key[1], "pricing_category": key[2],
+                "account": account, "day": key[0], "country": key[1], "pricing_category": key[2],
                 "pricing_type": key[3], "tier": key[4],
                 "period_start": start, "period_end": end,
                 "volume": int(point.get("volume") or 0), "cost": _decimal(point.get("cost")),
@@ -82,29 +92,45 @@ def _rows(points: list[dict], currency: str | None, synced_at: datetime) -> list
     return list(rows.values())
 
 
-async def sync_meta_costs(fetch: PricingFetcher, *, now: datetime | None = None) -> int:
-    """Trae de Meta los días pendientes y reemplaza esos días en la base.
-    Devuelve cuántas filas quedaron guardadas."""
+async def sync_meta_costs(
+    fetch: PricingFetcher, *, account: str = CHATS, waba_id: str | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Trae de Meta los días pendientes de una cuenta y reemplaza esos días
+    de esa cuenta en la base. Devuelve cuántas filas quedaron guardadas."""
     now = now or datetime.now(timezone.utc)
+    of_account = WhatsAppPricingDaily.account == account
     async with session_scope() as session:
-        last_day = await session.scalar(select(func.max(WhatsAppPricingDaily.day)))
+        last_day = await session.scalar(select(func.max(WhatsAppPricingDaily.day)).where(of_account))
     if last_day is None:
         start = _first_of_previous_month(now)
     else:
         start = datetime.combine(last_day - timedelta(days=RESYNC_DAYS), datetime.min.time(), tzinfo=timezone.utc)
-    result = await fetch(start, now)
+    result = await fetch(start, now, waba_id)
     first_day = business_day(start, start + timedelta(days=1))
     # Meta corta los días en la zona de la WABA: el primer punto puede ser el
     # día anterior a ``start``, que ya está guardado y no se borra abajo.
     rows = [
-        row for row in _rows(result.get("data_points") or [], result.get("currency"), now)
+        row for row in _rows(result.get("data_points") or [], result.get("currency"), now, account)
         if row["day"] >= first_day
     ]
     async with session_scope() as session:
         # Reemplazo por días: un punto que Meta dejó de informar (corrección
         # a cero) no puede quedar guardado con el valor viejo.
-        await session.execute(delete(WhatsAppPricingDaily).where(WhatsAppPricingDaily.day >= first_day))
+        await session.execute(
+            delete(WhatsAppPricingDaily).where(of_account, WhatsAppPricingDaily.day >= first_day)
+        )
         if rows:
             await session.execute(WhatsAppPricingDaily.__table__.insert(), rows)
         await session.flush()
     return len(rows)
+
+
+async def sync_all_meta_costs(fetch: PricingFetcher, notice_waba_id: str | None) -> int:
+    """La cuenta de los chats y, si el número de avisos tiene WABA propia,
+    también esa. Cada una se guarda en su propia transacción: si Meta rechaza
+    la de avisos, lo de los chats ya quedó guardado."""
+    saved = await sync_meta_costs(fetch)
+    if notice_waba_id:
+        saved += await sync_meta_costs(fetch, account=NOTICES, waba_id=notice_waba_id)
+    return saved

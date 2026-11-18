@@ -456,3 +456,34 @@ async def test_pricing_analytics_asks_the_waba_for_currency_and_daily_points(mon
     assert ".granularity(DAILY)" in fields
     assert result["currency"] == "USD"
     assert result["data_points"][0]["cost"] == 0.21
+
+
+async def test_pricing_analytics_can_ask_another_waba_of_the_business(monkeypatch):
+    from datetime import datetime, timezone
+
+    _mock_config(monkeypatch)
+    fake_client = _FakeGraphClient([_FakeGraphResponse({"currency": "USD", "id": "WABA-AVISOS"})])
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+
+    result = await meta_service.fetch_pricing_analytics(
+        datetime(2026, 11, 1, tzinfo=timezone.utc), datetime(2026, 11, 6, tzinfo=timezone.utc), "WABA-AVISOS",
+    )
+
+    assert fake_client.calls[0]["url"].endswith("/WABA-AVISOS")
+    assert result == {"currency": "USD", "data_points": []}
+
+
+@pytest.mark.parametrize(("number", "notice_waba", "expected"), [
+    ("", "WABA-AVISOS", None),          # sin número de avisos
+    ("PHONE2", "", None),               # el número vive en la WABA del CRM
+    ("PHONE2", "WABA1", None),          # idem, guardada explícitamente
+    ("PHONE2", "WABA-AVISOS", "WABA-AVISOS"),
+])
+async def test_notice_waba_is_only_the_one_apart_from_the_crm(monkeypatch, number, notice_waba, expected):
+    monkeypatch.setattr(meta_service, "get_effective_many", AsyncMock(return_value={
+        meta_service.NOTICE_NUMBER_KEY: number,
+        meta_service.NOTICE_WABA_KEY: notice_waba,
+        "meta_waba_id": "WABA1",
+    }))
+
+    assert await meta_service.notice_waba_id() == expected

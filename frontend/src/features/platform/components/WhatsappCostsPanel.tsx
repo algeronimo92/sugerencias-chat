@@ -23,6 +23,13 @@ const TYPE_LABELS: Record<string, string> = {
   FREE_ENTRY_POINT: 'Gratis · ventana por anuncio',
 }
 
+// De qué número salieron los mensajes: el de avisos de cita, vinculado con
+// coexistencia, queda en una cuenta de WhatsApp aparte que Meta cobra aparte.
+const ACCOUNT_LABELS: Record<string, string> = {
+  chats: 'Chats',
+  notices: 'Avisos de cita',
+}
+
 function monthValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
@@ -66,6 +73,7 @@ export function WhatsappCostsPanel() {
   const freeLimit = data?.free_service_limit ?? 1000
   const freePercent = Math.min(100, Math.round((freeUsed / freeLimit) * 100))
   const hasData = !!data && data.breakdown.length > 0
+  const bySender = (data?.accounts.length ?? 0) > 1
 
   return (
     <section className="space-y-3 rounded-lg border border-wa-border p-3 dark:border-wa-border-dark">
@@ -107,11 +115,23 @@ export function WhatsappCostsPanel() {
             <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
               {data.billed_messages.toLocaleString()} mensajes cobrados · {data.free_messages.toLocaleString()} gratis
             </p>
+            {bySender && (
+              <ul className="mt-1 space-y-0.5 text-xs text-wa-muted dark:text-wa-muted-dark">
+                {data.accounts.map((account) => (
+                  <li key={account.account} className="flex justify-between gap-2">
+                    <span>Número de {ACCOUNT_LABELS[account.account].toLowerCase()}</span>
+                    <span className="tabular-nums text-wa-text dark:text-wa-text-dark">
+                      {formatMoney(account.total_cost, data.currency)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>
             <div className="flex justify-between text-[11px] text-wa-muted dark:text-wa-muted-dark">
-              <span>Respuestas gratis del mes</span>
+              <span>Respuestas gratis del mes{bySender ? ' (número de chats)' : ''}</span>
               <span className="tabular-nums">{freeUsed.toLocaleString()} de {freeLimit.toLocaleString()}</span>
             </div>
             <div
@@ -135,6 +155,7 @@ export function WhatsappCostsPanel() {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-[11px] text-wa-muted dark:text-wa-muted-dark">
+                {bySender && <th className="py-1 font-medium">Número</th>}
                 <th className="py-1 font-medium">Tipo de mensaje</th>
                 <th className="py-1 font-medium">Precio</th>
                 <th className="py-1 text-right font-medium">Mensajes</th>
@@ -143,7 +164,8 @@ export function WhatsappCostsPanel() {
             </thead>
             <tbody className="text-wa-text dark:text-wa-text-dark">
               {data.breakdown.map((row) => (
-                <tr key={`${row.pricing_category}-${row.pricing_type}`} className="border-t border-wa-border dark:border-wa-border-dark">
+                <tr key={`${row.account}-${row.pricing_category}-${row.pricing_type}`} className="border-t border-wa-border dark:border-wa-border-dark">
+                  {bySender && <td className="py-1">{ACCOUNT_LABELS[row.account]}</td>}
                   <td className="py-1">{CATEGORY_LABELS[row.pricing_category] ?? row.pricing_category}</td>
                   <td className="py-1 text-wa-muted dark:text-wa-muted-dark">{TYPE_LABELS[row.pricing_type] ?? row.pricing_type}</td>
                   <td className="py-1 text-right tabular-nums">{row.volume.toLocaleString()}</td>

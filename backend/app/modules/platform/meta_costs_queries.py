@@ -9,9 +9,11 @@ from sqlalchemy import func, select
 
 from app.db.models.platform import WhatsAppPricingDaily
 from app.db.uow import session_scope
+from app.modules.platform.meta_costs import CHATS
 
-# Mensajes de servicio gratis por número y por mes desde el 2026-10-01. El
-# negocio tiene un solo número conectado, así que el cupo es el del negocio.
+# Mensajes de servicio gratis por número y por mes desde el 2026-10-01. Las
+# respuestas salen del número de los chats; el de avisos solo manda
+# plantillas, así que el cupo que importa es el de la cuenta de los chats.
 FREE_SERVICE_MESSAGES_PER_MONTH = 1000
 
 
@@ -31,14 +33,23 @@ async def monthly_costs(month: date) -> dict:
     async with session_scope() as session:
         breakdown = (await session.execute(
             select(
+                WhatsAppPricingDaily.account,
                 WhatsAppPricingDaily.pricing_category,
                 WhatsAppPricingDaily.pricing_type,
                 func.sum(WhatsAppPricingDaily.volume).label("volume"),
                 func.sum(WhatsAppPricingDaily.cost).label("cost"),
             )
             .where(*in_month)
-            .group_by(WhatsAppPricingDaily.pricing_category, WhatsAppPricingDaily.pricing_type)
-            .order_by(func.sum(WhatsAppPricingDaily.cost).desc(), WhatsAppPricingDaily.pricing_category)
+            .group_by(
+                WhatsAppPricingDaily.account,
+                WhatsAppPricingDaily.pricing_category,
+                WhatsAppPricingDaily.pricing_type,
+            )
+            .order_by(
+                WhatsAppPricingDaily.account,
+                func.sum(WhatsAppPricingDaily.cost).desc(),
+                WhatsAppPricingDaily.pricing_category,
+            )
         )).all()
         days = (await session.execute(
             select(
@@ -60,8 +71,17 @@ async def monthly_costs(month: date) -> dict:
 
     free_service_used = sum(
         int(row.volume or 0) for row in breakdown
-        if row.pricing_category == "SERVICE" and row.pricing_type == "FREE_CUSTOMER_SERVICE"
+        if row.account == CHATS
+        and row.pricing_category == "SERVICE" and row.pricing_type == "FREE_CUSTOMER_SERVICE"
     )
+    accounts: dict[str, dict] = {}
+    for row in breakdown:
+        account = accounts.setdefault(
+            row.account, {"account": row.account, "cost": Decimal(0), "billed_messages": 0, "free_messages": 0},
+        )
+        account["cost"] += row.cost or Decimal(0)
+        key = "billed_messages" if row.pricing_type == "REGULAR" else "free_messages"
+        account[key] += int(row.volume or 0)
     return {
         "month": first.strftime("%Y-%m"),
         "currency": currency,
@@ -70,8 +90,14 @@ async def monthly_costs(month: date) -> dict:
         "free_messages": sum(int(row.volume or 0) for row in breakdown if row.pricing_type != "REGULAR"),
         "free_service_used": free_service_used,
         "free_service_limit": FREE_SERVICE_MESSAGES_PER_MONTH,
+        # Primero la de los chats; la de avisos solo aparece si cobró algo.
+        "accounts": [
+            {**account, "total_cost": _money(account.pop("cost"))}
+            for account in sorted(accounts.values(), key=lambda item: item["account"] != CHATS)
+        ],
         "breakdown": [
             {
+                "account": row.account,
                 "pricing_category": row.pricing_category,
                 "pricing_type": row.pricing_type,
                 "volume": int(row.volume or 0),

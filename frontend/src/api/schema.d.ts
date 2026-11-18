@@ -8257,8 +8257,31 @@ export interface components {
             /** Public Key */
             public_key: string;
         };
+        /**
+         * WhatsappCostAccount
+         * @description Lo de una WABA en el mes: ``chats`` (la del CRM) o ``notices`` (la
+         *     propia del número de avisos de cita).
+         */
+        WhatsappCostAccount: {
+            /**
+             * Account
+             * @enum {string}
+             */
+            account: "chats" | "notices";
+            /** Total Cost */
+            total_cost: number;
+            /** Billed Messages */
+            billed_messages: number;
+            /** Free Messages */
+            free_messages: number;
+        };
         /** WhatsappCostBreakdownItem */
         WhatsappCostBreakdownItem: {
+            /**
+             * Account
+             * @enum {string}
+             */
+            account: "chats" | "notices";
             /** Pricing Category */
             pricing_category: string;
             /** Pricing Type */
@@ -8297,6 +8320,8 @@ export interface components {
             free_service_used: number;
             /** Free Service Limit */
             free_service_limit: number;
+            /** Accounts */
+            accounts: components["schemas"]["WhatsappCostAccount"][];
             /** Breakdown */
             breakdown: components["schemas"]["WhatsappCostBreakdownItem"][];
             /** Days */

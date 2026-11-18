@@ -750,16 +750,19 @@ async def mark_messages_as_read(chat_id: str, wa_message_ids: list[str]) -> dict
 _PRICING_DIMENSIONS = '["PRICING_CATEGORY","PRICING_TYPE","COUNTRY","TIER"]'
 
 
-async def fetch_pricing_analytics(start: datetime, end: datetime) -> dict:
-    """Lo que Meta cobró a la WABA del negocio entre ``start`` y ``end``, por
-    día, categoría, tipo de precio, país y tramo.
+async def fetch_pricing_analytics(start: datetime, end: datetime, waba_id: str | None = None) -> dict:
+    """Lo que Meta cobró a una WABA entre ``start`` y ``end``, por día,
+    categoría, tipo de precio, país y tramo. Sin ``waba_id``, la del CRM; con
+    él, otra del mismo negocio (la del número de avisos), que el token del
+    negocio también puede leer.
 
     Devuelve ``{"currency": str | None, "data_points": [...]}`` con los puntos
     tal como los manda Meta (``start``, ``end``, ``volume``, ``cost``,
     ``country``, ``pricing_category``, ``pricing_type``, ``tier``). ``cost`` va
     en la moneda de la WABA y Meta lo da por aproximado.
     """
-    token, _phone_number_id, waba_id = await _config()
+    token, _phone_number_id, crm_waba = await _config()
+    waba_id = waba_id or crm_waba
     analytics = (
         f"pricing_analytics.start({int(start.timestamp())}).end({int(end.timestamp())})"
         f".granularity(DAILY).dimensions({_PRICING_DIMENSIONS})"
@@ -784,6 +787,17 @@ async def ensure_dataset() -> str:
     if not isinstance(dataset_id, str) or not dataset_id:
         raise MetaApiError("Meta no devolvió el dataset de la cuenta de WhatsApp Business")
     return dataset_id
+
+
+async def notice_waba_id() -> str | None:
+    """La WABA propia del número de avisos, si tiene una distinta a la del
+    CRM. Si el número de avisos vive en la WABA del CRM, lo que cobra ya
+    viene en la de los chats y no hay otra cuenta que consultar."""
+    values = await get_effective_many((NOTICE_NUMBER_KEY, NOTICE_WABA_KEY, "meta_waba_id"))
+    notice_waba = (values[NOTICE_WABA_KEY] or "").strip()
+    if not (values[NOTICE_NUMBER_KEY] or "").strip() or not notice_waba:
+        return None
+    return notice_waba if notice_waba != (values["meta_waba_id"] or "").strip() else None
 
 
 async def configured_waba_id() -> str:
