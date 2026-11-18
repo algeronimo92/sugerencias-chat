@@ -4,6 +4,7 @@ import { CameraCaptureDialog } from '../../../shared/ui/CameraCaptureDialog'
 import { Input, Select, Textarea } from '../../../shared/ui/Input'
 import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
 import { useSellers } from '../../platform/public/useUsers'
+import { PAYMENT_METHODS, packageLabel } from '../domain/erpFields'
 import { customKey } from '../domain/leadPrefill'
 import { useBusinessCurrency } from '../hooks/useBusinessCurrency'
 import { DEPOSIT_FIELD_KEY, FIELD_IDS, customErrorKey, customFieldId, type AppointmentFormState } from '../hooks/useAppointmentForm'
@@ -84,6 +85,7 @@ function BookingSection({ state, fromLead }: { state: AppointmentFormState; from
       <Field id={FIELD_IDS.servicio} label="Tratamiento" required fromLead={fromLead('servicio')} error={fieldErrors.servicio}>
         {described => <ServiceCombobox id={FIELD_IDS.servicio} value={form.servicio} onChange={value => update('servicio', value)} disabled={busy} className={fieldClass} aria-describedby={described} invalid={Boolean(fieldErrors.servicio)} />}
       </Field>
+      <PackageField state={state} />
       <div className="mt-4">
         <Field id={FIELD_IDS.fecha} label="Fecha de la cita" required error={fieldErrors.fecha}>
           {described => (
@@ -124,6 +126,31 @@ function BookingSection({ state, fromLead }: { state: AppointmentFormState; from
   )
 }
 
+/** Con el envío de citas al ERP activo: qué paquete del tratamiento se
+ *  vendió. Viene elegido el de menos sesiones, que es la primera cita. */
+function PackageField({ state }: { state: AppointmentFormState }) {
+  const { form, busy, update, erp } = state
+  if (!erp.active || !form.servicio.trim()) return null
+  if (erp.packages.length === 0) {
+    return (
+      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+        Este tratamiento no está en el catálogo del ERP: la cita se guarda acá, pero no se enviará a su agenda.
+      </p>
+    )
+  }
+  return (
+    <div className="mt-4">
+      <Field id={FIELD_IDS.packageId} label="Paquete" required hint="Es la primera sesión de este paquete. Si después cambia, se corrige en el ERP.">
+        {described => (
+          <Select id={FIELD_IDS.packageId} value={String(erp.chosenPackage?.id ?? '')} onValueChange={value => update('packageId', value)} disabled={busy} className={fieldClass} aria-describedby={described}>
+            {erp.packages.map(item => <option key={item.id} value={item.id}>{packageLabel(item, 'S/ ')}</option>)}
+          </Select>
+        )}
+      </Field>
+    </div>
+  )
+}
+
 /** El adelanto y el comprobante juntos: son lo que convierte la cita en venta. */
 function PaymentSection({ state, fromLead }: { state: AppointmentFormState; fromLead: FromLead }) {
   const deposit = state.definitions.find(field => field.key === DEPOSIT_FIELD_KEY)
@@ -132,6 +159,18 @@ function PaymentSection({ state, fromLead }: { state: AppointmentFormState; from
       {deposit && (
         <div className="mb-4">
           <CustomField state={state} field={deposit} fromLead={fromLead} label="Adelanto pagado" placeholder="Ej. 50.00" />
+        </div>
+      )}
+      {state.erp.needsPaymentMethod && (
+        <div className="mb-4">
+          <Field id={FIELD_IDS.paymentMethod} label="Método de pago" required hint="Con qué pagó el adelanto: así queda registrado en el ERP." error={state.fieldErrors.paymentMethod}>
+            {described => (
+              <Select id={FIELD_IDS.paymentMethod} value={state.form.paymentMethod} onValueChange={value => state.update('paymentMethod', value)} disabled={state.busy} className={fieldClass} aria-describedby={described} aria-invalid={state.fieldErrors.paymentMethod ? true : undefined}>
+                <option value="">Elige el método</option>
+                {PAYMENT_METHODS.map(method => <option key={method.value} value={method.value}>{method.label}</option>)}
+              </Select>
+            )}
+          </Field>
         </div>
       )}
       <AttachmentField state={state} />
@@ -159,6 +198,13 @@ function ClientSection({ state, fromLead, phoneLocked, compact }: { state: Appoi
           {described => <Input id={FIELD_IDS.telefono} type="tel" inputMode="tel" value={form.telefono} onChange={event => update('telefono', event.target.value)} disabled={busy} readOnly={phoneLocked} className={`${fieldClass} ${phoneLocked ? 'cursor-not-allowed opacity-80' : ''}`} aria-describedby={described} aria-invalid={fieldErrors.telefono ? true : undefined} />}
         </Field>
       </div>
+      {state.erp.showDni && (
+        <div className="mt-4">
+          <Field id={FIELD_IDS.dni} label="DNI" required hint="El ERP registra al paciente con su DNI." error={fieldErrors.dni}>
+            {described => <Input id={FIELD_IDS.dni} inputMode="numeric" maxLength={8} value={form.dni} onChange={event => update('dni', event.target.value)} disabled={busy} className={fieldClass} autoComplete="off" aria-describedby={described} aria-invalid={fieldErrors.dni ? true : undefined} />}
+          </Field>
+        </div>
+      )}
       <CustomFieldsBody state={state} fields={others} fromLead={fromLead} compact={compact} />
     </FormSection>
   )

@@ -3040,6 +3040,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/erp-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Erp Sync
+         * @description Cualquiera del equipo: el formulario de cita necesita saber si el
+         *     envío al ERP está activo para pedir el DNI, el paquete y el método de
+         *     pago. La dirección del ERP solo la recibe el admin.
+         */
+        get: operations["get_erp_sync_api_appointments_erp_sync_get"];
+        /** Put Erp Sync */
+        put: operations["put_erp_sync_api_appointments_erp_sync_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/erp-sync/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Erp Sync */
+        post: operations["test_erp_sync_api_appointments_erp_sync_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/{appointment_id}/sync-erp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Appointment Erp */
+        post: operations["sync_appointment_erp_api_appointments__appointment_id__sync_erp_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/{appointment_id}/sync-calendar": {
         parameters: {
             query?: never;
@@ -4185,6 +4242,10 @@ export interface components {
                 [key: string]: unknown;
             };
             comprobante?: components["schemas"]["AppointmentAttachment"] | null;
+            /** Package Id */
+            package_id?: number | null;
+            /** Payment Method */
+            payment_method?: ("cash" | "card" | "transfer" | "yape" | "plin") | null;
             /**
              * Test Mode
              * @default false
@@ -4209,6 +4270,11 @@ export interface components {
             eventLink?: string | null;
             /** Calendarsyncstatus */
             calendarSyncStatus: string;
+            /**
+             * Erpsyncstatus
+             * @default not_configured
+             */
+            erpSyncStatus: string;
             /** Integrationerrors */
             integrationErrors: string[];
         } & {
@@ -4283,6 +4349,26 @@ export interface components {
             calendar_sync_status: "not_configured" | "pending" | "synced" | "error" | "skipped";
             /** Calendar Sync Error */
             calendar_sync_error?: string | null;
+            /** Package Name */
+            package_name?: string | null;
+            /** Payment Method */
+            payment_method?: ("cash" | "card" | "transfer" | "yape" | "plin") | null;
+            /** Comprobante Url */
+            comprobante_url?: string | null;
+            /** Erp Package Id */
+            erp_package_id?: string | null;
+            /** Erp Appointment Id */
+            erp_appointment_id?: string | null;
+            /** Erp Link */
+            erp_link?: string | null;
+            /**
+             * Erp Sync Status
+             * @default not_configured
+             * @enum {string}
+             */
+            erp_sync_status: "not_configured" | "pending" | "synced" | "error" | "skipped";
+            /** Erp Sync Error */
+            erp_sync_error?: string | null;
             /** Created At */
             created_at: string;
             /** Dismissed At */
@@ -5515,6 +5601,53 @@ export interface components {
              * @enum {string}
              */
             source: "tenant" | "platform";
+        };
+        /**
+         * ErpAppointmentsConfig
+         * @description Envío de las citas al ERP del negocio. ``active``: está encendido y
+         *     tiene todo para funcionar, así que el formulario de cita pide lo que el
+         *     ERP exige. ``url`` solo viaja para el admin; el token nunca.
+         */
+        ErpAppointmentsConfig: {
+            /** Active */
+            active: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Url */
+            url?: string | null;
+            /** Token Configured */
+            token_configured: boolean;
+            /** Catalog Connected */
+            catalog_connected: boolean;
+        };
+        /** ErpAppointmentsConfigUpdate */
+        ErpAppointmentsConfigUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+            /** Token */
+            token?: string | null;
+        };
+        /**
+         * ErpAppointmentsTest
+         * @description Lo que venga vacío se prueba con lo ya guardado.
+         */
+        ErpAppointmentsTest: {
+            /** Url */
+            url?: string | null;
+            /** Token */
+            token?: string | null;
+        };
+        /** ErpAppointmentsTestResult */
+        ErpAppointmentsTestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
         };
         /** ErpSamplePackage */
         ErpSamplePackage: {
@@ -14499,6 +14632,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoticeSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_erp_sync_api_appointments_erp_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpAppointmentsConfig"];
+                };
+            };
+        };
+    };
+    put_erp_sync_api_appointments_erp_sync_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ErpAppointmentsConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpAppointmentsConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_erp_sync_api_appointments_erp_sync_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ErpAppointmentsTest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErpAppointmentsTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_appointment_erp_api_appointments__appointment_id__sync_erp_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentItem"];
                 };
             };
             /** @description Validation Error */
