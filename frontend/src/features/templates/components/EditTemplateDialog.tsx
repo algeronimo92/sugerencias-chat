@@ -4,10 +4,13 @@ import { Button } from '../../../shared/ui/Button'
 import { Input, Textarea, labelClass } from '../../../shared/ui/Input'
 import { Modal } from '../../../shared/ui/Modal'
 import { extractErrorMessage } from '../../../shared/utils/errors'
+import { attachmentsChanged, draftFromSaved, type DraftAttachment } from '../domain/attachmentDraft'
+import { useApplyAttachmentDraft } from '../hooks/useApplyAttachmentDraft'
 import { useUpdateTemplate } from '../hooks/useTemplates'
 import type { MessageTemplate } from '../types'
 import { templateParameterIdentifiers } from '../utils/templates'
 import { OfficialVariablesSection } from './OfficialVariablesSection'
+import { TemplateAttachmentsEditor } from './TemplateAttachmentsEditor'
 import { TemplateVariableChips } from './TemplateVariableChips'
 
 interface Props {
@@ -27,10 +30,6 @@ function sameValues(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
-function plural(count: number, one: string, many: string) {
-  return `${count} ${count === 1 ? one : many}`
-}
-
 /**
  * Editar el nombre, el texto y, en una de Meta, qué dato lleva cada variable,
  * sin salir del constructor de flujos. Adjuntos, botones, encabezado y pie se
@@ -45,6 +44,13 @@ export function EditTemplateDialog({ template, onClose, onSaved, leadOnlyVariabl
   const [error, setError] = useState<string | null>(null)
   const contentField = useRef<HTMLTextAreaElement>(null)
   const updateTemplate = useUpdateTemplate()
+  // Solo las internas sin botones ni lista llevan archivos (el backend
+  // rechaza el resto). Las de Meta usan su encabezado, que va en Plantillas.
+  const editsAttachments = !isMeta && template.interactive_type === 'none'
+  const savedAttachments = template.attachments ?? []
+  const [attachmentDraft, setAttachmentDraft] = useState<DraftAttachment[]>(() => draftFromSaved(savedAttachments))
+  const applyAttachments = useApplyAttachmentDraft()
+  const [saving, setSaving] = useState(false)
 
   const variables = isMeta ? templateParameterIdentifiers(content) : []
   const sizedParameters = isMeta ? resizeValues(content, parameters) : []
@@ -53,9 +59,8 @@ export function EditTemplateDialog({ template, onClose, onSaved, leadOnlyVariabl
   // o variables cambiaron: queda PENDING y no se puede mandar hasta que Meta
   // responda. Mejor que se sepa antes de tocar Guardar.
   const goesBackToReview = isMeta && Boolean(template.meta_template_id) && changesMessage
-  const attachments = template.attachments?.length ?? 0
 
-  function submit() {
+  async function submit() {
     setError(null)
     const trimmedName = name.trim()
     const trimmedContent = content.trim()
@@ -67,38 +72,46 @@ export function EditTemplateDialog({ template, onClose, onSaved, leadOnlyVariabl
       setError('Elige qué dato lleva cada variable.')
       return
     }
-    updateTemplate.mutate(
-      {
+    setSaving(true)
+    try {
+      const saved = await updateTemplate.mutateAsync({
         id: template.id,
         name: trimmedName,
         content: trimmedContent,
         ...(isMeta ? { official_parameter_values: sizedParameters.map(value => value.trim()) } : {}),
-      },
-      {
-        onSuccess: saved => { onSaved?.(saved); onClose() },
-        onError: reason => setError(extractErrorMessage(reason)),
-      },
-    )
+      })
+      if (editsAttachments && attachmentsChanged(savedAttachments, attachmentDraft)) {
+        await applyAttachments.apply(template.id, savedAttachments, attachmentDraft)
+      }
+      onSaved?.(saved)
+      onClose()
+    } catch (reason) {
+      // Si falló a mitad de los archivos, el texto ya quedó guardado: al
+      // reabrir se ve lo que quedó y se puede terminar.
+      setError(extractErrorMessage(reason))
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const pending = updateTemplate.isPending
+  const pending = saving || updateTemplate.isPending || applyAttachments.pending
   return (
     <Modal
       title="Editar plantilla"
       description={isMeta ? 'Plantilla de Meta. Los cambios se ven en todos los flujos que la usan.' : 'Los cambios se ven en todos los flujos que la usan.'}
       icon={<PencilLine className="h-4 w-4" />}
-      size={isMeta ? 'md' : 'sm'}
+      size={isMeta || editsAttachments ? 'md' : 'sm'}
       busy={pending}
       onClose={onClose}
       footer={<>
         <Button variant="ghost" onClick={onClose} disabled={pending}>Cancelar</Button>
-        <Button onClick={submit} disabled={pending}>
+        <Button onClick={() => void submit()} disabled={pending}>
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           {goesBackToReview ? 'Guardar y enviar a revisión' : 'Guardar cambios'}
         </Button>
       </>}
     >
-      <form className="space-y-4" onSubmit={event => { event.preventDefault(); submit() }}>
+      <form className="space-y-4" onSubmit={event => { event.preventDefault(); void submit() }}>
         <div>
           <label htmlFor="edit-template-name" className={labelClass}>Nombre</label>
           <Input id="edit-template-name" value={name} maxLength={120} onChange={event => setName(event.target.value)} />
@@ -120,12 +133,13 @@ export function EditTemplateDialog({ template, onClose, onSaved, leadOnlyVariabl
             <span>Al guardar, Meta vuelve a revisar la plantilla. Hasta que la apruebe no se podrá enviar, ni desde el chat ni desde las automatizaciones.</span>
           </div>
         )}
-        {(isMeta || attachments > 0) && (
+        {editsAttachments && (
+          <TemplateAttachmentsEditor items={attachmentDraft} onChange={setAttachmentDraft} text={content} onError={setError} disabled={pending} />
+        )}
+        {isMeta && (
           <p className="flex items-center gap-1.5 text-xs text-wa-muted dark:text-wa-muted-dark">
             <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {isMeta
-              ? 'Encabezado, pie y botones se cambian en Plantillas.'
-              : `${plural(attachments, 'adjunto', 'adjuntos')} · se cambian en Plantillas.`}
+            Encabezado, pie y botones se cambian en Plantillas.
           </p>
         )}
         {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
