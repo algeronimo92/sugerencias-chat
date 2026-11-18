@@ -13,6 +13,8 @@ import { extractErrorMessage, extractErrorTarget } from '../../../shared/utils/e
 import { CreateTemplateDialog } from '../../templates/public/CreateTemplateDialog'
 import { META_CONTRACT } from '../../whatsapp/public/metaContract'
 import { useTemplates } from '../../templates/public/useTemplates'
+import { automaticTemplatePreviewText, isAutomaticTemplate, templateSendHint } from '../domain/automaticTemplates'
+import { templateOptions } from './templateOptions'
 import type { MessageTemplate } from '../../templates/types'
 import { conditionStageOptions, INITIAL_LEAD_STAGE, stageOptions } from '../../leads/public/leadStageMeta'
 import { useTags } from '../../catalogs/public/useTags'
@@ -380,7 +382,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
     && item.builder_mode === AutomationBuilderMode.Visual
     && item.published
   ))
-  const automaticTemplates = useMemo(() => templates.filter(template => template.is_active && template.template_type === 'internal' && template.interactive_type === 'none'), [templates])
+  const automaticTemplates = useMemo(() => templates.filter(isAutomaticTemplate), [templates])
   const isBusy = createFlow.isPending || saveFlow.isPending || publishFlow.isPending
   const hasUnpublishedChanges = publishedDefinition == null || !areFlowDefinitionsEqual(flow, publishedDefinition)
   // Del listado (se refresca solo), no de la regla con la que se abrió el editor.
@@ -1227,7 +1229,7 @@ interface ActionEditorProps {
 
 function TemplatePreview({ template }: { template: MessageTemplate }) {
   return <div className="space-y-1.5 rounded-lg border border-wa-border bg-wa-hover p-2 dark:border-wa-border-dark dark:bg-wa-head-dark">
-    <p className="whitespace-pre-wrap text-[11px] text-wa-text dark:text-wa-text-dark">{template.content || <span className="italic text-wa-muted">(sin texto, solo adjuntos)</span>}</p>
+    <p className="whitespace-pre-wrap text-[11px] text-wa-text dark:text-wa-text-dark">{automaticTemplatePreviewText(template) || <span className="italic text-wa-muted">(sin texto, solo adjuntos)</span>}</p>
     {template.attachments.length > 0 && <div className="flex flex-wrap gap-1.5">
       {template.attachments.map(attachment => <AttachmentPreview key={attachment.id} attachment={attachment} />)}
     </div>}
@@ -1255,11 +1257,11 @@ function ActionEditor({ action, updateAction, users, tags, leadServices, templat
     {action.type === ActionType.SendMessage && <textarea rows={4} value={action.text} onChange={event => updateAction({ ...action, text: event.target.value })} placeholder="Escribe el mensaje a enviar..." className={fieldClass} />}
     {action.type === ActionType.SendTemplate && <>
       <div className="flex items-center gap-1.5">
-        <Select value={action.template_id ?? ''} onChange={event => updateAction({ ...action, template_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona plantilla</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</Select>
+        <Select value={action.template_id ?? ''} onChange={event => updateAction({ ...action, template_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona plantilla</option>{templateOptions(templates)}</Select>
         <button type="button" onClick={() => setCreatingTemplate(true)} title="Crear plantilla nueva sin salir del flujo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-2 text-[10px] font-semibold text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:hover:bg-wa-head-dark"><Plus className="h-3 w-3" />Nueva</button>
       </div>
       {selectedTemplate && <TemplatePreview template={selectedTemplate} />}
-      <p className="text-[10px] text-amber-600">Puede llevar imagen, video, audio o documento. Solo se envía si el cliente escribió en las últimas 24 horas.</p>
+      <p className="text-[10px] text-amber-600">{templateSendHint(selectedTemplate)}</p>
       {creatingTemplate && <CreateTemplateDialog
         onClose={() => setCreatingTemplate(false)}
         onCreated={template => { updateAction({ ...action, template_id: template.id }); setCreatingTemplate(false) }}

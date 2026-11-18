@@ -22,6 +22,7 @@ from app.modules.conversations.ports.chat_queries import fetch_chat, get_custome
 from app.modules.conversations.ports.latest_message_queries import latest_message, latest_outbound_media_wa_id
 from app.modules.conversations.ports.message_history import fetch_latest_customer_message_target
 from app.modules.conversations.ports.outbound import queue_messages, send_reaction
+from app.modules.conversations.ports.template_sending import official_template_items
 from app.modules.leads import public as leads
 from app.modules.leads.public import Actor, LeadNotFound, TagNotAvailable
 from app.modules.media.ports.media_library_service import get_media_asset
@@ -96,6 +97,9 @@ class AutomationDeps:
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
 
     load_template: Callable[[int], Awaitable[dict | None]] = fetch_template_for_delivery
+    # (plantilla oficial, parámetros resueltos) -> ítems de outbox. El mismo
+    # armado que el envío manual desde el chat.
+    build_official_template_items: Callable[[dict, list[str]], Awaitable[list[dict]]] = official_template_items
     load_media_asset: Callable[[int], Awaitable[dict | None]] = get_media_asset
     create_task: Callable[..., Awaitable[dict]] = create_task
     record_template_use: Callable[..., Awaitable[bool]] = record_template_use

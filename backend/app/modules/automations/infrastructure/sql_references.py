@@ -9,7 +9,7 @@ from app.db.models.auth import User
 from app.db.models.catalogs import LeadTag, MessageTemplate
 from app.db.models.media import MediaAsset
 from app.db.uow import session_scope
-from app.modules.catalogs.ports.types import InteractiveType, TemplateType
+from app.modules.automations.domain.templates import automatic_template_problem
 from app.modules.leads.ports.stages import stage_problem
 
 
@@ -31,14 +31,13 @@ class SqlReferenceChecker:
     async def unusable_templates(self, ids: set[int]) -> set[int]:
         async with session_scope() as session:
             templates = (await session.execute(
-                select(MessageTemplate).where(MessageTemplate.id.in_(ids))
-            )).scalars().all()
-        valid = {
-            template.id for template in templates
-            if template.is_active
-            and template.template_type == TemplateType.INTERNAL
-            and template.interactive_type == InteractiveType.NONE
-        }
+                select(
+                    MessageTemplate.id, MessageTemplate.content, MessageTemplate.is_active,
+                    MessageTemplate.template_type, MessageTemplate.interactive_type,
+                    MessageTemplate.official_status, MessageTemplate.official_parameter_values,
+                ).where(MessageTemplate.id.in_(ids))
+            )).mappings().all()
+        valid = {template["id"] for template in templates if automatic_template_problem(template) is None}
         return set(ids) - valid
 
     async def missing_media_assets(self, ids: set[int]) -> set[int]:

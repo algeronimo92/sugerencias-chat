@@ -19,6 +19,7 @@ Play,SmilePlus,Tag,Trash2,UserRound,Video,
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveMediaUrl } from '../../../whatsapp/public/message'
 import type { MessageTemplate } from '../../../templates/types'
+import { automaticTemplatePreviewText } from '../../domain/automaticTemplates'
 import { useLeadStageCatalog } from '../../../leads/public/useLeadStages'
 import type { Tag as TagRecord } from '../../../catalogs/types'
 import type { MediaAsset } from '../../../media/types'
@@ -224,7 +225,7 @@ function ActionPreview({ data }: { data: CanvasNodeData }) {
           <MessageSquareText className="h-3 w-3" />{template?.name ?? 'Plantilla sin seleccionar'}
         </div>
         <p className="line-clamp-4 whitespace-pre-wrap text-[10px] leading-relaxed text-gray-700 dark:text-gray-200">
-          {template?.content || 'Selecciona una plantilla para ver su contenido.'}
+          {(template && automaticTemplatePreviewText(template)) || 'Selecciona una plantilla para ver su contenido.'}
         </p>
       </div>
     </div>
