@@ -39,6 +39,21 @@ class TemplateValidationError(ValueError):
     """Lo que mandó el formulario no se puede guardar."""
 
 
+def attachment_positions(current_ids: list[int], requested_ids: list[int]) -> dict[int, int]:
+    """La posición nueva de cada adjunto según el orden pedido.
+
+    El orden tiene que nombrar cada adjunto de la plantilla una sola vez: si
+    falta uno (otra pestaña lo borró) o sobra (otra pestaña lo agregó), se
+    rechaza en vez de dejar dos adjuntos en la misma posición. El orden
+    importa: el texto viaja como pie del primer adjunto que lo admite.
+    """
+    if len(requested_ids) != len(set(requested_ids)) or set(requested_ids) != set(current_ids):
+        raise TemplateValidationError(
+            "Los adjuntos de la plantilla cambiaron mientras los ordenabas. Vuelve a abrirla e inténtalo de nuevo."
+        )
+    return {attachment_id: position for position, attachment_id in enumerate(requested_ids)}
+
+
 class TemplateMediaError(Exception):
     """Meta rechazó la subida del encabezado."""
 

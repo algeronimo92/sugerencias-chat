@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../../shared/queryClient'
-import { addLibraryTemplateAttachment, createPersonalTemplate, createTemplate, deleteTemplate, deleteTemplateAttachment, importMetaTemplate, fetchMetaTemplateDetail, fetchMetaTemplates, recordTemplateUse, syncTemplate, fetchTemplateCapabilities, fetchTemplates, toggleTemplateFavorite, updateTemplate, uploadTemplateAttachment } from '../api'
+import { addLibraryTemplateAttachment, createPersonalTemplate, createTemplate, deleteTemplate, deleteTemplateAttachment, importMetaTemplate, fetchMetaTemplateDetail, reorderTemplateAttachments, fetchMetaTemplates, recordTemplateUse, syncTemplate, fetchTemplateCapabilities, fetchTemplates, toggleTemplateFavorite, updateTemplate, uploadTemplateAttachment } from '../api'
 import { mediaKeys } from '../../media/public/keys'
 import { templateKeys } from '../keys'
 
@@ -77,6 +77,13 @@ export function useAddLibraryTemplateAttachment() {
       queryClient.invalidateQueries({ queryKey: templateKeys.all })
       queryClient.invalidateQueries({ queryKey: mediaKeys.all })
     },
+  })
+}
+
+export function useReorderTemplateAttachments() {
+  return useMutation({
+    mutationFn: reorderTemplateAttachments,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: templateKeys.all }),
   })
 }
 

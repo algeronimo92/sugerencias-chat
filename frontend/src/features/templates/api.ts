@@ -54,6 +54,12 @@ export async function addLibraryTemplateAttachment({ templateId, assetId }: { te
       })).data
 }
 
+export async function reorderTemplateAttachments({ templateId, attachmentIds }: { templateId: number; attachmentIds: number[] }): Promise<TemplateAttachment[]> {
+  return (await client.put<ApiResponse<'/api/templates/{template_id}/attachments/order', 'put'>>(`/api/templates/${templateId}/attachments/order`, {
+    attachment_ids: attachmentIds,
+  })).data
+}
+
 export async function deleteTemplateAttachment(id: number) { await client.delete<ApiResponse<'/api/templates/attachments/{attachment_id}', 'delete'>>(`/api/templates/attachments/${id}`) }
 
 function toMetaTemplate(template: ContractMetaTemplate): MetaTemplateRaw {

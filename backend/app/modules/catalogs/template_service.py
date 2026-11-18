@@ -92,6 +92,14 @@ async def add_template_attachment(
     return item
 
 
+async def reorder_template_attachments(template_id: int, attachment_ids: list[int]) -> list[dict] | None:
+    async with unit_of_work():
+        items = await template_repository.reorder_template_attachments(template_id, attachment_ids)
+        if items is not None:
+            collect(TemplatesChanged())
+    return items
+
+
 async def remove_template_attachment(attachment_id: int) -> dict | None:
     async with unit_of_work():
         removed = await template_repository.remove_template_attachment(attachment_id)

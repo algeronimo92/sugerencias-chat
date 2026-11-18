@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { uploadSizeError } from '../../../shared/utils/media'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, isTaskType } from '../../tasks/public/taskCatalog'
 import { stageOptions } from '../../leads/public/leadStageMeta'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
@@ -13,6 +12,7 @@ import { MediaAssetField } from '../../media/public/MediaAssetField'
 import { MediaLibraryPicker } from '../../media/public/MediaLibraryPicker'
 import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
+import { ACCEPTED_ATTACHMENT_TYPES, fileToBase64, validateAttachmentFile } from '../domain/attachmentFiles'
 import { fromInteractiveConfig, toInteractiveConfig } from '../domain/interactiveConfig'
 import { EMPTY_TEMPLATE_FORM as EMPTY_FORM, validateTemplateForm, type TemplateFormState } from '../domain/templateForm'
 import { useCreateTemplateCategory, useTemplateCategories } from '../hooks/useTemplateCategories'
@@ -37,12 +37,6 @@ function resizeOfficialParameters(content: string, current: string[]) {
   return Array.from({ length: officialParameterCount(content) }, (_, index) => current[index] ?? '')
 }
 
-const ACCEPTED_ATTACHMENT_TYPES = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
-const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
-  'jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'mov', 'mp3', 'wav', 'ogg', 'm4a',
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip',
-])
-
 const REJECTED_REASON_LABELS: Record<string, string> = {
   ABUSIVE_CONTENT: 'Contenido considerado abusivo o engañoso',
   INVALID_FORMAT: 'Formato inválido (variables, saltos de línea o estructura no permitida)',
@@ -54,16 +48,6 @@ const REJECTED_REASON_LABELS: Record<string, string> = {
 
 function rejectedReasonLabel(reason: string) {
   return REJECTED_REASON_LABELS[reason] ?? reason
-}
-
-function validateAttachmentFile(file: File) {
-  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? '' : ''
-  if (!file.size) return `${file.name}: el archivo está vacío.`
-  const sizeError = uploadSizeError(file)
-  if (sizeError) return `${file.name}: ${sizeError}.`
-  if (file.name.length > 255) return `${file.name}: el nombre admite máximo 255 caracteres.`
-  if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) return `${file.name}: tipo de archivo no permitido.`
-  return null
 }
 
 type PendingAttachment =
@@ -100,15 +84,6 @@ function templatesPageReducer(state: TemplatesPageState, update: TemplatesPageUp
 
 function pendingKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '')
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
 }
 
 function editableFromConfig(config: MessageTemplate['interactive_config']) {
