@@ -7,9 +7,11 @@ estado.
 """
 
 from datetime import date, datetime, timezone
+from unittest.mock import AsyncMock
 
 from app.modules.conversations.domain.service_window import free_entry_point_expiry
-from app.modules.platform.meta_costs import _rows, business_day
+from app.modules.platform import meta_costs
+from app.modules.platform.meta_costs import CHATS, NOTICES, _rows, business_day
 
 NOW = datetime(2026, 11, 6, 15, 0, tzinfo=timezone.utc)
 
@@ -69,3 +71,28 @@ def test_points_become_rows_and_repeated_combinations_add_up():
     assert utility["currency"] == "USD"
     free = next(row for row in rows if row["pricing_category"] == "SERVICE")
     assert free["tier"] == "" and free["volume"] == 40
+
+
+def test_rows_say_which_account_they_came_from():
+    point = {"start": 1793509200, "end": 1793595600, "country": "PE", "pricing_type": "REGULAR",
+             "pricing_category": "UTILITY", "volume": 1, "cost": 0.03}
+
+    assert _rows([point], "USD", NOW)[0]["account"] == CHATS
+    assert _rows([point], "USD", NOW, NOTICES)[0]["account"] == NOTICES
+
+
+async def test_the_notice_account_is_synced_only_when_it_has_its_own_waba(monkeypatch):
+    calls = []
+
+    async def fake_sync(fetch, *, account=CHATS, waba_id=None, now=None):
+        calls.append((account, waba_id))
+        return 2
+
+    monkeypatch.setattr(meta_costs, "sync_meta_costs", fake_sync)
+
+    assert await meta_costs.sync_all_meta_costs(AsyncMock(), None) == 2
+    assert calls == [(CHATS, None)]
+
+    calls.clear()
+    assert await meta_costs.sync_all_meta_costs(AsyncMock(), "WABA-AVISOS") == 4
+    assert calls == [(CHATS, None), (NOTICES, "WABA-AVISOS")]

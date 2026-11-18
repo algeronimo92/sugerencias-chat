@@ -26,7 +26,7 @@ export function WhatsappIntegrationCard({ highlight = false }: { highlight?: boo
       highlight={highlight && !connected}
     >
       <div className="space-y-4">
-        <WhatsappPanel onGoToClaves={() => setKeysOpen(true)} />
+        <WhatsappPanel />
         <IntegrationDisclosure
           id="whatsapp-keys"
           title={connected ? 'Claves y catálogo de Meta' : 'Configurar con claves a mano'}

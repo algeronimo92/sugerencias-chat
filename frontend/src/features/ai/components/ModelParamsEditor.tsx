@@ -175,7 +175,7 @@ export function AdvancedModelSettings({ customized, children }: { customized: nu
       {open && (
         <div id="ia-config-avanzada" className="space-y-3 border-t border-wa-border/70 p-3 dark:border-wa-border-dark/70">
           <p className="text-xs text-wa-muted dark:text-wa-muted-dark">
-            Parámetros con los que cada modelo genera las sugerencias. Cada modelo acepta los suyos; lo que dejes vacío usa el valor recomendado.
+            Lo que dejes vacío usa el valor recomendado.
           </p>
           <div className="grid gap-3 lg:grid-cols-2">{children}</div>
         </div>

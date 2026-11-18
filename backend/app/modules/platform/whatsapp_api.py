@@ -16,7 +16,7 @@ from app.modules.leads.ports.ad_conversions import (
     conversions_summary,
 )
 from app.modules.leads.schemas import MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate
-from app.modules.platform.meta_costs import sync_meta_costs
+from app.modules.platform.meta_costs import sync_all_meta_costs
 from app.modules.platform.meta_costs_queries import monthly_costs
 from app.modules.platform.schemas import WhatsappCostsSummary, WhatsappStatusItem
 from app.modules.platform.settings_service import get_effective_many, update_settings
@@ -57,7 +57,7 @@ async def sync_whatsapp_costs(month: str | None = Query(default=None)):
     if not await meta_service.is_configured():
         raise HTTPException(409, "WhatsApp no está conectado")
     try:
-        await sync_meta_costs(meta_service.fetch_pricing_analytics)
+        await sync_all_meta_costs(meta_service.fetch_pricing_analytics, await meta_service.notice_waba_id())
     except meta_service.MetaApiError as exc:
         logger.warning("No se pudieron traer los costos de Meta: %s", exc)
         raise HTTPException(502, "Meta no devolvió los costos. Intenta de nuevo en unos minutos.")

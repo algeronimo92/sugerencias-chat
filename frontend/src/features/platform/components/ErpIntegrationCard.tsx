@@ -34,7 +34,7 @@ function TestResult({ result, alreadyConnected }: { result: ErpTestResult; alrea
       <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30">
         <p className="font-semibold text-red-800 dark:text-red-200">No se pudo leer el catálogo</p>
         <p className="mt-0.5 text-red-700 dark:text-red-300">{result.error}</p>
-        <p className="mt-1 text-xs text-red-700/80 dark:text-red-300/80">Revisa que la URL abra en el navegador y devuelva JSON.</p>
+        <p className="mt-1 text-xs text-red-700/80 dark:text-red-300/80">Revisa que la URL sea correcta y pública.</p>
       </div>
     )
   }
@@ -181,7 +181,7 @@ function ErpUrlField({ erp }: { erp: ErpConnection }) {
         aria-invalid={erp.touched && erp.trimmed !== '' && !erp.validUrl ? true : undefined}
       />
       <p id="erp-url-hint" className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-        Debe abrir sin iniciar sesión y devolver JSON.
+        Debe ser una URL pública.
         {pendingTest ? ' Prueba la URL antes de guardar.' : ''}
       </p>
     </div>

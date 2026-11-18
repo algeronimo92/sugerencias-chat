@@ -8,9 +8,6 @@ import { useCompleteMetaEmbeddedSignup } from "../hooks/useSettings";
 import { useWhatsappStatus } from "../hooks/useWhatsapp";
 import { MetaConversionsPanel } from "./MetaConversionsPanel";
 import { WhatsappCostsPanel } from "./WhatsappCostsPanel";
-interface Props {
-  onGoToClaves: () => void;
-}
 
 // Panel de coexistencia con Meta (WhatsApp Embedded Signup): vincula un
 // número que ya está activo en la app oficial de WhatsApp Business sin
@@ -58,14 +55,12 @@ function MetaEmbeddedSignupPanel() {
       {isLinked ? (
         <p className="flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Número vinculado. Sigue usándolo también desde la app de WhatsApp
-          Business.
+          Número vinculado. Sigue funcionando en la app de WhatsApp Business.
         </p>
       ) : (
         <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-          Vincula un número que ya usas en la app oficial de WhatsApp Business
-          sin desconectarlo de ahí. Reemplaza tener que copiar el token, el WABA
-          id y el phone number id a mano.
+          Vincula el número que ya usas en WhatsApp Business, sin desconectarlo
+          de la app.
         </p>
       )}
       <Button
@@ -95,24 +90,13 @@ function MetaEmbeddedSignupPanel() {
   );
 }
 
-export function WhatsappPanel({ onGoToClaves }: Props) {
+export function WhatsappPanel() {
   const { data: whatsappStatus } = useWhatsappStatus();
   return (
     <div className="space-y-4">
       <MetaEmbeddedSignupPanel />
       {whatsappStatus?.state === "open" && <WhatsappCostsPanel />}
       {whatsappStatus?.state === "open" && <MetaConversionsPanel />}
-      <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-        También puedes completar el token, el waba id y el phone number id{" "}
-        <button
-          type="button"
-          onClick={onGoToClaves}
-          className="font-medium text-wa-primary-strong underline dark:text-wa-primary"
-        >
-          a mano, en las claves de Meta
-        </button>
-        .
-      </p>
     </div>
   );
 }

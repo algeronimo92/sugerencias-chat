@@ -57,7 +57,7 @@ from app.modules.catalogs.erp_catalog import SYNC_INTERVAL_SECONDS as ERP_CATALO
 from app.modules.leads.attribution.worker import conversions_tick, wait_for_conversions_work
 from app.modules.catalogs.erp_catalog import erp_catalog_tick
 from app.modules.platform.meta_costs import SYNC_INTERVAL_SECONDS as META_COSTS_SYNC_SECONDS
-from app.modules.platform.meta_costs import sync_meta_costs
+from app.modules.platform.meta_costs import sync_all_meta_costs
 from app.modules.platform.platform_settings import migrate_legacy_platform_settings, platform_setting
 from app.modules.platform.settings_service import migrate_settings_encryption
 from app.modules.tasks.task_reminder import deliver_due_reminders
@@ -420,7 +420,7 @@ async def meta_costs_tick() -> None:
     if not await meta_client.is_configured():
         return
     try:
-        await sync_meta_costs(meta_client.fetch_pricing_analytics)
+        await sync_all_meta_costs(meta_client.fetch_pricing_analytics, await meta_client.notice_waba_id())
     except meta_client.MetaApiError as exc:
         logger.warning("No se pudieron sincronizar los costos de Meta: %s", exc)
 
