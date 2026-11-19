@@ -17,6 +17,8 @@ class RealtimeEvent(StrEnum):
     AUTOMATIONS_UPDATED = "automations_updated"
     LEAD_STAGES_UPDATED = "lead_stages_updated"
     NOTICE_SENDER_UPDATED = "notice_sender_updated"
+    CONTACTS_UPDATED = "contacts_updated"
+    CONTACT_IMPORTS_UPDATED = "contact_imports_updated"
 
 
 class ChatsUpdateReason(StrEnum):
