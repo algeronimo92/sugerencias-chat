@@ -229,6 +229,9 @@ class NoticeSenderSignup(BaseModel):
     waba_id: str = Field(min_length=1, max_length=64)
     # Ausente en coexistencia: Meta no lo manda y se resuelve en el backend.
     phone_number_id: str | None = Field(default=None, max_length=64)
+    # Si el número sigue en la app del celular o quedó solo en la API (este
+    # hay que registrarlo). Lo dice el evento de Meta que vio el navegador.
+    mode: Literal["business_app", "cloud_api"] = "business_app"
 
 
 class NoticeSettingsUpdate(BaseModel):

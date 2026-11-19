@@ -83,6 +83,83 @@ def _mock_config(monkeypatch, token="token-123", phone_number_id="PHONE1", waba_
     monkeypatch.setattr(meta_service, "_config", AsyncMock(return_value=(token, phone_number_id, waba_id)))
 
 
+def _signup_world(monkeypatch, responses, *, stored_pin=""):
+    """Embedded Signup con la Graph API simulada: devuelve el cliente falso
+    (con cada pedido) y la lista de lo que se guardó en los ajustes."""
+    saved: list[dict] = []
+
+    async def fake_update(values):
+        saved.append(dict(values))
+
+    fake_client = _FakeGraphClient([_FakeGraphResponse({"access_token": "tenant-access-token"}), *responses])
+    monkeypatch.setattr(meta_service, "platform_settings_many", AsyncMock(return_value={
+        "meta_app_id": "CLINIVENTAS_APP", "meta_app_secret": "platform-secret",
+    }))
+    monkeypatch.setattr(meta_service, "get_effective_many", AsyncMock(
+        side_effect=lambda keys: {key: stored_pin if key == meta_service.CRM_PIN_KEY else "" for key in keys},
+    ))
+    monkeypatch.setattr(meta_service, "update_settings", fake_update)
+    monkeypatch.setattr(meta_service, "get_current_tenant", lambda: None)
+    monkeypatch.setattr(meta_service, "_client", lambda: fake_client)
+    return fake_client, saved
+
+
+@pytest.mark.asyncio
+async def test_a_number_left_only_in_the_api_is_registered_before_the_crm_switches_to_it(monkeypatch):
+    fake_client, saved = _signup_world(monkeypatch, [
+        _FakeGraphResponse({"success": True}),  # subscribed_apps
+        _FakeGraphResponse({"success": True}),  # register
+    ])
+
+    await meta_service.complete_embedded_signup("code", "WABA_NUEVA", "PHONE_NUEVO", meta_service.CLOUD_API)
+
+    register = fake_client.calls[2]
+    assert register["method"] == "POST" and register["url"].endswith("/PHONE_NUEVO/register")
+    pin = register["json"]["pin"]
+    assert register["json"]["messaging_product"] == "whatsapp"
+    assert len(pin) == 6 and pin.isdigit()
+    # El PIN queda guardado antes que las credenciales del número nuevo.
+    assert saved[0] == {meta_service.CRM_PIN_KEY: pin}
+    assert saved[1]["meta_phone_number_id"] == "PHONE_NUEVO"
+
+
+@pytest.mark.asyncio
+async def test_registering_again_reuses_the_saved_pin(monkeypatch):
+    fake_client, _saved = _signup_world(monkeypatch, [
+        _FakeGraphResponse({"success": True}),
+        _FakeGraphResponse({"success": True}),
+    ], stored_pin="482913")
+
+    await meta_service.complete_embedded_signup("code", "WABA_NUEVA", "PHONE_NUEVO", meta_service.CLOUD_API)
+
+    assert fake_client.calls[2]["json"]["pin"] == "482913"
+
+
+@pytest.mark.asyncio
+async def test_a_number_with_an_unknown_pin_keeps_the_crm_on_its_old_number(monkeypatch):
+    _fake_client, saved = _signup_world(monkeypatch, [
+        _FakeGraphResponse({"success": True}),
+        _FakeGraphResponse(
+            {"error": {"code": 133005, "message": "Two step verification PIN Mismatch"}},
+            is_error=True, status_code=400,
+        ),
+    ])
+
+    with pytest.raises(meta_service.MetaApiError, match="verificación en dos pasos"):
+        await meta_service.complete_embedded_signup("code", "WABA_NUEVA", "PHONE_NUEVO", meta_service.CLOUD_API)
+
+    assert all("meta_access_token" not in values for values in saved)
+
+
+@pytest.mark.asyncio
+async def test_a_number_from_the_phone_app_is_not_registered_again(monkeypatch):
+    fake_client, _saved = _signup_world(monkeypatch, [_FakeGraphResponse({"success": True})])
+
+    await meta_service.complete_embedded_signup("code", "DERMICA_WABA", "DERMICA_PHONE")
+
+    assert not any(call["url"].endswith("/register") for call in fake_client.calls)
+
+
 @pytest.mark.asyncio
 async def test_embedded_signup_combines_platform_app_with_tenant_connection(monkeypatch):
     platform_values = AsyncMock(return_value={

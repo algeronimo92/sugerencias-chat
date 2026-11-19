@@ -92,6 +92,9 @@ class MetaEmbeddedSignupRequest(BaseModel):
     # (FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING) no lo manda, se resuelve del
     # lado del backend -- ver meta_service.complete_embedded_signup.
     phone_number_id: str | None = None
+    # `business_app` (sigue en la app del celular) o `cloud_api` (solo en la
+    # API, hay que registrarlo). Lo dice el evento de Meta que vio el navegador.
+    mode: Literal["business_app", "cloud_api"] = "business_app"
 
 class MetaAppSyncRetry(BaseModel):
     # Pedidos que se volvieron a hacer (smb_app_state_sync, history). Vacío si

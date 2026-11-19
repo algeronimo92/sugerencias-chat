@@ -13,7 +13,7 @@ vi.mock('../../../shared/http/client', () => ({ default: api }))
 // mano el final del registro de Meta.
 const signup = vi.hoisted(() => ({
   configured: false,
-  onComplete: null as null | ((payload: { code: string; waba_id: string; phone_number_id?: string }) => void),
+  onComplete: null as null | ((payload: { code: string; waba_id: string; phone_number_id?: string; mode: 'business_app' | 'cloud_api' }) => void),
   start: vi.fn(),
 }))
 vi.mock('../../platform/public/useMetaEmbeddedSignup', () => ({
@@ -87,13 +87,27 @@ describe('NoticeSenderCard', () => {
     renderCard({ phone_number_id: null, numbers: [CRM] })
 
     await user.click(await screen.findByRole('button', { name: 'Vincular número de avisos con Meta' }))
-    expect(signup.start).toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Continuar con Meta' }))
+    expect(signup.start).toHaveBeenCalledWith('business_app')
 
-    signup.onComplete?.({ code: 'CODE', waba_id: 'WABA_ID' })
+    signup.onComplete?.({ code: 'CODE', waba_id: 'WABA_ID', mode: 'business_app' })
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      '/api/appointments/notice-sender/embedded-signup', { code: 'CODE', waba_id: 'WABA_ID' },
+      '/api/appointments/notice-sender/embedded-signup', { code: 'CODE', waba_id: 'WABA_ID', mode: 'business_app' },
     ))
+  })
+
+  it('vincula como número de avisos uno que queda solo en el CRM', async () => {
+    const user = userEvent.setup()
+    signup.configured = true
+    api.post.mockResolvedValue({ data: { phone_number_id: 'AVISOS_ID', numbers: [CRM, AVISOS] } })
+    renderCard({ phone_number_id: null, numbers: [CRM] })
+
+    await user.click(await screen.findByRole('button', { name: 'Vincular número de avisos con Meta' }))
+    await user.click(screen.getByRole('radio', { name: /Número solo para el CRM/ }))
+    await user.click(screen.getByRole('button', { name: 'Continuar con Meta' }))
+
+    expect(signup.start).toHaveBeenCalledWith('cloud_api')
   })
 
   it('con su propia cuenta muestra las copias de las plantillas y pide copiar las que faltan', async () => {

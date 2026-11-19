@@ -411,13 +411,16 @@ async def copy_templates(user_id: int) -> dict:
     return await get_sender(user_id)
 
 
-async def link_sender(code: str, waba_id: str, phone_number_id: str | None, user_id: int) -> dict:
+async def link_sender(
+    code: str, waba_id: str, phone_number_id: str | None, user_id: int, *, mode: str = "business_app",
+) -> dict:
     """Vincula un número nuevo con el Embedded Signup de Meta (también con
     coexistencia: el número sigue en la app de WhatsApp Business del
     celular, donde se ven las respuestas a los avisos) y lo deja como número
     de avisos. Las credenciales del CRM no cambian. Si quedó en su propia
-    WABA (en coexistencia siempre), copia ahí las plantillas de los avisos."""
-    linked = await appointment_ports().senders.complete_signup(code, waba_id, phone_number_id)
+    WABA (en coexistencia siempre), copia ahí las plantillas de los avisos.
+    ``mode`` es ``cloud_api`` si el número quedó solo en la API."""
+    linked = await appointment_ports().senders.complete_signup(code, waba_id, phone_number_id, mode=mode)
     result = await save_sender(linked["phone_number_id"], user_id, account=linked["waba_id"])
     if result["account"] is None:
         return result

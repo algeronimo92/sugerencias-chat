@@ -5,6 +5,7 @@ import { Button } from '../../../shared/ui/Button'
 import { IntegrationCard } from '../../../shared/ui/IntegrationCard'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
+import { MetaConnectGuide } from '../../platform/public/MetaConnectGuide'
 import { useMetaEmbeddedSignup } from '../../platform/public/useMetaEmbeddedSignup'
 import { useCopyNoticeTemplates, useLinkNoticeSender, useNoticeSender, useSaveNoticeSender } from '../queries'
 import type { NoticeSender } from '../types'
@@ -159,11 +160,13 @@ function AccountTemplates({ sender }: { sender: NoticeSender }) {
   )
 }
 
-/** Vincula un número nuevo con el registro de Meta en coexistencia: sigue
- *  funcionando en la app de WhatsApp Business del celular y queda como
- *  número de avisos, sin tocar el número de los chats. */
+/** Vincula un número nuevo con el registro de Meta como número de avisos,
+ *  sin tocar el número de los chats. Como el del CRM, puede seguir en la app
+ *  de WhatsApp Business del celular (donde se ven las respuestas a los
+ *  avisos) o quedar solo en la API. */
 function LinkWithMeta() {
   const link = useLinkNoticeSender()
+  const [choosing, setChoosing] = useState(false)
   const signup = useMetaEmbeddedSignup(payload =>
     link.mutate(payload, {
       onSuccess: () => toast.success('Número de avisos vinculado con Meta'),
@@ -175,12 +178,24 @@ function LinkWithMeta() {
 
   return (
     <div className="space-y-2">
-      <Button variant="ghost" size="sm" onClick={signup.start} disabled={!signup.ready || link.isPending}>
-        {link.isPending
-          ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          : <Link2 className="h-4 w-4" aria-hidden="true" />}
-        Vincular número de avisos con Meta
-      </Button>
+      {choosing ? (
+        <MetaConnectGuide
+          onCancel={() => setChoosing(false)}
+          onContinue={mode => {
+            setChoosing(false)
+            signup.start(mode)
+          }}
+          disabled={!signup.ready}
+          pending={link.isPending}
+        />
+      ) : (
+        <Button variant="ghost" size="sm" onClick={() => setChoosing(true)} disabled={!signup.ready || link.isPending}>
+          {link.isPending
+            ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            : <Link2 className="h-4 w-4" aria-hidden="true" />}
+          Vincular número de avisos con Meta
+        </Button>
+      )}
       {signup.error && (
         <p role="alert" className="text-xs text-red-500 dark:text-red-400">{signup.error}</p>
       )}

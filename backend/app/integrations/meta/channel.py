@@ -58,8 +58,10 @@ class MetaAccountNumbers:
     async def unregister(self, phone_number_id: str) -> None:
         await meta_service.unregister_extra_number(phone_number_id)
 
-    async def complete_signup(self, code: str, waba_id: str, phone_number_id: str | None) -> dict[str, str]:
-        return await meta_service.complete_notice_number_signup(code, waba_id, phone_number_id)
+    async def complete_signup(
+        self, code: str, waba_id: str, phone_number_id: str | None, *, mode: str = "business_app",
+    ) -> dict[str, str]:
+        return await meta_service.complete_notice_number_signup(code, waba_id, phone_number_id, mode)
 
     async def templates(self, waba_id: str) -> list[dict]:
         return await meta_service.list_whatsapp_templates(waba_id)
