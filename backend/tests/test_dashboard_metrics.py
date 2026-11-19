@@ -403,7 +403,7 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
     # Conversaciones, flujos y mensajes caen en la misma celda y se funden en una fila.
     assert hours["cells"] == [{
         "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,
-        "flows_manual": 1, "flows_automatic": 1, "messages": 1, "phone_messages": 1,
+        "flows_manual": 1, "flows_automatic": 1, "messages": 1, "phone_messages": 1, "separations": 1,
     }]
     # El equipo persona por persona: lo escrito, los flujos a mano y el
     # celular de la misma persona se funden en su celda.
@@ -432,9 +432,11 @@ async def test_hours_follow_the_scope(compiled_sql):
     await dashboard_service.get_dashboard_metrics(30, SCOPE_MINE, user_id=7)
     by_hour = [statement for statement in compiled_sql if "isodow" in statement]
 
-    # Tres acotadas a la persona y dos del equipo entero, que dan la escala
+    # Cuatro acotadas a la persona y dos del equipo entero, que dan la escala
     # común. Lo de WhatsApp no se pide: no trae autora y no es de una persona.
-    assert len(by_hour) == 5
+    assert len(by_hour) == 6
+    # Las separaciones van por quien las registró, como el resto de la pestaña.
+    assert sum("appointments.created_by_user_id = " in statement for statement in by_hour) == 1
     # Las conversaciones van por dueña del chat.
     assert sum("leads.vendedor_id = " in statement for statement in by_hour) == 1
     assert not any("phone_messages" in statement for statement in by_hour)

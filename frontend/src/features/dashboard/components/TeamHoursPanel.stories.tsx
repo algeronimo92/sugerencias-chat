@@ -36,7 +36,7 @@ function hours(days: number): DashboardHours {
   // Lo de WhatsApp es del negocio entero y unas veinte veces lo del CRM.
   const cells = shift(weeks, [4, 10], 38, 0, []).map(cell => ({
     weekday: cell.weekday, slot: cell.slot, phone_messages: cell.messages,
-    conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0,
+    conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0, separations: 0,
   }))
   return {
     slot_hours: 2,

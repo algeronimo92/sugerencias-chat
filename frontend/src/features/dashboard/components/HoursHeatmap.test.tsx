@@ -13,7 +13,7 @@ const HOURS: DashboardHours = {
   slot_hours: 2,
   engagement_window_hours: 24,
   weekday_occurrences: [5, 5, 4, 4, 4, 4, 4],
-  cells: [{ weekday: 0, slot: 10, conversations: 10, settled: 10, engaged: 6, flows_manual: 0, flows_automatic: 0, messages: 0, phone_messages: 0 }],
+  cells: [{ weekday: 0, slot: 10, conversations: 10, settled: 10, engaged: 6, flows_manual: 0, flows_automatic: 0, messages: 0, phone_messages: 0, separations: 0 }],
 }
 
 describe('HoursHeatmap', () => {
@@ -29,6 +29,17 @@ describe('HoursHeatmap', () => {
     expect(screen.getByRole('button', { name: 'Siguieron conversando' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Lun 20–22 h: 60 % siguió conversando' })).toBeInTheDocument()
     expect(screen.getByText('Muy pocos casos')).toBeInTheDocument()
+  })
+
+  it('con una sola lectura no ofrece selector y dice que la hora es la del registro', () => {
+    const hours: DashboardHours = { ...HOURS, cells: [{ ...HOURS.cells[0], separations: 5 }] }
+    const readings: HoursReadingOption[] = [{ key: 'separations', label: 'Separaciones', hint: 'La hora en que se registró, no la de la cita.' }]
+    render(<HoursHeatmap hours={hours} days={30} readings={readings} label="A qué hora se separan las citas" />)
+
+    // Cinco separaciones en cinco lunes: una por lunes.
+    expect(screen.getByRole('button', { name: 'Lun 20–22 h: 1 separación registrada en promedio' })).toBeInTheDocument()
+    expect(screen.getByText('La hora en que se registró, no la de la cita.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Separaciones' })).not.toBeInTheDocument()
   })
 
   it('en el mapa de una persona usa la escala del equipo y lo dice', () => {

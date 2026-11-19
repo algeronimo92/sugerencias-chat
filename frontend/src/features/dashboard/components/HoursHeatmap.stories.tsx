@@ -25,6 +25,7 @@ const HOURS: DashboardHours = {
         flows_automatic: conversations,
         messages: slot >= 4 && slot <= 10 ? conversations * 3 : 0,
         phone_messages: slot >= 9 ? conversations * 2 : 0,
+        separations: slot >= 5 && slot <= 10 ? Math.round(conversations * 0.2) : 0,
       }
     }),
   ),

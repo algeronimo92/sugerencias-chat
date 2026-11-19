@@ -239,6 +239,8 @@ export interface DashboardHourCell {
   /** Salieron desde WhatsApp fuera del CRM, en todos los chats. Sin autora:
    *  no se atribuyen a nadie, y al mirar a una sola persona van en cero. */
   phone_messages: number
+  /** Citas separadas, por la hora en que se registraron (no la hora de la cita). */
+  separations: number
 }
 
 /** Lo que hizo una persona en una franja, con autor conocido: lo que
