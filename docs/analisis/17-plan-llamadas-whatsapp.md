@@ -28,7 +28,7 @@ Lo que hace Meta y lo que queda del lado del CRM:
 | Requisito | Detalle | Estado |
 |---|---|---|
 | **El número no puede estar en coexistencia** | Meta exige que el número esté en Cloud API "y no en la app de WhatsApp Business"; su tabla de coexistencia dice "llamadas de voz y video: no soportadas" por Cloud API | **DermicaPro está en coexistencia.** No se puede activar hasta mudar el número (§2.1) |
-| Límite de mensajería ≥ 2000 | Con el límite inicial de 250 Meta rechaza la activación (error `138015`) | Confirmar en WhatsApp Manager |
+| Límite de mensajería ≥ 2000 | Con el límite inicial de 250 Meta rechaza la activación (error `138015`) | OK: DermicaPro está en 2000 (visto en WhatsApp Manager el 2026-11-19) |
 | Método de pago en la WABA | Aunque solo se reciban llamadas | Ya existe (se pagan plantillas) |
 | La app de Meta suscrita al campo `calls` | Una casilla en el panel de la app CliniVentas, una vez para toda la plataforma | Falta. **Se marca recién al desplegar la fase 2**: antes, producción recibiría esos eventos y los descartaría como campo sin handler. La fase 0 usa una app de Meta de prueba aparte |
 | País | Llamar a clientes está vedado a números de EE. UU., Canadá, Egipto, Vietnam y Nigeria. Perú no está en la lista (se infiere: Meta no lo nombra) | OK |
