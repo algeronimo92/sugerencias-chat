@@ -1,4 +1,4 @@
-from app.modules.platform.schemas import (SettingItem, UpdateSettingsRequest, MetaEmbeddedSignupRequest, MetaPublicConfig, BusinessTimezoneItem)
+from app.modules.platform.schemas import (SettingItem, UpdateSettingsRequest, MetaEmbeddedSignupRequest, MetaAppSyncRetry, MetaPublicConfig, BusinessTimezoneItem)
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -73,3 +73,14 @@ async def post_meta_embedded_signup(body: MetaEmbeddedSignupRequest):
         raise HTTPException(status_code=502, detail=str(e))
 
     return await list_settings()
+
+
+@router.post("/meta/app-sync/retry", response_model=MetaAppSyncRetry)
+async def post_meta_app_sync_retry():
+    """Repite el pedido de contactos e historial de la app del celular que
+    falló al conectar el número, mientras Meta todavía lo acepte."""
+    try:
+        retried = await meta_service.retry_app_data_sync()
+    except MetaApiError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"retried": retried}

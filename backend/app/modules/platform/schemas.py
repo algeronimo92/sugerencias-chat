@@ -93,6 +93,12 @@ class MetaEmbeddedSignupRequest(BaseModel):
     # lado del backend -- ver meta_service.complete_embedded_signup.
     phone_number_id: str | None = None
 
+class MetaAppSyncRetry(BaseModel):
+    # Pedidos que se volvieron a hacer (smb_app_state_sync, history). Vacío si
+    # no quedaba ninguno fallido dentro de las 24 h de Meta.
+    retried: list[str]
+
+
 class MetaPublicConfig(BaseModel):
     app_id: str | None = None
     config_id: str | None = None

@@ -9,14 +9,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.modules.auth.public import User, get_current_user, require_admin
-from app.modules.contacts import import_service, service
+from app.modules.contacts import import_service, service, sync_service
 from app.modules.contacts.queries import (
-    batch_rows, batch_summary, get_contact, list_batches, list_contacts, list_tags,
+    batch_rows, batch_summary, get_contact, list_batches, list_contacts, list_tags, whatsapp_sync_status,
 )
 from app.modules.contacts.schemas import (
     AffectedCount, ContactCreate, ContactIds, ContactItem, ContactPage, ContactTagsChange, ContactUpdate,
     CsvImportCreate, CsvPreview, CsvUpload, ImportResult, ImportRowPage, ImportSelection, ImportSummary,
-    PromotedLead, PromotedLeads,
+    PromotedLead, PromotedLeads, WhatsAppSyncSettings, WhatsAppSyncStatus,
 )
 from app.modules.contacts.types import ContactOrigin
 
@@ -122,6 +122,19 @@ async def post_import_confirm(batch_id: UUID, body: ImportSelection, _admin: Use
 async def post_import_discard(batch_id: UUID, _admin: User = Depends(require_admin)):
     await import_service.discard_import(str(batch_id))
     return Response(status_code=204)
+
+
+# --- Sincronización con el celular -----------------------------------------
+
+@router.get("/whatsapp-sync", response_model=WhatsAppSyncStatus)
+async def get_whatsapp_sync(_admin: User = Depends(require_admin)):
+    return await whatsapp_sync_status()
+
+
+@router.put("/whatsapp-sync/settings", response_model=WhatsAppSyncStatus)
+async def put_whatsapp_sync_settings(body: WhatsAppSyncSettings, _admin: User = Depends(require_admin)):
+    await sync_service.set_auto_import(body.auto_import)
+    return await whatsapp_sync_status()
 
 
 # --- Un contacto -------------------------------------------------------------
