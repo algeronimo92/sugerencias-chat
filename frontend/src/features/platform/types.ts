@@ -29,6 +29,8 @@ export interface UpdateUserPayload {
   is_active?: boolean
   /** WhatsApp para el aviso de venta; vacío lo borra. */
   phone?: string
+  /** Le suenan las llamadas de WhatsApp y puede llamar a clientes. */
+  can_handle_calls?: boolean
 }
 
 export type InvitationLink = Delivered<ApiSchemas['InvitationLinkOut']>
@@ -37,6 +39,8 @@ export type InvitationLink = Delivered<ApiSchemas['InvitationLinkOut']>
  * las credenciales. */
 export type WhatsappStatus = Delivered<ApiSchemas['WhatsappStatusItem']>
 export type WhatsappState = WhatsappStatus['state']
+/** Si el número puede activar las llamadas de WhatsApp, según Meta. */
+export type CallingReadiness = Delivered<ApiSchemas['WhatsappCallingReadiness']>
 export type WhatsappCostsSummary = Delivered<ApiSchemas['WhatsappCostsSummary']>
 /** La API de Conversiones de Meta: citas de leads de anuncios informadas a Meta. */
 export type MetaConversionsStatus = Delivered<ApiSchemas['MetaConversionsStatus']>

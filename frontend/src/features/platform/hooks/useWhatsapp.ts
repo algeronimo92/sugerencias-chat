@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMetaConversionEvents, fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
+import { fetchCallingReadiness, fetchMetaConversionEvents, fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
 
@@ -22,6 +22,20 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
           return state === 'open' || state === 'not_configured' ? false : 3000
         }
       : false,
+  })
+}
+
+/** Si el número puede activar las llamadas. Se pregunta a Meta cada vez que
+ *  se abre la sección: cambia fuera del CRM (el negocio muda el número o
+ *  Meta sube el límite) y nada lo avisa. Un fallo no se reintenta solo:
+ *  la pantalla ofrece reintentar. */
+export function useCallingReadiness(enabled = true) {
+  return useQuery({
+    queryKey: whatsappKeys.callingReadiness,
+    queryFn: fetchCallingReadiness,
+    enabled,
+    staleTime: 0,
+    retry: false,
   })
 }
 
