@@ -7,10 +7,10 @@ const STORAGE_KEY = 'theme'
 
 /* Color de la interfaz del navegador (barra de direcciones móvil, título de PWA).
    Debe coincidir con la barra superior real de la app:
-   claro → wa-primary-strong (el tono del color del negocio), oscuro → wa-head-dark. */
+   claro → --brand-strong (el tono del color del negocio), oscuro → --surface-raised. */
 const THEME_COLOR: Record<Theme, () => string> = {
   light: lightThemeColor,
-  dark: () => '#202c33',
+  dark: () => '#182127',
 }
 
 function getInitialTheme(): Theme {

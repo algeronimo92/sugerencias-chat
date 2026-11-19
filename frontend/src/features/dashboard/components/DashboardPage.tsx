@@ -78,7 +78,7 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
     const section = document.getElementById(sectionElementId(anchor))
     if (!section) return
     section.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    section.style.boxShadow = '0 0 0 2px var(--color-wa-primary)'
+    section.style.boxShadow = '0 0 0 2px var(--accent)'
     const timer = window.setTimeout(() => { section.style.boxShadow = '' }, 2500)
     return () => window.clearTimeout(timer)
   }, [hash, hasData, tab])

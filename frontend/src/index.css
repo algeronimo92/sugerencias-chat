@@ -3,15 +3,196 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================================
-   Sistema de diseño — paleta WhatsApp
-   Tokens consumibles como utilidades Tailwind: bg-wa-primary,
-   text-wa-muted, dark:bg-wa-panel-dark, rounded-bubble, etc.
+   Sistema de diseño (docs/analisis/18-rediseno-ui-sistema-visual.md §4)
+
+   Tres capas: primitivos de marca (--brand*), semánticos que cambian
+   solos con el tema (--surface, --fg, --line...) y utilidades Tailwind
+   (bg-surface, text-fg-muted, border-line, bg-accent-fill...). Un
+   componente nuevo se escribe una vez, sin `dark:`.
    ============================================================ */
+
+/* 1. Primitivos de marca. Los pisa applyBrand() (shared/branding.ts) y el
+      script en línea de index.html con el color del negocio. brandShades()
+      garantiza que --brand-strong dé 4,5:1 contra blanco con cualquier color:
+      antes el botón primario (blanco sobre #00a884) daba 3,0:1. */
+:root {
+  --brand: #00a884;
+  --brand-strong: #008069;
+  --brand-deep: #006e5b;
+}
+
+/* 2. Semánticos. */
+:root {
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --subtle: #f2f4f6;
+  --selected: #e9ecef;
+  --line: #e4e7eb;
+  --line-control: #8a949e; /* 3,1:1: bordes de controles (WCAG 1.4.11) */
+
+  --fg: #111b21;
+  --fg-muted: #5b6670; /* 5,9:1 sobre surface, 5,3:1 sobre subtle (antes #667781: 4,1:1 sobre gris) */
+  --fg-disabled: #9aa3ab;
+
+  --accent: var(--brand); /* decorativo: punto de no leído, icono activo */
+  --accent-strong: var(--brand-strong); /* texto de acento y enlaces */
+  --accent-fill: var(--brand-strong); /* relleno de acción */
+  --accent-soft: color-mix(in srgb, var(--brand) 10%, #ffffff);
+  --accent-deep: var(--brand-deep); /* texto sobre accent-soft */
+  --on-accent: #ffffff;
+  --ring: var(--brand-strong);
+
+  --danger: #dc2626;
+  --danger-fg: #b42318;
+  --danger-soft: #fdecea;
+  --warning: #b45309;
+  --warning-fg: #92400e;
+  --warning-soft: #fef3e2;
+  --success: #15803d;
+  --success-fg: #166534;
+  --success-soft: #e7f6ec;
+  --info: #1d64d8;
+  --info-fg: #1e4fae;
+  --info-soft: #e8f0fd;
+
+  --elev-popover: 0 1px 2px rgb(16 24 40 / 0.06), 0 6px 16px rgb(16 24 40 / 0.08);
+  --elev-overlay: 0 12px 32px rgb(16 24 40 / 0.16);
+  --scrim: rgb(11 20 26 / 0.45);
+
+  --scrollbar: #c5cdd3;
+  --scrollbar-hover: #a5aeb5;
+}
+
+/* Oscuro se re-apunta, no se invierte. En oscuro la marca va tal cual: el
+   verde por defecto da 5,9:1 sobre surface, y brandShades() aclara la que no
+   llegue (ver darkBrand en branding.ts). */
+.dark {
+  --canvas: #0b1014;
+  --surface: #11181d;
+  --surface-raised: #182127; /* en oscuro la sombra no se ve: separa el tono */
+  --subtle: #1a232a;
+  --selected: #233039;
+  --line: #24303a;
+  --line-control: #66727c; /* 3,6:1 sobre surface */
+
+  --fg: #e9edef;
+  --fg-muted: #9aa6ae; /* 7,2:1 */
+  --fg-disabled: #5f6b73;
+
+  --accent: var(--brand-dark, var(--brand));
+  --accent-strong: var(--brand-dark, var(--brand));
+  --accent-fill: var(--brand-dark, var(--brand));
+  --accent-soft: color-mix(in srgb, var(--brand-dark, var(--brand)) 16%, transparent);
+  --accent-deep: var(--brand-dark, var(--brand));
+  --on-accent: #0b141a; /* texto oscuro sobre verde, como WhatsApp oscuro */
+  --ring: var(--brand-dark, var(--brand));
+
+  --danger: #f07167;
+  --danger-fg: #f07167;
+  --danger-soft: color-mix(in srgb, #f07167 14%, transparent);
+  --warning: #e5a43a;
+  --warning-fg: #e5a43a;
+  --warning-soft: color-mix(in srgb, #e5a43a 14%, transparent);
+  --success: #4cc38a;
+  --success-fg: #4cc38a;
+  --success-soft: color-mix(in srgb, #4cc38a 14%, transparent);
+  --info: #6aa8f5;
+  --info-fg: #6aa8f5;
+  --info-soft: color-mix(in srgb, #6aa8f5 14%, transparent);
+
+  --elev-popover: 0 0 0 1px var(--line);
+  --elev-overlay: 0 0 0 1px var(--line), 0 16px 40px rgb(0 0 0 / 0.5);
+  --scrim: rgb(0 0 0 / 0.6);
+
+  --scrollbar: #374248;
+  --scrollbar-hover: #4a5961;
+}
+
+/* 3. Utilidades. `inline` hace que la clase emita var(--x) tal cual, así
+      sigue al tema y a la marca en tiempo de ejecución. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-subtle: var(--subtle);
+  --color-selected: var(--selected);
+  --color-line: var(--line);
+  --color-line-control: var(--line-control);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-disabled: var(--fg-disabled);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-deep: var(--accent-deep);
+  --color-on-accent: var(--on-accent);
+  --color-ring: var(--ring);
+
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-fg: var(--success-fg);
+  --color-success-soft: var(--success-soft);
+  --color-info: var(--info);
+  --color-info-fg: var(--info-fg);
+  --color-info-soft: var(--info-soft);
+
+  --shadow-popover: var(--elev-popover);
+  --shadow-overlay: var(--elev-overlay);
+  --color-scrim: var(--scrim);
+}
+
+/* 4. Puente temporal wa-* -> semánticos. Las ~3.700 clases wa-* existentes
+      toman el aspecto nuevo sin tocar componentes. Las dos variantes (x y
+      x-dark) apuntan al mismo semántico, que ya cambia solo con el tema, así
+      que `bg-wa-panel dark:bg-wa-panel-dark` sigue dando lo correcto. Se borra
+      en la fase 8 del plan. wa-field queda en `subtle` (no en surface) hasta
+      que Input tenga borde: si no, los campos serían blanco sobre blanco. */
+@theme inline {
+  --color-wa-primary: var(--accent);
+  --color-wa-primary-strong: var(--accent-strong);
+  --color-wa-primary-deep: var(--accent-deep);
+
+  --color-wa-panel: var(--surface);
+  --color-wa-panel-dark: var(--surface);
+  --color-wa-app: var(--canvas);
+  --color-wa-app-dark: var(--canvas);
+  --color-wa-head: var(--surface);
+  --color-wa-head-dark: var(--surface-raised);
+  --color-wa-field: var(--subtle);
+  --color-wa-field-dark: var(--subtle);
+  --color-wa-hover: var(--subtle);
+  --color-wa-hover-dark: var(--subtle);
+  --color-wa-active: var(--selected);
+  --color-wa-active-dark: var(--selected);
+  --color-wa-border: var(--line);
+  --color-wa-border-dark: var(--line);
+
+  --color-wa-text: var(--fg);
+  --color-wa-text-dark: var(--fg);
+  --color-wa-muted: var(--fg-muted);
+  --color-wa-muted-dark: var(--fg-muted);
+}
+
 @theme {
-  /* Marca */
-  --color-wa-primary: #00a884; /* verde de acción: FAB, badges, CTA */
-  --color-wa-primary-strong: #008069; /* header claro / hover de CTA */
-  --color-wa-primary-deep: #006e5b; /* estado presionado */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* 15 px: nombre en la lista de chats y títulos de tarjeta. */
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.375rem;
+}
+
+/* Tokens que todavía no pasan por los semánticos: el hilo de chat (la
+   metáfora de WhatsApp sigue mandando ahí), los gráficos y el editor de
+   flujos. Se convierten aparte, sin cambiar sus valores. */
+@theme {
   --color-wa-accent: #53bdeb; /* informativo / enlaces / tick leído */
 
   /* Fondo del hilo de chat */
@@ -24,29 +205,6 @@
   --color-wa-in: #ffffff;
   --color-wa-in-dark: #202c33;
 
-  /* Superficies */
-  --color-wa-panel: #ffffff; /* paneles laterales / tarjetas (claro) */
-  --color-wa-panel-dark: #111b21; /* paneles laterales / tarjetas (oscuro) */
-  --color-wa-app: #f0f2f5; /* fondo general de la app (claro) */
-  --color-wa-app-dark: #0c1317; /* fondo general de la app (oscuro) */
-  --color-wa-head: #f0f2f5; /* headers/composer secundarios (claro) */
-  --color-wa-head-dark: #202c33; /* headers/composer secundarios (oscuro) */
-  --color-wa-field: #f0f2f5; /* inputs en píldora (claro) */
-  --color-wa-field-dark: #2a3942; /* inputs en píldora (oscuro) */
-  --color-wa-hover: #f5f6f6; /* hover de fila (claro) */
-  --color-wa-hover-dark: #202c33; /* hover de fila (oscuro) */
-  --color-wa-active: #f0f2f5; /* fila seleccionada (claro) */
-  --color-wa-active-dark: #2a3942; /* fila seleccionada (oscuro) */
-
-  /* Bordes */
-  --color-wa-border: #e9edef;
-  --color-wa-border-dark: #222d34;
-
-  /* Texto */
-  --color-wa-text: #111b21;
-  --color-wa-text-dark: #e9edef;
-  --color-wa-muted: #667781;
-  --color-wa-muted-dark: #8696a0;
   --color-wa-faint: #8696a0; /* metadatos dentro de burbujas (claro) */
   --color-wa-faint-dark: #667781;
   /* Pie de burbuja (hora, Editado, ticks) a 12 px: wa-faint sobre wa-out da
@@ -279,8 +437,9 @@ body {
   /* Safari 26+ (Liquid Glass) ignora <meta theme-color> y tiñe su barra con
      el background-color del <body> (el <html> no cuenta). Se pinta del color
      del header para que la barra se funda con la app; el fondo gris real de
-     la app vive en #root, que cubre todo el viewport. */
-  background: #008069;
+     la app vive en #root, que cubre todo el viewport. Sigue al tono de marca
+     mientras la barra superior sea de color (pregunta abierta 2 del doc 18). */
+  background: var(--accent-strong);
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -301,7 +460,7 @@ html.dark {
 }
 
 .dark body {
-  background: #202c33;
+  background: var(--surface-raised);
 }
 
 #root {
@@ -319,11 +478,7 @@ html.dark {
      app quedaba 56 px por debajo del borde hasta cerrar y abrir la app. */
   height: 100%;
   overflow: hidden;
-  background: #f0f2f5;
-}
-
-.dark #root {
-  background: #0c1317;
+  background: var(--canvas);
 }
 
 /* iOS Safari hace zoom automático al enfocar un campo con fuente menor a
@@ -337,14 +492,10 @@ html.dark {
   }
 }
 
-/* Scrollbars finos, en los grises de la paleta WhatsApp */
+/* Scrollbars finos; el gris cambia con el tema por --scrollbar. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #c5cdd3 transparent;
-}
-
-.dark * {
-  scrollbar-color: #374248 transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -357,24 +508,14 @@ html.dark {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #c5cdd3;
+  background-color: var(--scrollbar);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #a5aeb5;
-  background-clip: content-box;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background-color: #374248;
-  background-clip: content-box;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: #4a5961;
+  background-color: var(--scrollbar-hover);
   background-clip: content-box;
 }
 
@@ -462,33 +603,25 @@ html.dark {
   .ui-tooltip-content { animation: none !important; }
 }
 
-/* Picker de emojis (emoji-picker-react) fundido con la paleta WhatsApp: el
+/* Picker de emojis (emoji-picker-react) fundido con la paleta: el
    borde/sombra/radio los pone el wrapper (.rounded-xl), acá solo se mapean las
-   CSS vars internas del picker a los tokens wa-*. */
+   CSS vars internas del picker a los semánticos, que ya cambian con el tema.
+   Se usan --x y no --color-wa-x: con `@theme inline` Tailwind no garantiza
+   emitir la variable --color-* si ninguna clase la usa. */
 .wa-emoji .EmojiPickerReact {
   border: none;
-  --epr-bg-color: var(--color-wa-in);
-  --epr-category-label-bg-color: var(--color-wa-in);
-  --epr-text-color: var(--color-wa-text);
-  --epr-hover-bg-color: var(--color-wa-hover);
-  --epr-focus-bg-color: var(--color-wa-active);
-  --epr-search-input-bg-color: var(--color-wa-field);
-  --epr-search-input-text-color: var(--color-wa-text);
-  --epr-search-input-placeholder-color: var(--color-wa-muted);
-  --epr-search-border-color: var(--color-wa-primary);
+  --epr-bg-color: var(--surface-raised);
+  --epr-category-label-bg-color: var(--surface-raised);
+  --epr-text-color: var(--fg);
+  --epr-hover-bg-color: var(--subtle);
+  --epr-focus-bg-color: var(--selected);
+  --epr-search-input-bg-color: var(--subtle);
+  --epr-search-input-text-color: var(--fg);
+  --epr-search-input-placeholder-color: var(--fg-muted);
+  --epr-search-border-color: var(--accent);
   --epr-picker-border-color: transparent;
-  --epr-highlight-color: var(--color-wa-primary);
-  --epr-category-icon-active-color: var(--color-wa-primary);
-}
-.dark .wa-emoji .EmojiPickerReact {
-  --epr-bg-color: var(--color-wa-in-dark);
-  --epr-category-label-bg-color: var(--color-wa-in-dark);
-  --epr-text-color: var(--color-wa-text-dark);
-  --epr-hover-bg-color: var(--color-wa-active-dark);
-  --epr-focus-bg-color: var(--color-wa-active-dark);
-  --epr-search-input-bg-color: var(--color-wa-field-dark);
-  --epr-search-input-text-color: var(--color-wa-text-dark);
-  --epr-search-input-placeholder-color: var(--color-wa-muted-dark);
+  --epr-highlight-color: var(--accent);
+  --epr-category-icon-active-color: var(--accent);
 }
 
 /* Accesibilidad: sin animaciones para quien las desactivó en el sistema */
@@ -509,25 +642,24 @@ html.dark {
 .automation-form input:not([type="checkbox"]),
 .automation-form select,
 .automation-form textarea {
-  color: #111b21;
-  caret-color: #111b21;
+  color: var(--fg);
+  caret-color: var(--fg);
 }
 
+/* fg-muted y no un gris más claro: el placeholder también es texto (1.4.3). */
 .automation-form input::placeholder,
 .automation-form textarea::placeholder {
-  color: #8696a0;
+  color: var(--fg-muted);
   opacity: 1;
 }
 
 .automation-form input[type="checkbox"] {
-  accent-color: #00a884;
+  accent-color: var(--accent-fill);
 }
 
 .dark .automation-form input:not([type="checkbox"]),
 .dark .automation-form select,
 .dark .automation-form textarea {
-  color: #e9edef;
-  caret-color: #e9edef;
   color-scheme: dark;
 }
 
@@ -535,12 +667,7 @@ html.dark {
   color: #cbd5e1;
 }
 
-.dark .automation-form input::placeholder,
-.dark .automation-form textarea::placeholder {
-  color: #8696a0;
-}
-
-.dark .automation-form option {
-  background-color: #202c33;
-  color: #e9edef;
+.automation-form option {
+  background-color: var(--surface-raised);
+  color: var(--fg);
 }

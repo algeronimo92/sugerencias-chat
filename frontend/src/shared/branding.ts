@@ -25,23 +25,84 @@ export const DEFAULT_BRAND: Brand = {
 
 // La misma clave la lee el script inline de index.html.
 const STORAGE_KEY = 'brand'
+// Tonos ya calculados, para que el script inline de index.html los aplique
+// antes del primer frame sin repetir el cálculo de contraste.
+const SHADES_KEY = 'brand-shades'
 const DEFAULT_ICON = '/icon-192.png'
 const HEX_RE = /^#[0-9a-f]{6}$/i
 
+/** Contraste mínimo de texto normal (WCAG 1.4.3). */
+const MIN_CONTRAST = 4.5
+const WHITE: Rgb = [255, 255, 255]
+// --surface del tema oscuro (index.css): el fondo sobre el que se lee la marca.
+const DARK_SURFACE: Rgb = [0x11, 0x18, 0x1d]
+
+type Rgb = [number, number, number]
+
+export interface BrandShades {
+  /** Color del negocio tal cual: decoración, punto de no leído, icono activo. */
+  primary: string
+  /** Texto de acento y relleno de botones con texto blanco: >= 4,5:1 contra blanco. */
+  strong: string
+  /** Texto sobre el fondo suave de acento (--accent-soft): >= 4,5:1. */
+  deep: string
+  /** La marca en tema oscuro: >= 4,5:1 contra --surface oscuro. */
+  dark: string
+}
+
+const toRgb = (hex: string): Rgb => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)) as Rgb
+const toHex = (rgb: Rgb) => '#' + rgb.map(channel => Math.round(channel).toString(16).padStart(2, '0')).join('')
+
+function luminance(rgb: Rgb): number {
+  const [r, g, b] = rgb.map(channel => {
+    const value = channel / 255
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const [high, low] = [luminance(toRgb(a)), luminance(toRgb(b))].sort((x, y) => y - x)
+  return (high + 0.05) / (low + 0.05)
+}
+
+/** Mezcla `rgb` hacia `target` en la proporción `amount` (0 = igual, 1 = target). */
+const mix = (rgb: Rgb, target: Rgb, amount: number): Rgb =>
+  rgb.map((channel, index) => channel + (target[index] - channel) * amount) as Rgb
+
 /**
- * Tonos derivados del color principal, en la misma proporción que el verde
- * original (#00a884 → #008069 → #006e5b): encabezado/hover y presionado.
+ * Oscurece (o aclara, según `target`) partiendo de `start` hasta que el tono dé
+ * el contraste mínimo contra `background`. Pasos de 2 %: el resultado queda lo
+ * más cerca posible del color que eligió el negocio.
  */
-export function brandShades(hex: string): { primary: string; strong: string; deep: string } {
+function shadeUntilReadable(rgb: Rgb, target: Rgb, start: number, background: string): string {
+  for (let amount = start; amount < 1; amount += 0.02) {
+    const candidate = toHex(mix(rgb, target, amount))
+    if (contrastRatio(candidate, background) >= MIN_CONTRAST) return candidate
+  }
+  return toHex(target)
+}
+
+/**
+ * Tonos derivados del color principal. Arrancan en la misma proporción que el
+ * verde original (#00a884 → #008069 → #006e5b) y se oscurecen lo que haga
+ * falta: con un color claro (amarillo, celeste) esa proporción dejaba el
+ * botón primario con texto blanco por debajo de 4,5:1.
+ */
+export function brandShades(hex: string): BrandShades {
   const color = HEX_RE.test(hex) ? hex.toLowerCase() : DEFAULT_BRAND.primary_color
   // El verde de la plataforma conserva sus tonos de diseño exactos (index.css).
-  if (color === DEFAULT_BRAND.primary_color) return { primary: color, strong: '#008069', deep: '#006e5b' }
-  const darken = (factor: number) =>
-    '#' +
-    [1, 3, 5]
-      .map(index => Math.round(parseInt(color.slice(index, index + 2), 16) * factor).toString(16).padStart(2, '0'))
-      .join('')
-  return { primary: color, strong: darken(0.76), deep: darken(0.655) }
+  if (color === DEFAULT_BRAND.primary_color) {
+    return { primary: color, strong: '#008069', deep: '#006e5b', dark: color }
+  }
+  const rgb = toRgb(color)
+  const black: Rgb = [0, 0, 0]
+  const strong = shadeUntilReadable(rgb, black, 0.24, toHex(WHITE))
+  // Mismo cálculo que --accent-soft en index.css: 10 % de marca sobre blanco.
+  const soft = toHex(mix(WHITE, rgb, 0.1))
+  const deep = shadeUntilReadable(rgb, black, 0.345, soft)
+  const dark = shadeUntilReadable(rgb, WHITE, 0, toHex(DARK_SURFACE))
+  return { primary: color, strong, deep, dark }
 }
 
 let current: Brand = readStored() ?? DEFAULT_BRAND
@@ -70,11 +131,13 @@ export function lightThemeColor(): string {
 
 export function applyBrand(brand: Brand) {
   current = brand
-  const { primary, strong, deep } = brandShades(brand.primary_color)
+  const shades = brandShades(brand.primary_color)
+  const { strong } = shades
   const root = document.documentElement.style
-  root.setProperty('--color-wa-primary', primary)
-  root.setProperty('--color-wa-primary-strong', strong)
-  root.setProperty('--color-wa-primary-deep', deep)
+  root.setProperty('--brand', shades.primary)
+  root.setProperty('--brand-strong', shades.strong)
+  root.setProperty('--brand-deep', shades.deep)
+  root.setProperty('--brand-dark', shades.dark)
   document.title = brand.name
   setMeta('apple-mobile-web-app-title', brand.name)
   if (!document.documentElement.classList.contains('dark')) setMeta('theme-color', strong)
@@ -82,6 +145,7 @@ export function applyBrand(brand: Brand) {
   if (icon) icon.href = brand.icon_url ?? DEFAULT_ICON
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(brand))
+    localStorage.setItem(SHADES_KEY, JSON.stringify(shades))
   } catch {
     // Sin almacenamiento la marca se aplica igual; solo se pierde el caché.
   }
