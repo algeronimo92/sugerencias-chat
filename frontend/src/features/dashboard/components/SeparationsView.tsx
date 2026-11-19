@@ -1,6 +1,7 @@
 import type { DashboardMetrics } from '../types'
 import { who, type DashboardSubject } from './subject'
 import { formatMoney, formatNumber, formatShortDateTime } from './format'
+import { HoursHeatmap, type HoursReadingOption } from './HoursHeatmap'
 import { NoData, Panel } from './primitives'
 import { SeparationRanking } from './SeparationRanking'
 import { SalesTrendChart, StatTile } from './SalesCharts'
@@ -13,6 +14,12 @@ interface Props {
   subject: DashboardSubject
   onOpenChat: (leadId: string) => void
 }
+
+// Una sola lectura: el mapa no muestra el selector, pero sí esta aclaración.
+// Sin ella "a qué hora" se lee como la hora de la cita, que es otro dato.
+const HOUR_READINGS: HoursReadingOption[] = [
+  { key: 'separations', label: 'Separaciones', hint: 'La hora en que se llenó "Separar cita", no la hora de la cita. En promedio por día de la semana.' },
+]
 
 const TREND_LABELS = { revenue: 'Monto', count: 'Separaciones' }
 
@@ -80,6 +87,14 @@ export function SeparationsView({ data, days, subject, onOpenChat }: Props) {
           className="lg:col-span-2"
         >
           <ServiceBreakdownPanel data={data} days={days} />
+        </Panel>
+
+        <Panel anchor="a-que-hora-se-separa"
+          title="A qué hora se separan las citas"
+          subtitle={`${who(subject, { me: 'Las que registré', team: 'Las que registró el equipo', seller: (name) => `Las que registró ${name}` })} · últimos ${days} días · por día de la semana`}
+          className="lg:col-span-2"
+        >
+          <HoursHeatmap hours={data.hours} days={days} readings={HOUR_READINGS} label="A qué hora se separan las citas" />
         </Panel>
 
         {/* El ancla "por-responsable" se conserva: hay enlaces ya compartidos. */}

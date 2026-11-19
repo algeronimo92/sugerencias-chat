@@ -25,7 +25,9 @@ from app.db.models.appointments import Appointment
 from app.db.models.auth import User
 from app.db.models.leads import Lead, LeadStage
 
-from app.modules.leads.dashboard.scope import BUSINESS_TIMEZONE, DashboardScope, execute_mapping, items, local_day, series
+from app.modules.leads.dashboard.scope import (
+    BUSINESS_TIMEZONE, DashboardScope, execute_mapping, items, local_day, local_slot, local_weekday, series,
+)
 
 
 # Los estados que devuelve n8n al registrar la cita (ck_appointments_status).
@@ -167,6 +169,22 @@ def _booked(scope: DashboardScope, start, end=None):
     if end is not None:
         conditions.append(Appointment.created_at < end)
     return and_(*conditions)
+
+
+def separations_by_hour_stmt(scope: DashboardScope):
+    """A qué hora de la semana se registran las separaciones.
+
+    Es la hora en que alguien llenó "Separar cita", no la hora de la cita: lo
+    que se quiere ver es cuándo se cierra, para saber en qué franjas tiene que
+    haber alguien atendiendo. Mismo corte que el resto de la pestaña (`_booked`),
+    para que el mapa sume lo mismo que el total de arriba.
+    """
+    weekday, slot = local_weekday(Appointment.created_at), local_slot(Appointment.created_at)
+    return (
+        select(weekday.label("weekday"), slot.label("slot"), func.count(Appointment.id).label("separations"))
+        .where(_booked(scope, scope.start))
+        .group_by(weekday, slot)
+    )
 
 
 def _treatment_key(column):

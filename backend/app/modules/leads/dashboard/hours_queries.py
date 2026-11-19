@@ -13,7 +13,11 @@ cuatro martes no haga ver al lunes más cargado de lo que es.
 import asyncio
 from datetime import timedelta
 
-from app.modules.leads.dashboard import activity_queries as activity, automations_queries as automations
+from app.modules.leads.dashboard import (
+    activity_queries as activity,
+    appointments_queries as appointments,
+    automations_queries as automations,
+)
 from app.modules.leads.dashboard.scope import SLOT_HOURS, SLOTS_PER_DAY, DashboardScope, execute_mapping
 
 # Lo que se sabe de cada persona por franja: lo que escribió en el CRM y los
@@ -77,7 +81,7 @@ def _people(members, *sources) -> list[dict]:
     return sorted(people, key=lambda person: (person["name"].casefold(), person["user_id"]))
 
 
-CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_automatic", "messages", "phone_messages")
+CELL_FIELDS = ("conversations", "settled", "engaged", "flows_manual", "flows_automatic", "messages", "phone_messages", "separations")
 
 
 async def collect(scope: DashboardScope) -> dict:
@@ -85,7 +89,7 @@ async def collect(scope: DashboardScope) -> dict:
         return []
 
     (
-        conversations, flows, messages, phone, messages_by_author, flows_by_starter, members,
+        conversations, flows, messages, phone, separations, messages_by_author, flows_by_starter, members,
     ) = await asyncio.gather(
         execute_mapping(activity.conversations_by_hour_stmt(scope)),
         execute_mapping(automations.by_hour_stmt(scope)),
@@ -93,6 +97,7 @@ async def collect(scope: DashboardScope) -> dict:
         # Lo de WhatsApp es del negocio entero: al mirar a una persona no hay
         # forma de saber qué parte es suya, así que no se sirve.
         no_rows() if scope.is_mine else execute_mapping(activity.phone_by_hour_stmt(scope)),
+        execute_mapping(appointments.separations_by_hour_stmt(scope)),
         execute_mapping(activity.messages_by_author_hour_stmt(scope)),
         execute_mapping(automations.manual_by_starter_hour_stmt(scope)),
         # El equipo junto solo se muestra al mirar al equipo: en el scope
@@ -101,7 +106,7 @@ async def collect(scope: DashboardScope) -> dict:
     )
     occurrences = _weekday_occurrences(scope)
     cells: dict[tuple[int, int], dict] = {}
-    for row in (*conversations, *flows, *messages, *phone):
+    for row in (*conversations, *flows, *messages, *phone, *separations):
         weekday, slot = int(row["weekday"]) - 1, int(row["slot"])
         if not (0 <= weekday < 7 and 0 <= slot < SLOTS_PER_DAY):
             continue

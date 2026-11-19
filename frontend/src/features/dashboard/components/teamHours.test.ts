@@ -8,7 +8,7 @@ const cell = (weekday: number, slot: number, values: Partial<DashboardPersonHour
 })
 
 const whatsapp = (weekday: number, slot: number, phone_messages: number): DashboardHourCell => ({
-  weekday, slot, phone_messages, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0,
+  weekday, slot, phone_messages, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0, separations: 0,
 })
 
 // Una semana que empieza en jueves: cada día de la semana cae una sola vez.

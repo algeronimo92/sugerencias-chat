@@ -10,7 +10,7 @@ const HOURS: DashboardHours = {
   weekday_occurrences: [1, 1, 1, 1, 1, 1, 1],
   start_date: '2026-11-05',
   person_peaks: { messages: 10, flows_manual: 3 },
-  cells: [{ weekday: 3, slot: 5, phone_messages: 200, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0 }],
+  cells: [{ weekday: 3, slot: 5, phone_messages: 200, conversations: 0, settled: 0, engaged: 0, flows_manual: 0, flows_automatic: 0, messages: 0, separations: 0 }],
   people: [
     { user_id: 2, name: 'Antonella', cells: [{ weekday: 3, slot: 5, messages: 1, flows_manual: 0 }] },
     { user_id: 1, name: 'Grecia', cells: [{ weekday: 3, slot: 5, messages: 10, flows_manual: 3 }] },

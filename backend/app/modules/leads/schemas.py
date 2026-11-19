@@ -485,6 +485,8 @@ class DashboardHourCell(BaseModel):
     # Salieron desde WhatsApp fuera del CRM, en todos los chats. Sin autora:
     # no se atribuyen a nadie, y al mirar a una sola persona van en cero.
     phone_messages: int
+    # Citas separadas, por la hora en que se registraron (no la hora de la cita).
+    separations: int
 
 
 class DashboardHourPeaks(BaseModel):

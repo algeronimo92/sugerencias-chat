@@ -6001,6 +6001,8 @@ export interface components {
             messages: number;
             /** Phone Messages */
             phone_messages: number;
+            /** Separations */
+            separations: number;
         };
         /** DashboardHourPeaks */
         DashboardHourPeaks: {
