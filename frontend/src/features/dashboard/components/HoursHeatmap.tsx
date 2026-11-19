@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { useHeatNumbers } from '../hooks/useHeatNumbers'
 import type { DashboardHours } from '../types'
 import { NoData } from './primitives'
 import { ReadingToggle } from './ReadingToggle'
@@ -38,6 +39,7 @@ export function HoursHeatmap({ hours, days, readings, label, teamScale = false }
   const [readingKey, setReadingKey] = useState<HoursReading | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
   const readoutId = useId()
+  const [showNumbers, setShowNumbers] = useHeatNumbers()
   const reading = readings.find(item => item.key === readingKey) ?? readings[0]
 
   if (!hours) return <NoData />
@@ -55,14 +57,33 @@ export function HoursHeatmap({ hours, days, readings, label, teamScale = false }
 
   return (
     <div>
-      {readings.length > 1 && (
-        <ReadingToggle
-          label="Qué mostrar en el mapa"
-          options={readings}
-          value={reading.key}
-          onChange={key => { setReadingKey(key); setPicked(null) }}
-        />
-      )}
+      <div className="flex flex-wrap items-start justify-between gap-x-4">
+        {readings.length > 1 ? (
+          <ReadingToggle
+            label="Qué mostrar en el mapa"
+            options={readings}
+            value={reading.key}
+            onChange={key => { setReadingKey(key); setPicked(null) }}
+          />
+        ) : <span />}
+        {/* Con números se comparan franjas parecidas y sirve para una captura;
+            sin ellos se ve mejor el patrón. La elección vale para todos los mapas. */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showNumbers}
+          onClick={() => setShowNumbers(!showNumbers)}
+          className="mb-3 flex min-h-9 items-center gap-2 rounded-md text-xs font-medium text-wa-muted outline-none hover:text-wa-text focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
+        >
+          <span
+            aria-hidden="true"
+            className={`flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors ${showNumbers ? 'bg-wa-primary-strong dark:bg-wa-primary' : 'bg-wa-border dark:bg-white/20'}`}
+          >
+            <span className={`h-3 w-3 rounded-full bg-white transition-transform ${showNumbers ? 'translate-x-3' : ''}`} />
+          </span>
+          Mostrar números
+        </button>
+      </div>
       {reading.hint && <p className="mb-3 text-[11px] text-wa-muted dark:text-wa-muted-dark">{reading.hint}</p>}
 
       {!grid.hasData ? <NoData label="Sin movimiento en el período" /> : (
@@ -94,12 +115,12 @@ export function HoursHeatmap({ hours, days, readings, label, teamScale = false }
                           onMouseEnter={() => setPicked(cell.description)}
                           onFocus={() => setPicked(cell.description)}
                           style={heat.style}
-                          // El número va dentro porque el color solo no alcanza para
-                          // comparar dos franjas parecidas; la frase completa sigue
-                          // en la lectura de abajo.
+                          // El número va dentro (si se pidió) porque el color solo no
+                          // alcanza para comparar dos franjas parecidas; la frase
+                          // completa sigue en la lectura de abajo.
                           className={`block h-7 w-full overflow-hidden rounded-[3px] text-[10px] font-semibold leading-7 tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong sm:text-[11px] ${heat.className}`}
                         >
-                          {cell.text}
+                          {showNumbers ? cell.text : null}
                         </button>
                       </td>
                     )

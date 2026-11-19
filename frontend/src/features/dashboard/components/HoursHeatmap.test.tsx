@@ -42,6 +42,27 @@ describe('HoursHeatmap', () => {
     expect(screen.queryByRole('button', { name: 'Separaciones' })).not.toBeInTheDocument()
   })
 
+  it('los números de las celdas se apagan y se recuerda la elección en todos los mapas', async () => {
+    localStorage.removeItem('dashboard-mapa-numeros')
+    const user = userEvent.setup()
+    const first = render(<HoursHeatmap hours={HOURS} days={30} readings={READINGS} label="Horas de más movimiento" />)
+    const cell = () => screen.getByRole('button', { name: 'Lun 20–22 h: 2 conversaciones nuevas en promedio' })
+
+    // En pantalla ancha arrancan encendidos.
+    expect(screen.getByRole('switch', { name: 'Mostrar números' })).toBeChecked()
+    expect(cell()).toHaveTextContent('2')
+
+    await user.click(screen.getByRole('switch', { name: 'Mostrar números' }))
+    expect(cell()).toBeEmptyDOMElement()
+
+    // Otro mapa, montado después, respeta lo elegido.
+    first.unmount()
+    render(<HoursHeatmap hours={HOURS} days={30} readings={READINGS} label="Horas de más movimiento" />)
+    expect(screen.getByRole('switch', { name: 'Mostrar números' })).not.toBeChecked()
+    expect(cell()).toBeEmptyDOMElement()
+    localStorage.removeItem('dashboard-mapa-numeros')
+  })
+
   it('en el mapa de una persona usa la escala del equipo y lo dice', () => {
     const hours: DashboardHours = {
       ...HOURS,
