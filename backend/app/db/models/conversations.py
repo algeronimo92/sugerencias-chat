@@ -293,3 +293,70 @@ class ScheduledMessage(Base):
         Index("idx_scheduled_messages_lead", lead_id, scheduled_at.desc()),
         Index("idx_scheduled_messages_created_by", created_by_user_id),
     )
+
+
+class WhatsAppCall(Base):
+    """Una llamada de voz de WhatsApp con un lead (docs/analisis/17-plan-llamadas-whatsapp.md).
+
+    No va en ``wsp_messages``: esa tabla guarda el tipo literal de los
+    mensajes de Meta y una llamada no es un mensaje. El hilo la intercala como
+    tarjeta.
+    """
+
+    __tablename__ = "whatsapp_calls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # ``wacid`` de Meta. Nulo en una saliente hasta que Meta responde al ``connect``.
+    wa_call_id: Mapped[str | None] = mapped_column(Text)
+    chat_id: Mapped[str] = mapped_column(
+        PG_UUID(as_uuid=False), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False
+    )
+    phone_number_id: Mapped[str] = mapped_column(Text, nullable=False)
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    # Por qué terminó, del catálogo de causas (domain/calls.py). Nulo mientras sigue.
+    cause: Mapped[str | None] = mapped_column(Text)
+    # Código literal de Meta, si lo hubo: se guarda aunque el catálogo no lo conozca.
+    error_code: Mapped[str | None] = mapped_column(Text)
+    # Quién la cerró cuando no fue Meta: el ciclo de limpieza. Meta puede
+    # corregirlo después con la duración verdadera.
+    closed_by: Mapped[str | None] = mapped_column(Text)
+    ringing_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    handled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Pestaña que la reclamó: un usuario puede tener el CRM abierto en varias.
+    claimed_by_client_id: Mapped[str | None] = mapped_column(Text)
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Agentes que la ignoraron: deja de sonarles a ellos, no al resto.
+    dismissed_by: Mapped[list[int]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # Oferta SDP de Meta. Solo mientras suena: se borra al terminar.
+    remote_sdp: Mapped[str | None] = mapped_column(Text)
+    # Cada evento de Meta sobre la llamada, sin el SDP.
+    events: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("direction IN ('inbound', 'outbound')", name="whatsapp_calls_direction_check"),
+        CheckConstraint(
+            "status IN ('dialing', 'ringing', 'connecting', 'accepted', 'completed', 'missed', 'rejected', 'failed')",
+            name="whatsapp_calls_status_check",
+        ),
+        Index("uq_whatsapp_calls_wa_call_id", "wa_call_id", unique=True, postgresql_where=text("wa_call_id IS NOT NULL")),
+        Index("idx_whatsapp_calls_chat", "chat_id", text("ringing_at DESC")),
+        # Una sola llamada viva por chat y una por agente: lo garantiza la
+        # base, no la pantalla (dos pestañas, dos agentes, dos workers).
+        Index(
+            "uq_whatsapp_calls_live_chat", "chat_id", unique=True,
+            postgresql_where=text("status IN ('dialing', 'ringing', 'connecting', 'accepted')"),
+        ),
+        Index(
+            "uq_whatsapp_calls_live_agent", "handled_by_user_id", unique=True,
+            postgresql_where=text("status IN ('dialing', 'connecting', 'accepted') AND handled_by_user_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_whatsapp_calls_open", "status", "ringing_at",
+            postgresql_where=text("status IN ('dialing', 'ringing', 'connecting', 'accepted')"),
+        ),
+    )
