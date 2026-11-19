@@ -100,7 +100,7 @@ interface Props {
   onConnectWhatsapp?: () => void;
 }
 
-const ROW_ESTIMATE_PX = 72;
+const ROW_ESTIMATE_PX = 88;
 const HIGHLIGHT_DURATION_MS = 2000;
 // Margen antes de mostrar el aviso de conexión degradada: cubre el parpadeo
 // del socket durante el arranque y las reconexiones automáticas (3s de retry).
