@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react'
+import { Check, Loader2, Minus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { STAGE_DOT_CLASS, stageColorStyle, type LeadStageCatalog } from '../../domain/leadStageMeta'
 import { useKanbanPageSize } from '../../hooks/useKanbanView'
@@ -17,6 +17,7 @@ interface StageLeadListProps {
   selectedIds: Set<string>
   onToggleSelect: (chatId: string) => void
   onSelectMany: (chatIds: string[], selected: boolean) => void
+  onClearSelection: () => void
   onOpen: (chat: Chat) => void
   onDragStart: (chat: Chat) => void
   onDragEnd: () => void
@@ -34,6 +35,7 @@ export function StageLeadList({
   selectedIds,
   onToggleSelect,
   onSelectMany,
+  onClearSelection,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -58,6 +60,7 @@ export function StageLeadList({
   const chats = fromSnapshot ? snapshotItems.slice(offset, offset + pageSize) : fetchedPage?.items ?? []
   const isLoadingPage = !fromSnapshot && isPending
   const allVisibleSelected = chats.length > 0 && chats.every((chat) => selectedIds.has(chat.chat_id))
+  const selectedCount = selectedIds.size
 
   function goToPage(next: number) {
     setRequestedPage(next)
@@ -66,35 +69,52 @@ export function StageLeadList({
 
   return (
     <section aria-labelledby="stage-list-title" className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header style={stageColorStyle(stage.color)} className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-wa-border bg-wa-panel px-4 py-3 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        <span className={`h-3 w-3 shrink-0 rounded-full ${STAGE_DOT_CLASS}`} aria-hidden="true" />
-        <h2 id="stage-list-title" className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
-          {stage.name}
-          {!stage.is_active && <span className="ml-1.5 text-xs font-normal text-wa-muted dark:text-wa-muted-dark">(inactiva)</span>}
-        </h2>
-        <span className="text-sm text-wa-muted dark:text-wa-muted-dark">
-          {total} {total === 1 ? 'lead' : 'leads'}
-        </span>
+      {/* Con selección, esta fila pasa a decir cuántos hay y cómo cancelar,
+          como en la bandeja de chats; las acciones van en la barra de abajo.
+          La casilla se alinea con las de las filas. */}
+      <header style={stageColorStyle(stage.color)} className={`flex min-h-14 shrink-0 flex-wrap items-center gap-x-2 border-b border-wa-border pr-4 sm:pr-6 md:pl-6 dark:border-wa-border-dark ${
+        selectedCount > 0 ? 'bg-wa-primary-strong/5 dark:bg-wa-primary/10' : 'bg-wa-panel dark:bg-wa-panel-dark'
+      }`}>
         {chats.length > 0 && (
           <button
             type="button"
             onClick={() => onSelectMany(chats.map((chat) => chat.chat_id), !allVisibleSelected)}
-            className="ml-auto min-h-9 shrink-0 rounded-md px-2.5 text-sm font-medium text-wa-primary-strong hover:bg-wa-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-primary dark:hover:bg-wa-hover-dark"
+            aria-label={allVisibleSelected ? 'Quitar selección de esta página' : chats.length === total ? 'Seleccionar todos' : `Seleccionar los ${chats.length} de esta página`}
+            aria-pressed={allVisibleSelected ? true : selectedCount > 0 ? 'mixed' : false}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong"
           >
-            {allVisibleSelected ? (
-              'Quitar selección'
-            ) : chats.length === total ? (
-              'Seleccionar todos'
-            ) : (
-              <>
-                {/* En el celular la frase larga bajaba a otra línea. */}
-                <span className="sm:hidden">Seleccionar {chats.length}</span>
-                <span className="hidden sm:inline">Seleccionar los {chats.length} de esta página</span>
-              </>
-            )}
+            <span className={`flex h-5 w-5 items-center justify-center rounded border ${selectedCount > 0 ? 'border-wa-primary-strong bg-wa-primary-strong text-white' : 'border-wa-muted bg-wa-panel dark:border-wa-muted-dark dark:bg-wa-head-dark'}`}>
+              {allVisibleSelected ? <Check className="h-3 w-3" aria-hidden="true" /> : selectedCount > 0 && <Minus className="h-3 w-3" aria-hidden="true" />}
+            </span>
           </button>
         )}
-        {stage.description && <p className="hidden w-full text-xs sm:block text-wa-muted dark:text-wa-muted-dark">{stage.description}</p>}
+        {selectedCount > 0 ? (
+          <>
+            <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark" role="status">
+              {selectedCount} seleccionado{selectedCount === 1 ? '' : 's'}
+            </p>
+            <h2 id="stage-list-title" className="sr-only">{stage.name}</h2>
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="ml-auto flex h-9 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-medium text-wa-muted hover:bg-wa-hover hover:text-wa-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark dark:hover:text-wa-text-dark"
+            >
+              <X className="h-4 w-4" aria-hidden="true" /> Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            <span className={`h-3 w-3 shrink-0 rounded-full ${STAGE_DOT_CLASS} ${chats.length > 0 ? '' : 'ml-4 md:ml-0'}`} aria-hidden="true" />
+            <h2 id="stage-list-title" className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
+              {stage.name}
+              {!stage.is_active && <span className="ml-1.5 text-xs font-normal text-wa-muted dark:text-wa-muted-dark">(inactiva)</span>}
+            </h2>
+            <span className="text-sm text-wa-muted dark:text-wa-muted-dark">
+              {total} {total === 1 ? 'lead' : 'leads'}
+            </span>
+            {stage.description && <p className="ml-auto hidden max-w-md truncate text-xs text-wa-muted lg:block dark:text-wa-muted-dark" title={stage.description}>{stage.description}</p>}
+          </>
+        )}
       </header>
 
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto" aria-busy={isFetching && !fromSnapshot}>

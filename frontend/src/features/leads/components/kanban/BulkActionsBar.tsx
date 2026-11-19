@@ -1,4 +1,4 @@
-import { Loader2, Tag as TagIcon, X } from 'lucide-react'
+import { ArrowRightLeft, Loader2, Tag as TagIcon, X } from 'lucide-react'
 import { Select } from '../../../../shared/ui/Input'
 import type { LeadStageCatalog } from '../../domain/leadStageMeta'
 import type { LeadStage } from '../../types'
@@ -12,64 +12,88 @@ interface BulkActionsBarProps {
   onMove: (stage: LeadStage) => void
   onTag: (tagId: number) => void
   onClear: () => void
+  /** En la lista el conteo y "Cancelar" ya están arriba, en la fila de la
+   *  etapa: la barra queda solo con las acciones. */
+  showSummary?: boolean
 }
 
-export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, onTag, onClear }: BulkActionsBarProps) {
+const ACTION_CLASS =
+  'h-10 w-full border-wa-border bg-wa-panel text-sm font-medium focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 sm:w-48 dark:border-wa-border-dark dark:bg-wa-panel-dark'
+
+/** Acciones sobre la selección, al pie del embudo como en la bandeja de chats:
+ *  arriba quedan libres el buscador y el selector de vista. En el celular, el
+ *  conteo y "Cancelar" van en una fila y las acciones debajo, a lo ancho. */
+export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, onTag, onClear, showSummary = true }: BulkActionsBarProps) {
   const noun = count === 1 ? 'lead' : 'leads'
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      <span className="mr-1 shrink-0 text-sm font-semibold text-wa-text dark:text-wa-text-dark" role="status">
-        {count} seleccionado{count === 1 ? '' : 's'}
-      </span>
+    <div
+      role="region"
+      aria-label="Acciones sobre los leads seleccionados"
+      className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-t border-wa-border bg-wa-panel px-4 py-2.5 shadow-[0_-4px_12px_rgb(0_0_0/0.06)] sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:shadow-[0_-4px_12px_rgb(0_0_0/0.35)]"
+    >
+      {showSummary && (
+        <>
+          <span className="shrink-0 text-sm font-semibold text-wa-text dark:text-wa-text-dark" role="status">
+            {count} seleccionado{count === 1 ? '' : 's'}
+          </span>
 
-      <Select
-        value=""
-        disabled={isBusy}
-        aria-label={`Mover ${count} ${noun} a otra etapa`}
-        onChange={(event) => {
-          if (event.target.value) onMove(event.target.value)
-        }}
-        className="h-9 w-auto min-w-0 flex-1 sm:min-w-40 sm:flex-none border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
-      >
-        <option value="">Mover a...</option>
-        {catalog.active.map((stage) => (
-          <option key={stage.key} value={stage.key}>{stage.name}</option>
-        ))}
-      </Select>
+          <button
+            type="button"
+            onClick={onClear}
+            className="ml-auto flex h-9 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-medium text-wa-muted hover:bg-wa-hover hover:text-wa-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong sm:order-last sm:ml-0 dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark dark:hover:text-wa-text-dark"
+          >
+            <X className="h-4 w-4" aria-hidden="true" /> Cancelar
+          </button>
+        </>
+      )}
 
-      {tags.length > 0 && (
-        <div className="order-last flex w-full items-center gap-1 sm:order-none sm:w-auto">
-          <TagIcon className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+      <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1">
+        <div className="relative min-w-0 flex-1 sm:flex-none">
+          <ArrowRightLeft className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
           <Select
             value=""
             disabled={isBusy}
-            aria-label={`Agregar etiqueta a ${count} ${noun}`}
+            aria-label={`Mover ${count} ${noun} a otra etapa`}
             onChange={(event) => {
-              if (event.target.value) onTag(Number(event.target.value))
+              if (event.target.value) onMove(event.target.value)
             }}
-            className="h-9 w-auto min-w-0 flex-1 sm:min-w-44 sm:flex-none border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
+            className={`${ACTION_CLASS} pl-9`}
           >
-            <option value="">Agregar etiqueta...</option>
-            {tags.map((tag) => (
-              <option key={tag.id} value={tag.id}>{tag.name}</option>
+            <option value="">Mover a…</option>
+            {catalog.active.map((stage) => (
+              <option key={stage.key} value={stage.key}>{stage.name}</option>
             ))}
           </Select>
         </div>
-      )}
 
-      {isBusy && <span className="inline-flex items-center gap-2 text-sm text-wa-muted dark:text-wa-muted-dark" role="status"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Aplicando cambios…</span>}
-      {error && <span role="alert" className="text-sm text-red-700 dark:text-red-300">{error} La selección conserva los fallidos.</span>}
+        {tags.length > 0 && (
+          <div className="relative min-w-0 flex-1 sm:flex-none">
+            <TagIcon className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+            <Select
+              value=""
+              disabled={isBusy}
+              aria-label={`Agregar etiqueta a ${count} ${noun}`}
+              onChange={(event) => {
+                if (event.target.value) onTag(Number(event.target.value))
+              }}
+              className={`${ACTION_CLASS} pl-9`}
+            >
+              <option value="">Etiquetar…</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>{tag.name}</option>
+              ))}
+            </Select>
+          </div>
+        )}
 
-      <button
-        type="button"
-        onClick={onClear}
-        title="Cancelar selección"
-        className="ml-auto flex h-9 shrink-0 items-center gap-1 rounded-md px-2.5 sm:px-3 text-sm font-medium text-wa-text hover:bg-wa-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-text-dark dark:hover:bg-wa-panel-dark"
-      >
-        <X className="h-4 w-4" aria-hidden="true" />
-        {/* En el celular basta la X: el texto partía la barra en dos filas. */}
-        <span className="sr-only sm:not-sr-only">Cancelar selección</span>
-      </button>
+        {isBusy && (
+          <span className="hidden items-center gap-2 text-sm text-wa-muted sm:inline-flex dark:text-wa-muted-dark" role="status">
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Aplicando cambios…
+          </span>
+        )}
+      </div>
+
+      {error && <p role="alert" className="w-full text-sm text-red-700 dark:text-red-300">{error} La selección conserva los fallidos.</p>}
     </div>
   )
 }

@@ -11,11 +11,11 @@ interface PaginationProps {
   onPageSizeChange: (size: PageSize) => void
 }
 
-/** Hasta cinco números alrededor de la página actual: con etapas de cientos de
- *  leads, una fila con todos los números no entraría. */
-function visiblePages(page: number, pageCount: number): number[] {
-  const start = Math.max(0, Math.min(page - 2, pageCount - 5))
-  return Array.from({ length: Math.min(5, pageCount) }, (_, index) => start + index)
+/** Números alrededor de la página actual (`size` como máximo): con etapas de
+ *  cientos de leads, una fila con todos no entraría. */
+function pageWindow(page: number, pageCount: number, size: number): number[] {
+  const start = Math.max(0, Math.min(page - Math.floor(size / 2), pageCount - size))
+  return Array.from({ length: Math.min(size, pageCount) }, (_, index) => start + index)
 }
 
 function PageButton({ label, disabled, current, onClick, children, className = 'flex' }: { label: string; disabled?: boolean; current?: boolean; onClick: () => void; children: ReactNode; className?: string }) {
@@ -43,13 +43,16 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
   const last = Math.min(total, (page + 1) * pageSize)
   const isFirst = page === 0
   const isLast = page >= pageCount - 1
+  const compactPages = pageWindow(page, pageCount, 3)
 
   return (
-    <nav aria-label="Paginación de leads" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-wa-border bg-wa-panel px-4 py-2 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-      <p className="text-sm tabular-nums text-wa-muted dark:text-wa-muted-dark" aria-live="polite">
+    // En el celular todo va en una fila (resumen, números, filas por página):
+    // en dos filas se comía alto de la lista. Ahí se ven 3 números en vez de 5.
+    <nav aria-label="Paginación de leads" className="flex shrink-0 items-center gap-x-2 border-t border-wa-border bg-wa-panel px-4 py-2 sm:gap-x-4 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      <p className="shrink-0 text-sm tabular-nums text-wa-muted dark:text-wa-muted-dark" aria-live="polite">
         {first}–{last} de {total}<span className="hidden sm:inline"> {total === 1 ? 'lead' : 'leads'}</span>
       </p>
-      <label className="ml-auto flex items-center gap-2 text-sm text-wa-muted dark:text-wa-muted-dark">
+      <label className="order-3 flex shrink-0 items-center gap-2 text-sm text-wa-muted sm:order-2 sm:ml-auto dark:text-wa-muted-dark">
         <span className="hidden sm:inline">Filas por página</span>
         <span className="sr-only sm:hidden">Filas por página</span>
         <Select
@@ -62,11 +65,17 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
           ))}
         </Select>
       </label>
-      <div className="flex items-center gap-1 max-sm:w-full max-sm:justify-center">
+      <div className="order-2 ml-auto flex items-center gap-1 sm:order-3 sm:ml-0">
         <PageButton className="hidden sm:flex" label="Primera página" disabled={isFirst} onClick={() => onPageChange(0)}><ChevronsLeft className="h-4 w-4" aria-hidden="true" /></PageButton>
         <PageButton label="Página anterior" disabled={isFirst} onClick={() => onPageChange(page - 1)}><ChevronLeft className="h-4 w-4" aria-hidden="true" /></PageButton>
-        {visiblePages(page, pageCount).map((index) => (
-          <PageButton key={index} label={`Página ${index + 1}`} current={index === page} onClick={() => onPageChange(index)}>
+        {pageWindow(page, pageCount, 5).map((index) => (
+          <PageButton
+            key={index}
+            className={compactPages.includes(index) ? 'flex' : 'hidden sm:flex'}
+            label={`Página ${index + 1}`}
+            current={index === page}
+            onClick={() => onPageChange(index)}
+          >
             {index + 1}
           </PageButton>
         ))}

@@ -178,55 +178,28 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
 
   return (
     <main className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
-      {/* La barra de selección ocupa la fila de la cabecera en vez de sumar
-          otra: al marcar un lead la lista no salta hacia abajo. En el celular
-          la cabecera son dos filas de controles de 36 px (+ separación,
-          relleno y borde): la barra reserva esa misma altura. */}
-      <div className={`flex min-h-[calc(4.5rem+0.5rem+1.25rem+1px)] w-full sm:min-h-14 min-w-0 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-wa-border px-4 py-2.5 sm:px-6 dark:border-wa-border-dark ${
-        selectedIds.size > 0 ? 'bg-wa-field dark:bg-wa-head-dark' : 'bg-wa-panel dark:bg-wa-panel-dark'
-      }`}>
-        {selectedIds.size > 0 ? (
-          <>
-            <h1 className="sr-only">Embudo comercial</h1>
-            <BulkActionsBar
-              count={selectedIds.size}
-              catalog={catalog}
-              tags={tags}
-              isBusy={isBulkBusy}
-              error={bulkError}
-              onMove={(stage) => handleBulkMove(stage)}
-              onTag={handleBulkTag}
-              onClear={() => {
-                setSelectedIds(new Set())
-                setBulkError(null)
-              }}
-            />
-          </>
-        ) : (
-          <>
-            <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
-              <h1 className="truncate text-lg font-semibold text-wa-text dark:text-wa-text-dark">Embudo comercial</h1>
-              {countLabel && <span className="shrink-0 text-sm text-wa-muted dark:text-wa-muted-dark">{countLabel}</span>}
-            </div>
-            <ViewSwitch value={view} onChange={setView} />
-            <div className="relative w-full sm:w-80">
-              <label htmlFor="kanban-search" className="sr-only">Buscar leads</label>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
-              <Input
-                id="kanban-search"
-                type="search"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  setSelectedIds(new Set())
-                  setBulkError(null)
-                }}
-                placeholder="Buscar por nombre, servicio o mensaje"
-                className="h-9 border-wa-border pl-9 text-sm focus:ring-wa-primary-strong dark:border-wa-border-dark"
-              />
-            </div>
-          </>
-        )}
+      <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-wa-border bg-wa-panel px-4 py-2.5 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+          <h1 className="truncate text-lg font-semibold text-wa-text dark:text-wa-text-dark">Embudo comercial</h1>
+          {countLabel && <span className="shrink-0 text-sm text-wa-muted dark:text-wa-muted-dark">{countLabel}</span>}
+        </div>
+        <ViewSwitch value={view} onChange={setView} />
+        <div className="relative w-full sm:w-80">
+          <label htmlFor="kanban-search" className="sr-only">Buscar leads</label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+          <Input
+            id="kanban-search"
+            type="search"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setSelectedIds(new Set())
+              setBulkError(null)
+            }}
+            placeholder="Buscar por nombre, servicio o mensaje"
+            className="h-9 border-wa-border pl-9 text-sm focus:ring-wa-primary-strong dark:border-wa-border-dark"
+          />
+        </div>
       </div>
 
       {snapshotLoading ? (
@@ -297,12 +270,35 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onSelectMany={selectMany}
+            onClearSelection={() => {
+              setSelectedIds(new Set())
+              setBulkError(null)
+            }}
             onOpen={onOpenChat}
             onDragStart={setDraggedChat}
             onDragEnd={() => setDraggedChat(null)}
             onMove={handleMove}
           />
         </div>
+      )}
+
+      {/* Al pie, como en la bandeja de chats: arriba el buscador sigue a mano y
+          la lista no salta al marcar un lead. */}
+      {selectedIds.size > 0 && (
+        <BulkActionsBar
+          count={selectedIds.size}
+          catalog={catalog}
+          tags={tags}
+          isBusy={isBulkBusy}
+          error={bulkError}
+          onMove={(stage) => handleBulkMove(stage)}
+          onTag={handleBulkTag}
+          showSummary={view === 'tablero'}
+          onClear={() => {
+            setSelectedIds(new Set())
+            setBulkError(null)
+          }}
+        />
       )}
 
       {pendingLost && (

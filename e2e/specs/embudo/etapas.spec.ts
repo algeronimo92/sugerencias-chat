@@ -130,20 +130,38 @@ test('en el tablero, arrastrar una tarjeta a otra columna mueve solo ese lead', 
   expect(api.calls('patch', '/api/chats/{chat_id}/stage')[0].path).toBe(`/api/chats/${nuevos[1].chat_id}/stage`)
 })
 
-test('seleccionar leads no empuja la lista: la barra usa la fila de la cabecera', async ({ page }, info) => {
+test('al seleccionar, las acciones aparecen al pie y el buscador sigue a mano', async ({ page, api }, info) => {
+  api.on('get', '/api/tags', [{ id: 1, name: 'VIP', color: '#f43f5e', is_active: true, created_by_user_id: null, created_by_name: null, created_at: null }])
   await abrirLista(page)
   const lista = page.getByRole('list', { name: 'Leads en Nuevo' })
   const antes = await lista.boundingBox()
 
   await lista.getByRole('button', { name: 'Seleccionar Josefina Paredes' }).first().click()
+  const barra = page.getByRole('region', { name: 'Acciones sobre los leads seleccionados' })
+  // Como en la bandeja de chats: el conteo y "Cancelar" arriba, en la fila de
+  // la etapa; abajo solo las acciones.
   await expect(page.getByRole('status').filter({ hasText: '1 seleccionado' })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: /Mover 1 lead/ })).toBeVisible()
-  // Toda la barra entra en la fila: en el celular "Cancelar" queda como una X.
+  await expect(barra.getByRole('button', { name: 'Cancelar' })).toHaveCount(0)
+  await expect(barra.getByRole('combobox', { name: /Mover 1 lead/ })).toBeVisible()
+  await expect(barra.getByRole('combobox', { name: /Agregar etiqueta a 1 lead/ })).toBeVisible()
+  // Antes la barra reemplazaba la cabecera y tapaba el buscador.
+  await expect(page.getByRole('searchbox', { name: 'Buscar leads' })).toBeVisible()
   await expectNoPageOverflow(page)
   await page.screenshot({ path: `test-results/embudo-seleccion-${info.project.name}.png` })
 
+  // La barra va debajo de la lista: la lista no se corre hacia abajo.
   const despues = await lista.boundingBox()
   expect(despues?.y).toBe(antes?.y)
+  const caja = await barra.boundingBox()
+  expect(caja!.y).toBeGreaterThan(despues!.y)
+
+  // La casilla de arriba marca la página entera.
+  await page.getByRole('button', { name: 'Seleccionar todos' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '6 seleccionados' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await expect(barra).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Nuevo' })).toBeVisible()
 })
 
 test('la lista pagina por 10, 20 o 50 y recuerda las filas elegidas', async ({ page }, info) => {
@@ -166,6 +184,8 @@ test('la lista pagina por 10, 20 o 50 y recuerda las filas elegidas', async ({ p
   const paginacion = page.getByRole('navigation', { name: 'Paginación de leads' })
   await expect(lista.getByRole('listitem')).toHaveCount(10)
   await expect(paginacion.getByText(/^1–10 de 55/)).toBeVisible()
+  // Una sola fila también en el celular: en dos se comía alto de la lista.
+  expect((await paginacion.boundingBox())!.height).toBeLessThan(56)
   await expectNoPageOverflow(page)
   await page.screenshot({ path: `test-results/embudo-paginacion-${info.project.name}.png` })
 
@@ -178,8 +198,10 @@ test('la lista pagina por 10, 20 o 50 y recuerda las filas elegidas', async ({ p
   if (info.project.name === 'celular') {
     // En el celular no están "primera" y "última": se llega por los números.
     await expect(paginacion.getByRole('button', { name: 'Última página' })).toBeHidden()
-    await paginacion.getByRole('button', { name: 'Página 5' }).click()
-    await paginacion.getByRole('button', { name: 'Página 6' }).click()
+    for (const numero of [3, 4, 5, 6]) {
+      await paginacion.getByRole('button', { name: 'Página siguiente' }).click()
+      await expect(paginacion.getByRole('button', { name: `Página ${numero}` })).toHaveAttribute('aria-current', 'page')
+    }
   } else {
     await paginacion.getByRole('button', { name: 'Última página' }).click()
   }
