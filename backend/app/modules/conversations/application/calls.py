@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.db.uow import collect, unit_of_work
-from app.integrations.whatsapp.channel import CallOutcomeUnknown, ChannelError
+from app.integrations.whatsapp.channel import CallOutcomeUnknown, CallRefused, ChannelError
 from app.modules.conversations.application.ports import conversation_ports
 from app.modules.conversations.domain import calls as rules
 from app.modules.conversations.domain.events import (
@@ -216,7 +216,9 @@ async def hang_up(call_id: int, *, user_id: int, is_admin: bool, cause: str | No
     if row["status"] in rules.FINAL_STATUSES:
         return row
     try:
-        await _control().terminate(row["wa_call_id"])
+        # Una saliente recién creada puede no tener todavía el id de Meta.
+        if row.get("wa_call_id"):
+            await _control().terminate(row["wa_call_id"])
     except Exception:
         logger.warning("No se pudo colgar en Meta la llamada %s", call_id, exc_info=True)
     browser_cause = cause if cause in rules.BROWSER_CAUSES else None
@@ -229,6 +231,139 @@ async def hang_up(call_id: int, *, user_id: int, is_admin: bool, cause: str | No
         if finished:
             collect(_ended(finished))
     return finished or row
+
+
+async def start_call(chat_id: str, *, user_id: int, client_id: str, sdp: str, phone_number_id: str) -> dict:
+    """Un agente llama a un cliente.
+
+    La fila se crea antes de hablar con Meta y su id viaja en la llamada: los
+    avisos de Meta pueden llegar antes de que el ``wacid`` quede guardado, y
+    así igual encuentran a qué llamada pertenecen.
+    """
+    rules.validate_sdp(sdp)
+    ports = _ports()
+    async with unit_of_work():
+        row = await ports.calls.insert_dialing(
+            chat_id=chat_id, phone_number_id=phone_number_id, user_id=user_id, client_id=client_id, at=_now(),
+        )
+    try:
+        wa_call_id = await _control().start(chat_id, sdp, opaque=str(row["id"]))
+    except CallOutcomeUnknown:
+        # Meta pudo haberla iniciado: queda en "llamando" y la resuelven sus
+        # avisos o el ciclo de limpieza.
+        logger.warning("Meta no confirmó el inicio de la llamada %s", row["id"])
+        return row
+    except ChannelError as exc:
+        code = exc.code if isinstance(exc, CallRefused) else None
+        cause = rules.cause_for_meta_code(code) or "other"
+        async with unit_of_work():
+            finished = await ports.calls.finish(
+                row["id"], status=rules.FAILED, cause=cause, error_code=code, ended_at=_now(),
+                accepted_at=None, duration_seconds=None, closed_by=None,
+            )
+            if finished:
+                collect(_ended(finished))
+        raise rules.CallNotAllowed(cause) from exc
+    async with unit_of_work():
+        await ports.calls.set_wa_call_id(row["id"], wa_call_id)
+    return {**row, "wa_call_id": wa_call_id}
+
+
+async def _outbound_call(wa_call_id: str, opaque: str | None) -> dict | None:
+    """La llamada saliente de un aviso de Meta: por su ``wacid`` o, si todavía
+    no se guardó, por el id propio que viajó con ella. Un ``wacid``
+    desconocido sin ese dato nunca crea una llamada."""
+    ports = _ports()
+    row = await ports.calls.get_by_wa_call_id(wa_call_id)
+    if row is not None:
+        return row
+    if opaque and opaque.isdigit():
+        row = await ports.calls.get(int(opaque))
+        if row is not None and row["direction"] == rules.OUTBOUND and row.get("wa_call_id") in (None, wa_call_id):
+            await ports.calls.set_wa_call_id(row["id"], wa_call_id)
+            return {**row, "wa_call_id": wa_call_id}
+    return None
+
+
+class OutboundCallNotReady(RuntimeError):
+    """El aviso llegó antes de que la llamada quedara enlazada: se reintenta."""
+
+
+async def record_outbound_progress(
+    *, wa_call_id: str, opaque: str | None, status: str | None, sdp: str | None, event: dict,
+) -> dict | None:
+    """Avisos de una llamada que hizo el negocio: está sonando, contestó,
+    rechazó, o llegó la respuesta de audio del cliente."""
+    ports = _ports()
+    async with unit_of_work():
+        row = await _outbound_call(wa_call_id, opaque)
+        if row is None:
+            raise OutboundCallNotReady(f"Aviso de la llamada saliente {wa_call_id} sin llamada enlazada")
+        await ports.calls.append_event(row["id"], event)
+        if status == "REJECTED":
+            finished = await ports.calls.finish(
+                row["id"], status=rules.REJECTED, cause="customer_rejected", error_code=None, ended_at=_now(),
+                accepted_at=None, duration_seconds=None, closed_by=None,
+            )
+            if finished:
+                collect(_ended(finished))
+            return finished
+        target = {"RINGING": rules.RINGING, "ACCEPTED": rules.ACCEPTED}.get(status or "")
+        advanced = await ports.calls.advance_outbound(row["id"], status=target, sdp=sdp, at=_now())
+        if advanced and target == rules.ACCEPTED and row["status"] != rules.ACCEPTED:
+            collect(CallAnswered(chat_id=row["chat_id"], call_id=row["id"], user_id=row["handled_by_user_id"]))
+        return advanced
+
+
+async def record_outbound_end(
+    *, wa_call_id: str, opaque: str | None, duration_seconds: int | None, started_at: datetime | None,
+    ended_at: datetime | None, error_code: str | None, event: dict,
+) -> dict | None:
+    ports = _ports()
+    async with unit_of_work():
+        row = await _outbound_call(wa_call_id, opaque)
+        if row is None:
+            raise OutboundCallNotReady(f"Fin de la llamada saliente {wa_call_id} sin llamada enlazada")
+        await ports.calls.append_event(row["id"], event)
+        if duration_seconds is not None or started_at is not None:
+            status, cause = rules.COMPLETED, None
+        elif error_code:
+            status, cause = rules.FAILED, rules.cause_for_meta_code(error_code)
+        else:
+            # Sonó y no contestó: no es un fallo del equipo ni de la red.
+            status, cause = rules.FAILED, "customer_no_answer"
+        finished = await ports.calls.finish(
+            row["id"], status=status, cause=cause, error_code=str(error_code) if error_code else None,
+            ended_at=ended_at or _now(), accepted_at=started_at, duration_seconds=duration_seconds, closed_by=None,
+        )
+        if finished:
+            collect(_ended(finished))
+    return finished
+
+
+def permission_summary(meta: dict) -> dict:
+    """Lo que el botón Llamar necesita saber, sacado de la respuesta de Meta.
+    Los límites se leen de ahí y no de constantes: Meta los cambió más de una vez."""
+    permission = meta.get("permission") if isinstance(meta.get("permission"), dict) else {}
+    actions = {
+        action.get("action_name"): action
+        for action in meta.get("actions") or [] if isinstance(action, dict)
+    }
+
+    def allowed(name: str) -> bool:
+        return bool(actions.get(name, {}).get("can_perform_action"))
+
+    expires = permission.get("expiration_time")
+    return {
+        "status": permission.get("status") if permission.get("status") in ("temporary", "permanent") else "none",
+        "expires_at": datetime.fromtimestamp(int(expires), tz=timezone.utc) if isinstance(expires, (int, float)) else None,
+        "can_call": allowed("start_call"),
+        "can_request": allowed("send_call_permission_request"),
+    }
+
+
+async def call_permission(chat_id: str) -> dict:
+    return permission_summary(await _control().permission(chat_id))
 
 
 async def reap_calls() -> int:
@@ -250,6 +385,8 @@ async def reap_calls() -> int:
             status, cause = rules.FAILED, "unconfirmed"
         elif row["status"] == rules.ACCEPTED:
             status, cause = rules.COMPLETED, None
+        elif row["direction"] == rules.OUTBOUND:
+            status, cause = rules.FAILED, "closed_without_meta"
         else:
             status, cause = rules.MISSED, "closed_without_meta"
         async with unit_of_work():

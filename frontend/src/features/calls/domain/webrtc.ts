@@ -51,3 +51,20 @@ export async function answerOffer(offerSdp: string, microphone: MediaStream, rol
     throw error
   }
 }
+
+/** Llamada saliente: el navegador hace la oferta y la respuesta del cliente
+ *  llega después, por el backend. */
+export async function createOffer(microphone: MediaStream): Promise<AnsweredOffer> {
+  const connection = new RTCPeerConnection()
+  try {
+    microphone.getAudioTracks().forEach(track => connection.addTrack(track, microphone))
+    await connection.setLocalDescription(await connection.createOffer())
+    await gatheringComplete(connection)
+    const sdp = connection.localDescription?.sdp
+    if (!sdp) throw new Error('El navegador no generó la oferta de audio')
+    return { connection, sdp }
+  } catch (error) {
+    connection.close()
+    throw error
+  }
+}

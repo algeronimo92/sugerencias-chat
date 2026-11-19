@@ -38,6 +38,17 @@ async def chat_calls(chat_id: str) -> list[dict]:
     return await _with_names(await conversation_ports().calls.for_chat(chat_id, CHAT_CALLS_LIMIT), caller_names=False)
 
 
+async def call_answer(call_id: int, user_id: int) -> dict:
+    """La respuesta de audio del cliente a una llamada saliente, para quien la
+    hizo. ``sdp`` nulo mientras no llegó."""
+    row = await conversation_ports().calls.get(call_id)
+    if row is None or row["direction"] != rules.OUTBOUND:
+        raise rules.CallNotFound()
+    if row.get("handled_by_user_id") != user_id:
+        raise rules.CallNotYours()
+    return {"call": public_call(row), "sdp": row.get("remote_sdp")}
+
+
 async def call_offer(call_id: int) -> dict:
     """La oferta de audio, solo mientras suena: después nadie la necesita."""
     row = await conversation_ports().calls.get(call_id)

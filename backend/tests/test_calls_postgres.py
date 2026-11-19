@@ -62,6 +62,14 @@ class FakeCalls:
     async def terminate(self, call_id):
         self.done.append(("terminate", call_id))
 
+    async def start(self, chat_id, sdp, *, opaque):
+        self.done.append(("start", chat_id, opaque))
+        if self.fail:
+            raise self.fail
+        return self.next_wacid
+
+    next_wacid = "wacid.out"
+
 
 @pytest.fixture
 def meta_calls(monkeypatch):
@@ -424,3 +432,162 @@ async def test_a_missed_call_leaves_the_chat_unread_until_someone_opens_it(tenan
         await mark_read(chat_id)
         assert (await fetch_chat(chat_id))["unread_count"] == 0
         assert await fetch_total_unread_chat_count() == 0
+
+
+# --- Llamar al cliente (fase 3) -------------------------------------------
+
+from app.integrations.whatsapp.channel import CallRefused  # noqa: E402
+from app.modules.conversations.call_queries import call_answer  # noqa: E402
+
+
+async def _lead(phone: str = "51999000555") -> str:
+    async with get_sessionmaker()() as session:
+        chat_id = (await session.execute(text("INSERT INTO leads (telefono) VALUES (:p) RETURNING id"), {"p": phone})).scalar_one()
+        await session.commit()
+    return str(chat_id)
+
+
+def _outbound(wacid: str, event: str, opaque: str | None = None, **extra) -> dict:
+    call = {
+        "id": wacid, "to": "51999000555", "from": "51900000000", "event": event, "direction": "BUSINESS_INITIATED",
+        "timestamp": str(int(datetime.now(timezone.utc).timestamp())), **extra,
+    }
+    if opaque:
+        call["biz_opaque_callback_data"] = opaque
+    return _body(call)
+
+
+def _status(wacid: str, status: str, opaque: str | None = None) -> dict:
+    item = {"id": wacid, "type": "call", "status": status, "timestamp": str(int(datetime.now(timezone.utc).timestamp())), "recipient_id": "51999000555"}
+    if opaque:
+        item["biz_opaque_callback_data"] = opaque
+    return webhook_body({
+        "messaging_product": "whatsapp", "metadata": {"display_phone_number": "51900000000", "phone_number_id": "x"},
+        "statuses": [item],
+    }, field="calls")
+
+
+async def test_an_agent_calls_a_customer_who_answers(tenant, meta_calls, seen) -> None:
+    context, phone_number_id, _ids = tenant
+    wacid = _wacid()
+    meta_calls.next_wacid = wacid
+    with tenant_context(context):
+        [ana] = await _agents("Ana")
+        chat_id = await _lead()
+        row = await calls.start_call(chat_id, user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+        assert (row["status"], row["direction"], row["handled_by_user_id"]) == ("dialing", "outbound", ana)
+        assert meta_calls.done == [("start", chat_id, str(row["id"]))]
+        assert (await call_answer(row["id"], ana))["sdp"] is None
+
+    await _deliver(tenant, _status(wacid, "RINGING"))
+    await _deliver(tenant, _outbound(wacid, "connect", session={"sdp_type": "answer", "sdp": ANSWER}))
+    await _deliver(tenant, _status(wacid, "ACCEPTED"))
+    # Un "sonando" que llega tarde no la devuelve atrás.
+    await _deliver(tenant, _status(wacid, "RINGING", opaque="late"))
+
+    with tenant_context(context):
+        state = await call_answer(row["id"], ana)
+        assert (state["call"]["status"], state["sdp"]) == ("accepted", ANSWER)
+        with pytest.raises(rules.CallNotYours):
+            await call_answer(row["id"], ana + 999)
+
+    await _deliver(tenant, _outbound(wacid, "terminate", duration=61, start_time="1700000000", end_time="1700000061"))
+    with tenant_context(context):
+        final = await _call(wacid)
+        assert (final["status"], final["duration_seconds"], final["remote_sdp"]) == ("completed", 61, None)
+        # Una saliente nunca deja "llamada perdida" en la campanita.
+        assert await _notifications(final["id"]) == []
+
+
+async def test_events_that_arrive_before_the_call_id_is_stored_are_linked_by_our_id(tenant, meta_calls, seen) -> None:
+    context, phone_number_id, _ids = tenant
+    wacid = _wacid()
+    with tenant_context(context):
+        [ana] = await _agents("Ana")
+        chat_id = await _lead()
+        # Meta no confirmó el inicio: la llamada queda sin su id de Meta.
+        meta_calls.fail = CallOutcomeUnknown("timeout")
+        row = await calls.start_call(chat_id, user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+        assert row.get("wa_call_id") is None
+
+    await _deliver(tenant, _status(wacid, "RINGING", opaque=str(row["id"])))
+
+    with tenant_context(context):
+        linked = await conversation_ports().calls.get(row["id"])
+        assert (linked["wa_call_id"], linked["status"]) == (wacid, "ringing")
+        async with get_sessionmaker()() as session:
+            assert await session.scalar(text("SELECT count(*) FROM whatsapp_calls")) == 1
+
+
+async def test_an_unknown_outbound_call_never_creates_a_row(tenant, meta_calls, seen) -> None:
+    context, _phone, inbox_ids = tenant
+    accepted, _ = await store_changes(split_changes(_with_phone_number_id(_status(_wacid(), "RINGING"), tenant[1])))
+    inbox_ids.extend(accepted)
+    [event] = await claim_events(1, ids=accepted, lane=CALLS_LANE)
+
+    # Falla para reintentarse: todavía puede guardarse el id de esa llamada.
+    assert await run_event(event) is False
+    with tenant_context(context):
+        async with get_sessionmaker()() as session:
+            assert await session.scalar(text("SELECT count(*) FROM whatsapp_calls")) == 0
+
+
+async def test_a_call_meta_refuses_is_recorded_with_its_cause(tenant, meta_calls, seen) -> None:
+    context, phone_number_id, _ids = tenant
+    with tenant_context(context):
+        [ana] = await _agents("Ana")
+        chat_id = await _lead()
+        meta_calls.fail = CallRefused("No approved call permission", code="138006", status_code=400)
+        with pytest.raises(rules.CallNotAllowed) as refused:
+            await calls.start_call(chat_id, user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+        assert refused.value.cause == "no_permission"
+        [card] = await chat_calls(chat_id)
+        assert (card["status"], card["cause"], card["error_code"]) == ("failed", "no_permission", "138006")
+        # Y no deja a la persona "ocupada": puede volver a llamar.
+        meta_calls.fail = None
+        await calls.start_call(chat_id, user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+
+
+async def test_only_one_live_call_per_customer_and_per_agent(tenant, meta_calls, seen) -> None:
+    context, phone_number_id, _ids = tenant
+    with tenant_context(context):
+        ana, bea = await _agents("Ana", "Bea")
+        first, second = await _lead(), await _lead("51999000666")
+        await calls.start_call(first, user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+        with pytest.raises(rules.CallInProgress):
+            await calls.start_call(first, user_id=bea, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+        with pytest.raises(rules.AgentBusy):
+            await calls.start_call(second, user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+
+
+async def test_a_customer_who_rejects_or_does_not_answer(tenant, meta_calls, seen) -> None:
+    context, phone_number_id, _ids = tenant
+    rejected, unanswered = _wacid(), _wacid()
+    with tenant_context(context):
+        ana, bea = await _agents("Ana", "Bea")
+        meta_calls.next_wacid = rejected
+        await calls.start_call(await _lead(), user_id=ana, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+        meta_calls.next_wacid = unanswered
+        await calls.start_call(await _lead("51999000666"), user_id=bea, client_id="tab", sdp=SDP, phone_number_id=phone_number_id)
+
+    await _deliver(tenant, _status(rejected, "REJECTED"))
+    await _deliver(tenant, _outbound(unanswered, "terminate"))
+
+    with tenant_context(context):
+        assert ((await _call(rejected))["status"], (await _call(rejected))["cause"]) == ("rejected", "customer_rejected")
+        assert ((await _call(unanswered))["status"], (await _call(unanswered))["cause"]) == ("failed", "customer_no_answer")
+
+
+def test_the_permission_summary_reads_limits_from_meta():
+    summary = calls.permission_summary({
+        "permission": {"status": "temporary", "expiration_time": 1745343479},
+        "actions": [
+            {"action_name": "send_call_permission_request", "can_perform_action": False},
+            {"action_name": "start_call", "can_perform_action": True},
+        ],
+    })
+    assert (summary["status"], summary["can_call"], summary["can_request"]) == ("temporary", True, False)
+    assert summary["expires_at"].year == 2025
+    assert calls.permission_summary({"permission": {"status": "no_permission"}}) == {
+        "status": "none", "expires_at": None, "can_call": False, "can_request": False,
+    }

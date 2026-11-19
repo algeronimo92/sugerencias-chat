@@ -57,6 +57,45 @@ class SqlCallStore:
             )
             return _row(existing), False
 
+    async def insert_dialing(self, *, chat_id: str, phone_number_id: str, user_id: int, client_id: str, at: datetime) -> dict:
+        statement = (
+            pg_insert(WhatsAppCall)
+            .values(
+                chat_id=chat_id, phone_number_id=phone_number_id, direction=rules.OUTBOUND, status=rules.DIALING,
+                ringing_at=at, handled_by_user_id=user_id, claimed_by_client_id=client_id, events=[],
+            )
+            .returning(WhatsAppCall)
+        )
+        try:
+            async with session_scope() as session:
+                return _row((await session.execute(statement)).scalar_one())
+        except IntegrityError as exc:
+            # Cuál de los dos índices de "una sola viva" saltó.
+            if "uq_whatsapp_calls_live_agent" in str(exc.orig):
+                raise rules.AgentBusy() from exc
+            raise rules.CallInProgress() from exc
+
+    async def set_wa_call_id(self, call_id: int, wa_call_id: str) -> None:
+        async with session_scope() as session:
+            await session.execute(
+                update(WhatsAppCall).where(WhatsAppCall.id == call_id, WhatsAppCall.wa_call_id.is_(None))
+                .values(wa_call_id=wa_call_id)
+            )
+
+    async def advance_outbound(self, call_id: int, *, status: str | None, sdp: str | None, at: datetime) -> dict | None:
+        values: dict[str, Any] = {"remote_sdp": func.coalesce(sdp, WhatsAppCall.remote_sdp)}
+        allowed = [rules.DIALING, rules.RINGING]
+        if status == rules.ACCEPTED:
+            values.update(status=rules.ACCEPTED, accepted_at=func.coalesce(WhatsAppCall.accepted_at, at))
+            allowed.append(rules.ACCEPTED)
+        elif status == rules.RINGING:
+            # Un "sonando" tardío no devuelve atrás una llamada ya contestada.
+            values["status"] = rules.RINGING
+        return await self._transition(
+            [WhatsAppCall.id == call_id, WhatsAppCall.direction == rules.OUTBOUND, WhatsAppCall.status.in_(allowed)],
+            values,
+        )
+
     async def get(self, call_id: int) -> dict | None:
         async with session_scope() as session:
             return _row(await session.get(WhatsAppCall, call_id, populate_existing=True))
@@ -153,7 +192,7 @@ class SqlCallStore:
 
     async def stale(self, *, ringing_before: datetime, claim_expired_at: datetime, accepted_before: datetime) -> list[dict]:
         condition = or_(
-            and_(WhatsAppCall.status == rules.RINGING, WhatsAppCall.ringing_at < ringing_before),
+            and_(WhatsAppCall.status.in_((rules.RINGING, rules.DIALING)), WhatsAppCall.ringing_at < ringing_before),
             and_(WhatsAppCall.status == rules.CONNECTING, WhatsAppCall.claim_expires_at < claim_expired_at),
             and_(
                 WhatsAppCall.status == rules.ACCEPTED,

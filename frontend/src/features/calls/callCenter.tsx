@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react'
 
 import { useMe } from '../../shared/auth'
-import { acceptCall, confirmCallConnected, dismissCall, fetchCallOffer, fetchRingingCalls, terminateCall } from './api'
+import { acceptCall, confirmCallConnected, dismissCall, fetchCallAnswer, fetchCallOffer, fetchRingingCalls, startCall, terminateCall } from './api'
 import { IDLE, browserCause, reduceSession, type EndReason } from './domain/callSession'
-import { answerOffer, type DtlsRole } from './domain/webrtc'
+import { answerOffer, createOffer, type DtlsRole } from './domain/webrtc'
 import { CALL_ENDED_EVENT, CallCenterContext as Context, type CallCenter } from './callCenterContext'
 import { callKeys } from './keys'
 import { startRingtone } from './ringtone'
@@ -137,6 +137,71 @@ export function CallCenterProvider({ children }: { children: ReactNode }) {
     })()
   }, [finish, queryClient, release])
 
+  const call = useCallback((chatId: string, name: string | null) => {
+    if (sessionRef.current.phase === 'connecting' || sessionRef.current.phase === 'active') return
+    dispatch({ type: 'answer', call: { id: 0, chatId, callerName: name }, outbound: true })
+    void (async () => {
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch {
+        dispatch({ type: 'end', reason: 'microphone_blocked', at: Date.now() })
+        return
+      }
+      microphone.current = stream
+      let callId = 0
+      try {
+        const offered = await createOffer(stream)
+        connection.current = offered.connection
+        offered.connection.addEventListener('track', (event) => {
+          if (audio.current) audio.current.srcObject = event.streams[0] ?? new MediaStream([event.track])
+        })
+        offered.connection.addEventListener('connectionstatechange', () => {
+          const state = offered.connection.connectionState
+          const current = sessionRef.current
+          if (state === 'connected') {
+            dispatch(current.phase === 'connecting' ? { type: 'connected', at: Date.now() } : { type: 'unstable', unstable: false })
+          } else if (state === 'disconnected') {
+            dispatch({ type: 'unstable', unstable: true })
+          } else if (state === 'failed') {
+            finish(current.phase === 'active' ? 'dropped' : 'no_audio', { tellBackend: true })
+          }
+        })
+        const placed = await startCall({ chat_id: chatId, sdp: offered.sdp, client_id: CLIENT_ID })
+        callId = placed.id
+        dispatch({ type: 'placed', callId })
+      } catch {
+        release()
+        dispatch({ type: 'end', reason: 'not_allowed', at: Date.now() })
+        void queryClient.invalidateQueries({ queryKey: callKeys.all })
+        return
+      }
+      // La respuesta del cliente llega por el webhook: se consulta hasta
+      // tenerla (el aviso en vivo puede perderse) o hasta que la llamada termine.
+      let applied = false
+      while (sessionRef.current.phase === 'connecting' || sessionRef.current.phase === 'active') {
+        // Por chat y no por id: el id nuevo tarda un render en llegar a la referencia.
+        if (sessionRef.current.call.chatId !== chatId) return
+        try {
+          const state = await fetchCallAnswer(callId)
+          if (state.sdp && !applied && connection.current) {
+            applied = true
+            await connection.current.setRemoteDescription({ type: 'answer', sdp: state.sdp })
+          }
+          if (state.call.status === 'rejected') { finish('customer_rejected', { tellBackend: false }); return }
+          if (state.call.status === 'failed') {
+            finish(state.call.cause === 'customer_no_answer' ? 'customer_no_answer' : 'no_audio', { tellBackend: false })
+            return
+          }
+          if (state.call.status === 'completed') { finish('remote_ended', { tellBackend: false }); return }
+        } catch {
+          // Un pedido fallido no corta la llamada: se reintenta.
+        }
+        await new Promise(resolve => setTimeout(resolve, applied ? 4_000 : 1_500))
+      }
+    })()
+  }, [finish, queryClient, release])
+
   const dismiss = useCallback((call: Call) => {
     queryClient.setQueryData<Call[]>(callKeys.ringing, current => (current ?? []).filter(item => item.id !== call.id))
     void dismissCall(call.id).catch(() => queryClient.invalidateQueries({ queryKey: callKeys.ringing }))
@@ -180,8 +245,8 @@ export function CallCenterProvider({ children }: { children: ReactNode }) {
   useEffect(() => release, [release])
 
   const value = useMemo<CallCenter>(
-    () => ({ enabled, ringing, session, answer, dismiss, hangUp, toggleMute, clearEnded }),
-    [enabled, ringing, session, answer, dismiss, hangUp, toggleMute, clearEnded],
+    () => ({ enabled, ringing, session, answer, call, dismiss, hangUp, toggleMute, clearEnded }),
+    [enabled, ringing, session, answer, call, dismiss, hangUp, toggleMute, clearEnded],
   )
   return (
     <Context.Provider value={value}>

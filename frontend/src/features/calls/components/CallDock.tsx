@@ -76,7 +76,7 @@ function CurrentCall() {
     <div role="region" aria-label={`Llamada con ${name}`} className={card}>
       <p className="truncate text-xl font-semibold text-wa-text dark:text-wa-text-dark sm:text-base">{name}</p>
       <p role="status" className="text-sm text-wa-muted dark:text-wa-muted-dark">
-        {active ? <Timer startedAt={session.startedAt} /> : 'Conectando…'}
+        {active ? <Timer startedAt={session.startedAt} /> : session.outbound ? 'Llamando…' : 'Conectando…'}
       </p>
       {active && session.muted && (
         <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300">

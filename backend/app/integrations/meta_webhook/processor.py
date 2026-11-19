@@ -35,7 +35,13 @@ from app.modules.conversations.ports.inbound import (
 from app.modules.conversations.ports.message_queries import chat_id_for_wa_message, chat_wa_message_ids
 from app.integrations.meta.calls import parse_call, without_sdp
 from app.integrations.meta.wamid import message_key
-from app.modules.conversations.ports.calls_inbound import is_known_meta_code, receive_call, record_call_end
+from app.modules.conversations.ports.calls_inbound import (
+    is_known_meta_code,
+    receive_call,
+    record_call_end,
+    record_outbound_end,
+    record_outbound_progress,
+)
 from app.modules.media.ports.media_upload import (save_decoded_media)
 from app.integrations.meta.contract import contract, is_known_inbound, message_subtype
 from app.integrations.meta_webhook import metrics
@@ -363,8 +369,8 @@ async def _template_change(change: dict, _webhook_event_id: str) -> None:
 
 
 async def _calls_change(change: dict, _webhook_event_id: str, *, received_at: datetime | None = None) -> None:
-    """Llamadas de voz que hace el cliente al número del negocio. Las que
-    hace el negocio (estados ``RINGING``/``ACCEPTED``) todavía no se procesan."""
+    """Llamadas de voz: las que hace el cliente al número del negocio y los
+    avisos de las que hace el negocio (sonando, contestó, rechazó, terminó)."""
     value = change.get("value") if isinstance(change.get("value"), dict) else {}
     phone_number_id = _phone_number_id(value)
     if phone_number_id is None:
@@ -375,9 +381,12 @@ async def _calls_change(change: dict, _webhook_event_id: str, *, received_at: da
     contacts = value.get("contacts") if isinstance(value.get("contacts"), list) else []
     for raw in value.get("calls") or []:
         call = parse_call(raw, value.get("errors")) if isinstance(raw, dict) else None
-        if call is None or not call.user_initiated:
+        if call is None:
             continue
         metrics.call_events.labels(event=call.event).inc()
+        if not call.user_initiated:
+            await _outbound_call_event(call, raw)
+            continue
         if call.error_code and not is_known_meta_code(call.error_code):
             metrics.call_unknown_error_codes.labels(code=call.error_code).inc()
         identity = identity_from_inbound(phone_number_id, raw, contacts)
@@ -401,6 +410,30 @@ async def _calls_change(change: dict, _webhook_event_id: str, *, received_at: da
             )
         else:
             logger.info("Evento de llamada de Meta sin tratamiento: %s", call.event)
+    for status in value.get("statuses") or []:
+        if isinstance(status, dict) and status.get("type") == "call" and isinstance(status.get("id"), str):
+            await record_outbound_progress(
+                wa_call_id=status["id"], opaque=_opaque(status), status=str(status.get("status") or ""),
+                sdp=None, event=status,
+            )
+
+
+def _opaque(raw: dict) -> str | None:
+    value = raw.get("biz_opaque_callback_data")
+    return value if isinstance(value, str) and value else None
+
+
+async def _outbound_call_event(call, raw: dict) -> None:
+    if call.event == "connect":
+        # La respuesta de audio del cliente a la oferta del navegador.
+        await record_outbound_progress(
+            wa_call_id=call.wa_call_id, opaque=_opaque(raw), status=None, sdp=call.sdp, event=raw,
+        )
+    elif call.event == "terminate":
+        await record_outbound_end(
+            wa_call_id=call.wa_call_id, opaque=_opaque(raw), duration_seconds=call.duration_seconds,
+            started_at=call.started_at, ended_at=call.ended_at, error_code=call.error_code, event=raw,
+        )
 
 
 ChangeHandler = Callable[[dict, str], Awaitable[None]]

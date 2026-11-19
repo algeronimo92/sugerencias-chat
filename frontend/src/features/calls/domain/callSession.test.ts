@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { IDLE, browserCause, endMessage, formatDuration, reduceSession, type CallSession } from './callSession'
 
 const call = { id: 7, chatId: 'lead-1', callerName: 'Josefina' }
-const connecting: CallSession = { phase: 'connecting', call }
+const connecting: CallSession = { phase: 'connecting', call, outbound: false }
 const active: CallSession = { phase: 'active', call, startedAt: 1_000, muted: false, unstable: false }
 
 describe('reduceSession', () => {
@@ -34,6 +34,20 @@ describe('reduceSession', () => {
     expect(reduceSession(connecting, { type: 'mute', muted: true })).toBe(connecting)
     expect(reduceSession(IDLE, { type: 'end', reason: 'hung_up', at: 1 })).toBe(IDLE)
     expect(reduceSession(active, { type: 'clear' })).toBe(active)
+  })
+})
+
+describe('llamada saliente', () => {
+  it('toma el id que le da el backend y sigue el mismo camino', () => {
+    let state = reduceSession(IDLE, { type: 'answer', call: { ...call, id: 0 }, outbound: true })
+    state = reduceSession(state, { type: 'placed', callId: 42 })
+    expect(state).toMatchObject({ phase: 'connecting', outbound: true, call: { id: 42 } })
+    state = reduceSession(state, { type: 'end', reason: 'customer_no_answer', at: 5 })
+    expect(state).toMatchObject({ phase: 'ended', reason: 'customer_no_answer' })
+  })
+
+  it('una entrante no cambia de id', () => {
+    expect(reduceSession(connecting, { type: 'placed', callId: 42 })).toBe(connecting)
   })
 })
 

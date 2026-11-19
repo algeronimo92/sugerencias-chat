@@ -24,7 +24,7 @@ OUTBOUND_INTERACTIVE = {
     "button", "list", "product", "product_list", "catalog_message", "flow",
     "call_permission_request",
 }
-INBOUND_INTERACTIVE = {"button_reply", "list_reply", "nfm_reply"}
+INBOUND_INTERACTIVE = {"button_reply", "list_reply", "nfm_reply", "call_permission_reply"}
 
 
 def test_roots_match_the_plan_per_direction():

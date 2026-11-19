@@ -245,6 +245,28 @@ class CallOffer(BaseModel):
     sdp: str
 
 
+class CallStartRequest(BaseModel):
+    chat_id: str = Field(min_length=1, max_length=64)
+    sdp: str = Field(min_length=10, max_length=20000)
+    client_id: str = Field(min_length=1, max_length=64)
+
+
+class CallAnswerState(BaseModel):
+    """Cómo va una llamada saliente y, cuando llega, la respuesta de audio del cliente."""
+
+    call: CallItem
+    sdp: str | None = None
+
+
+class CallPermission(BaseModel):
+    """Si el cliente dio permiso para ser llamado y qué se puede hacer ahora."""
+
+    status: Literal["none", "temporary", "permanent"]
+    expires_at: datetime | None = None
+    can_call: bool
+    can_request: bool
+
+
 class CallAnswerRequest(BaseModel):
     sdp: str = Field(min_length=10, max_length=20000)
     # La pestaña que atiende: un usuario puede tener el CRM abierto en varias.

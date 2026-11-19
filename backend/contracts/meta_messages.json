@@ -25,7 +25,7 @@
       "unsupported"
     ],
     "subtypes": {
-      "interactive": ["button_reply", "list_reply", "nfm_reply"]
+      "interactive": ["button_reply", "list_reply", "nfm_reply", "call_permission_reply"]
     }
   },
   "outbound": {

@@ -451,6 +451,39 @@ async def get_calling_requirements() -> dict[str, Any]:
     }
 
 
+async def start_call(chat_id: str, sdp: str, *, opaque: str) -> str:
+    """Llama a un lead (``connect``). Devuelve el ``wacid`` que asignó Meta.
+    ``opaque`` vuelve en los avisos de esa llamada: enlaza los que lleguen
+    antes de que el ``wacid`` quede guardado."""
+    token, phone_number_id, _waba_id = await _config()
+    body = {
+        "messaging_product": "whatsapp", **(await _recipient(chat_id)), "action": "connect",
+        "session": {"sdp_type": "offer", "sdp": sdp}, "biz_opaque_callback_data": opaque,
+    }
+    try:
+        response = await _request(
+            "POST", _graph_url(f"{phone_number_id}/calls"), token, json_body=body, timeout=CALL_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise CallOutcomeUnknown(f"Meta no respondió al iniciar la llamada: {type(exc).__name__}") from exc
+    calls = (response or {}).get("calls") or []
+    call_id = calls[0].get("id") if calls and isinstance(calls[0], dict) else None
+    if not isinstance(call_id, str) or not call_id:
+        raise MetaApiError("Meta no devolvió el id de la llamada")
+    return call_id
+
+
+async def get_call_permission(chat_id: str) -> dict[str, Any]:
+    """Si el cliente dio permiso para que el negocio lo llame, y qué se puede
+    hacer ahora (llamar, pedir permiso) con sus límites, como lo informa Meta."""
+    token, phone_number_id, _waba_id = await _config()
+    recipient = await _recipient(chat_id)
+    params = {"user_wa_id": recipient["to"]} if "to" in recipient else {"recipient": recipient["recipient"]}
+    return await _request(
+        "GET", _graph_url(f"{phone_number_id}/call_permissions"), token, params=params, timeout=CALL_TIMEOUT_SECONDS,
+    )
+
+
 async def get_calling_settings() -> dict[str, Any]:
     """La configuración de llamadas del número del CRM, como la guarda Meta."""
     token, phone_number_id, _waba_id = await _config()

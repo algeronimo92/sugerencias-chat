@@ -341,6 +341,11 @@ export function MainLayout() {
         )}
       </AnimatePresence>
 
+      {/* Llamadas de WhatsApp: el proveedor envuelve las pantallas (el botón
+          Llamar del chat lo usa) y vive fuera de cualquier ruta, para que
+          cambiar de pantalla no corte una llamada en curso. */}
+      <CallCenterProvider>
+      <CallDock />
       <div className="flex min-h-0 min-w-0 flex-1 bg-[#edf2f0] dark:bg-[#081216]">
         {!isMobile && (
           <Sidebar role={me?.role} unreadCount={unreadCount} />
@@ -351,13 +356,10 @@ export function MainLayout() {
           </Suspense>
         </div>
       </div>
+      </CallCenterProvider>
 
       {/* Llamadas de WhatsApp: fuera de cualquier ruta, para que cambiar de
           pantalla no corte una llamada en curso. */}
-      <CallCenterProvider>
-        <CallDock />
-      </CallCenterProvider>
-
       <CommandPalette
         role={me?.role}
         onOpenSettings={isAdmin ? () => openSettings("general") : undefined}

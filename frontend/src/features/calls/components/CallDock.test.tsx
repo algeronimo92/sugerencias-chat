@@ -19,7 +19,7 @@ const call = (overrides: Partial<Call> = {}): Call => ({
 
 function center(overrides: Partial<CallCenter> = {}): CallCenter {
   return {
-    enabled: true, ringing: [], session: { phase: 'idle' }, answer: vi.fn(), dismiss: vi.fn(), hangUp: vi.fn(),
+    enabled: true, ringing: [], session: { phase: 'idle' }, answer: vi.fn(), call: vi.fn(), dismiss: vi.fn(), hangUp: vi.fn(),
     toggleMute: vi.fn(), clearEnded: vi.fn(), ...overrides,
   }
 }
@@ -61,7 +61,7 @@ describe('CallDock', () => {
   })
 
   it('conectando: lo dice y todavía no deja silenciar', () => {
-    renderDock(center({ session: { phase: 'connecting', call: sessionCall } }))
+    renderDock(center({ session: { phase: 'connecting', call: sessionCall, outbound: false } }))
 
     expect(screen.getByText('Conectando…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Silenciar' })).toBeDisabled()

@@ -150,6 +150,24 @@ class AgentBusy(Conflict):
         super().__init__("Ya estás en otra llamada")
 
 
+class CallInProgress(Conflict):
+    code = "call_in_progress"
+
+    def __init__(self) -> None:
+        super().__init__("Ya hay una llamada en curso con este cliente")
+
+
+class CallNotAllowed(Conflict):
+    """Meta no dejó iniciar la llamada: sin permiso, límite alcanzado, etc."""
+
+    code = "call_not_allowed"
+
+    def __init__(self, cause: str | None) -> None:
+        known = CAUSES.get(cause or "")
+        super().__init__(known.label if known else "No se pudo iniciar la llamada")
+        self.cause = cause
+
+
 class InvalidSdp(Conflict):
     code = "invalid_sdp"
 

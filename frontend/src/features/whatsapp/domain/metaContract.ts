@@ -32,7 +32,8 @@ export const META_CONTRACT = {
       "interactive": [
         "button_reply",
         "list_reply",
-        "nfm_reply"
+        "nfm_reply",
+        "call_permission_reply"
       ]
     }
   },

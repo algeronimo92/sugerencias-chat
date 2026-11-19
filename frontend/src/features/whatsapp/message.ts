@@ -61,6 +61,7 @@ const INTERACTIVE_META: Record<string, KindMeta> = {
   button_reply: { icon: CornerUpLeft, label: "Respuesta" },
   list_reply: { icon: CornerUpLeft, label: "Selección" },
   nfm_reply: { icon: Workflow, label: "Formulario" },
+  call_permission_reply: { icon: PhoneCall, label: "Permiso de llamada" },
   button: { icon: MousePointerClick, label: "Botones" },
   list: { icon: List, label: "Lista" },
   product: { icon: ShoppingBag, label: "Producto" },

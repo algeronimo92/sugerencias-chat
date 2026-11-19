@@ -2938,7 +2938,11 @@ export interface paths {
          */
         get: operations["list_chat_calls_api_calls_get"];
         put?: never;
-        post?: never;
+        /**
+         * Place Call
+         * @description Llama al cliente de ese chat. Meta la rechaza si no dio permiso.
+         */
+        post: operations["place_call_api_calls_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2958,6 +2962,44 @@ export interface paths {
          *     aviso en vivo puede fallar sin que el navegador lo note.
          */
         get: operations["list_ringing_calls_api_calls_ringing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/permission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Call Permission
+         * @description Lo que Meta dice ahora sobre el permiso del cliente. Se pregunta cada
+         *     vez: Meta no avisa cuando un permiso temporal vence.
+         */
+        get: operations["get_call_permission_api_calls_permission_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Call Answer */
+        get: operations["get_call_answer_api_calls__call_id__answer_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4858,6 +4900,15 @@ export interface components {
              */
             pre_accept: boolean;
         };
+        /**
+         * CallAnswerState
+         * @description Cómo va una llamada saliente y, cuando llega, la respuesta de audio del cliente.
+         */
+        CallAnswerState: {
+            call: components["schemas"]["CallItem"];
+            /** Sdp */
+            sdp?: string | null;
+        };
         /** CallHangUpRequest */
         CallHangUpRequest: {
             /** Cause */
@@ -4929,6 +4980,32 @@ export interface components {
             call_id: number;
             /** Sdp */
             sdp: string;
+        };
+        /**
+         * CallPermission
+         * @description Si el cliente dio permiso para ser llamado y qué se puede hacer ahora.
+         */
+        CallPermission: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "temporary" | "permanent";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Can Call */
+            can_call: boolean;
+            /** Can Request */
+            can_request: boolean;
+        };
+        /** CallStartRequest */
+        CallStartRequest: {
+            /** Chat Id */
+            chat_id: string;
+            /** Sdp */
+            sdp: string;
+            /** Client Id */
+            client_id: string;
         };
         /** Chat */
         Chat: {
@@ -14525,6 +14602,39 @@ export interface operations {
             };
         };
     };
+    place_call_api_calls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_ringing_calls_api_calls_ringing_get: {
         parameters: {
             query?: never;
@@ -14541,6 +14651,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CallItem"][];
+                };
+            };
+        };
+    };
+    get_call_permission_api_calls_permission_get: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallPermission"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_call_answer_api_calls__call_id__answer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallAnswerState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -129,6 +129,16 @@ class CallStore(Protocol):
     async def insert_ringing(self, **values: Any) -> tuple[dict, bool]:
         """Crea la llamada entrante; si el ``wacid`` ya existe, la devuelve sin tocarla."""
 
+    async def insert_dialing(self, *, chat_id: str, phone_number_id: str, user_id: int, client_id: str, at: datetime) -> dict:
+        """Crea la llamada saliente. Levanta ``CallInProgress`` o ``AgentBusy``
+        si el chat o la persona ya tienen una llamada viva."""
+
+    async def set_wa_call_id(self, call_id: int, wa_call_id: str) -> None: ...
+
+    async def advance_outbound(self, call_id: int, *, status: str | None, sdp: str | None, at: datetime) -> dict | None:
+        """``dialing``/``ringing`` → ``ringing``/``accepted``; guarda la
+        respuesta de audio del cliente si vino."""
+
     async def get(self, call_id: int) -> dict | None: ...
 
     async def get_by_wa_call_id(self, wa_call_id: str) -> dict | None: ...

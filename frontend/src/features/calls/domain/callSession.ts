@@ -13,6 +13,9 @@ export type EndReason =
   | 'no_audio'
   | 'dropped'
   | 'rejected'           // Meta no dejó atender
+  | 'not_allowed'        // Meta no dejó llamar (sin permiso, límite...)
+  | 'customer_rejected'
+  | 'customer_no_answer'
 
 export interface SessionCall {
   id: number
@@ -22,12 +25,13 @@ export interface SessionCall {
 
 export type CallSession =
   | { phase: 'idle' }
-  | { phase: 'connecting'; call: SessionCall }
+  | { phase: 'connecting'; call: SessionCall; outbound: boolean }
   | { phase: 'active'; call: SessionCall; startedAt: number; muted: boolean; unstable: boolean }
   | { phase: 'ended'; call: SessionCall; reason: EndReason; durationSeconds: number | null }
 
 export type SessionAction =
-  | { type: 'answer'; call: SessionCall }
+  | { type: 'answer'; call: SessionCall; outbound?: boolean }
+  | { type: 'placed'; callId: number }
   | { type: 'connected'; at: number }
   | { type: 'mute'; muted: boolean }
   | { type: 'unstable'; unstable: boolean }
@@ -40,7 +44,12 @@ export function reduceSession(state: CallSession, action: SessionAction): CallSe
   switch (action.type) {
     case 'answer':
       // Una sola llamada a la vez: atender otra con una en curso no hace nada.
-      return state.phase === 'idle' || state.phase === 'ended' ? { phase: 'connecting', call: action.call } : state
+      return state.phase === 'idle' || state.phase === 'ended'
+        ? { phase: 'connecting', call: action.call, outbound: Boolean(action.outbound) }
+        : state
+    case 'placed':
+      // El backend ya le dio id a la llamada que este navegador inició.
+      return state.phase === 'connecting' && state.outbound ? { ...state, call: { ...state.call, id: action.callId } } : state
     case 'connected':
       return state.phase === 'connecting'
         ? { phase: 'active', call: state.call, startedAt: action.at, muted: false, unstable: false }
@@ -76,6 +85,9 @@ const END_MESSAGES: Record<EndReason, string> = {
   no_audio: 'No se pudo conectar el audio. Puede ser la red',
   dropped: 'Se cortó la llamada',
   rejected: 'No se pudo atender: puede que el cliente ya haya colgado',
+  not_allowed: 'No se pudo llamar',
+  customer_rejected: 'El cliente rechazó la llamada',
+  customer_no_answer: 'El cliente no contestó',
 }
 
 export function endMessage(reason: EndReason, durationSeconds: number | null): string {

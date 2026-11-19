@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.integrations.meta import client as meta_service
-from app.integrations.whatsapp.channel import ChannelAvailability, SendReceipt
+from app.integrations.whatsapp.channel import CallRefused, ChannelAvailability, SendReceipt
 
 
 class MetaMessageSender:
@@ -78,6 +78,18 @@ class MetaCallControl:
 
     async def reject(self, call_id: str) -> None:
         await meta_service.call_action("reject", call_id)
+
+    async def start(self, chat_id: str, sdp: str, *, opaque: str) -> str:
+        try:
+            return await meta_service.start_call(chat_id, sdp, opaque=opaque)
+        except meta_service.MetaApiError as exc:
+            # El código de Meta dice por qué (sin permiso, límite...): viaja
+            # en el error para que quede como causa de la llamada.
+            code = exc.error.get("code") if isinstance(exc.error, dict) else None
+            raise CallRefused(str(exc), code=str(code) if code is not None else None, status_code=exc.status_code) from exc
+
+    async def permission(self, chat_id: str) -> dict:
+        return await meta_service.get_call_permission(chat_id)
 
     async def terminate(self, call_id: str) -> None:
         await meta_service.call_action("terminate", call_id)
