@@ -28,8 +28,10 @@ describe('buildHoursGrid', () => {
     // Mismas 10 conversaciones: el lunes cayó 5 veces y el miércoles 4.
     expect(grid.rows[0].cells[10].value).toBe(2)
     expect(grid.rows[2].cells[10].value).toBe(2.5)
-    expect(grid.rows[2].cells[10].level).toBe(5)
-    expect(grid.rows[0].cells[10].level).toBe(4)
+    // Continuo: 2 contra un tope de 2.5 es el 80 %, no "el cuarto tono de cinco".
+    expect(grid.rows[2].cells[10].intensity).toBe(1)
+    expect(grid.rows[0].cells[10].intensity).toBeCloseTo(0.8)
+    expect(grid.rows[2].cells[10].text).toBe('2.5')
     expect(grid.rows[0].cells[10].description).toBe('Lun 20–22 h: 2 conversaciones nuevas en promedio')
     expect(grid.slots).toHaveLength(12)
   })
@@ -37,7 +39,7 @@ describe('buildHoursGrid', () => {
   it('deja en neutro las celdas sin movimiento', () => {
     const grid = buildHoursGrid(hours([{ weekday: 0, slot: 4, flows_manual: 5 }]), 'flows_manual')
 
-    expect(grid.rows[3].cells[0]).toMatchObject({ value: 0, level: 0 })
+    expect(grid.rows[3].cells[0]).toMatchObject({ value: 0, intensity: 0, text: '' })
     expect(grid.rows[0].cells[4].description).toBe('Lun 8–10 h: 1 flujo a mano en promedio')
     expect(grid.hasData).toBe(true)
   })
@@ -51,7 +53,9 @@ describe('buildHoursGrid', () => {
     expect(grid.rows[1].cells[5].value).toBeNull()
     expect(grid.rows[1].cells[5].description).toBe('Mar 10–12 h: muy pocos casos para un porcentaje')
     // 4 de 10, no 4 de 12: las dos de hoy todavía no tuvieron sus 24 h.
+    expect(grid.rows[1].cells[5].text).toBe('')
     expect(grid.rows[1].cells[6].value).toBe(40)
+    expect(grid.rows[1].cells[6].text).toBe('40')
     expect(grid.rows[1].cells[6].description).toBe('Mar 12–14 h: 40 % siguió conversando')
     expect(grid.isRate).toBe(true)
   })
@@ -61,8 +65,8 @@ describe('buildHoursGrid', () => {
     const own = buildHoursGrid(hours([{ weekday: 2, slot: 5, messages: 8 }]), 'messages')
     const shared = buildHoursGrid(hours([{ weekday: 2, slot: 5, messages: 8 }]), 'messages', 10)
 
-    expect(own.rows[2].cells[5].level).toBe(5)
-    expect(shared.rows[2].cells[5].level).toBe(1)
+    expect(own.rows[2].cells[5].intensity).toBe(1)
+    expect(shared.rows[2].cells[5].intensity).toBeCloseTo(0.2)
     expect(shared.max).toBe(10)
     expect(shared.rows[2].cells[5].description).toBe('Mié 10–12 h: 2 mensajes escritos en el CRM en promedio')
   })
@@ -71,7 +75,20 @@ describe('buildHoursGrid', () => {
     const grid = buildHoursGrid(hours([{ weekday: 2, slot: 5, messages: 8 }]), 'messages', 1)
 
     expect(grid.max).toBe(2)
-    expect(grid.rows[2].cells[5].level).toBe(5)
+    expect(grid.rows[2].cells[5].intensity).toBe(1)
+  })
+
+  it('dos franjas parecidas ya no caen en el mismo tono', () => {
+    // 4,1 y 6 contra un tope de 10: con cinco tramos las dos eran "el tercero".
+    const grid = buildHoursGrid(hours([
+      { weekday: 2, slot: 1, separations: 40 },
+      { weekday: 2, slot: 2, separations: 24 },
+      { weekday: 2, slot: 3, separations: 16.4 },
+    ]), 'separations')
+
+    expect(grid.rows[2].cells[2].intensity).toBeCloseTo(0.6)
+    expect(grid.rows[2].cells[3].intensity).toBeCloseTo(0.41)
+    expect(grid.rows[2].cells[3].text).toBe('4.1')
   })
 
   it('avisa que no hay nada que dibujar', () => {

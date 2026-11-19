@@ -1,4 +1,5 @@
 import { useId, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { TONE_CLASS, heatCell, type HeatTone } from './heat'
 import type { HoursRow } from './teamHours'
 
 interface Props {
@@ -6,8 +7,8 @@ interface Props {
   label: string
   slots: string[]
   rows: HoursRow[]
-  /** Clase de fondo por nivel de intensidad (0 = sin movimiento). */
-  levelClass: string[]
+  /** En qué degradado se pinta. */
+  tone?: HeatTone
   /** La celda que se está leyendo, con el cursor, el dedo o las flechas. */
   onRead: (description: string) => void
 }
@@ -20,7 +21,7 @@ interface Props {
  * teclado se atienden en la tabla, y cada celda lleva su texto para el lector
  * de pantalla.
  */
-export function HoursMiniGrid({ label, slots, rows, levelClass, onRead }: Props) {
+export function HoursMiniGrid({ label, slots, rows, tone = 'crm', onRead }: Props) {
   const gridId = useId()
   const [active, setActive] = useState({ row: 0, slot: 0 })
   const cellId = (row: number, slot: number) => `${gridId}-${row}-${slot}`
@@ -64,7 +65,7 @@ export function HoursMiniGrid({ label, slots, rows, levelClass, onRead }: Props)
       onKeyDown={moveWithKeys}
       onClick={readFromPointer}
       onMouseOver={readFromPointer}
-      className="group w-full table-fixed border-separate border-spacing-px rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong/60"
+      className={`group w-full table-fixed border-separate border-spacing-px rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong/60 ${TONE_CLASS[tone]}`}
     >
       <thead>
         <tr>
@@ -80,7 +81,9 @@ export function HoursMiniGrid({ label, slots, rows, levelClass, onRead }: Props)
         {rows.map((row, rowIndex) => (
           <tr key={row.label}>
             <th scope="row" className="whitespace-nowrap pr-1 text-left text-[10px] font-normal text-wa-muted dark:text-wa-muted-dark">{row.label}</th>
-            {row.cells.map((cell, slot) => (
+            {row.cells.map((cell, slot) => {
+              const heat = heatCell(cell.intensity)
+              return (
               <td
                 key={slot}
                 id={cellId(rowIndex, slot)}
@@ -88,7 +91,10 @@ export function HoursMiniGrid({ label, slots, rows, levelClass, onRead }: Props)
                 data-slot={slot}
                 title={cell.description}
                 // El borde marca la celda solo al recorrer con el teclado.
-                className={`h-4 rounded-[2px] p-0 ${levelClass[cell.level]} ${
+                style={heat.style}
+                // Sin número: a 16 px de alto no cabe uno legible. El dato
+                // exacto se lee al tocar o recorrer la celda.
+                className={`h-4 rounded-[2px] p-0 ${heat.className} ${
                   active.row === rowIndex && active.slot === slot
                     ? 'group-focus-visible:outline-2 group-focus-visible:outline-wa-text dark:group-focus-visible:outline-white'
                     : ''
@@ -96,7 +102,8 @@ export function HoursMiniGrid({ label, slots, rows, levelClass, onRead }: Props)
               >
                 <span className="sr-only">{cell.description}</span>
               </td>
-            ))}
+              )
+            })}
           </tr>
         ))}
       </tbody>

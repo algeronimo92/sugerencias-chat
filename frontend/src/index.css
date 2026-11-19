@@ -189,6 +189,61 @@
    superior y a la navegación inferior, que son las que tocan los
    bordes físicos.
    ============================================================ */
+/* Mapas de calor del panel: degradado continuo, no tramos. Con cinco tonos,
+   una franja con 4 y otra con 6 separaciones se pintaban igual. La celda
+   recibe su intensidad (0–1) en --heat y el color sale de mezclar los dos
+   extremos en oklab, que reparte la claridad pareja a lo largo del degradado.
+   Vive acá y no en el componente porque los extremos cambian con el tema.
+
+   El número de la celda cambia de tinta donde el fondo se vuelve más legible
+   con la otra (--heat-ink-at): ese punto es el de peor contraste, 4,3:1. El
+   dato exacto está además en la lectura de abajo y en la etiqueta accesible.
+   El salto es brusco a propósito (× 100000): con una rampa suave, una celda
+   justo en el umbral mezclaba las dos tintas y el número salía gris. */
+:root {
+  --heat-from: #d9f2ed;
+  --heat-to: #006e5b;
+  --heat-ink: #0b141a;
+  --heat-ink-peak: #ffffff;
+  --heat-ink-at: 0.81;
+}
+.dark {
+  /* En oscuro más es más claro: el extremo alto sube por encima del verde de
+     marca para que el recorrido sea tan largo como en claro. */
+  --heat-from: #12403b;
+  --heat-to: #00c79c;
+  --heat-ink: #ffffff;
+  --heat-ink-peak: #04120f;
+  --heat-ink-at: 0.56;
+}
+/* Lo que sale por WhatsApp fuera del CRM va en el naranja que ya tiene ese
+   origen en "Mensajes enviados por día": no es de una persona y se pinta con
+   escala propia, así que no puede parecerse al degradado de las personas. */
+.heat-whatsapp {
+  --heat-from: #fbe1d6;
+  --heat-to: var(--viz-cat-2);
+}
+.dark .heat-whatsapp {
+  --heat-from: #4a2414;
+  --heat-to: #ff8a57;
+}
+
+@utility heat-cell {
+  background-color: var(--heat-to);
+  background-color: color-mix(in oklab, var(--heat-to) calc(var(--heat, 0) * 100%), var(--heat-from));
+  color: var(--heat-ink);
+  color: color-mix(
+    in srgb,
+    var(--heat-ink-peak) calc(clamp(0, (var(--heat, 0) - var(--heat-ink-at)) * 100000, 1) * 100%),
+    var(--heat-ink)
+  );
+}
+
+@utility heat-ramp {
+  background-image: linear-gradient(to right, var(--heat-from), var(--heat-to));
+  background-image: linear-gradient(to right in oklab, var(--heat-from), var(--heat-to));
+}
+
 @utility pt-safe {
   padding-top: env(safe-area-inset-top);
 }

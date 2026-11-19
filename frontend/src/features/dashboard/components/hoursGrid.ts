@@ -1,4 +1,5 @@
 import type { DashboardHours } from '../types'
+import { compactNumber, intensityOf } from './heat'
 
 /** Qué se lee sobre la cuadrícula. Los conteos van como promedio por día de
  *  la semana; `engaged` es un porcentaje. */
@@ -14,42 +15,14 @@ export const MIN_DAYS_FOR_PATTERN = 28
  *  la celda no muestra porcentaje. */
 export const MIN_CASES_FOR_RATE = 5
 
-export const LEVELS = 5
-
-// Un solo tono en degradado: la intensidad se lee sola y no compite con los
-// colores de estado del resto del panel. El nivel 0 es el neutro del fondo.
-// Vive acá y no en un componente porque lo comparten el mapa del equipo y el
-// de cada persona: dos degradados distintos no se podrían comparar.
-//
-// En oscuro el vacío es casi el fondo del panel y el primer nivel sube a /30:
-// con el gris de los campos de vacío y /15 de primer nivel, una franja con
-// poco movimiento quedaba más oscura que una sin nada y se leía como un hueco.
-export const LEVEL_CLASS = [
-  'bg-wa-field dark:bg-white/5',
-  'bg-wa-primary/15 dark:bg-wa-primary/30',
-  'bg-wa-primary/35 dark:bg-wa-primary/45',
-  'bg-wa-primary/55 dark:bg-wa-primary/60',
-  'bg-wa-primary/80',
-  'bg-wa-primary-strong dark:bg-wa-primary',
-]
-
-// Lo que sale por WhatsApp fuera del CRM va en el naranja que ya tiene ese
-// origen en "Mensajes enviados por día": no es de una persona y se pinta con
-// escala propia, así que no puede parecerse al degradado de las personas.
-export const WHATSAPP_LEVEL_CLASS = [
-  'bg-wa-field dark:bg-white/5',
-  'bg-(--viz-cat-2)/20 dark:bg-(--viz-cat-2)/30',
-  'bg-(--viz-cat-2)/40 dark:bg-(--viz-cat-2)/45',
-  'bg-(--viz-cat-2)/60',
-  'bg-(--viz-cat-2)/80',
-  'bg-(--viz-cat-2)',
-]
-
 export interface HoursCell {
   /** null = muy pocos casos para un porcentaje. */
   value: number | null
-  /** 0 = sin movimiento; 1…LEVELS = intensidad relativa al máximo. */
-  level: number
+  /** 0 = sin movimiento; hasta 1 = proporción exacta del máximo. Es continua:
+   *  con tramos, dos franjas distintas caían en el mismo tono. */
+  intensity: number
+  /** El número corto que va dentro de la celda; vacío si no hay nada que decir. */
+  text: string
   /** Frase completa para el lector de pantalla, el tooltip y la lectura al tocar. */
   description: string
 }
@@ -133,7 +106,9 @@ export function buildHoursGrid(hours: DashboardHours, reading: HoursReading, sca
         const from = slot * hours.slot_hours
         return {
           value,
-          level: value === null || value <= 0 || max <= 0 ? 0 : Math.max(1, Math.ceil((value / max) * LEVELS)),
+          intensity: intensityOf(value, max),
+          // Un 0 % con casos suficientes es un dato y se escribe; un conteo en cero, no.
+          text: value === null ? '' : isRate ? String(Math.round(value)) : compactNumber(value),
           description: `${weekday} ${from}–${from + hours.slot_hours} h: ${describe(reading, value)}`,
         }
       }),
