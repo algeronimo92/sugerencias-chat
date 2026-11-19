@@ -402,3 +402,25 @@ async def test_a_missed_call_is_left_in_the_bell_of_everyone_who_answers(tenant,
             (ana, "missed_call", "De Josefina"), (bea, "missed_call", "De Josefina"),
         ]
         assert await _notifications((await _call(answered))["id"]) == []
+
+
+async def test_a_missed_call_leaves_the_chat_unread_until_someone_opens_it(tenant, meta_calls, seen) -> None:
+    from app.modules.conversations.application.inbox import mark_read
+    from app.modules.conversations.chat_queries import fetch_chat
+    from app.modules.conversations.inbox_queries import fetch_total_unread_chat_count
+
+    context, _phone, _ids = tenant
+    wacid = _wacid()
+    await _deliver(tenant, _connect(wacid))
+    with tenant_context(context):
+        chat_id = (await _call(wacid))["chat_id"]
+        # Mientras suena no es "sin leer": todavía puede atenderse.
+        assert (await fetch_chat(chat_id))["unread_count"] == 0
+    await _deliver(tenant, _terminate(wacid))
+
+    with tenant_context(context):
+        assert (await fetch_chat(chat_id))["unread_count"] == 1
+        assert await fetch_total_unread_chat_count() == 1
+        await mark_read(chat_id)
+        assert (await fetch_chat(chat_id))["unread_count"] == 0
+        assert await fetch_total_unread_chat_count() == 0

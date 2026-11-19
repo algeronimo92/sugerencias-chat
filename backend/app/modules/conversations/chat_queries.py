@@ -7,7 +7,7 @@ from sqlalchemy import and_, case, exists, false, func, or_, select, true
 from app.db.models.leads import Lead, LeadTagAssignment, WhatsAppIdentity
 from app.db.models.catalogs import LeadTag
 from app.db.models.auth import User
-from app.db.models.conversations import WhatsAppEntryPointWindow, WspMessage
+from app.db.models.conversations import WhatsAppCall, WhatsAppEntryPointWindow, WspMessage
 from app.db.uow import session_scope
 from app.integrations.whatsapp.connection import connection_scope
 from app.modules.conversations.chat_rows import CHATS_PAGE_SIZE, _row_to_chat, _tags_by_lead
@@ -42,10 +42,25 @@ def _last_message_subquery():
     )
 
 
-def _unread_count_subquery():
-    """Mensajes del cliente posteriores a la última vez que se abrió el chat
-    (o todos, si nunca se abrió) — el badge de "no vistos" de ChatList."""
+def _unseen_missed_calls():
+    """Llamadas perdidas desde la última vez que se abrió el chat. Cuentan
+    como algo sin ver igual que un mensaje del cliente: nadie habló con él."""
     return (
+        select(func.count(WhatsAppCall.id))
+        .where(
+            WhatsAppCall.chat_id == Lead.id,
+            WhatsAppCall.status == "missed",
+            or_(Lead.last_read_at.is_(None), WhatsAppCall.ringing_at > Lead.last_read_at),
+        )
+        .correlate(Lead)
+    )
+
+
+def _unread_count_subquery():
+    """Mensajes del cliente y llamadas perdidas posteriores a la última vez
+    que se abrió el chat (o todos, si nunca se abrió) — el badge de "no
+    vistos" de ChatList."""
+    messages = (
         select(func.count(WspMessage.id))
         .where(
             WspMessage.chat_id == Lead.id,
@@ -55,6 +70,7 @@ def _unread_count_subquery():
         .correlate(Lead)
         .scalar_subquery()
     )
+    return messages + _unseen_missed_calls().scalar_subquery()
 
 
 def _has_unread_messages_condition():
@@ -65,6 +81,14 @@ def _has_unread_messages_condition():
             WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
+        )
+        .correlate(Lead)
+    ) | exists(
+        select(WhatsAppCall.id)
+        .where(
+            WhatsAppCall.chat_id == Lead.id,
+            WhatsAppCall.status == "missed",
+            or_(Lead.last_read_at.is_(None), WhatsAppCall.ringing_at > Lead.last_read_at),
         )
         .correlate(Lead)
     )

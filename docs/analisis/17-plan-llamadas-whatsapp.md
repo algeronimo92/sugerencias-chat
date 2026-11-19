@@ -4,6 +4,20 @@ Fecha: 2026-11-18 · Actualizado: 2026-11-19 (decisiones de producto, detalle po
 
 Fuentes: la documentación de Meta leída el 2026-11-18 (`developers.facebook.com/documentation/business-messaging/whatsapp/calling/*`: overview, call-settings, user-initiated-calls, business-initiated-calls, user-call-permissions, sip, reference, faq, pricing; y `embedded-signup/onboarding-business-app-users` para coexistencia) y el código del repo a esa fecha. Lo que no se pudo verificar está marcado.
 
+## Estado de la implementación (2026-11-19)
+
+Rama `claude/pensive-einstein-2ib7jn`. Nada se probó todavía contra Meta real: la app de prueba de Meta no entrega los avisos de llamadas mientras esté sin publicar, y la fase 0 quedó pendiente.
+
+| Fase | Hecho | Pendiente |
+|---|---|---|
+| 0 · Viabilidad | Kit de prueba armado | Correrlo con Meta: las nueve preguntas siguen abiertas |
+| 1 · Estado y permiso | Completa. El estado vive en `platform` (administración de la cuenta), no en `conversations` | Texto de los pasos para mudar el número; validar el aviso con gente de la clínica |
+| 2 · Recibir llamadas | Tabla y fusión de leads; carril propio del webhook; atender, ignorar, colgar y ciclo de limpieza; catálogo de causas; pantalla de llamada entrante y activa (computadora y celular) y tarjeta en el hilo; notificación de llamada perdida (campanita y push) y push de timbre; chat sin leer por llamada perdida; activar y horario desde Integraciones | Preparación del dispositivo; filtro "Llamadas por devolver"; que la llamada renueve la ventana de 24 h (espera la pregunta h de la fase 0); push persistente con vibración en el service worker y su vigencia; métricas y alertas; aviso al quitar el último agente |
+| 3 · Llamar | — | Todo |
+| 4 · Medición | Las causas ya se guardan | Todo lo demás |
+
+Opciones que quedaron abiertas en el código hasta probar con Meta: `pre_accept` (parámetro al atender) y el rol de la conexión de audio (`localStorage` `calls.dtlsRole` y `calls.preAccept` en el navegador).
+
 Cómo leerlo: §1–§3 son el qué y el porqué; §4 es el diseño; §4.9 es cómo se registran los fallos y sus causas y la fase 4 de §5 cómo se muestran en el dashboard; §5 es el detalle de cada fase (trabajo, pantallas, criterios de usabilidad y pruebas); §8 es la revisión de arquitectura y backend, con lo que cambió en el plan a raíz de ella.
 
 ## 1. Qué se quiere y qué ofrece Meta
