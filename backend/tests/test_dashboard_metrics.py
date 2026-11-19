@@ -397,9 +397,8 @@ async def test_hours_count_by_weekday_and_slot_with_what_the_average_needs(compi
     assert sum(hours["weekday_occurrences"]) == 30
     assert len(hours["weekday_occurrences"]) == 7
     assert hours["slot_hours"] == 2 and hours["engagement_window_hours"] == 24
-    # Una fila de muestra en lunes: el tope es su conteo entre los lunes del período.
-    mondays = hours["weekday_occurrences"][0]
-    assert hours["person_peaks"] == {"messages": 1 / mondays, "flows_manual": 1 / mondays}
+    # El tope va en la unidad de las celdas: el total del período, sin promediar.
+    assert hours["person_peaks"] == {"messages": 1.0, "flows_manual": 1.0}
     # Conversaciones, flujos y mensajes caen en la misma celda y se funden en una fila.
     assert hours["cells"] == [{
         "weekday": 0, "slot": 1, "conversations": 1, "settled": 1, "engaged": 1,

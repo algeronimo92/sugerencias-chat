@@ -18,7 +18,7 @@ interface Props {
 // Una sola lectura: el mapa no muestra el selector, pero sí esta aclaración.
 // Sin ella "a qué hora" se lee como la hora de la cita, que es otro dato.
 const HOUR_READINGS: HoursReadingOption[] = [
-  { key: 'separations', label: 'Separaciones', hint: 'La hora en que se llenó "Separar cita", no la hora de la cita. En promedio por día de la semana.' },
+  { key: 'separations', label: 'Separaciones', hint: 'La hora en que se llenó "Separar cita", no la hora de la cita. Cada celda es el total de separaciones del período en esa franja.' },
 ]
 
 const TREND_LABELS = { revenue: 'Monto', count: 'Separaciones' }

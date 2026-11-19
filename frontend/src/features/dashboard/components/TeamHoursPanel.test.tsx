@@ -43,8 +43,8 @@ describe('TeamHoursPanel', () => {
     expect(within(source).getByText('200 mensajes')).toBeInTheDocument()
     // No está entre las personas.
     expect(within(screen.getByRole('list', { name: 'En el CRM, por persona' })).queryByText(/WhatsApp/)).not.toBeInTheDocument()
-    expect(screen.getByText('Personas: hasta 10 por franja, misma escala para todas')).toBeInTheDocument()
-    expect(screen.getByText('WhatsApp: hasta 200 por franja, escala propia')).toBeInTheDocument()
+    expect(screen.getByText('Personas: hasta 10 en una franja, misma escala para todas')).toBeInTheDocument()
+    expect(screen.getByText('WhatsApp: hasta 200 en una franja, escala propia')).toBeInTheDocument()
   })
 
   it('al comparar flujos solo quedan las personas', async () => {

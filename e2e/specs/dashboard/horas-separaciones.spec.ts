@@ -23,7 +23,6 @@ test('el mapa de a qué hora se separan las citas entra en la pantalla y dice el
   await expectFullyOnScreen(panel.getByRole('table'))
   await expectNoPageOverflow(page)
 
-  // Doce separaciones en los cuatro miércoles del período: tres por miércoles.
-  await panel.getByRole('button', { name: 'Mié 18–20 h: 3 separaciones registradas en promedio' }).click()
-  await expect(panel.getByText('Mié 18–20 h: 3 separaciones registradas en promedio')).toBeVisible()
+  await panel.getByRole('button', { name: 'Mié 18–20 h: 12 separaciones registradas en 4 miércoles' }).click()
+  await expect(panel.getByText('Mié 18–20 h: 12 separaciones registradas en 4 miércoles')).toBeVisible()
 })

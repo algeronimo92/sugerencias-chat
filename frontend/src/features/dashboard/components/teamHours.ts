@@ -1,7 +1,7 @@
 import type { DashboardHours } from '../types'
 import { formatNumber } from './format'
 import { compactNumber, intensityOf } from './heat'
-import { WEEKDAYS, countPhrase, formatAverage, type HoursCell } from './hoursGrid'
+import { WEEKDAYS, acrossDays, countPhrase, formatAverage, type HoursCell } from './hoursGrid'
 
 /** Lo que se sabe de cada persona por franja: las dos cosas llevan autor. */
 export type PersonReading = 'messages' | 'flows_manual'
@@ -59,7 +59,7 @@ interface Row {
  * Con una semana cada día de la semana cae una sola vez: la fila "jueves" es
  * el jueves 5, y así se rotula y se ordena (del más viejo a hoy). Es lo que
  * responde "¿trabajaron esta semana?". Con 30 o 90 días una fila junta varios
- * jueves y se muestra de lunes a domingo, como promedio.
+ * jueves y se muestra de lunes a domingo, con el total de todos ellos.
  */
 function buildRows(hours: DashboardHours): { rows: Row[]; dated: boolean } {
   const days = hours.weekday_occurrences.reduce((sum, count) => sum + count, 0)
@@ -78,9 +78,8 @@ function buildRows(hours: DashboardHours): { rows: Row[]; dated: boolean } {
   return { dated, rows }
 }
 
-/** Conteos por día de la semana y franja, como promedio por las veces que
- *  cayó ese día: un período con cinco lunes haría ver al lunes más cargado. */
-function averaged<Cell extends { weekday: number; slot: number }>(
+/** Conteos por día de la semana y franja: el total del período, sin promediar. */
+function totals<Cell extends { weekday: number; slot: number }>(
   hours: DashboardHours, cells: Cell[], count: (cell: Cell) => number,
 ): { values: number[][]; total: number } {
   const slotCount = Math.floor(24 / hours.slot_hours)
@@ -89,14 +88,13 @@ function averaged<Cell extends { weekday: number; slot: number }>(
   for (const cell of cells) {
     if (cell.weekday < 0 || cell.weekday >= WEEKDAYS.length || cell.slot < 0 || cell.slot >= slotCount) continue
     total += count(cell)
-    const occurrences = hours.weekday_occurrences[cell.weekday] ?? 0
-    values[cell.weekday][cell.slot] = occurrences > 0 ? count(cell) / occurrences : 0
+    values[cell.weekday][cell.slot] = count(cell)
   }
   return { values, total }
 }
 
 function toRows(
-  hours: DashboardHours, rows: Row[], values: number[][], max: number, describe: (value: number) => string,
+  hours: DashboardHours, rows: Row[], values: number[][], max: number, describe: (value: number, weekday: number) => string,
 ): HoursRow[] {
   return rows.map(row => ({
     label: row.label,
@@ -106,7 +104,7 @@ function toRows(
         value,
         intensity: intensityOf(value, max),
         text: compactNumber(value),
-        description: `${row.spoken}, ${from}–${from + hours.slot_hours} h: ${describe(value)}`,
+        description: `${row.spoken}, ${from}–${from + hours.slot_hours} h: ${describe(value, row.weekday)}`,
       }
     }),
   }))
@@ -121,25 +119,26 @@ function toRows(
 export function buildTeamHours(hours: DashboardHours, reading: PersonReading): TeamHours {
   const slotCount = Math.floor(24 / hours.slot_hours)
   const { rows, dated } = buildRows(hours)
-  const suffix = dated ? '' : ' en promedio'
+  // Con fechas la fila ya dice qué día es; si no, cuántos días de ese nombre juntó.
+  const across = (weekday: number) => (dated ? '' : acrossDays(hours, weekday))
 
   const people = (hours.people ?? []).map(person => ({
     userId: person.user_id,
     name: person.name,
-    ...averaged(hours, person.cells, cell => cell[reading]),
+    ...totals(hours, person.cells, cell => cell[reading]),
   }))
   const ownMax = Math.max(0, ...people.flatMap(person => person.values.flat()))
   const max = Math.max(ownMax, hours.person_peaks?.[reading] ?? 0)
 
   let whatsapp: WhatsappHours | null = null
   if (reading === 'messages') {
-    const { values, total } = averaged(hours, hours.cells, cell => cell.phone_messages ?? 0)
+    const { values, total } = totals(hours, hours.cells, cell => cell.phone_messages ?? 0)
     const whatsappMax = Math.max(0, ...values.flat())
     whatsapp = {
       total,
       max: whatsappMax,
-      rows: toRows(hours, rows, values, whatsappMax, value =>
-        `${formatAverage(value)} ${formatAverage(value) === '1' ? 'mensaje' : 'mensajes'}${suffix}, sin autor`),
+      rows: toRows(hours, rows, values, whatsappMax, (value, weekday) =>
+        `${formatAverage(value)} ${formatAverage(value) === '1' ? 'mensaje' : 'mensajes'}${across(weekday)}, sin autor`),
     }
   }
 
@@ -151,7 +150,7 @@ export function buildTeamHours(hours: DashboardHours, reading: PersonReading): T
     people: people
       .map(({ values, ...person }) => ({
         ...person,
-        rows: toRows(hours, rows, values, max, value => `${countPhrase(reading, value)}${suffix}`),
+        rows: toRows(hours, rows, values, max, (value, weekday) => `${countPhrase(reading, value)}${across(weekday)}`),
       }))
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'es')),
   }

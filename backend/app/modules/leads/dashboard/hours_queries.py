@@ -5,9 +5,9 @@ escribe el equipo en el CRM.
 Va por día de la semana y franja horaria, no por fecha: 30 días por 24 horas
 son 720 celdas que nadie lee, y la decisión que alimenta (turnos, a qué hora
 pautar) es sobre el patrón de la semana. Se sirven conteos crudos junto con
-cuántas veces cayó cada día de la semana en el período; el promedio y el
-porcentaje los calcula quien dibuja, para que un período con cinco lunes y
-cuatro martes no haga ver al lunes más cargado de lo que es.
+cuántas veces cayó cada día de la semana en el período. El mapa dibuja el
+total: se probó el promedio por día y "0.8 separaciones" se leía como un
+porcentaje. Las ocurrencias van igual para que la celda diga "4 en 5 lunes".
 """
 
 import asyncio
@@ -37,15 +37,10 @@ def _weekday_occurrences(scope: DashboardScope) -> list[int]:
     return occurrences
 
 
-def _person_peak(rows, field: str, occurrences: list[int]) -> float:
-    """La franja más cargada de la persona más activa, en promedio por día de
-    la semana: la misma unidad con que se dibuja cada celda."""
-    peak = 0.0
-    for row in rows:
-        weekday = int(row["weekday"]) - 1
-        if 0 <= weekday < 7 and occurrences[weekday] > 0:
-            peak = max(peak, int(row[field] or 0) / occurrences[weekday])
-    return peak
+def _person_peak(rows, field: str) -> float:
+    """La franja más cargada de la persona más activa, en el total del período:
+    la misma unidad con que se dibuja cada celda."""
+    return float(max((int(row[field] or 0) for row in rows), default=0))
 
 
 def _people(members, *sources) -> list[dict]:
@@ -129,8 +124,8 @@ async def collect(scope: DashboardScope) -> dict:
         # muy distintas se ven igual de intensas. Va también en el scope
         # propio: quien mira lo suyo lo ve en la escala del equipo.
         "person_peaks": {
-            "messages": _person_peak(messages_by_author, "messages", occurrences),
-            "flows_manual": _person_peak(flows_by_starter, "flows_manual", occurrences),
+            "messages": _person_peak(messages_by_author, "messages"),
+            "flows_manual": _person_peak(flows_by_starter, "flows_manual"),
         },
         "people": _people(members, messages_by_author, flows_by_starter),
         # Solo las celdas con algo: el resto de la cuadrícula es cero.

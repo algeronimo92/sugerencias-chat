@@ -32,7 +32,7 @@ function hours(days: number): DashboardHours {
     { user_id: 4, name: 'Zoe Paredes', cells: [] },
   ]
   const peak = (field: 'messages' | 'flows_manual') =>
-    Math.max(...people.flatMap(person => person.cells.map(cell => cell[field] / occurrences[cell.weekday])))
+    Math.max(...people.flatMap(person => person.cells.map(cell => cell[field])))
   // Lo de WhatsApp es del negocio entero y unas veinte veces lo del CRM.
   const cells = shift(weeks, [4, 10], 38, 0, []).map(cell => ({
     weekday: cell.weekday, slot: cell.slot, phone_messages: cell.messages,

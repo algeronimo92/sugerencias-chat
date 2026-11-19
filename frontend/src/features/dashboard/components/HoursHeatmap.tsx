@@ -135,7 +135,7 @@ export function HoursHeatmap({ hours, days, readings, label, teamScale = false }
               <span className="flex items-center gap-1.5">
                 {grid.isRate ? '0 %' : 'Menos'}
                 <span className="heat-ramp h-3 w-16 rounded-[2px]" aria-hidden="true" />
-                {grid.isRate ? `${Math.round(grid.max)} %` : `${formatAverage(grid.max)} por franja`}
+                {grid.isRate ? `${Math.round(grid.max)} %` : `Hasta ${formatAverage(grid.max)} en una franja`}
               </span>
               {sharedMax !== undefined && <span>Misma escala para todas las personas</span>}
               {grid.isRate && (

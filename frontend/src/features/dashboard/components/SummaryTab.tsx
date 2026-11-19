@@ -16,7 +16,7 @@ import { TeamHoursPanel } from './TeamHoursPanel'
 // anuncios); "Siguieron conversando" es lo que responde a qué hora reaccionan
 // mejor. Van juntas para no leer el volumen como si fuera calidad.
 const CONVERSATION_READINGS: HoursReadingOption[] = [
-  { key: 'conversations', label: 'Cuántas llegan', hint: 'Conversaciones nuevas, en promedio por día de la semana.' },
+  { key: 'conversations', label: 'Cuántas llegan', hint: 'Conversaciones nuevas: el total del período en cada franja.' },
   {
     key: 'engaged',
     label: 'Siguieron conversando',
