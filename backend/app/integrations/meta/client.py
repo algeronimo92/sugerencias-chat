@@ -10,7 +10,7 @@ from app.core.request_metrics import record_external_duration
 from app.modules.auth.ports.account_actions import (try_send_operational_alert)
 from app.modules.platform.ports.platform_settings import (platform_setting, platform_settings_many)
 from app.modules.platform.ports.settings_service import (get_effective_many, update_settings)
-from app.integrations.whatsapp.channel import ChannelError, DeliveryUnconfirmedError
+from app.integrations.whatsapp.channel import CallOutcomeUnknown, ChannelError, DeliveryUnconfirmedError
 from app.integrations.meta_webhook import metrics
 from app.integrations.whatsapp.identity import resolve_whatsapp_destination
 from app.tenancy.context import get_current_tenant
@@ -473,6 +473,116 @@ async def list_phone_numbers(waba_id: str | None = None) -> list[dict]:
         for item in body.get("data") or []
         if isinstance(item, dict) and item.get("id")
     ]
+
+
+async def get_calling_requirements() -> dict[str, Any]:
+    """Lo que Meta exige del número del CRM para activarle las llamadas.
+
+    - ``on_business_app``: el número sigue en la app de WhatsApp Business
+      (coexistencia). Ahí Meta no admite llamadas por la API.
+    - ``messaging_limit``: el nivel literal de Meta (``TIER_250``...).
+
+    ``None`` en cualquiera de los dos es "Meta no lo informó", no un no.
+
+    Son dos pedidos y no uno: Graph rechaza el pedido entero si no reconoce
+    un campo, y el del límite cambió de nombre (``messaging_limit_tier`` quedó
+    obsoleto). Que el límite no se pueda leer no tiene que esconder si el
+    número está en coexistencia, que es lo que decide.
+    """
+    token, phone_number_id, _waba_id = await _config()
+    number = await _request(
+        "GET", _graph_url(phone_number_id), token,
+        params={"fields": "is_on_biz_app,platform_type"}, timeout=20.0,
+    )
+    on_business_app = (number or {}).get("is_on_biz_app")
+    try:
+        limits = await _request(
+            "GET", _graph_url(phone_number_id), token,
+            params={"fields": "whatsapp_business_manager_messaging_limit"}, timeout=20.0,
+        )
+    except MetaApiError as exc:
+        logger.warning("Meta no informó el límite de mensajería del número: %s", exc)
+        limits = {}
+    limit = (limits or {}).get("whatsapp_business_manager_messaging_limit")
+    return {
+        "on_business_app": on_business_app if isinstance(on_business_app, bool) else None,
+        "messaging_limit": limit if isinstance(limit, str) and limit else None,
+    }
+
+
+async def start_call(chat_id: str, sdp: str, *, opaque: str) -> str:
+    """Llama a un lead (``connect``). Devuelve el ``wacid`` que asignó Meta.
+    ``opaque`` vuelve en los avisos de esa llamada: enlaza los que lleguen
+    antes de que el ``wacid`` quede guardado."""
+    token, phone_number_id, _waba_id = await _config()
+    body = {
+        "messaging_product": "whatsapp", **(await _recipient(chat_id)), "action": "connect",
+        "session": {"sdp_type": "offer", "sdp": sdp}, "biz_opaque_callback_data": opaque,
+    }
+    try:
+        response = await _request(
+            "POST", _graph_url(f"{phone_number_id}/calls"), token, json_body=body, timeout=CALL_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise CallOutcomeUnknown(f"Meta no respondió al iniciar la llamada: {type(exc).__name__}") from exc
+    calls = (response or {}).get("calls") or []
+    call_id = calls[0].get("id") if calls and isinstance(calls[0], dict) else None
+    if not isinstance(call_id, str) or not call_id:
+        raise MetaApiError("Meta no devolvió el id de la llamada")
+    return call_id
+
+
+async def get_call_permission(chat_id: str) -> dict[str, Any]:
+    """Si el cliente dio permiso para que el negocio lo llame, y qué se puede
+    hacer ahora (llamar, pedir permiso) con sus límites, como lo informa Meta."""
+    token, phone_number_id, _waba_id = await _config()
+    recipient = await _recipient(chat_id)
+    params = {"user_wa_id": recipient["to"]} if "to" in recipient else {"recipient": recipient["recipient"]}
+    return await _request(
+        "GET", _graph_url(f"{phone_number_id}/call_permissions"), token, params=params, timeout=CALL_TIMEOUT_SECONDS,
+    )
+
+
+async def get_calling_settings() -> dict[str, Any]:
+    """La configuración de llamadas del número del CRM, como la guarda Meta."""
+    token, phone_number_id, _waba_id = await _config()
+    body = await _request("GET", _graph_url(f"{phone_number_id}/settings"), token, timeout=20.0)
+    calling = (body or {}).get("calling")
+    return calling if isinstance(calling, dict) else {}
+
+
+async def update_calling_settings(calling: dict[str, Any]) -> None:
+    token, phone_number_id, _waba_id = await _config()
+    await _request(
+        "POST", _graph_url(f"{phone_number_id}/settings"), token, json_body={"calling": calling}, timeout=20.0,
+    )
+
+
+# Una llamada no puede esperar lo que espera un mensaje: el cliente está en
+# línea. Pasado esto, el resultado se da por incierto.
+CALL_TIMEOUT_SECONDS = 8.0
+
+
+async def call_action(action: str, call_id: str, *, sdp: str | None = None) -> None:
+    """``pre_accept``, ``accept``, ``reject`` o ``terminate`` sobre una llamada.
+
+    Un tiempo agotado o un 5xx levantan ``CallOutcomeUnknown``: Meta pudo
+    haber hecho la operación. Un 4xx es un rechazo claro (``MetaApiError``).
+    """
+    token, phone_number_id, _waba_id = await _config()
+    body: dict[str, Any] = {"messaging_product": "whatsapp", "call_id": call_id, "action": action}
+    if sdp is not None:
+        body["session"] = {"sdp_type": "answer", "sdp": sdp}
+    try:
+        await _request(
+            "POST", _graph_url(f"{phone_number_id}/calls"), token, json_body=body, timeout=CALL_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise CallOutcomeUnknown(f"Meta no respondió al {action} de la llamada: {type(exc).__name__}") from exc
+    except MetaApiError as exc:
+        if exc.status_code is not None and exc.status_code >= 500:
+            raise CallOutcomeUnknown(str(exc), status_code=exc.status_code) from exc
+        raise
 
 
 async def get_waba_name(waba_id: str) -> str:

@@ -23,6 +23,9 @@ export const REALTIME_EVENT_TYPES = [
   'notice_sender_updated',
   'contacts_updated',
   'contact_imports_updated',
+  'call_incoming',
+  'call_updated',
+  'call_ended',
 ] as const
 export type RealtimeEventType = typeof REALTIME_EVENT_TYPES[number]
 
@@ -89,6 +92,9 @@ export type ChatSocketEvent =
   | { type: 'scheduled_messages_updated'; chat_id?: string }
   | { type: 'internal_notes_updated'; lead_id: string }
   | { type: 'notification_created'; notification: CreatedNotification }
+  | { type: 'call_incoming'; call_id: number; chat_id: string; caller_name: string | null }
+  | { type: 'call_updated'; call_id: number; chat_id: string; status: string; handled_by_user_id: number | null }
+  | { type: 'call_ended'; call_id: number; chat_id: string; status: string; cause: string | null; handled_by_user_id: number | null; caller_name: string | null }
   | { type: 'task_reminder'; task: { task_id: number; lead_id: string; lead_name: string | null; title: string } }
   | {
       type: 'chats_updated'
@@ -203,6 +209,17 @@ function parseChatsUpdated(parsed: JsonObject): ChatSocketEvent {
   }
 }
 
+/** Llamadas de WhatsApp. Nunca traen la oferta de audio: la pantalla la pide
+ *  por HTTP al atender. */
+function parseCall(parsed: JsonObject): { call_id: number; chat_id: string } | null {
+  return typeof parsed.call_id === 'number' && typeof parsed.chat_id === 'string'
+    ? { call_id: parsed.call_id, chat_id: parsed.chat_id }
+    : null
+}
+
+const nullableNumber = (value: JsonValue | undefined) => (typeof value === 'number' ? value : null)
+const nullableString = (value: JsonValue | undefined) => (typeof value === 'string' ? value : null)
+
 const signal = (type: SignalEventType): SocketEventParser => () => ({ type })
 
 const SOCKET_EVENT_PARSERS: Record<RealtimeEventType, SocketEventParser> = {
@@ -226,6 +243,23 @@ const SOCKET_EVENT_PARSERS: Record<RealtimeEventType, SocketEventParser> = {
   notification_created: parseNotification,
   task_reminder: parseTaskReminder,
   chats_updated: parseChatsUpdated,
+  call_incoming: (parsed) => {
+    const call = parseCall(parsed)
+    return call && { type: 'call_incoming', ...call, caller_name: nullableString(parsed.caller_name) }
+  },
+  call_updated: (parsed) => {
+    const call = parseCall(parsed)
+    if (!call || typeof parsed.status !== 'string') return null
+    return { type: 'call_updated', ...call, status: parsed.status, handled_by_user_id: nullableNumber(parsed.handled_by_user_id) }
+  },
+  call_ended: (parsed) => {
+    const call = parseCall(parsed)
+    if (!call || typeof parsed.status !== 'string') return null
+    return {
+      type: 'call_ended', ...call, status: parsed.status, cause: nullableString(parsed.cause),
+      handled_by_user_id: nullableNumber(parsed.handled_by_user_id), caller_name: nullableString(parsed.caller_name),
+    }
+  },
 }
 
 export function parseChatSocketEvent(data: string): ChatSocketEvent | null {

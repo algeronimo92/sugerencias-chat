@@ -6,6 +6,7 @@ import { extractErrorMessage } from "../../../shared/utils/errors";
 import { useMetaEmbeddedSignup } from "../hooks/useMetaEmbeddedSignup";
 import { useCompleteMetaEmbeddedSignup } from "../hooks/useSettings";
 import { useWhatsappStatus } from "../hooks/useWhatsapp";
+import { CallsSettings } from "./CallsSettings";
 import { MetaConversionsPanel } from "./MetaConversionsPanel";
 import { WhatsappCostsPanel } from "./WhatsappCostsPanel";
 
@@ -97,6 +98,7 @@ export function WhatsappPanel() {
       <MetaEmbeddedSignupPanel />
       {whatsappStatus?.state === "open" && <WhatsappCostsPanel />}
       {whatsappStatus?.state === "open" && <MetaConversionsPanel />}
+      {whatsappStatus?.state === "open" && <CallsSettings />}
     </div>
   );
 }

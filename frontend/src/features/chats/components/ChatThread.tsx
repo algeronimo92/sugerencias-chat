@@ -32,6 +32,7 @@ import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
+import { CallButton, CallCard } from '../../calls/public/CallCard'
 import { FlowEventCard } from './FlowEventCard'
 import { StageChangeCard } from './StageChangeCard'
 import { originGroupKey, originLabel } from '../domain/messageOrigin'
@@ -425,6 +426,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           </button>
           {/* Separar la cita es la venta: se llega en un toque desde la
               conversación, sin pasar por la ficha. */}
+          <CallButton chatId={chat.chat_id} name={displayName(chat)} />
           <LeadAppointmentAction chat={chat} variant="header" />
           <div className="sm:hidden">
             <ChatHeaderMoreMenu
@@ -530,6 +532,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     </div>
                   </Fragment>
                 )
+              }
+              if (item.kind === 'call') {
+                return <CallCard key={item.key} call={item.call} />
               }
               if (item.kind === 'flow') {
                 return (

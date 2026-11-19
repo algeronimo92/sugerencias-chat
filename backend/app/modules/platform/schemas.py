@@ -173,6 +173,43 @@ class WhatsappStatusItem(BaseModel):
     instance: str | None = None
 
 
+class WhatsappCallingReadiness(BaseModel):
+    """Si el número del negocio puede activar las llamadas de WhatsApp.
+
+    - ``requires_migration``: el número también se usa en la app de WhatsApp
+      Business; Meta solo admite llamadas por la API en números que no.
+    - ``limit_too_low``: la cuenta no llega al límite de mensajería que exige.
+    - ``unverified``: Meta no informó alguno de los dos datos.
+    """
+
+    state: Literal["not_connected", "requires_migration", "limit_too_low", "unverified", "ready"]
+    # None: Meta no lo informó.
+    on_business_app: bool | None = None
+    # El nivel literal de Meta (``TIER_250``...), para mostrarlo tal cual a soporte.
+    messaging_limit: str | None = None
+    messaging_limit_ok: bool | None = None
+
+
+class CallHoursSlot(BaseModel):
+    day: Literal["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+    # "HHMM", como lo pide Meta.
+    open: str = Field(pattern=r"^\d{4}$")
+    close: str = Field(pattern=r"^\d{4}$")
+
+
+class WhatsappCallingSettings(BaseModel):
+    enabled: bool
+    hours_enabled: bool = False
+    hours: list[CallHoursSlot] = []
+    # Cuántas personas tienen el permiso de atender.
+    agents: int = 0
+
+
+class WhatsappCallingUpdate(BaseModel):
+    enabled: bool
+    hours: list[CallHoursSlot] = []
+
+
 class WhatsappCostAccount(BaseModel):
     """Lo de una WABA en el mes: ``chats`` (la del CRM) o ``notices`` (la
     propia del número de avisos de cita)."""

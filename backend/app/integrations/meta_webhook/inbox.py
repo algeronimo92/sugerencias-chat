@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 from uuid import UUID
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.control import WebhookInbox
@@ -29,12 +29,48 @@ STALE_PROCESSING_AFTER = timedelta(minutes=5)
 PROCESSED_RETENTION = timedelta(days=7)
 
 
+# Las llamadas van por un carril propio (docs/analisis/17-plan-llamadas-whatsapp.md,
+# §4.1): el cliente escucha el tono y Meta da entre 30 y 60 s para atender,
+# así que no pueden esperar detrás de la descarga de un video.
+CALLS_EVENT_TYPE = "calls"
+
+
+@dataclass(frozen=True)
+class Lane:
+    """Qué eventos toma un ciclo del worker y cómo los reintenta."""
+
+    name: str
+    # Solo estos tipos, o todos menos estos.
+    only: frozenset[str] | None
+    exclude: frozenset[str]
+    stale_after: timedelta
+    # Espera mínima entre intentos de un evento fallido; None reintenta enseguida.
+    retry_backoff: timedelta | None
+
+
+MESSAGES_LANE = Lane(
+    name="messages", only=None, exclude=frozenset({CALLS_EVENT_TYPE}),
+    stale_after=STALE_PROCESSING_AFTER, retry_backoff=None,
+)
+# Un evento de llamada abandonado se retoma enseguida (pasados 5 minutos la
+# llamada ya terminó), y uno fallido espera entre intentos: reintentar sin
+# pausa quemaba los diez intentos en un corte breve de la base y la llamada
+# no sonaba nunca.
+CALLS_LANE = Lane(
+    name="calls", only=frozenset({CALLS_EVENT_TYPE}), exclude=frozenset(),
+    stale_after=timedelta(seconds=15), retry_backoff=timedelta(seconds=1),
+)
+
+
 @dataclass(frozen=True)
 class InboxEvent:
     id: str
     event_type: str
     payload: dict[str, Any]
     attempts: int
+    # Cuándo lo guardó el webhook, con el reloj propio y no el de Meta: decide
+    # si una llamada ya es vieja para hacer sonar a alguien.
+    received_at: datetime | None = None
 
 
 def _event_key(change: dict[str, Any]) -> str:
@@ -103,24 +139,41 @@ async def store_changes(changes: Iterable[dict[str, Any]]) -> tuple[list[str], i
     return accepted, duplicates
 
 
-async def claim_events(limit: int, *, ids: list[str] | None = None) -> list[InboxEvent]:
+async def claim_events(
+    limit: int, *, ids: list[str] | None = None, lane: Lane = MESSAGES_LANE,
+) -> list[InboxEvent]:
     """Reclama eventos pendientes, fallidos o abandonados con skip-locked.
 
     Con ``ids`` reclama solo esos (el procesamiento inmediato tras recibir);
-    sin ellos, cualquiera que esté listo (el barrido del worker).
+    sin ellos, cualquiera que esté listo (el barrido del worker). ``lane``
+    dice qué tipos toma y con qué reglas.
     """
     now = datetime.now(timezone.utc)
-    stale_before = now - STALE_PROCESSING_AFTER
+    stale_before = now - lane.stale_after
+    failed_ready = WebhookInbox.status == "failed"
+    if lane.retry_backoff is not None:
+        # La espera crece con cada intento: 1 s, 2 s, 3 s... desde el último.
+        # Se calcula en la base: la resta de un intervalo por una columna
+        # no tiene un tipo que el driver sepa enviar como parámetro.
+        wait = func.make_interval(
+            0, 0, 0, 0, 0, 0, lane.retry_backoff.total_seconds() * func.greatest(WebhookInbox.attempts, 1),
+        )
+        failed_ready = failed_ready & (WebhookInbox.updated_at < func.now() - wait)
     async with control_session() as session:
         conditions = [
             WebhookInbox.provider == PROVIDER,
             WebhookInbox.attempts < MAX_ATTEMPTS,
             or_(
-                WebhookInbox.status.in_(("received", "failed")),
+                WebhookInbox.status == "received",
+                failed_ready,
                 (WebhookInbox.status == "processing")
                 & (WebhookInbox.processing_started_at < stale_before),
             ),
         ]
+        if lane.only is not None:
+            conditions.append(WebhookInbox.event_type.in_(sorted(lane.only)))
+        if lane.exclude:
+            conditions.append(WebhookInbox.event_type.not_in(sorted(lane.exclude)))
         if ids is not None:
             conditions.append(WebhookInbox.id.in_(ids))
         rows = (
@@ -138,7 +191,10 @@ async def claim_events(limit: int, *, ids: list[str] | None = None) -> list[Inbo
             row.processing_started_at = now
             row.last_error = None
         return [
-            InboxEvent(id=str(row.id), event_type=row.event_type, payload=row.payload, attempts=row.attempts)
+            InboxEvent(
+                id=str(row.id), event_type=row.event_type, payload=row.payload,
+                attempts=row.attempts, received_at=row.received_at,
+            )
             for row in rows
         ]
 
@@ -158,6 +214,36 @@ async def complete_event(event_id: str | UUID, *, error: str | None = None) -> N
         )
 
 
+async def release_event(event_id: str | UUID) -> None:
+    """Devuelve un evento reclamado sin contarlo como intento: el proceso se
+    está apagando (un deploy) y otro worker lo toma enseguida, en vez de
+    esperar a que venza el reclamo."""
+    now = datetime.now(timezone.utc)
+    async with control_session() as session:
+        await session.execute(
+            update(WebhookInbox)
+            .where(
+                WebhookInbox.id == str(event_id), WebhookInbox.provider == PROVIDER,
+                WebhookInbox.status == "processing",
+            )
+            .values(
+                status="received", attempts=func.greatest(WebhookInbox.attempts - 1, 0),
+                processing_started_at=None, updated_at=now,
+            )
+        )
+
+
+async def replace_payload(event_id: str | UUID, payload: dict[str, Any]) -> None:
+    """Reescribe el cuerpo guardado de un evento ya procesado. Lo usan las
+    llamadas para no dejar la oferta SDP en el inbox los días de retención."""
+    async with control_session() as session:
+        await session.execute(
+            update(WebhookInbox)
+            .where(WebhookInbox.id == str(event_id), WebhookInbox.provider == PROVIDER)
+            .values(payload=payload)
+        )
+
+
 async def purge_processed() -> None:
     cutoff = datetime.now(timezone.utc) - PROCESSED_RETENTION
     async with control_session() as session:
@@ -166,5 +252,16 @@ async def purge_processed() -> None:
                 WebhookInbox.provider == PROVIDER,
                 WebhookInbox.status == "processed",
                 WebhookInbox.processed_at < cutoff,
+            )
+        )
+        # Los que agotaron sus intentos también se van con la misma retención:
+        # antes quedaban para siempre, y un evento de llamada guarda teléfonos
+        # y la oferta SDP.
+        await session.execute(
+            delete(WebhookInbox).where(
+                WebhookInbox.provider == PROVIDER,
+                WebhookInbox.status == "failed",
+                WebhookInbox.attempts >= MAX_ATTEMPTS,
+                WebhookInbox.updated_at < cutoff,
             )
         )

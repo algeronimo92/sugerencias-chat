@@ -12,6 +12,7 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
 import { ExportMenu } from './ExportMenu'
+import { CallsTab } from './CallsTab'
 import { FlowsTab } from './FlowsTab'
 import { PipelineTab } from './PipelineTab'
 import { SalesTab } from './SalesTab'
@@ -25,6 +26,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'tags', label: 'Etiquetas' },
   { id: 'pipeline', label: 'Embudo y citas' },
   { id: 'sales', label: 'Ventas' },
+  { id: 'calls', label: 'Llamadas' },
 ]
 
 const SELECT_CLASS = 'rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark'
@@ -141,7 +143,9 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
         </div>
 
         <div role="tablist" aria-label="Secciones del dashboard" className="mb-5 flex gap-1 overflow-x-auto border-b border-wa-border pb-px dark:border-wa-border-dark">
-          {TABS.map((item) => (
+          {/* Llamadas solo aparece si el negocio tuvo alguna: a quien no las
+              usa no se le suma una pestaña vacía. */}
+          {TABS.filter(item => item.id !== 'calls' || (data?.calls?.total ?? 0) > 0 || tab === 'calls').map((item) => (
             <button
               key={item.id}
               type="button"
@@ -187,6 +191,7 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
                 onOpenSales={() => setTab('sales')}
               />
             )}
+            {tab === 'calls' && <CallsTab data={data} days={days} onOpenChat={isAnalyst ? undefined : onOpenChat} />}
             {tab === 'flows' && <FlowsTab data={data} days={days} subject={subject} onOpenFlows={onOpenFlows} />}
             {tab === 'tags' && <TagsTab data={data} days={days} subject={subject} onFilterChats={onFilterChats} />}
             {tab === 'pipeline' && (

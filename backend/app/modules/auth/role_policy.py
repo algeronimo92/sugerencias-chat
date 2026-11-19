@@ -30,6 +30,12 @@ def route_allowed_for(role: str, method: str, path: str) -> bool:
     )
 
 
+def calls_allowed_for(role: str) -> bool:
+    """Atender llamadas exige abrir el chat del cliente y recibir el timbre
+    por el socket: las dos cosas que el analista no tiene."""
+    return role != UserRole.ANALYST
+
+
 def realtime_allowed_for(role: str) -> bool:
     """El socket de tiempo real empuja chats y notificaciones: nada que el
     analista pueda abrir."""

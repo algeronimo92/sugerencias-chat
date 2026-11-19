@@ -12,6 +12,7 @@ import { useChatFiltersState } from '../features/chats/public/useChatFiltersStat
 import { MobileNavBar } from "./MobileNavBar";
 import { roleLabel } from "./navigation";
 import { PwaUpdateChip } from "./PwaUpdateChip";
+import { CallCenterProvider, CallDock } from '../features/calls';
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
@@ -340,6 +341,11 @@ export function MainLayout() {
         )}
       </AnimatePresence>
 
+      {/* Llamadas de WhatsApp: el proveedor envuelve las pantallas (el botón
+          Llamar del chat lo usa) y vive fuera de cualquier ruta, para que
+          cambiar de pantalla no corte una llamada en curso. */}
+      <CallCenterProvider>
+      <CallDock />
       <div className="flex min-h-0 min-w-0 flex-1 bg-[#edf2f0] dark:bg-[#081216]">
         {!isMobile && (
           <Sidebar role={me?.role} unreadCount={unreadCount} />
@@ -350,7 +356,10 @@ export function MainLayout() {
           </Suspense>
         </div>
       </div>
+      </CallCenterProvider>
 
+      {/* Llamadas de WhatsApp: fuera de cualquier ruta, para que cambiar de
+          pantalla no corte una llamada en curso. */}
       <CommandPalette
         role={me?.role}
         onOpenSettings={isAdmin ? () => openSettings("general") : undefined}

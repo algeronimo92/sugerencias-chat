@@ -33,11 +33,19 @@ from app.modules.conversations.ports.inbound import (
     set_message_payload,
 )
 from app.modules.conversations.ports.message_queries import chat_id_for_wa_message, chat_wa_message_ids
+from app.integrations.meta.calls import parse_call, without_sdp
 from app.integrations.meta.wamid import message_key
+from app.modules.conversations.ports.calls_inbound import (
+    is_known_meta_code,
+    receive_call,
+    record_call_end,
+    record_outbound_end,
+    record_outbound_progress,
+)
 from app.modules.media.ports.media_upload import (save_decoded_media)
 from app.integrations.meta.contract import contract, is_known_inbound, message_subtype
 from app.integrations.meta_webhook import metrics
-from app.integrations.meta_webhook.inbox import InboxEvent
+from app.integrations.meta_webhook.inbox import InboxEvent, replace_payload
 from app.integrations.meta_webhook.projection import project, quoted_wa_message_id
 from app.modules.catalogs.ports.template_service import (replace_official_template_from_meta)
 from app.modules.contacts.public import apply_whatsapp_app_contacts, apply_whatsapp_history
@@ -378,6 +386,74 @@ async def _app_data_change(change: dict, _webhook_event_id: str) -> None:
         await apply_whatsapp_app_contacts(phone_number_id, value)
 
 
+async def _calls_change(change: dict, _webhook_event_id: str, *, received_at: datetime | None = None) -> None:
+    """Llamadas de voz: las que hace el cliente al número del negocio y los
+    avisos de las que hace el negocio (sonando, contestó, rechazó, terminó)."""
+    value = change.get("value") if isinstance(change.get("value"), dict) else {}
+    phone_number_id = _phone_number_id(value)
+    if phone_number_id is None:
+        raise UnroutableChange("Evento de llamadas sin metadata.phone_number_id")
+    if await _is_notice_number(phone_number_id):
+        metrics.webhook_ignored_extra_number_messages.labels(field=change["field"]).inc(len(value.get("calls") or []))
+        return
+    contacts = value.get("contacts") if isinstance(value.get("contacts"), list) else []
+    for raw in value.get("calls") or []:
+        call = parse_call(raw, value.get("errors")) if isinstance(raw, dict) else None
+        if call is None:
+            continue
+        metrics.call_events.labels(event=call.event).inc()
+        if not call.user_initiated:
+            await _outbound_call_event(call, raw)
+            continue
+        if call.error_code and not is_known_meta_code(call.error_code):
+            metrics.call_unknown_error_codes.labels(code=call.error_code).inc()
+        identity = identity_from_inbound(phone_number_id, raw, contacts)
+        resolved = await resolve_whatsapp_identity(identity)
+        if call.event == "connect":
+            if received_at is not None:
+                metrics.call_notice_delay_seconds.observe(
+                    max(0.0, (datetime.now(timezone.utc) - received_at).total_seconds())
+                )
+            await receive_call(
+                chat_id=resolved.chat_id, wa_call_id=call.wa_call_id, phone_number_id=phone_number_id,
+                sdp=call.sdp, occurred_at=call.occurred_at, received_at=received_at, event=raw,
+                caller_name=identity.profile_name,
+            )
+        elif call.event == "terminate":
+            await record_call_end(
+                chat_id=resolved.chat_id, wa_call_id=call.wa_call_id, phone_number_id=phone_number_id,
+                duration_seconds=call.duration_seconds, started_at=call.started_at, ended_at=call.ended_at,
+                error_code=call.error_code, occurred_at=call.occurred_at, event=raw,
+                caller_name=identity.profile_name,
+            )
+        else:
+            logger.info("Evento de llamada de Meta sin tratamiento: %s", call.event)
+    for status in value.get("statuses") or []:
+        if isinstance(status, dict) and status.get("type") == "call" and isinstance(status.get("id"), str):
+            await record_outbound_progress(
+                wa_call_id=status["id"], opaque=_opaque(status), status=str(status.get("status") or ""),
+                sdp=None, event=status,
+            )
+
+
+def _opaque(raw: dict) -> str | None:
+    value = raw.get("biz_opaque_callback_data")
+    return value if isinstance(value, str) and value else None
+
+
+async def _outbound_call_event(call, raw: dict) -> None:
+    if call.event == "connect":
+        # La respuesta de audio del cliente a la oferta del navegador.
+        await record_outbound_progress(
+            wa_call_id=call.wa_call_id, opaque=_opaque(raw), status=None, sdp=call.sdp, event=raw,
+        )
+    elif call.event == "terminate":
+        await record_outbound_end(
+            wa_call_id=call.wa_call_id, opaque=_opaque(raw), duration_seconds=call.duration_seconds,
+            started_at=call.started_at, ended_at=call.ended_at, error_code=call.error_code, event=raw,
+        )
+
+
 ChangeHandler = Callable[[dict, str], Awaitable[None]]
 
 FIELD_HANDLERS: dict[str, ChangeHandler] = {
@@ -387,6 +463,7 @@ FIELD_HANDLERS: dict[str, ChangeHandler] = {
     "smb_app_state_sync": _app_data_change,
     "history": _app_data_change,
     **{field: _template_change for field in TEMPLATE_FIELDS},
+    "calls": _calls_change,
 }
 
 
@@ -400,4 +477,9 @@ async def process_change(event: InboxEvent) -> None:
     context = await _tenant_for(change)
     scope = tenant_context(context) if context is not None else contextlib.nullcontext()
     with scope:
-        await handler(change, event.id)
+        if handler is _calls_change:
+            await _calls_change(change, event.id, received_at=event.received_at)
+            # Ya procesada: la oferta SDP no se queda en el inbox.
+            await replace_payload(event.id, without_sdp(change))
+        else:
+            await handler(change, event.id)

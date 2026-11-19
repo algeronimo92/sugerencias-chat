@@ -1,7 +1,7 @@
 """Agenda de contactos y sus importaciones.
 
 Revision ID: d2b7e4f91a63
-Revises: a3d7e1c94b52
+Revises: d7b2e4a91c36
 Create Date: 2026-11-19
 
 ``contacts`` es la agenda del negocio, separada de ``leads``: un lead es un
@@ -24,7 +24,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "d2b7e4f91a63"
-down_revision: Union[str, None] = "a3d7e1c94b52"
+down_revision: Union[str, None] = "d7b2e4a91c36"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

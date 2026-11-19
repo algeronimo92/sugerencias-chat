@@ -121,6 +121,9 @@ def test_reply_context_is_meta_context():
         ("interactive_flow", {"meta_published_flow_ids": "111, 987654321"}, True),
         ("interactive_call_permission_request", {"meta_call_permission_enabled": ""}, False),
         ("interactive_call_permission_request", {"meta_call_permission_enabled": "true"}, True),
+        # El botón "Llámanos" solo sirve con las llamadas activas en el número.
+        ("interactive_voice_call", {"meta_call_permission_enabled": ""}, False),
+        ("interactive_voice_call", {"meta_call_permission_enabled": "true"}, True),
         ("interactive_button", {}, True),
         ("template", {}, True),
     ],

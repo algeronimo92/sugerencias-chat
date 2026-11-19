@@ -56,7 +56,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _to_user_out(user: User) -> UserOut:
-    return UserOut(id=user.id, email=user.email, name=user.name, role=user.role)
+    return UserOut(
+        id=user.id, email=user.email, name=user.name, role=user.role,
+        can_handle_calls=bool(getattr(user, "can_handle_calls", False)),
+    )
 
 
 async def _reserve_mfa_attempt(user: User, request: Request, scope: str) -> None:

@@ -19,6 +19,11 @@ class RealtimeEvent(StrEnum):
     NOTICE_SENDER_UPDATED = "notice_sender_updated"
     CONTACTS_UPDATED = "contacts_updated"
     CONTACT_IMPORTS_UPDATED = "contact_imports_updated"
+    # Llamadas de WhatsApp: suena, cambia (alguien atendió) o terminó. Nunca
+    # llevan la oferta SDP: el bus entre procesos corta en 7500 bytes.
+    CALL_INCOMING = "call_incoming"
+    CALL_UPDATED = "call_updated"
+    CALL_ENDED = "call_ended"
 
 
 class ChatsUpdateReason(StrEnum):

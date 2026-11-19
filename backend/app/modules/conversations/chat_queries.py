@@ -7,7 +7,7 @@ from sqlalchemy import and_, case, exists, false, func, or_, select, true
 from app.db.models.leads import Lead, LeadTagAssignment, WhatsAppIdentity
 from app.db.models.catalogs import LeadTag
 from app.db.models.auth import User
-from app.db.models.conversations import WhatsAppEntryPointWindow, WspMessage
+from app.db.models.conversations import WhatsAppCall, WhatsAppEntryPointWindow, WspMessage
 from app.db.uow import session_scope
 from app.integrations.whatsapp.connection import connection_scope
 from app.modules.conversations.chat_rows import CHATS_PAGE_SIZE, _row_to_chat, _tags_by_lead
@@ -42,10 +42,25 @@ def _last_message_subquery():
     )
 
 
-def _unread_count_subquery():
-    """Mensajes del cliente posteriores a la última vez que se abrió el chat
-    (o todos, si nunca se abrió) — el badge de "no vistos" de ChatList."""
+def _unseen_missed_calls():
+    """Llamadas perdidas desde la última vez que se abrió el chat. Cuentan
+    como algo sin ver igual que un mensaje del cliente: nadie habló con él."""
     return (
+        select(func.count(WhatsAppCall.id))
+        .where(
+            WhatsAppCall.chat_id == Lead.id,
+            WhatsAppCall.status == "missed",
+            or_(Lead.last_read_at.is_(None), WhatsAppCall.ringing_at > Lead.last_read_at),
+        )
+        .correlate(Lead)
+    )
+
+
+def _unread_count_subquery():
+    """Mensajes del cliente y llamadas perdidas posteriores a la última vez
+    que se abrió el chat (o todos, si nunca se abrió) — el badge de "no
+    vistos" de ChatList."""
+    messages = (
         select(func.count(WspMessage.id))
         .where(
             WspMessage.chat_id == Lead.id,
@@ -55,6 +70,7 @@ def _unread_count_subquery():
         .correlate(Lead)
         .scalar_subquery()
     )
+    return messages + _unseen_missed_calls().scalar_subquery()
 
 
 def _has_unread_messages_condition():
@@ -65,6 +81,14 @@ def _has_unread_messages_condition():
             WspMessage.chat_id == Lead.id,
             WspMessage.sender == "cliente",
             or_(Lead.last_read_at.is_(None), WspMessage.sent_at > Lead.last_read_at),
+        )
+        .correlate(Lead)
+    ) | exists(
+        select(WhatsAppCall.id)
+        .where(
+            WhatsAppCall.chat_id == Lead.id,
+            WhatsAppCall.status == "missed",
+            or_(Lead.last_read_at.is_(None), WhatsAppCall.ringing_at > Lead.last_read_at),
         )
         .correlate(Lead)
     )
@@ -645,6 +669,17 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
         .correlate(Lead)
         .scalar_subquery()
     )
+    # Una llamada en la que se habló con el cliente abre o renueva la ventana,
+    # igual que un mensaje suyo (así lo cobra Meta). Solo cuentan las que
+    # conectaron: de una perdida no hay confirmación de que la abra, y decir
+    # "abierta" de más haría fallar el envío en Meta.
+    last_connected_call = (
+        select(func.max(func.coalesce(WhatsAppCall.accepted_at, WhatsAppCall.ringing_at)))
+        .where(WhatsAppCall.chat_id == Lead.id, WhatsAppCall.status.in_(("accepted", "completed")),
+               WhatsAppCall.accepted_at.is_not(None))
+        .correlate(Lead)
+        .scalar_subquery()
+    )
     entry_point_expires = (
         select(WhatsAppEntryPointWindow.expires_at)
         .where(WhatsAppEntryPointWindow.chat_id == Lead.id)
@@ -657,6 +692,7 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
                 Lead.id,
                 last_customer_message.label("last_customer_message_at"),
                 last_ad_message.label("last_ad_message_at"),
+                last_connected_call.label("last_connected_call_at"),
                 entry_point_expires.label("free_entry_point_expires_at"),
             )
             .where(Lead.id == chat_id)
@@ -678,7 +714,11 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
 
     now = datetime.now(timezone.utc)
     last_customer_message_at = row["last_customer_message_at"]
-    expires_at = last_customer_message_at + CUSTOMER_SERVICE_WINDOW if last_customer_message_at else None
+    opened_at = max(
+        (moment for moment in (last_customer_message_at, row["last_connected_call_at"]) if moment is not None),
+        default=None,
+    )
+    expires_at = opened_at + CUSTOMER_SERVICE_WINDOW if opened_at else None
     seconds_remaining = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
 
     entry_point_expires_at = row["free_entry_point_expires_at"]

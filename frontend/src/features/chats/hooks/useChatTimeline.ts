@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { MediaLightboxItem } from '../../../shared/ui/MediaLightbox'
 import { useAutomationExecutions } from '../../automations/public/queries'
+import { useChatCalls, type Call } from '../../calls/public/CallCard'
 import type { AutomationExecution } from '../../automations/types'
 import { useLeadActivity } from '../../leads/public/useLeadMeta'
 import type { InternalNote } from '../types'
@@ -31,6 +32,7 @@ export type TimelineItem =
   | { kind: 'note'; key: string; sentAt: string; note: InternalNote }
   | { kind: 'activity'; key: string; sentAt: string; activity: LeadActivity }
   | { kind: 'flow'; key: string; sentAt: string; execution: AutomationExecution }
+  | { kind: 'call'; key: string; sentAt: string; call: Call }
 
 /** Cuántos mensajes enviados se ofrecen para reenviar o guardar como plantilla. */
 const SENT_HISTORY_LIMIT = 10
@@ -62,6 +64,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
 
   const { data: notes = [] } = useInternalNotes(chatId)
   const { data: leadActivity = [] } = useLeadActivity(chatId)
+  const { data: calls = [] } = useChatCalls(chatId)
   // Misma clave de caché que el panel de automatizaciones del chat: una sola
   // consulta alimenta el panel (activas), los eventos del hilo y el nombre
   // del flujo en las burbujas que mandó.
@@ -107,6 +110,13 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
         sentAt: execution.created_at,
         execution,
       })),
+    // Llamadas de WhatsApp, en el momento en que sonaron.
+    ...calls.map(call => ({
+      kind: 'call' as const,
+      key: `call-${call.id}`,
+      sentAt: call.ringing_at,
+      call,
+    })),
   ].sort((a, b) => {
     const aTime = a.sentAt ? new Date(a.sentAt).getTime() : Number.MAX_SAFE_INTEGER
     const bTime = b.sentAt ? new Date(b.sentAt).getTime() : Number.MAX_SAFE_INTEGER
@@ -118,7 +128,7 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
       return a.message.id - b.message.id
     }
     return a.key.localeCompare(b.key)
-  }), [messages, notes, leadActivity, executions])
+  }), [messages, notes, leadActivity, executions, calls])
 
   // Una sección por día: es lo que permite fijar el chip de fecha arriba
   // mientras se navega ese día y que el del día siguiente lo empuje al llegar.

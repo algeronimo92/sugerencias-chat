@@ -208,11 +208,16 @@ async def test_the_backup_has_every_sheet_and_custom_fields_that_hold_data(monke
     monkeypatch.setattr(export, "list_definitions", definitions)
     monkeypatch.setattr(export.appointments_queries, "appointment_export_rows", appointments)
     monkeypatch.setattr(export, "export_tasks", tasks)
+
+    async def no_calls():
+        return []
+
+    monkeypatch.setattr(export, "export_calls", no_calls)
     monkeypatch.setattr(export, "list_lead_services", services)
 
     exported = await export.build_export(ExportReport.BACKUP, 30, 1, personal_data=True)
 
-    assert sheet_names(exported.content) == ["Leads", "Citas", "Tareas", "Servicios y paquetes"]
+    assert sheet_names(exported.content) == ["Leads", "Citas", "Tareas", "Servicios y paquetes", "Llamadas"]
     leads_sheet = read_sheet(exported.content, 1)
     assert leads_sheet[0][-3:] == ["Distrito", "Intereses", "Campo retirado"]
     assert leads_sheet[1][-3:] == ["Surco", "Botox, Hifu", "dato"]

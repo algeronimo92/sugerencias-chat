@@ -24,6 +24,7 @@ from app.db.models.leads import DataExport
 from app.db.uow import session_scope
 from app.modules.catalogs.ports.custom_fields import list_definitions
 from app.modules.catalogs.public import list_lead_services
+from app.modules.conversations.ports.call_metrics import export_calls
 from app.modules.leads.dashboard import appointments_queries, leads_queries, tags_queries
 from app.modules.leads.dashboard.currency import business_currency
 from app.modules.leads.dashboard.scope import BUSINESS_TIMEZONE, SCOPE_TEAM, DashboardScope, build_scope
@@ -200,6 +201,7 @@ async def _backup(currency: str | None) -> list[Sheet]:
     leads = await _lead_sheet("Leads", None)
     appointments = await appointments_queries.appointment_export_rows()
     tasks = await export_tasks()
+    calls = await export_calls()
     services = await list_lead_services(include_inactive=True)
     service_rows = []
     for service in services:
@@ -241,6 +243,21 @@ async def _backup(currency: str | None) -> list[Sheet]:
                 Column("Notas del paquete", "text", 30), Column("Paquete activo", "text", 10),
             ],
             service_rows,
+        ),
+        Sheet(
+            "Llamadas",
+            [
+                Column("Lead (id)", "text", 38), Column("Sentido", "text", 10), Column("Resultado", "text", 12),
+                Column("Causa", "text", 32), Column("Código de Meta", "text", 14), Column("Cuándo", "datetime", 18),
+                Column("Duración (s)", "integer", 12), Column("Atendió", "text", 20),
+            ],
+            [
+                [
+                    call["chat_id"], "Entrante" if call["direction"] == "inbound" else "Saliente", call["status"],
+                    call["cause"], call["error_code"], call["ringing_at"], call["duration_seconds"], call["handled_by"],
+                ]
+                for call in calls
+            ],
         ),
     ]
 
