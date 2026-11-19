@@ -174,7 +174,8 @@ def upgrade() -> None:
 
     op.create_table(
         "contact_settings",
-        sa.Column("id", sa.SmallInteger(), nullable=False),
+        # Una sola fila (id = 1): sin secuencia, igual que el modelo.
+        sa.Column("id", sa.SmallInteger(), autoincrement=False, nullable=False),
         sa.Column("auto_import_whatsapp", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint("id = 1", name="contact_settings_single_row"),
