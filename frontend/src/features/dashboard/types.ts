@@ -218,6 +218,8 @@ export interface DashboardMetrics {
   /** Opcional por lo mismo que las series de arriba: sin él, el mapa de
    *  horas muestra "Sin datos" en vez de romper la pestaña. */
   hours?: DashboardHours
+  /** Llamadas de WhatsApp del período. Ausente en respuestas guardadas de una versión anterior. */
+  calls?: DashboardCalls
   generated_at: string
 }
 
@@ -271,3 +273,6 @@ export interface DashboardHours {
   /** Solo las celdas con algún movimiento. */
   cells: DashboardHourCell[]
 }
+
+/** Perdidas (de operación) y fallidas (técnicas o de la cuenta) van separadas. */
+export type DashboardCalls = ApiSchemas['DashboardCalls']

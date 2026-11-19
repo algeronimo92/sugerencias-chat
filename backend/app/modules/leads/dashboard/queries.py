@@ -19,7 +19,9 @@ from app.modules.leads.dashboard import (
     summary_queries as summary,
     tags_queries as tags,
 )
+from app.modules.conversations.ports.call_metrics import call_metrics
 from app.modules.leads.dashboard.currency import business_currency
+from app.modules.platform.public import business_timezone
 from app.modules.leads.schemas import DashboardLegacySales
 from app.modules.leads.dashboard.scope import SCOPE_MINE, SCOPE_TEAM, DashboardScope, build_scope
 from app.tenancy.context import get_current_tenant
@@ -46,6 +48,13 @@ async def _compute(scope: DashboardScope) -> dict:
             business_currency(),
         )
     )
+    # Las llamadas las mide su dueño (conversations): el dashboard solo las
+    # pide con su período y su alcance. Después de las demás y no en paralelo:
+    # hace varias consultas seguidas sobre su propia sesión.
+    calls_block = await call_metrics(
+        start=scope.start, end=scope.now, user_id=scope.user_id if scope.is_mine else None,
+        timezone=await business_timezone(),
+    )
     # La cobertura de etiquetado ya se calculó en su bloque; se repite en la
     # fila de KPIs sin volver a consultarla.
     summary_block["tagged_leads"] = tags_block["coverage"]["tagged"]
@@ -59,6 +68,7 @@ async def _compute(scope: DashboardScope) -> dict:
         "appointments": appointments_block,
         "activity": activity_block,
         "hours": hours_block,
+        "calls": calls_block,
         "currency": currency,
         # Para las versiones anteriores de la app: el bloque de ventas vacío,
         # con la forma que leen. Ver DashboardLegacySales.

@@ -551,6 +551,54 @@ class DashboardLegacySales(BaseModel):
     recent: list[dict] = Field(default_factory=list)
 
 
+class DashboardCallCause(BaseModel):
+    cause: str
+    label: str
+    # Quién puede resolverlo: team, device, customer, account o system.
+    group: str
+    action: str
+    count: int
+
+
+class DashboardCallAgent(BaseModel):
+    user_id: int
+    name: str
+    count: int
+
+
+class DashboardCallHour(BaseModel):
+    hour: int
+    answered: int
+    missed: int
+
+
+class DashboardPendingCallback(BaseModel):
+    chat_id: str
+    ringing_at: datetime
+
+
+class DashboardCalls(BaseModel):
+    """Llamadas de WhatsApp del período. Perdidas (de operación) y fallidas
+    (técnicas o de la cuenta) van separadas y nunca se suman."""
+
+    total: int = 0
+    inbound_answered: int = 0
+    inbound_missed: int = 0
+    # Colgaron en segundos: no cuentan contra la tasa de atención.
+    quick_hangups: int = 0
+    # None sin llamadas que atender en el período.
+    answer_rate: float | None = None
+    outbound_total: int = 0
+    outbound_answered: int = 0
+    avg_duration_seconds: int | None = None
+    missed_by_cause: list[DashboardCallCause] = []
+    failed_total: int = 0
+    failed_by_cause: list[DashboardCallCause] = []
+    failed_by_agent: list[DashboardCallAgent] = []
+    by_hour: list[DashboardCallHour] = []
+    pending_callbacks: list[DashboardPendingCallback] = []
+
+
 class DashboardMetrics(BaseModel):
     period_days: int
     scope: Literal["mine", "team"]
@@ -575,6 +623,7 @@ class DashboardMetrics(BaseModel):
     appointments: DashboardAppointments
     activity: DashboardActivity
     hours: DashboardHours
+    calls: DashboardCalls = DashboardCalls()
     generated_at: str
 
 

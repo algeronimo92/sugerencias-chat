@@ -591,3 +591,59 @@ def test_the_permission_summary_reads_limits_from_meta():
     assert calls.permission_summary({"permission": {"status": "no_permission"}}) == {
         "status": "none", "expires_at": None, "can_call": False, "can_request": False,
     }
+
+
+# --- Números para el dashboard (fase 4) -----------------------------------
+
+from zoneinfo import ZoneInfo  # noqa: E402
+
+from app.modules.conversations.call_metrics import call_metrics  # noqa: E402
+
+
+async def test_the_dashboard_numbers_keep_missed_and_failed_apart(tenant, meta_calls, seen) -> None:
+    context, phone_number_id, _ids = tenant
+    answered, missed, quick, failed = _wacid(), _wacid(), _wacid(), _wacid()
+    with tenant_context(context):
+        ana, bea = await _agents("Ana", "Bea")
+
+    await _deliver(tenant, _connect(answered, phone="51999000001"))
+    with tenant_context(context):
+        await calls.answer_call((await _call(answered))["id"], user_id=ana, client_id="a", sdp=ANSWER)
+    await _deliver(tenant, _terminate(answered, phone="51999000001", duration=100, start_time="1700000000", end_time="1700000100"))
+
+    await _deliver(tenant, _connect(missed, phone="51999000002"))
+    with tenant_context(context):
+        async with get_sessionmaker()() as session:
+            await session.execute(update(WhatsAppCall).where(WhatsAppCall.wa_call_id == missed).values(
+                ringing_at=datetime.now(timezone.utc) - timedelta(seconds=40)))
+            await session.commit()
+    await _deliver(tenant, _terminate(missed, phone="51999000002"))
+
+    # Colgó enseguida: no cuenta contra la tasa de atención.
+    await _deliver(tenant, _connect(quick, phone="51999000003"))
+    await _deliver(tenant, _terminate(quick, phone="51999000003"))
+
+    await _deliver(tenant, _connect(failed, phone="51999000004"))
+    with tenant_context(context):
+        row = await _call(failed)
+        await calls.answer_call(row["id"], user_id=bea, client_id="b", sdp=ANSWER)
+        await calls.hang_up(row["id"], user_id=bea, is_admin=False, cause="no_audio")
+
+    now = datetime.now(timezone.utc)
+    window = {"start": now - timedelta(days=1), "end": now + timedelta(minutes=1), "timezone": ZoneInfo("America/Lima")}
+    with tenant_context(context):
+        team = await call_metrics(user_id=None, **window)
+        assert (team["total"], team["inbound_answered"], team["inbound_missed"], team["quick_hangups"]) == (4, 1, 1, 1)
+        assert team["answer_rate"] == 0.5
+        assert team["avg_duration_seconds"] == 100
+        assert [(item["cause"], item["group"], item["count"]) for item in team["missed_by_cause"]] == [("no_answer", "team", 1)]
+        assert (team["failed_total"], [(i["cause"], i["group"]) for i in team["failed_by_cause"]]) == (1, [("no_audio", "device")])
+        assert team["failed_by_agent"] == [{"user_id": bea, "name": "Bea", "count": 1}]
+        assert [item["chat_id"] for item in team["pending_callbacks"]] == [(await _call(missed))["chat_id"]]
+        assert sum(slot["answered"] + slot["missed"] for slot in team["by_hour"]) == 3
+
+        mine = await call_metrics(user_id=ana, **window)
+        assert (mine["total"], mine["inbound_answered"], mine["failed_total"], mine["pending_callbacks"]) == (1, 1, 0, [])
+
+        empty = await call_metrics(user_id=None, start=now - timedelta(days=30), end=now - timedelta(days=29), timezone=ZoneInfo("America/Lima"))
+        assert (empty["total"], empty["answer_rate"], empty["failed_by_cause"]) == (0, None, [])

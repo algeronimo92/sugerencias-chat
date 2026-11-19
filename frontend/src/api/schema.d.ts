@@ -5320,6 +5320,108 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** DashboardCallAgent */
+        DashboardCallAgent: {
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
+        /** DashboardCallCause */
+        DashboardCallCause: {
+            /** Cause */
+            cause: string;
+            /** Label */
+            label: string;
+            /** Group */
+            group: string;
+            /** Action */
+            action: string;
+            /** Count */
+            count: number;
+        };
+        /** DashboardCallHour */
+        DashboardCallHour: {
+            /** Hour */
+            hour: number;
+            /** Answered */
+            answered: number;
+            /** Missed */
+            missed: number;
+        };
+        /**
+         * DashboardCalls
+         * @description Llamadas de WhatsApp del período. Perdidas (de operación) y fallidas
+         *     (técnicas o de la cuenta) van separadas y nunca se suman.
+         */
+        DashboardCalls: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Inbound Answered
+             * @default 0
+             */
+            inbound_answered: number;
+            /**
+             * Inbound Missed
+             * @default 0
+             */
+            inbound_missed: number;
+            /**
+             * Quick Hangups
+             * @default 0
+             */
+            quick_hangups: number;
+            /** Answer Rate */
+            answer_rate?: number | null;
+            /**
+             * Outbound Total
+             * @default 0
+             */
+            outbound_total: number;
+            /**
+             * Outbound Answered
+             * @default 0
+             */
+            outbound_answered: number;
+            /** Avg Duration Seconds */
+            avg_duration_seconds?: number | null;
+            /**
+             * Missed By Cause
+             * @default []
+             */
+            missed_by_cause: components["schemas"]["DashboardCallCause"][];
+            /**
+             * Failed Total
+             * @default 0
+             */
+            failed_total: number;
+            /**
+             * Failed By Cause
+             * @default []
+             */
+            failed_by_cause: components["schemas"]["DashboardCallCause"][];
+            /**
+             * Failed By Agent
+             * @default []
+             */
+            failed_by_agent: components["schemas"]["DashboardCallAgent"][];
+            /**
+             * By Hour
+             * @default []
+             */
+            by_hour: components["schemas"]["DashboardCallHour"][];
+            /**
+             * Pending Callbacks
+             * @default []
+             */
+            pending_callbacks: components["schemas"]["DashboardPendingCallback"][];
+        };
         /** DashboardCoverage */
         DashboardCoverage: {
             /** Total */
@@ -5585,6 +5687,23 @@ export interface components {
             appointments: components["schemas"]["DashboardAppointments"];
             activity: components["schemas"]["DashboardActivity"];
             hours: components["schemas"]["DashboardHours"];
+            /**
+             * @default {
+             *       "total": 0,
+             *       "inbound_answered": 0,
+             *       "inbound_missed": 0,
+             *       "quick_hangups": 0,
+             *       "outbound_total": 0,
+             *       "outbound_answered": 0,
+             *       "missed_by_cause": [],
+             *       "failed_total": 0,
+             *       "failed_by_cause": [],
+             *       "failed_by_agent": [],
+             *       "by_hour": [],
+             *       "pending_callbacks": []
+             *     }
+             */
+            calls: components["schemas"]["DashboardCalls"];
             /** Generated At */
             generated_at: string;
         };
@@ -5594,6 +5713,16 @@ export interface components {
             leads: number;
             /** Total */
             total: number;
+        };
+        /** DashboardPendingCallback */
+        DashboardPendingCallback: {
+            /** Chat Id */
+            chat_id: string;
+            /**
+             * Ringing At
+             * Format: date-time
+             */
+            ringing_at: string;
         };
         /** DashboardPersonHourCell */
         DashboardPersonHourCell: {
