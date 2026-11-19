@@ -5,7 +5,7 @@ test('en el celular la cabecera no amontona íconos y "Más" reúne las acciones
   test.skip(info.project.name !== 'celular', 'Solo el celular cambia la cabecera y la barra inferior')
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Conversaciones' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Conversaciones', level: 1 })).toBeVisible()
 
   // Antes eran seis íconos de 28 px y el nombre del negocio quedaba cortado.
   for (const accion of ['Configuración', 'Reportar un problema', 'Cerrar sesión']) {

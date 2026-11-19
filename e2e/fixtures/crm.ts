@@ -187,6 +187,7 @@ export function crmDefaults(api: MockApi) {
     .on('get', '/api/auth/pin/status', { available: false, user_name: null, masked_email: null, device_name: null, locked_seconds: 0 })
     .on('get', '/api/chats', { items: [lead], has_more: false, total: null })
     .on('get', '/api/chats/unread-count', { count: 0 })
+    .on('get', '/api/chats/counts', { all: 1, unread: 0, mine: 0, unassigned: 1, open: 1, closed: 0, waiting: 0, stages: { nuevo: 1 } })
     .on('get', '/api/chats/{chat_id}', lead)
     .on('get', '/api/notifications', { items: [], unread_count: 0, has_more: false })
     .on('get', '/api/onboarding', { steps: [], completed: 0, total: 0, all_done: true, dismissed: true })

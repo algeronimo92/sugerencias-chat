@@ -58,7 +58,7 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
         <Select
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value) as PageSize)}
-          className="h-8 w-auto border-wa-border bg-wa-panel py-0 pr-8 text-sm focus:ring-wa-primary-strong dark:border-wa-border-dark dark:bg-wa-panel-dark"
+          className="h-8 min-h-8 w-auto border-wa-border bg-wa-panel py-0 pr-8 text-sm focus:ring-wa-primary-strong dark:border-wa-border-dark dark:bg-wa-panel-dark"
         >
           {PAGE_SIZES.map((size) => (
             <option key={size} value={size}>{size}</option>
