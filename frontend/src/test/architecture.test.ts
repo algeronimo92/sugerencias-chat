@@ -95,7 +95,6 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/chats/components/MessageBody.tsx',
   'features/chats/components/MessageBubble.tsx',
   'features/chats/components/TemplateSendDialog.tsx',
-  'features/leads/components/KanbanBoard.tsx',
   'features/leads/components/LeadFormDialog.tsx',
   'features/tasks/components/TasksPage.tsx',
   'features/templates/components/TemplatesPage.tsx',

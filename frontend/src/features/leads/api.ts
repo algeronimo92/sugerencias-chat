@@ -56,9 +56,9 @@ export async function fetchKanbanSnapshot(search: string): Promise<KanbanSnapsho
   return data
 }
 
-export async function fetchKanbanStage(stage: LeadStage, search: string, offset: number): Promise<KanbanPage> {
+export async function fetchKanbanStage(stage: LeadStage, search: string, offset: number, limit: number = KANBAN_PAGE_SIZE): Promise<KanbanPage> {
   const { data } = await client.get<ApiResponse<'/api/chats/kanban/{stage}', 'get'>>(`/api/chats/kanban/${stage}`, {
-    params: { offset, limit: KANBAN_PAGE_SIZE, ...(search ? { search } : {}) },
+    params: { offset, limit, ...(search ? { search } : {}) },
   })
   return data
 }
