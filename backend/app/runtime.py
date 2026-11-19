@@ -49,6 +49,7 @@ from app.modules.automations.public import (
     wait_for_automation_work,
 )
 from app.modules.conversations.chat_queries import set_unaccent_enabled
+from app.modules.conversations.ports.calls_inbound import reap_calls
 from app.modules.conversations.chat_watcher import POLL_INTERVAL_SECONDS, chat_watcher_tick, forget_chat_watcher
 from app.modules.conversations.infrastructure.outbox_worker import forget_outbox, outbox_tick, wait_for_outbox_work
 from app.modules.conversations.infrastructure.scheduled_worker import POLL_SECONDS as SCHEDULED_POLL_SECONDS
@@ -426,6 +427,14 @@ async def meta_costs_tick() -> None:
 
 
 # Lo que depende de este proceso: sus conexiones WebSocket y su /metrics.
+CALLS_REAPER_SECONDS = 20.0
+
+
+async def calls_reaper_tick() -> bool:
+    await reap_calls()
+    return False
+
+
 API_LOOPS = (
     TenantLoop("task-reminders", deliver_due_reminders, sleeping(30.0)),
     TenantLoop("queue-metrics", queue_metrics_tick, sleeping(METRICS_POLL_SECONDS)),
@@ -436,6 +445,9 @@ BACKGROUND_LOOPS = (
     TenantLoop("chat-watcher", chat_watcher_tick, sleeping(POLL_INTERVAL_SECONDS), forget_chat_watcher),
     TenantLoop("automations", automations_tick, wait_for_automation_work, forget_automations),
     TenantLoop("message-outbox", outbox_tick, wait_for_outbox_work, forget_outbox),
+    # Cierra las llamadas de WhatsApp que quedaron colgadas porque Meta nunca
+    # avisó que terminaron.
+    TenantLoop("calls-reaper", calls_reaper_tick, sleeping(CALLS_REAPER_SECONDS)),
     TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS), forget_scheduled),
     TenantLoop("meta-costs", meta_costs_tick, sleeping(META_COSTS_SYNC_SECONDS)),
     TenantLoop("meta-conversions", conversions_tick, wait_for_conversions_work),

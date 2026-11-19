@@ -68,6 +68,21 @@ class MetaAccountNumbers:
         return await meta_service.copy_whatsapp_template(meta_template_id, waba_id)
 
 
+class MetaCallControl:
+    async def accept(self, call_id: str, sdp: str, *, pre_accept: bool = False) -> None:
+        if pre_accept:
+            # Deja lista la conexión de audio antes de aceptar, para que no se
+            # corten las primeras palabras. Meta exige el mismo SDP en los dos.
+            await meta_service.call_action("pre_accept", call_id, sdp=sdp)
+        await meta_service.call_action("accept", call_id, sdp=sdp)
+
+    async def reject(self, call_id: str) -> None:
+        await meta_service.call_action("reject", call_id)
+
+    async def terminate(self, call_id: str) -> None:
+        await meta_service.call_action("terminate", call_id)
+
+
 class MetaConversationActions:
     async def mark_read(self, chat_id: str, provider_message_ids: list[str]) -> None:
         await meta_service.mark_messages_as_read(chat_id, provider_message_ids)

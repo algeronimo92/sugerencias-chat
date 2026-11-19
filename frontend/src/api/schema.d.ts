@@ -2899,6 +2899,138 @@ export interface paths {
         patch: operations["patch_note_api_chats__chat_id__notes__note_id__patch"];
         trace?: never;
     };
+    "/api/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat Calls
+         * @description Las llamadas de un chat, para intercalarlas en el hilo.
+         */
+        get: operations["list_chat_calls_api_calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/ringing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ringing Calls
+         * @description Las que suenan ahora. La pantalla la consulta cada pocos segundos: el
+         *     aviso en vivo puede fallar sin que el navegador lo note.
+         */
+        get: operations["list_ringing_calls_api_calls_ringing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Call Offer */
+        get: operations["get_call_offer_api_calls__call_id__offer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Call */
+        post: operations["accept_call_api_calls__call_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/connected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Connected
+         * @description El navegador confirma que hay audio, por si Meta no llegó a responder.
+         */
+        post: operations["call_connected_api_calls__call_id__connected_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore Call
+         * @description Deja de sonarle a esta persona. No le corta al cliente.
+         */
+        post: operations["ignore_call_api_calls__call_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/terminate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Terminate Call */
+        post: operations["terminate_call_api_calls__call_id__terminate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/issue-reports": {
         parameters: {
             query?: never;
@@ -4687,6 +4819,78 @@ export interface components {
             title_template: string;
             /** Description Template */
             description_template: string;
+        };
+        /** CallAnswerRequest */
+        CallAnswerRequest: {
+            /** Sdp */
+            sdp: string;
+            /** Client Id */
+            client_id: string;
+            /**
+             * Pre Accept
+             * @default false
+             */
+            pre_accept: boolean;
+        };
+        /** CallHangUpRequest */
+        CallHangUpRequest: {
+            /** Cause */
+            cause?: string | null;
+        };
+        /**
+         * CallItem
+         * @description Una llamada de WhatsApp como la ve la pantalla. Nunca trae la oferta SDP.
+         */
+        CallItem: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "inbound" | "outbound";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "dialing" | "ringing" | "connecting" | "accepted" | "completed" | "missed" | "rejected" | "failed";
+            /** Cause */
+            cause?: string | null;
+            /** Cause Label */
+            cause_label?: string | null;
+            /** Cause Group */
+            cause_group?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Ringing At
+             * Format: date-time
+             */
+            ringing_at: string;
+            /** Accepted At */
+            accepted_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Handled By User Id */
+            handled_by_user_id?: number | null;
+            /** Handled By Name */
+            handled_by_name?: string | null;
+            /** Caller Name */
+            caller_name?: string | null;
+        };
+        /**
+         * CallOffer
+         * @description La oferta de audio de Meta para una llamada que suena.
+         */
+        CallOffer: {
+            /** Call Id */
+            call_id: number;
+            /** Sdp */
+            sdp: string;
         };
         /** Chat */
         Chat: {
@@ -14151,6 +14355,220 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InternalNoteItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chat_calls_api_calls_get: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ringing_calls_api_calls_ringing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"][];
+                };
+            };
+        };
+    };
+    get_call_offer_api_calls__call_id__offer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallOffer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_call_api_calls__call_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_connected_api_calls__call_id__connected_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_call_api_calls__call_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    terminate_call_api_calls__call_id__terminate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallHangUpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
                 };
             };
             /** @description Validation Error */

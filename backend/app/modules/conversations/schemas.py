@@ -215,3 +215,43 @@ class ReactionRequest(BaseModel):
 class StickerRequest(BaseModel):
     # Id del asset de la librería de medios que se manda como sticker.
     asset_id: int = Field(ge=1)
+
+
+class CallItem(BaseModel):
+    """Una llamada de WhatsApp como la ve la pantalla. Nunca trae la oferta SDP."""
+
+    id: int
+    chat_id: str
+    direction: Literal["inbound", "outbound"]
+    status: Literal["dialing", "ringing", "connecting", "accepted", "completed", "missed", "rejected", "failed"]
+    # Causa del catálogo (docs/analisis/17-plan-llamadas-whatsapp.md, §4.9) y su texto.
+    cause: str | None = None
+    cause_label: str | None = None
+    cause_group: str | None = None
+    error_code: str | None = None
+    ringing_at: datetime
+    accepted_at: datetime | None = None
+    ended_at: datetime | None = None
+    duration_seconds: int | None = None
+    handled_by_user_id: int | None = None
+    handled_by_name: str | None = None
+    caller_name: str | None = None
+
+
+class CallOffer(BaseModel):
+    """La oferta de audio de Meta para una llamada que suena."""
+
+    call_id: int
+    sdp: str
+
+
+class CallAnswerRequest(BaseModel):
+    sdp: str = Field(min_length=10, max_length=20000)
+    # La pestaña que atiende: un usuario puede tener el CRM abierto en varias.
+    client_id: str = Field(min_length=1, max_length=64)
+    pre_accept: bool = False
+
+
+class CallHangUpRequest(BaseModel):
+    # Lo que vio el navegador, de una lista cerrada; cualquier otro valor se ignora.
+    cause: str | None = Field(default=None, max_length=40)

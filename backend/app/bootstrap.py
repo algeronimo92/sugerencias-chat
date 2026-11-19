@@ -41,6 +41,7 @@ from app.modules.conversations import api as chats
 from app.modules.leads import api as lead_routes
 from app.integrations.n8n import api as webhooks
 from app.modules.platform import branding_api as branding
+from app.modules.conversations import calls_api as calls
 from app.modules.conversations import internal_notes_api as internal_notes
 from app.modules.media import api as media
 from app.modules.media import library_api as media_library
@@ -173,6 +174,7 @@ app.include_router(scheduled_messages.router)
 app.include_router(templates.router)
 app.include_router(media_library.router)
 app.include_router(internal_notes.router)
+app.include_router(calls.router)
 app.include_router(issue_reports.router)
 app.include_router(appointments.router)
 app.include_router(custom_fields.router)

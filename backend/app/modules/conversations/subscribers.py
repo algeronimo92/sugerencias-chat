@@ -8,7 +8,14 @@ el procesador del webhook emitían estos avisos a mano, cada uno a su manera.
 from __future__ import annotations
 
 from app.core.events import Phase, subscribe
+from app.modules.auth.ports.users import list_call_agents
 from app.modules.conversations.domain.events import (
+    CallAnswered,
+    CallClaimed,
+    CallDismissed,
+    CallEnded,
+    CallReleased,
+    CallRinging,
     ChatMarkedUnread,
     ChatRead,
     ExternalMessagesSynced,
@@ -148,3 +155,63 @@ async def scheduled_changed(event: ScheduledMessageChanged) -> None:
 @subscribe(InternalNotesChanged, phase=Phase.AFTER_COMMIT)
 async def notes_changed(event: InternalNotesChanged) -> None:
     await manager.broadcast({"type": "internal_notes_updated", "lead_id": event.chat_id})
+
+
+# Llamadas: el aviso va persona por persona a quienes atienden, no a todo el
+# negocio. El WebSocket no es garantía (ver db/signals): la pantalla además
+# consulta las que suenan cada pocos segundos.
+@subscribe(CallRinging, phase=Phase.AFTER_COMMIT)
+async def call_ringing(event: CallRinging) -> None:
+    for agent in await list_call_agents():
+        await manager.send_to_user(agent["id"], {
+            "type": "call_incoming", "call_id": event.call_id, "chat_id": event.chat_id,
+            "caller_name": event.caller_name,
+        })
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "inbound_message"})
+
+
+@subscribe(CallClaimed, phase=Phase.AFTER_COMMIT)
+async def call_claimed(event: CallClaimed) -> None:
+    for agent in await list_call_agents():
+        await manager.send_to_user(agent["id"], {
+            "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
+            "status": "connecting", "handled_by_user_id": event.user_id,
+        })
+
+
+@subscribe(CallAnswered, phase=Phase.AFTER_COMMIT)
+async def call_answered(event: CallAnswered) -> None:
+    for agent in await list_call_agents():
+        await manager.send_to_user(agent["id"], {
+            "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
+            "status": "accepted", "handled_by_user_id": event.user_id,
+        })
+
+
+@subscribe(CallReleased, phase=Phase.AFTER_COMMIT)
+async def call_released(event: CallReleased) -> None:
+    for agent in await list_call_agents():
+        await manager.send_to_user(agent["id"], {
+            "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
+            "status": "ringing", "handled_by_user_id": None,
+        })
+
+
+@subscribe(CallDismissed, phase=Phase.AFTER_COMMIT)
+async def call_dismissed(event: CallDismissed) -> None:
+    # Sus otras pestañas dejan de sonar; el resto sigue.
+    await manager.send_to_user(event.user_id, {
+        "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
+        "status": "dismissed", "handled_by_user_id": None,
+    })
+
+
+@subscribe(CallEnded, phase=Phase.AFTER_COMMIT)
+async def call_ended(event: CallEnded) -> None:
+    for agent in await list_call_agents():
+        await manager.send_to_user(agent["id"], {
+            "type": "call_ended", "call_id": event.call_id, "chat_id": event.chat_id,
+            "status": event.status, "cause": event.cause,
+            "handled_by_user_id": event.handled_by_user_id, "caller_name": event.caller_name,
+        })
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "inbound_message"})

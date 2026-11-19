@@ -142,3 +142,49 @@ class NoteMentionsAdded(ConversationEvent):
 class NoteMentionsRead(ConversationEvent):
     user_id: int
     mentions_changed: bool
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallEvent(ConversationEvent):
+    """Algo cambió en una llamada de WhatsApp."""
+
+    call_id: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallRinging(CallEvent):
+    """Un cliente está llamando: les suena a quienes atienden llamadas."""
+
+    caller_name: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallClaimed(CallEvent):
+    """Alguien pulsó Atender: a los demás deja de sonarles."""
+
+    user_id: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallReleased(CallEvent):
+    """Meta rechazó el atender: vuelve a sonar para todos."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallAnswered(CallEvent):
+    user_id: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallDismissed(CallEvent):
+    """Una persona la ignoró: deja de sonarle solo a ella."""
+
+    user_id: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallEnded(CallEvent):
+    status: str
+    cause: str | None
+    handled_by_user_id: int | None
+    caller_name: str | None = None

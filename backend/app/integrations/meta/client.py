@@ -10,7 +10,7 @@ from app.core.request_metrics import record_external_duration
 from app.modules.auth.ports.account_actions import (try_send_operational_alert)
 from app.modules.platform.ports.platform_settings import (platform_setting, platform_settings_many)
 from app.modules.platform.ports.settings_service import (get_effective_many, update_settings)
-from app.integrations.whatsapp.channel import ChannelError, DeliveryUnconfirmedError
+from app.integrations.whatsapp.channel import CallOutcomeUnknown, ChannelError, DeliveryUnconfirmedError
 from app.integrations.meta_webhook import metrics
 from app.integrations.whatsapp.identity import resolve_whatsapp_destination
 from app.tenancy.context import get_current_tenant
@@ -449,6 +449,33 @@ async def get_calling_requirements() -> dict[str, Any]:
         "on_business_app": on_business_app if isinstance(on_business_app, bool) else None,
         "messaging_limit": limit if isinstance(limit, str) and limit else None,
     }
+
+
+# Una llamada no puede esperar lo que espera un mensaje: el cliente está en
+# línea. Pasado esto, el resultado se da por incierto.
+CALL_TIMEOUT_SECONDS = 8.0
+
+
+async def call_action(action: str, call_id: str, *, sdp: str | None = None) -> None:
+    """``pre_accept``, ``accept``, ``reject`` o ``terminate`` sobre una llamada.
+
+    Un tiempo agotado o un 5xx levantan ``CallOutcomeUnknown``: Meta pudo
+    haber hecho la operación. Un 4xx es un rechazo claro (``MetaApiError``).
+    """
+    token, phone_number_id, _waba_id = await _config()
+    body: dict[str, Any] = {"messaging_product": "whatsapp", "call_id": call_id, "action": action}
+    if sdp is not None:
+        body["session"] = {"sdp_type": "answer", "sdp": sdp}
+    try:
+        await _request(
+            "POST", _graph_url(f"{phone_number_id}/calls"), token, json_body=body, timeout=CALL_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise CallOutcomeUnknown(f"Meta no respondió al {action} de la llamada: {type(exc).__name__}") from exc
+    except MetaApiError as exc:
+        if exc.status_code is not None and exc.status_code >= 500:
+            raise CallOutcomeUnknown(str(exc), status_code=exc.status_code) from exc
+        raise
 
 
 async def get_waba_name(waba_id: str) -> str:

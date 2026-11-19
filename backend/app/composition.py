@@ -41,6 +41,8 @@ from app.modules.automations.infrastructure.sql_scheduling import SqlSchedulingS
 from app.modules.conversations.application.ports import ConversationPorts, provide_conversation_ports
 from app.modules.conversations.chat_queries import get_customer_service_window
 from app.modules.conversations.infrastructure.meta_contract import MetaMessageContract
+from app.modules.auth.ports.users import list_call_agents
+from app.modules.conversations.infrastructure.sql_calls import SqlCallStore
 from app.modules.conversations.infrastructure.sql_inbox import SqlInboxState
 from app.modules.conversations.infrastructure.sql_messages import SqlMessageStore
 from app.modules.conversations.infrastructure.sql_outbox import SqlOutboxStore
@@ -110,6 +112,8 @@ def register_adapters() -> None:
         contract=MetaMessageContract(),
         service_window=get_customer_service_window,
         channel=current_channel,
+        calls=SqlCallStore(),
+        call_agents=list_call_agents,
     ))
     # Por negocio: n8n (por defecto) o el copiloto nativo con sus propias claves.
     provide_ai_provider(RoutingAiProvider(N8nAiProvider(), NativeAiProvider()))

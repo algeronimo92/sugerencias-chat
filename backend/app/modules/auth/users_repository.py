@@ -60,6 +60,19 @@ async def list_active_sellers() -> list[dict]:
     return [dict(row) for row in rows]
 
 
+async def list_call_agents() -> list[dict]:
+    """A quiénes les suenan las llamadas de WhatsApp: activos, con el permiso
+    y con un rol que abre chats."""
+    stmt = (
+        select(User.id, User.name)
+        .where(User.is_active == true(), User.can_handle_calls == true(), User.role.in_(("admin", "vendedor")))
+        .order_by(User.name.asc())
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [dict(row) for row in rows]
+
+
 async def names_by_ids(user_ids: Iterable[int]) -> dict[int, str]:
     """Nombre de cada usuario pedido, incluidos los inactivos.
 
