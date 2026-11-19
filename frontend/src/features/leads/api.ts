@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { BulkActionResult, BulkAssignTagInput, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MessagePageParam, MessageSearchPage, MoveLeadStageInput, PageParam } from './types'
+import type { BulkActionResult, BulkAssignSellerInput, BulkAssignTagInput, InboxCounts, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MessagePageParam, MessageSearchPage, MoveLeadStageInput, PageParam } from './types'
 
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
@@ -80,6 +80,12 @@ export function bulkMoveStage({ chatIds, stage, razonPerdido }: BulkMoveStageInp
       )
 }
 
+/** Asigna (o quita, con `sellerId: null`) la vendedora de varios chats. Reusa
+ * el PATCH de cada lead: el backend solo deja hacerlo a un admin. */
+export function bulkAssignSeller({ chatIds, sellerId }: BulkAssignSellerInput) {
+  return runBulk(chatIds, (chatId) => updateLead(chatId, { vendedor_id: sellerId }))
+}
+
 export function bulkAssignTag({ chatIds, tagId }: BulkAssignTagInput) {
   return runBulk(chatIds, (chatId) => client.post<ApiResponse<'/api/chats/{chat_id}/tags/{tag_id}', 'post'>>(`/api/chats/${encodeURIComponent(chatId)}/tags/${tagId}`))
 }
@@ -118,7 +124,15 @@ function filterParams(filters?: ChatFilters): Record<string, string> {
   if (filters?.inactiveDays) params.inactive_days = String(filters.inactiveDays)
   if (filters?.waitingTime) params.waiting_time = filters.waitingTime
   if (filters?.automationPaused) params.automation_paused = 'true'
+  if (filters?.unassigned) params.unassigned = 'true'
+  if (filters?.conversation) params.conversation = filters.conversation
   return params
+}
+
+/** Cuántos chats hay en cada bandeja, con los mismos filtros que la lista. */
+export async function fetchInboxCounts(filters: ChatFilters): Promise<InboxCounts> {
+  const { data } = await client.get<ApiResponse<'/api/chats/counts', 'get'>>('/api/chats/counts', { params: filterParams(filters) })
+  return data
 }
 
 /** `contactsOnly` pide solo los leads que matchean por sus datos: los que

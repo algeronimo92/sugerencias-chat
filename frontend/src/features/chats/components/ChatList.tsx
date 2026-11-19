@@ -1,8 +1,10 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Tooltip } from "../../../shared/ui/Tooltip";
 import {
 AlertCircle,
 Loader2,
 MessagesSquare,
+PanelLeftOpen,
 RefreshCw,
 Search,
 SlidersHorizontal,
@@ -31,6 +33,7 @@ import type { LeadStage } from '../../leads/types';
 import { useSellers } from "../../platform/public/useUsers";
 import { useCreateLead } from '../../leads/public/queries'
 import type { Chat, ChatFilters, LeadUpdateInput, MessageSearchHit } from '../../leads/types'
+import type { ChatQuickFilter } from '../layoutContext'
 import { ChatItem } from "./ChatItem";
 import { ChatSearchResults } from "./ChatSearchResults";
 import { ChatViewChips } from "./ChatViewChips";
@@ -51,6 +54,10 @@ const segmentClass = (active: boolean) =>
   }`;
 
 interface Props {
+  /** El panel de bandejas está a la vista: la lista no repite sus filtros. */
+  inboxPanelVisible?: boolean;
+  /** Hay panel de bandejas pero está plegado: botón para mostrarlo. */
+  onShowInboxes?: () => void;
   chats: Chat[];
   isLoading: boolean;
   error: boolean;
@@ -63,8 +70,8 @@ interface Props {
   searchFilters: ChatFilters;
   contactsTotal: number | null;
   onOpenMessage: (hit: MessageSearchHit) => void;
-  filter: "all" | "unread" | "mine";
-  onFilterChange: (value: "all" | "unread" | "mine") => void;
+  filter: ChatQuickFilter;
+  onFilterChange: (value: ChatQuickFilter) => void;
   unreadCount: number;
   advancedFilters: ChatFilters;
   onAdvancedFiltersChange: (value: ChatFilters) => void;
@@ -125,6 +132,8 @@ function LoadMoreRow({
 }
 
 export function ChatList({
+  inboxPanelVisible = false,
+  onShowInboxes,
   chats,
   isLoading,
   error,
@@ -207,6 +216,8 @@ export function ChatList({
       tagMode: "any",
       service: "",
       sellerId: null,
+      unassigned: false,
+      conversation: "",
       origin: "",
       lastSender: "",
       inactiveDays: null,
@@ -416,6 +427,18 @@ export function ChatList({
         {/* Cabecera compacta: la lista es lo que importa, no el encabezado. */}
         <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
+            {onShowInboxes && (
+              <Tooltip content="Mostrar bandejas">
+                <button
+                  type="button"
+                  onClick={onShowInboxes}
+                  aria-label="Mostrar bandejas"
+                  className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <PanelLeftOpen className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
             <h1 className="truncate text-base font-bold tracking-[-0.02em] text-wa-text dark:text-white">
               Conversaciones
             </h1>
@@ -493,6 +516,9 @@ export function ChatList({
           )}
         </button>
         </div>
+        {/* Con el panel de bandejas a la vista, estos filtros y las vistas
+            rápidas lo repetían: viven en el panel (doc 18 §6.3). */}
+        {!inboxPanelVisible && (<>
         <div
           className="mt-2 flex rounded-lg bg-wa-field p-0.5 dark:bg-wa-field-dark"
           role="group"
@@ -533,6 +559,7 @@ export function ChatList({
           onChange={onAdvancedFiltersChange}
           canSave={activeAdvancedFilterCount > 0}
         />
+        </>)}
         {showFilters && (
           <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
             <div className="flex items-center justify-between">

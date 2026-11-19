@@ -11,7 +11,7 @@ import { readEditField } from "../../../shared/navigation/editFieldLink";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
 import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
-import { useLayout } from "../../../shared/hooks/useBreakpoint";
+import { useLayout, useMediaQuery } from "../../../shared/hooks/useBreakpoint";
 import { Button } from "../../../shared/ui/Button";
 import { PageLoader } from "../../../shared/ui/PageLoader";
 import { Spinner } from "../../../shared/ui/Spinner";
@@ -32,6 +32,8 @@ import type { Chat } from '../../leads/types'
 import { useOpenChat } from "../useOpenChat";
 import { useChatNavigationShortcuts } from "../hooks/useChatNavigationShortcuts";
 import { ChatList } from "./ChatList";
+import { InboxPanel } from "./inbox/InboxPanel";
+import { useStoredToggle } from "../hooks/useStoredToggle";
 import { ChatThread } from "./ChatThread";
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
@@ -145,6 +147,8 @@ export function ChatWorkspace() {
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const showInboxes = useMediaQuery("(min-width: 1440px)") && !isMobile;
+  const [inboxesCollapsed, toggleInboxes] = useStoredToggle("inbox-panel-collapsed");
   // Se llegó a cambiar un dato del lead (?editar=…, p. ej. desde Catálogos):
   // fuera de escritorio la ficha vive en el panel deslizable, que arranca
   // cerrado; queda abierto mientras dure ese pedido.
@@ -330,10 +334,20 @@ export function ChatWorkspace() {
           visibility:hidden conserva el layout y con él la posición de
           scroll: absolute lo saca del flujo para que el chat pueda
           ocupar el ancho completo. */}
+        {/* Bandejas: desde 1440 px, plegables (decisión 4 del doc 18). */}
+        {/* Plegado no deja columna: se vuelve a mostrar desde la cabecera
+            de la lista. */}
+        {showInboxes && !inboxesCollapsed && (
+          <div className="h-full shrink-0 overflow-hidden rounded-xl">
+            <InboxPanel role={me?.role} filters={chatFilters} onCollapse={toggleInboxes} />
+          </div>
+        )}
         <div
           className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-80 shrink-0 2xl:w-[360px]"}`}
         >
           <ChatList
+            inboxPanelVisible={showInboxes && !inboxesCollapsed}
+            onShowInboxes={showInboxes && inboxesCollapsed ? toggleInboxes : undefined}
             chats={chats}
             isLoading={isLoading}
             error={!!error}

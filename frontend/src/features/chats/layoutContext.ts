@@ -1,7 +1,7 @@
 import { useOutletContext } from 'react-router-dom'
 import type { ChatFilters } from '../leads/types'
 
-export type ChatQuickFilter = 'all' | 'unread' | 'mine'
+export type ChatQuickFilter = 'all' | 'unread' | 'mine' | 'unassigned'
 export type SettingsTab = 'general' | 'usuarios'
 /** Anclas de la página de Integraciones. */
 export type IntegrationAnchor = 'whatsapp' | 'calendario' | 'erp' | 'voz' | 'correo'

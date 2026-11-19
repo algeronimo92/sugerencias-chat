@@ -24,6 +24,9 @@ export const leadKeys = {
   activityAll: ['lead-activity'] as const,
   activity: (chatId: string | null) => ['lead-activity', chatId] as const,
   search: (term: string) => ['lead-search', term] as const,
+  /** Cuántos chats hay en cada bandeja. Cuelga de `all`: lo refresca el
+   *  mismo tiempo real que refresca la lista. */
+  inboxCounts: (filters: ChatFilters) => ['chats', 'counts', filters] as const,
   /** Cuántos leads tienen mensajes sin leer (la pastilla global). */
   unreadCount: ['unread-count'] as const,
   /** Los valores de los campos personalizados de un lead. */
