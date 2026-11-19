@@ -11,7 +11,7 @@ describe('MessageFooter', () => {
   it('muestra la hora con el tono legible del pie', () => {
     render(<MessageFooter sentAt={SENT_AT} />)
     const time = screen.getByText(formatMessageTime(SENT_AT))
-    expect(time.parentElement).toHaveClass('text-xs', 'text-wa-faint-strong')
+    expect(time.parentElement).toHaveClass('text-xs', 'text-bubble-meta')
   })
 
   it('dice "Editado" y expone la hora de la edición como texto, no solo en el tooltip', () => {
@@ -31,6 +31,6 @@ describe('MessageFooter', () => {
 
   it('sobre el video no impone color: hereda el blanco del degradado', () => {
     render(<MessageFooter sentAt={SENT_AT} overlay />)
-    expect(screen.getByText(formatMessageTime(SENT_AT)).parentElement).not.toHaveClass('text-wa-faint-strong')
+    expect(screen.getByText(formatMessageTime(SENT_AT)).parentElement).not.toHaveClass('text-bubble-meta')
   })
 })

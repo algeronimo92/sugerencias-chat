@@ -30,7 +30,7 @@ export function StickerPreviewDialog({
           className={`${dialogContentPositionClass} w-[calc(100%-2rem)] max-w-xs overflow-hidden rounded-2xl border border-wa-border bg-white shadow-xl dark:border-wa-border-dark dark:bg-wa-panel-dark`}
         >
           <div className="flex items-center justify-between border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
-            <Dialog.Title className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Sticker</Dialog.Title>
+            <Dialog.Title className="text-sm font-semibold text-fg">Sticker</Dialog.Title>
             <button
               type="button"
               onClick={onClose}
@@ -41,7 +41,7 @@ export function StickerPreviewDialog({
             </button>
           </div>
 
-          <div className="flex items-center justify-center bg-wa-chat p-8 dark:bg-wa-chat-dark">
+          <div className="flex items-center justify-center bg-thread p-8">
             <img src={mediaSrc} alt="Sticker" className="max-h-56 max-w-full object-contain" />
           </div>
 

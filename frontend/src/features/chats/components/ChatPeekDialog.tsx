@@ -28,8 +28,8 @@ function PeekMessage({ message }: { message: Message }) {
       <div
         className={`max-w-[86%] rounded-xl px-3 py-2 text-sm shadow-sm ${
           isOwn
-            ? 'rounded-tr-sm bg-wa-out text-wa-text dark:bg-wa-out-dark dark:text-wa-text-dark'
-            : 'rounded-tl-sm bg-wa-in text-wa-text dark:bg-wa-in-dark dark:text-wa-text-dark'
+            ? 'rounded-tr-sm bg-bubble-out text-fg'
+            : 'rounded-tl-sm bg-bubble-in text-fg'
         }`}
       >
         {imageUrl && (
@@ -80,7 +80,7 @@ export function ChatPeekDialog({
         <Dialog.Overlay className={`${dialogOverlayClassElevated} bg-black/55 backdrop-blur-sm`} />
         <Dialog.Content
           aria-describedby={undefined}
-          className={`${dialogContentPositionClassElevated} flex h-[min(78dvh,42rem)] w-[calc(100%-1.5rem)] max-w-md flex-col overflow-hidden rounded-3xl border border-white/20 bg-wa-chat shadow-2xl dark:border-wa-border-dark dark:bg-wa-chat-dark`}
+          className={`${dialogContentPositionClassElevated} flex h-[min(78dvh,42rem)] w-[calc(100%-1.5rem)] max-w-md flex-col overflow-hidden rounded-3xl border border-white/20 bg-thread shadow-2xl dark:border-wa-border-dark`}
         >
           <header className="shrink-0 border-b border-wa-border bg-white px-4 py-3 dark:border-wa-border-dark dark:bg-wa-head-dark">
             <div className="flex items-center gap-3">
@@ -88,7 +88,7 @@ export function ChatPeekDialog({
                 {avatarInitial(chat)}
               </span>
               <div className="min-w-0 flex-1">
-                <Dialog.Title className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+                <Dialog.Title className="truncate text-sm font-semibold text-fg">
                   {displayName(chat)}
                 </Dialog.Title>
                 <p className="truncate text-xs text-wa-muted dark:text-wa-muted-dark">{chat.phone || 'Sin teléfono'}</p>

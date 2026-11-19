@@ -73,10 +73,10 @@ export function IssueReportDetailDialog({ reportId, onClose }: { reportId: numbe
               <main className="min-h-0 overflow-y-auto p-4 sm:p-5">
                 <div className="rounded-xl border border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
                   <div className="flex flex-wrap gap-2 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-                    <span className="font-semibold text-wa-text dark:text-wa-text-dark">{report.reporter_name}</span>
+                    <span className="font-semibold text-fg">{report.reporter_name}</span>
                     <span>·</span><span>{formatDate(report.created_at)}</span><span>·</span><span className="truncate">{report.current_path}</span>
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-wa-text dark:text-wa-text-dark">{report.description}</p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-fg">{report.description}</p>
                   {report.attachments.length > 0 && (() => {
                     const items: MediaLightboxItem[] = report.attachments.map(attachment => ({
                       src: resolveMediaUrl(attachment.media_url) ?? attachment.media_url,
@@ -103,7 +103,7 @@ export function IssueReportDetailDialog({ reportId, onClose }: { reportId: numbe
                     {report.comments.length === 0 && <p className="py-6 text-center text-xs text-wa-muted">Todavía no hay comentarios.</p>}
                     {report.comments.map(item => {
                       const own = item.author_user_id === me?.id
-                      return <div key={item.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-xl px-3 py-2 ${own ? 'bg-wa-out dark:bg-wa-out-dark' : 'bg-wa-field dark:bg-wa-head-dark'}`}><p className="text-[10px] font-semibold text-wa-primary-strong dark:text-wa-primary">{item.author_name}{item.author_role === 'admin' ? ' · Administrador' : ''}</p><p className="mt-0.5 whitespace-pre-wrap text-sm text-wa-text dark:text-wa-text-dark">{item.content}</p><p className="mt-1 text-right text-[9px] text-wa-muted">{formatDate(item.created_at)}</p></div></div>
+                      return <div key={item.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-xl px-3 py-2 ${own ? 'bg-bubble-out' : 'bg-wa-field dark:bg-wa-head-dark'}`}><p className="text-[10px] font-semibold text-wa-primary-strong dark:text-wa-primary">{item.author_name}{item.author_role === 'admin' ? ' · Administrador' : ''}</p><p className="mt-0.5 whitespace-pre-wrap text-sm text-fg">{item.content}</p><p className="mt-1 text-right text-[9px] text-wa-muted">{formatDate(item.created_at)}</p></div></div>
                     })}
                   </div>
                   <form onSubmit={submitComment} className="flex items-end gap-2 border-t border-wa-border p-3 dark:border-wa-border-dark">
@@ -123,7 +123,7 @@ export function IssueReportDetailDialog({ reportId, onClose }: { reportId: numbe
 
                 <div className="mt-6 flex items-center gap-2"><Activity className="h-4 w-4 text-wa-muted" /><h2 className="text-xs font-semibold uppercase tracking-wide text-wa-muted">Historial</h2></div>
                 <div className="mt-3 space-y-3 border-l border-wa-border pl-3 dark:border-wa-border-dark">
-                  {report.events.map(event => <div key={event.id} className="relative text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark"><span className="absolute -left-[0.94rem] top-1 h-2 w-2 rounded-full bg-wa-primary ring-2 ring-white dark:ring-wa-panel-dark" /><span className="font-medium text-wa-text dark:text-wa-text-dark">{event.actor_name ?? 'Sistema'}</span> {eventDescription(event)}<span className="mt-0.5 flex items-center gap-1 text-[9px]"><Clock3 className="h-2.5 w-2.5" />{formatDate(event.created_at)}</span></div>)}
+                  {report.events.map(event => <div key={event.id} className="relative text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark"><span className="absolute -left-[0.94rem] top-1 h-2 w-2 rounded-full bg-wa-primary ring-2 ring-white dark:ring-wa-panel-dark" /><span className="font-medium text-fg">{event.actor_name ?? 'Sistema'}</span> {eventDescription(event)}<span className="mt-0.5 flex items-center gap-1 text-[9px]"><Clock3 className="h-2.5 w-2.5" />{formatDate(event.created_at)}</span></div>)}
                 </div>
               </aside>
             </div>

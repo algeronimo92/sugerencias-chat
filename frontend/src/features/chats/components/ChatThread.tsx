@@ -305,7 +305,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
+    <div className="relative flex flex-col h-full bg-thread">
       {/* Barra de selección: reemplaza al header mientras hay mensajes
           tildados, igual que WhatsApp. */}
       {isSelecting ? (
@@ -319,7 +319,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             >
               <X className="h-5 w-5" />
             </button>
-            <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+            <p className="truncate text-sm font-semibold text-fg">
               {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
             </p>
           </div>

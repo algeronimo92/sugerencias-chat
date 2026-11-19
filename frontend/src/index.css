@@ -62,6 +62,17 @@
 
   --scrollbar: #c5cdd3;
   --scrollbar-hover: #a5aeb5;
+
+  /* Hilo del chat: la metáfora de WhatsApp manda acá (ley de Jakob), así que
+     son sus mismos valores; solo pasan a tener nombre de intención. */
+  --thread: #efeae2;
+  --bubble-out: #d9fdd3;
+  --bubble-in: #ffffff;
+  /* Hora, "Editado" y ticks a 12 px: 5,06:1 sobre bubble-out (el gris de
+     WhatsApp, #8696a0, da 2,75:1 y no pasa AA). */
+  --bubble-meta: #54656f;
+  /* Iconos y datos técnicos menores dentro de la burbuja. */
+  --bubble-faint: #8696a0;
 }
 
 /* Oscuro se re-apunta, no se invierte. En oscuro la marca va tal cual: el
@@ -107,6 +118,12 @@
 
   --scrollbar: #374248;
   --scrollbar-hover: #4a5961;
+
+  --thread: #0b141a;
+  --bubble-out: #005c4b;
+  --bubble-in: #202c33;
+  --bubble-meta: var(--fg-muted);
+  --bubble-faint: color-mix(in srgb, var(--fg) 60%, transparent);
 }
 
 /* 3. Utilidades. `inline` hace que la clase emita var(--x) tal cual, así
@@ -148,6 +165,12 @@
   --shadow-popover: var(--elev-popover);
   --shadow-overlay: var(--elev-overlay);
   --color-scrim: var(--scrim);
+
+  --color-thread: var(--thread);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-meta: var(--bubble-meta);
+  --color-bubble-faint: var(--bubble-faint);
 }
 
 /* 4. Puente temporal wa-* -> semánticos. Las ~3.700 clases wa-* existentes
@@ -189,9 +212,10 @@
   --text-md--line-height: 1.375rem;
 }
 
-/* Tokens que todavía no pasan por los semánticos: el hilo de chat (la
-   metáfora de WhatsApp sigue mandando ahí), los gráficos y el editor de
-   flujos. Se convierten aparte, sin cambiar sus valores. */
+/* Tokens que todavía no pasan por los semánticos: los gráficos y el editor
+   de flujos. Se convierten aparte, sin cambiar sus valores. Los wa-* del hilo
+   quedan solo como respaldo: el código usa thread, bubble-out, bubble-in,
+   bubble-meta y bubble-faint. */
 @theme {
   --color-wa-accent: #53bdeb; /* informativo / enlaces / tick leído */
 
@@ -540,7 +564,7 @@ html.dark {
   top: 0;
   width: 0;
   height: 0;
-  border-top: 8px solid var(--color-wa-out);
+  border-top: 8px solid var(--bubble-out);
 }
 
 .bubble-tail-out::after {
@@ -548,18 +572,11 @@ html.dark {
   border-right: 8px solid transparent;
 }
 
-.dark .bubble-tail-out::after {
-  border-top-color: var(--color-wa-out-dark);
-}
 
 .bubble-tail-in::after {
   left: -7px;
-  border-top-color: var(--color-wa-in);
+  border-top-color: var(--bubble-in);
   border-left: 8px solid transparent;
-}
-
-.dark .bubble-tail-in::after {
-  border-top-color: var(--color-wa-in-dark);
 }
 
 @keyframes ui-popover-in {
