@@ -1,6 +1,7 @@
-import { useState, type DragEvent } from 'react'
+import { useRef, useState, type DragEvent } from 'react'
 import { STAGE_BADGE_CLASS, STAGE_DOT_CLASS, stageColorStyle } from '../../domain/leadStageMeta'
 import type { Chat, LeadStage, LeadStageDefinition } from '../../types'
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 
 interface StageSidebarProps {
   stages: LeadStageDefinition[]
@@ -87,6 +88,10 @@ function StageItem({ stage, total, isSelected, draggedChat, compact, onSelect, o
 /** Etapas del embudo como índice: en escritorio, columna fija a la izquierda
  *  agrupada en "En curso" y "Cerradas"; en celular, una fila de chips. */
 export function StageSidebar({ stages, counts, selected, draggedChat, onSelect, onDropChat }: StageSidebarProps) {
+  // Con muchas etapas la columna no entra entera: al arrastrar un lead se
+  // desplaza sola para llegar a la etapa donde soltarlo.
+  const navRef = useRef<HTMLElement>(null)
+  useDragAutoScroll(navRef, 'y', draggedChat !== null)
   const open = stages.filter((stage) => stage.kind === 'open')
   const closed = stages.filter((stage) => stage.kind !== 'open')
   const groups = [
@@ -112,7 +117,7 @@ export function StageSidebar({ stages, counts, selected, draggedChat, onSelect, 
       <nav aria-label="Etapas del embudo" className="flex shrink-0 gap-2 overflow-x-auto border-b border-wa-border bg-wa-panel px-4 py-2 md:hidden dark:border-wa-border-dark dark:bg-wa-panel-dark">
         {stages.map((stage) => renderItem(stage, true))}
       </nav>
-      <nav aria-label="Etapas del embudo" className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-wa-border bg-wa-panel px-2 py-3 md:flex lg:w-64 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+      <nav ref={navRef} aria-label="Etapas del embudo" className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-wa-border bg-wa-panel px-2 py-3 md:flex lg:w-64 dark:border-wa-border-dark dark:bg-wa-panel-dark">
         {groups.map((group) => (
           <div key={group.title} className="mb-3 border-b border-wa-border pb-3 last:mb-0 last:border-b-0 last:pb-0 dark:border-wa-border-dark">
             <h2 className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">{group.title}</h2>

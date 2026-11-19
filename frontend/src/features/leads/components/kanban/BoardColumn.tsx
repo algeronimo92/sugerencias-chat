@@ -1,5 +1,5 @@
 import { Check, GripVertical, Loader2, MessageCircle, UserRound, ZapOff } from 'lucide-react'
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { Select } from '../../../../shared/ui/Input'
 import { parseContent } from '../../../whatsapp/public/message'
 import {
@@ -13,6 +13,7 @@ import { useLoadKanbanStage, type KanbanPage } from '../../kanban-queries'
 import type { Chat, LeadStage, LeadStageDefinition } from '../../types'
 import { avatarInitial, displayName, isBotAttended } from '../../utils/chat'
 import { setLeadDragPreview } from './dragPreview'
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 
 // Vista "Tablero": las columnas en horizontal de siempre, que parte del equipo
 // prefiere a la lista por etapas. Se conserva como era (salvo la imagen del
@@ -197,6 +198,8 @@ export function KanbanColumn({
   onMove,
 }: KanbanColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  useDragAutoScroll(listRef, 'y', draggedChat !== null)
   const [extraPages, setExtraPages] = useState<KanbanPage[]>([])
   const { mutate: loadPage, isPending: isLoadingPage, isError: isPageError, reset: resetPage } = useLoadKanbanStage()
   useEffect(() => {
@@ -250,7 +253,7 @@ export function KanbanColumn({
         </span>
       </header>
 
-      <div className="flex-1 space-y-2 overflow-y-auto p-2.5">
+      <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto p-2.5">
         {chats.length === 0 && (
           <div className={`rounded-lg border border-dashed px-3 py-5 text-center text-sm leading-5 ${isDragOver ? 'border-wa-primary-strong text-wa-primary-strong dark:text-wa-primary' : 'border-wa-border bg-wa-panel/60 text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark/50 dark:text-wa-muted-dark'}`}>
             {isDragOver ? (stage.is_active ? 'Suelta el lead aquí' : 'Esta etapa está desactivada') : search ? 'Sin coincidencias en esta etapa' : 'Mueve un lead a esta etapa'}
