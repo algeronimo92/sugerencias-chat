@@ -19,7 +19,8 @@ import { ImportReviewDialog } from './ImportReviewDialog'
 import { WhatsAppSyncCard } from './WhatsAppSyncCard'
 
 const EMPTY_FILTERS: ContactFilters = { search: '', origen: '', tag: '', hasLead: '', consent: '', removedInApp: false }
-const filterClass = 'h-10 border-wa-muted bg-white dark:border-wa-muted-dark dark:bg-wa-head-dark'
+// Sin borde: el fondo de campo ya los separa del panel.
+const filterClass = 'h-10'
 
 /** La agenda del negocio: todos, hayan escrito o no. Un lead es un contacto
  *  que entró al embudo; desde acá se pasa con un clic. */
