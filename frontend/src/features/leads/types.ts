@@ -77,6 +77,10 @@ export interface ChatFilters {
   conversation: '' | 'open' | 'closed'
 }
 
+/** Orden de la lista: por último mensaje, o la cola de quienes esperan
+ *  respuesta, del que más espera al que menos. */
+export type ChatOrder = 'recent' | 'waiting'
+
 /** Chats en cada bandeja del panel lateral (GET /api/chats/counts). */
 export type InboxCounts = ApiSchemas['InboxCounts']
 

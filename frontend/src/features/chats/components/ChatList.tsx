@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Tooltip } from "../../../shared/ui/Tooltip";
+import type { ReactNode } from "react";
 import {
 AlertCircle,
 Loader2,
@@ -58,6 +59,8 @@ interface Props {
   inboxPanelVisible?: boolean;
   /** Hay panel de bandejas pero está plegado: botón para mostrarlo. */
   onShowInboxes?: () => void;
+  /** Estado de la conversación y orden, debajo del buscador. */
+  toolbar?: ReactNode;
   chats: Chat[];
   isLoading: boolean;
   error: boolean;
@@ -134,6 +137,7 @@ function LoadMoreRow({
 export function ChatList({
   inboxPanelVisible = false,
   onShowInboxes,
+  toolbar,
   chats,
   isLoading,
   error,
@@ -560,6 +564,7 @@ export function ChatList({
           canSave={activeAdvancedFilterCount > 0}
         />
         </>)}
+        {toolbar}
         {showFilters && (
           <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
             <div className="flex items-center justify-between">

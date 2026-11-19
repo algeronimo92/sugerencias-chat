@@ -33,6 +33,7 @@ import { useOpenChat } from "../useOpenChat";
 import { useChatNavigationShortcuts } from "../hooks/useChatNavigationShortcuts";
 import { ChatList } from "./ChatList";
 import { InboxPanel } from "./inbox/InboxPanel";
+import { ChatListToolbar } from "./inbox/ChatListToolbar";
 import { useStoredToggle } from "../hooks/useStoredToggle";
 import { ChatThread } from "./ChatThread";
 
@@ -168,7 +169,7 @@ export function ChatWorkspace() {
     isFetchNextPageError,
     // Con una búsqueda, la lista trae solo los contactos: los mensajes los
     // pide el propio resultado, uno por fila.
-  } = useInfiniteChats(debouncedSearch, effectiveFilters, { contactsOnly: true });
+  } = useInfiniteChats(debouncedSearch, effectiveFilters, { contactsOnly: true, order: chatFilters.order });
   const chats = data?.pages.flatMap((page) => page.items) ?? [];
   const contactsTotal = data?.pages[0]?.total ?? null;
 
@@ -348,6 +349,7 @@ export function ChatWorkspace() {
           <ChatList
             inboxPanelVisible={showInboxes && !inboxesCollapsed}
             onShowInboxes={showInboxes && inboxesCollapsed ? toggleInboxes : undefined}
+            toolbar={<ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} />}
             chats={chats}
             isLoading={isLoading}
             error={!!error}

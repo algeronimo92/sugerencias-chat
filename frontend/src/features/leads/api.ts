@@ -1,6 +1,6 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { BulkActionResult, BulkAssignSellerInput, BulkAssignTagInput, InboxCounts, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MessagePageParam, MessageSearchPage, MoveLeadStageInput, PageParam } from './types'
+import type { ChatOrder, BulkActionResult, BulkAssignSellerInput, BulkAssignTagInput, InboxCounts, BulkMoveStageInput, Chat, ChatFilters, ChatsPage, KanbanPage, KanbanSnapshot, LeadActivity, LeadInput, LeadStage, LeadStageAdminDefinition, LeadStageDefinition, LeadStageInput, LeadUpdateInput, MessagePageParam, MessageSearchPage, MoveLeadStageInput, PageParam } from './types'
 
 const KANBAN_PAGE_SIZE = 40
 const LEAD_SEARCH_LIMIT = 12
@@ -137,9 +137,11 @@ export async function fetchInboxCounts(filters: ChatFilters): Promise<InboxCount
 
 /** `contactsOnly` pide solo los leads que matchean por sus datos: los que
  * matchean por un mensaje los trae `fetchMessageSearchPage`, uno por mensaje. */
-export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters, contactsOnly = false): Promise<ChatsPage> {
+export async function fetchChatsPage(search: string, pageParam: PageParam, filters?: ChatFilters, contactsOnly = false, order: ChatOrder = 'recent'): Promise<ChatsPage> {
   const params = filterParams(filters)
   if (search) params.search = search
+  // Con una búsqueda manda la relevancia: el backend ignora el orden.
+  if (!search && order === 'waiting') params.order = 'waiting'
   if (search && contactsOnly) params.search_in = 'contacts'
   if (pageParam) {
     params.cursor_id = String(pageParam.cursorId)

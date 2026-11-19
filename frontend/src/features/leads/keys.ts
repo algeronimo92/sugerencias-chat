@@ -6,13 +6,13 @@
  * variantes.
  */
 
-import type { ChatFilters } from './types'
+import type { ChatFilters, ChatOrder } from './types'
 
 export const leadKeys = {
   /** El listado de leads (la bandeja de chats lo muestra). */
   all: ['chats'] as const,
   lists: ['chats', 'list'] as const,
-  list: (search: string, filters: ChatFilters) => ['chats', 'list', search, filters] as const,
+  list: (search: string, filters: ChatFilters, order: ChatOrder = 'recent') => ['chats', 'list', search, filters, order] as const,
   /** Las dos secciones del buscador de la bandeja. Cuelgan de `all`: un
    *  mensaje nuevo o un cambio en un lead las refresca como a la lista. */
   contactSearch: (search: string, filters: ChatFilters) => ['chats', 'search', 'contacts', search, filters] as const,
