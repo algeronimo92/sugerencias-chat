@@ -1,6 +1,8 @@
-import { AlertCircle, CalendarClock, CheckCheck, Loader2, Plus, Send, X } from 'lucide-react'
+import { AlertCircle, CalendarClock, CheckCheck, Loader2, Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { Button } from '../../../shared/ui/Button'
+import { PanelSection, PanelSectionAction } from '../../../shared/ui/PanelSection'
 import { toLocalInput } from '../../../shared/utils/datetime'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import {
@@ -125,25 +127,20 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
   }
 
   return (
-    <div className="rounded-xl border border-wa-border bg-white p-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-          <Send className="h-3.5 w-3.5" /> Mensajes programados
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          aria-label="Programar un mensaje de WhatsApp"
-          title="Programar mensaje"
-          className="rounded-md p-1 text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
-        >
-          {open ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-        </button>
-      </div>
+    <PanelSection
+      title="Mensajes programados"
+      count={data.length}
+      storageKey="ficha-seccion-programados"
+      action={
+        <PanelSectionAction label="Programar un mensaje de WhatsApp" expanded={open} onClick={() => setOpen((current) => !current)}>
+          {open ? <X /> : <Plus />}
+        </PanelSectionAction>
+      }
+    >
 
       {open && (
-        <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-wa-border pt-3 dark:border-wa-border-dark">
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300">
+        <form onSubmit={handleSubmit} className="mb-3 space-y-2">
+          <label className="block text-xs font-medium text-fg-muted">
             Mensaje para el cliente
             <textarea
               value={text}
@@ -152,10 +149,10 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
               rows={3}
               required
               placeholder="Ej. Hola, ¿pudiste realizar el pago?"
-              className="mt-1 w-full resize-y rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-800 outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+              className="mt-1 w-full resize-y rounded-lg border border-line-control bg-surface px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300">
+          <label className="block text-xs font-medium text-fg-muted">
             Fecha y hora de envío
             <input
               type="datetime-local"
@@ -163,26 +160,23 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
               min={toLocalInput(new Date())}
               onChange={(event) => setScheduledAt(event.target.value)}
               required
-              className="mt-1 w-full rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-800 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+              className="mt-1 w-full rounded-lg border border-line-control bg-surface px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
-          <p className="text-[11px] leading-relaxed text-wa-muted">
+          <p className="text-xs leading-relaxed text-fg-muted">
             Se enviará automáticamente aunque cierres el navegador. A esa hora se verificará la ventana de atención de 24 horas de WhatsApp.
           </p>
-          <button type="submit"
-            disabled={create.isPending}
-            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-wa-primary py-1.5 text-xs font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
-          >
-            {create.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
+          <Button type="submit" size="sm" className="w-full" loading={create.isPending}>
+            <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
             Programar envío
-          </button>
+          </Button>
         </form>
       )}
 
-      <div className="mt-2 space-y-2">
-        {isLoading && <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-wa-muted" /></div>}
+      <div className="space-y-2">
+        {isLoading && <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-fg-muted" /></div>}
         {!isLoading && data.length === 0 && !open && (
-          <p className="text-xs text-wa-muted">No hay mensajes pendientes de envío.</p>
+          <p className="text-sm text-fg-muted">No hay mensajes pendientes de envío.</p>
         )}
         {data.map((item) => (
           <ScheduledItem
@@ -193,7 +187,7 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
           />
         ))}
       </div>
-      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
-    </div>
+      {error && <p role="alert" className="mt-2 text-xs text-danger-fg">{error}</p>}
+    </PanelSection>
   )
 }

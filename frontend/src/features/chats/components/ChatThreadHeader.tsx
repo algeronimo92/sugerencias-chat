@@ -62,7 +62,7 @@ export function ChatThreadHeader({
       <div className="flex shrink-0 items-center gap-0.5">
         <CallButton chatId={chat.chat_id} name={displayName(chat)} />
         {/* Separar la cita es la venta: se llega en un toque, sin la ficha. */}
-        <LeadAppointmentAction chat={chat} variant="header" />
+        <LeadAppointmentAction chat={chat} />
         <ChatHeaderMoreMenu
           conversationOpen={chat.conversacion_abierta}
           automationPaused={chat.automatizacion_pausada}

@@ -1,4 +1,5 @@
-import { ChevronDown, History, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { PanelSection } from '../../../shared/ui/PanelSection'
 import type { JsonObject, JsonValue } from '../../../shared/types'
 import { parseContent } from '../../whatsapp/public/message'
 import type { LeadActivity } from '../types'
@@ -116,29 +117,25 @@ export function LeadActivityPanel({ chatId }: { chatId: string }) {
   const { data = [], isLoading } = useLeadActivity(chatId)
 
   return (
-    <details className="group rounded-xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-        <History className="h-3.5 w-3.5" /> Historial de cambios
-        <span className="ml-auto rounded-full bg-wa-field px-1.5 py-0.5 text-[10px] dark:bg-wa-active-dark">{data.length}</span>
-        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="max-h-72 space-y-3 overflow-y-auto border-t border-wa-border p-3 dark:border-wa-border-dark">
-        {isLoading && <Loader2 className="mx-auto h-4 w-4 animate-spin text-wa-muted" />}
-        {!isLoading && data.length === 0 && <p className="text-center text-xs text-wa-muted">Todavía no hay cambios registrados.</p>}
+    // Cerrado de entrada: es contexto, no acción.
+    <PanelSection title="Historial de cambios" count={data.length} defaultOpen={false} storageKey="ficha-seccion-historial">
+      <div className="max-h-80 space-y-3 overflow-y-auto">
+        {isLoading && <Loader2 className="mx-auto h-4 w-4 animate-spin text-fg-muted" />}
+        {!isLoading && data.length === 0 && <p className="text-sm text-fg-muted">Todavía no hay cambios registrados.</p>}
         {data.map((item) => {
           const summary = changeSummary(item)
           const triggerContent = (item.metadata?.trigger_message as { content?: string } | undefined)?.content
           const trigger = triggerContent ? parseContent(triggerContent) : null
           return (
-            <div key={item.id} className="relative border-l-2 border-wa-primary pl-3">
-              <p className="text-xs font-medium text-gray-800 dark:text-wa-text-dark">{eventLabel(item.event_type)}</p>
-              <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">{actorLabel(item)} · {new Date(item.created_at).toLocaleString('es-PE')}</p>
-              {summary && <p className="mt-1 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">{summary}</p>}
+            <div key={item.id} className="relative border-l-2 border-line pl-3">
+              <p className="text-sm font-medium text-fg">{eventLabel(item.event_type)}</p>
+              <p className="text-xs text-fg-muted">{actorLabel(item)} · {new Date(item.created_at).toLocaleString('es-PE')}</p>
+              {summary && <p className="mt-1 text-xs leading-relaxed text-fg">{summary}</p>}
               {item.metadata?.reason != null && (
-                <p className="mt-1 text-[11px] italic text-wa-muted">{String(item.metadata.reason)}</p>
+                <p className="mt-1 text-xs italic text-fg-muted">{String(item.metadata.reason)}</p>
               )}
               {trigger && (trigger.text || trigger.label) && (
-                <p className="mt-1 border-l-2 border-wa-primary/50 pl-2 text-[11px] italic text-gray-600 dark:text-gray-300">
+                <p className="mt-1 border-l-2 border-line pl-2 text-xs italic text-fg-muted">
                   «{trigger.text || trigger.label}»
                 </p>
               )}
@@ -146,6 +143,6 @@ export function LeadActivityPanel({ chatId }: { chatId: string }) {
           )
         })}
       </div>
-    </details>
+    </PanelSection>
   )
 }

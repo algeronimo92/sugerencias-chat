@@ -1,7 +1,10 @@
-import { CalendarClock, Check, Loader2, Plus } from 'lucide-react'
+import { Check, Loader2, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
+import { PanelSection, PanelSectionAction } from '../../../shared/ui/PanelSection'
+import { Tooltip } from '../../../shared/ui/Tooltip'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import { TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskStatusValue, TaskTypeValue, isTaskPriority, isTaskType } from '../domain/taskCatalog'
@@ -88,50 +91,41 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
   }
 
   return (
-    <div className="rounded-xl border border-wa-border bg-white p-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-          <CalendarClock className="h-3.5 w-3.5" /> Próxima tarea pendiente
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          aria-label="Crear una tarea para este lead"
-          title="Crear tarea"
-          className="rounded-md p-1 text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
+    <PanelSection
+      title="Seguimiento"
+      storageKey="ficha-seccion-seguimiento"
+      action={
+        <PanelSectionAction label="Crear una tarea para este lead" expanded={open} onClick={() => setOpen(!open)}>
+          {open ? <X /> : <Plus />}
+        </PanelSectionAction>
+      }
+    >
       {next ? (
         <div className="flex items-start justify-between gap-2">
-          <div className="flex gap-2">
-            <CalendarClock className={`mt-0.5 h-4 w-4 shrink-0 ${next.is_overdue ? 'text-red-500' : 'text-wa-primary-strong'}`} />
-            <div>
-              <p className="text-sm font-medium text-gray-800 dark:text-wa-text-dark">{next.title}</p>
-              <p className={`text-xs ${next.is_overdue ? 'text-red-500' : 'text-wa-muted dark:text-wa-muted-dark'}`}>
-                {next.is_overdue ? 'Vencida' : 'Vence'}: {new Date(next.due_at).toLocaleString('es-PE')} · Responsable: {next.assigned_user_name}
-              </p>
-            </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-fg">{next.title}</p>
+            <p className={`text-xs ${next.is_overdue ? 'font-medium text-danger-fg' : 'text-fg-muted'}`}>
+              {next.is_overdue ? 'Vencida' : 'Vence'}: {new Date(next.due_at).toLocaleString('es-PE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {next.assigned_user_name}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => handleComplete(next.id, next.title)}
-            disabled={isCompleting}
-            aria-label={`Marcar como completada: ${next.title}`}
-            title="Marcar tarea como completada"
-            className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-wa-muted hover:bg-wa-field hover:text-wa-primary-strong disabled:opacity-40 dark:text-wa-muted-dark dark:hover:bg-wa-active-dark"
-          >
-            {isCompleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          </button>
+          <Tooltip content="Marcar tarea como completada">
+            <button
+              type="button"
+              onClick={() => handleComplete(next.id, next.title)}
+              disabled={isCompleting}
+              aria-label={`Marcar como completada: ${next.title}`}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+            >
+              {isCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </button>
+          </Tooltip>
         </div>
       ) : (
-        <p className="text-xs text-wa-muted">No hay tareas pendientes programadas.</p>
+        <p className="text-sm text-fg-muted">No hay tareas pendientes.</p>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label="Recordar seguimiento">
-        <span className="mr-0.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">Recordar:</span>
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5" role="group" aria-label="Recordar seguimiento">
+        <span className="text-xs text-fg-muted">Recordar:</span>
         {QUICK_FOLLOW_UPS.map((option) => (
           <button
             key={option.id}
@@ -139,7 +133,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
             onClick={() => handleQuickFollowUp(option)}
             disabled={isCreating}
             title={`Crear un seguimiento por WhatsApp ${option.label.toLowerCase()}`}
-            className="rounded-full border border-wa-border px-2 py-0.5 text-[11px] font-medium text-wa-text hover:border-wa-primary hover:text-wa-primary-strong disabled:opacity-40 dark:border-wa-border-dark dark:text-wa-text-dark"
+            className="rounded-full border border-line px-2.5 py-1 text-xs font-medium text-fg outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
           >
             {option.label}
           </button>
@@ -147,27 +141,28 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
       </div>
 
       {open && (
-        <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-wa-border pt-3 dark:border-wa-border-dark">
+        <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-line pt-3">
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Ej. Llamar para confirmar la cita"
+            aria-label="Título de la tarea"
             required
-            className="w-full rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+            className="w-full rounded-lg border border-line-control bg-surface px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <p className="text-[11px] text-wa-muted">Se enviará un recordatorio a esa hora.</p>
+          <p className="text-xs text-fg-muted">Se enviará un recordatorio a esa hora.</p>
           <div className="grid grid-cols-2 gap-2">
             <Select
               value={type}
+              aria-label="Tipo de tarea"
               onChange={(event) => { if (isTaskType(event.target.value)) setType(event.target.value) }}
-              className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             >
               {TASK_TYPES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
             </Select>
             <Select
               value={priority}
+              aria-label="Prioridad"
               onChange={(event) => { if (isTaskPriority(event.target.value)) setPriority(event.target.value) }}
-              className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
             >
               {TASK_PRIORITY_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
             </Select>
@@ -175,19 +170,15 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
           <input
             type="datetime-local"
             value={dueAt}
+            aria-label="Vence"
             onChange={(event) => setDueAt(event.target.value)}
             required
-            className="w-full rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark"
+            className="w-full rounded-lg border border-line-control bg-surface px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <button type="submit"
-            disabled={isCreating}
-            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-wa-primary py-1.5 text-xs font-medium text-white hover:bg-wa-primary-strong disabled:opacity-40"
-          >
-            {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Guardar tarea'}
-          </button>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          <Button type="submit" size="sm" className="w-full" loading={isCreating}>Guardar tarea</Button>
         </form>
       )}
-    </div>
+      {error && <p role="alert" className="mt-2 text-xs text-danger-fg">{error}</p>}
+    </PanelSection>
   )
 }

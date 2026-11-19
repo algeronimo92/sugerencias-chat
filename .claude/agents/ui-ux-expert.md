@@ -114,7 +114,7 @@ La percepción de velocidad es parte del diseño:
 - No agregues librerías de UI ni CSS-in-JS sin que el usuario lo pida.
 - Documenta componentes nuevos en Storybook (`UI.stories.tsx` como referencia).
 
-**Tokens de diseño**: ver la sección 12. Los `wa-*` (`bg-wa-panel`, `text-wa-muted`…) son un **puente temporal** que apunta a los semánticos: no los uses en código nuevo, y los que toques pásalos a semánticos. Excepciones que siguen siendo `wa-*` a propósito: el hilo del chat (`wa-chat`, `wa-out`, `wa-in`, `wa-faint-strong`, `rounded-bubble`) y el editor de flujos (`flow-*`), que se migran aparte sin cambiar sus valores.
+**Tokens de diseño**: ver la sección 12. Los `wa-*` (`bg-wa-panel`, `text-wa-muted`…) son un **puente temporal** que apunta a los semánticos: no los uses en código nuevo, y los que toques pásalos a semánticos. El hilo del chat tiene sus propios semánticos con los valores de WhatsApp (`bg-thread`, `bg-bubble-out`, `bg-bubble-in`, `text-bubble-meta`, `text-bubble-faint`, `rounded-bubble`); el editor de flujos (`flow-*`) y los gráficos (`viz-*`) siguen aparte.
 - El modo oscuro se activa con la clase `.dark` (`@custom-variant dark`).
 - La app es **PWA instalable**: respeta las áreas seguras (notch, barra de gestos) con `pt-safe` / `pb-safe` / `pb-safe-3`, y en el celular la navegación es una barra inferior.
 
@@ -151,6 +151,8 @@ El detalle y el porqué están en `docs/analisis/18-rediseno-ui-sistema-visual.m
 | Fondo suave de acento y su texto | `bg-accent-soft text-accent-deep` | |
 | Estados | `danger`, `warning`, `success`, `info` con `-fg` (texto) y `-soft` (fondo), siempre con icono o texto | rojo/ámbar como único portador |
 | Foco / velo de modal / sombras | `ring-ring` / `bg-scrim` / `shadow-popover`, `shadow-overlay` | `shadow-xl` en tarjetas |
+| Hilo del chat: fondo / burbuja enviada / recibida | `bg-thread` / `bg-bubble-out` / `bg-bubble-in` (valores de WhatsApp, con su oscuro) | `bg-white` en burbujas, `bg-wa-out dark:bg-wa-out-dark` |
+| Hora, ticks y "Editado" en la burbuja / iconos menores | `text-bubble-meta` (12 px, 5:1) / `text-bubble-faint` | el gris de WhatsApp `#8696a0` para texto |
 
 - La marca de cada negocio llega por `--brand*` (la escribe `applyBrand()` en `shared/branding.ts`); `brandShades()` garantiza 4,5:1 con cualquier color. No escribas `--color-wa-primary` a mano.
 - Tipografía: fuente del sistema. Nada por debajo de 12 px. `text-xl` 600 para el h1 de página, `text-base` 600 para títulos de sección, `text-md` (15 px) para el nombre en listas, `text-sm` para cuerpo, `text-xs` para metadatos; `tabular-nums` en números.
@@ -159,7 +161,7 @@ El detalle y el porqué están en `docs/analisis/18-rediseno-ui-sistema-visual.m
 
 ### Componentes base (shared/ui)
 
-`Button` (primary / secondary / ghost / link / danger / dangerGhost; sm 32, md 40, lg 44; `loading`), `Input` / `Textarea` / `Select` con borde y `Field` (etiqueta arriba, ayuda y error conectados), `Badge` / `Counter` (99+) / `Dot`, `Avatar` (iniciales y tono estable por `seed` = id del lead), `TagChip` (etiquetas), `Card` / `StatCard`, `PageHeader` (el único h1 de la vista), `EmptyState` / `ErrorState`, `FilterSection` / `FilterItem` (paneles de filtros con contador), `DropdownMenu` (menús con Radix, con `tooltip` opcional), `Modal`, `ConfirmDialog`, `Tooltip` (sin texto no dibuja globo).
+`Button` (primary / secondary / ghost / link / danger / dangerGhost; sm 32, md 40, lg 44; `loading`), `Input` / `Textarea` / `Select` con borde y `Field` (etiqueta arriba, ayuda y error conectados), `Badge` / `Counter` (99+) / `Dot`, `Avatar` (iniciales y tono estable por `seed` = id del lead), `TagChip` (etiquetas), `Card` / `StatCard`, `PageHeader` (el único h1 de la vista), `EmptyState` / `ErrorState`, `FilterSection` / `FilterItem` (paneles de filtros con contador), `DropdownMenu` (menús con Radix, con `tooltip` opcional), `PanelSection` / `PanelSectionAction` (sección plegable de panel lateral, con acción de icono y plegado recordado), `Modal`, `ConfirmDialog`, `Tooltip` (sin texto no dibuja globo).
 
 ### Decisiones del usuario (2026-11-19)
 
@@ -184,5 +186,6 @@ El detalle y el porqué están en `docs/analisis/18-rediseno-ui-sistema-visual.m
 - **Celular, lista de chats**: dos filas de controles como máximo (búsqueda; estado, orden y selección). Las bandejas se abren en una hoja inferior desde un icono junto al buscador. El botón de filtros avanzados está oculto en el celular por ahora (el código queda).
 - **Cabecera del chat abierto**: nombre y, debajo, etapa y vendedora como selectores. Quedan a la vista solo Llamar y Separar cita; abrir/cerrar conversación y automatizaciones van en "Más" con texto.
 - **Ventana de 24 h en la cabecera**: solo icono y tiempo (o "Vencido", "Sin mensajes"), sin pastilla de fondo; gris si queda tiempo, ámbar con menos de 6 h, rojo con menos de 2 h. La explicación va en el `Tooltip` de la app, nunca en `title` (el globo nativo del navegador no es el de la app).
+- **Ficha del lead (pestaña Ficha)**: secciones plegables con `PanelSection`, separadas por una línea y sin tarjetas: Datos, Seguimiento, Mensajes programados, Etiquetas e Historial (este cerrado de entrada). Títulos en tipo oración, nunca en mayúsculas. Datos es una lista etiqueta/valor sin iconos por fila y no repite nombre, etapa ni vendedora (están en la cabecera). "Separar cita" vive solo en la cabecera del chat: no se repite en la ficha. "Analizar con IA" y "Marcar no-show" van al pie de Datos.
 - **Cuadro de escritura**: una sola píldora como WhatsApp, con emoji a la izquierda y adjuntar, plantillas e "Iniciar flujo" a la derecha; enviar o grabar en un círculo de 40 px afuera. "Iniciar flujo" va en color de acento y separado de Plantillas por una línea: ya hubo quien lanzó un flujo creyendo que mandaba una plantilla.
 - **Pruebas de pantalla**: conservan nombres accesibles que los e2e buscan ("Vista principal", "Conversaciones" como h1, "Iniciar un flujo para este lead", "Separar cita para este lead", "Escribe un mensaje", "Más vistas"…). Si un rediseño los cambia, el spec se actualiza en el mismo cambio.
