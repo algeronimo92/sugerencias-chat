@@ -11,9 +11,29 @@ from sqlalchemy import func, select, text
 
 from app.core.time_format import iso_utc_micros
 from app.db.models.auth import User
-from app.db.models.leads import Lead, LeadActivity
+from app.db.models.leads import Lead, LeadActivity, WhatsAppIdentity
 from app.core.serialization import json_safe_row as _json_safe_row
 from app.db.uow import session_scope
+
+
+async def lead_ids_for_contacts(phones: list[str], user_ids: list[str]) -> dict[str, str]:
+    """Identificador (número E.164 o BSUID) -> lead que lo usa, para enlazar
+    contactos de la agenda con sus leads. Los que no tienen lead no aparecen."""
+    identifiers = {value for value in (*phones, *user_ids) if value}
+    if not identifiers:
+        return {}
+    by_identity = select(WhatsAppIdentity.identifier, WhatsAppIdentity.lead_id).where(
+        WhatsAppIdentity.identifier.in_(identifiers)
+    )
+    by_phone = select(Lead.telefono, Lead.id).where(Lead.telefono.in_({p for p in phones if p}))
+    async with session_scope() as session:
+        found: dict[str, str] = {}
+        # El teléfono del lead primero: la identidad de WhatsApp manda si difieren.
+        for identifier, lead_id in (await session.execute(by_phone)).all():
+            found.setdefault(identifier, str(lead_id))
+        for identifier, lead_id in (await session.execute(by_identity)).all():
+            found[identifier] = str(lead_id)
+    return found
 
 
 async def list_lead_activity(chat_id: str, limit: int = 50) -> list[dict]:

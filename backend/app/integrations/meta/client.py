@@ -277,6 +277,9 @@ async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str
     y su payload omite `phone_number_id` a propósito -- se resuelve acá con
     `_resolve_phone_number_id`."""
     access_token = await _exchange_code(code)
+    # El evento de coexistencia es el único que no trae el número.
+    coexistence = not phone_number_id
+    connected_at = datetime.now(timezone.utc)
 
     # Sin esto la WABA no manda webhooks (mensajes entrantes, estados) a esta
     # app -- paso obligatorio de Embedded Signup, ver docs de Meta.
@@ -311,6 +314,62 @@ async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str
             phone_number_id=phone_number_id,
             waba_id=waba_id,
         )
+
+    if coexistence:
+        # Meta acepta este pedido una sola vez y solo en las 24 h siguientes a
+        # la conexión: se hace ya, sin esperar a que alguien lo pida. Un fallo
+        # no deshace la conexión; queda registrado para reintentarlo.
+        try:
+            await request_app_data_sync(phone_number_id, access_token, window_started_at=connected_at)
+        except Exception:
+            logger.exception("No se pudo pedir la sincronización de la app del celular")
+
+
+# Contactos primero y después el historial, como pide Meta.
+APP_DATA_SYNC_TYPES = ("smb_app_state_sync", "history")
+
+
+async def request_app_data_sync(
+    phone_number_id: str,
+    access_token: str | None = None,
+    *,
+    sync_types: tuple[str, ...] | list[str] = APP_DATA_SYNC_TYPES,
+    window_started_at: datetime | None = None,
+) -> None:
+    """Pide a Meta los contactos y el historial de la app WhatsApp Business del
+    celular (coexistencia). La respuesta solo confirma el pedido; lo pedido
+    llega después por los webhooks ``smb_app_state_sync`` y ``history``."""
+    # Import local: la agenda arrastra leads, que vuelve a cargar este módulo.
+    from app.modules.contacts.public import record_whatsapp_app_sync
+
+    if access_token is None:
+        access_token, _, _ = await _config()
+    for sync_type in sync_types:
+        request_id = error = None
+        try:
+            result = await _request(
+                "POST", _graph_url(f"{phone_number_id}/smb_app_data"), access_token,
+                json_body={"messaging_product": "whatsapp", "sync_type": sync_type}, timeout=20.0,
+            )
+            request_id = str((result or {}).get("request_id") or "") or None
+        except (MetaApiError, httpx.HTTPError) as exc:
+            logger.warning("Meta rechazó el pedido %s de %s: %s", sync_type, phone_number_id, exc)
+            error = str(exc)[:500]
+        await record_whatsapp_app_sync(
+            phone_number_id, sync_type, request_id=request_id, error=error,
+            window_started_at=window_started_at,
+        )
+
+
+async def retry_app_data_sync() -> list[str]:
+    """Repite los pedidos que fallaron mientras sigan dentro de las 24 h."""
+    from app.modules.contacts.public import whatsapp_app_syncs_to_retry
+
+    access_token, phone_number_id, _ = await _config()
+    sync_types = await whatsapp_app_syncs_to_retry(phone_number_id)
+    if sync_types:
+        await request_app_data_sync(phone_number_id, access_token, sync_types=sync_types)
+    return sync_types
 
 
 def _graph_url(path: str) -> str:

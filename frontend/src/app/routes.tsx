@@ -41,6 +41,11 @@ const TasksPage = lazy(() =>
     default: module.TasksPage,
   })),
 );
+const ContactsPage = lazy(() =>
+  import("../features/contacts/page").then((module) => ({
+    default: module.ContactsPage,
+  })),
+);
 const TemplatesPage = lazy(() =>
   import("../features/templates/page").then((module) => ({
     default: module.TemplatesPage,
@@ -131,6 +136,11 @@ function TasksRoute() {
   return <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />;
 }
 
+function ContactsRoute() {
+  const navigate = useNavigate();
+  return <ContactsPage onOpenChat={(id) => navigate(`/chat/${id}`)} />;
+}
+
 function IssueReportsRoute() {
   const { openIssueReport } = useLayoutContext();
   return <IssueReportsPage onCreate={openIssueReport} />;
@@ -209,6 +219,7 @@ const crmRoutes = createRoutesFromElements(
         </Route>
         <Route path="kanban" element={<KanbanRoute />} />
         <Route path="tasks" element={<TasksRoute />} />
+        <Route path="contacts" element={<ContactsRoute />} />
         <Route path="reports" element={<IssueReportsRoute />} />
         <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
         <Route path="citas/nueva" element={<NewAppointmentPage />} />

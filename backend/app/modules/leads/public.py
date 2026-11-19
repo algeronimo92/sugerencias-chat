@@ -35,7 +35,7 @@ from app.modules.leads.domain.events import (
     LeadUpdated,
 )
 from app.modules.leads.domain.lead import Actor
-from app.modules.leads.queries import fetch_lead_raw, fetch_messages_raw
+from app.modules.leads.queries import fetch_lead_raw, fetch_messages_raw, lead_ids_for_contacts
 
 __all__ = [
     "Actor",
@@ -60,6 +60,7 @@ __all__ = [
     "create_lead",
     "fetch_lead_raw",
     "fetch_messages_raw",
+    "lead_ids_for_contacts",
     "open_conversation_from_inbound",
     "register_appointment",
     "register_follow_up",

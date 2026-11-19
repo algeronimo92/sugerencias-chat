@@ -48,6 +48,7 @@ from app.integrations.meta_webhook import metrics
 from app.integrations.meta_webhook.inbox import InboxEvent, replace_payload
 from app.integrations.meta_webhook.projection import project, quoted_wa_message_id
 from app.modules.catalogs.ports.template_service import (replace_official_template_from_meta)
+from app.modules.contacts.public import apply_whatsapp_app_contacts, apply_whatsapp_history
 from app.modules.platform.ports.settings_service import get_effective_many
 from app.integrations.whatsapp.identity import (
     WA_ID,
@@ -368,6 +369,23 @@ async def _template_change(change: dict, _webhook_event_id: str) -> None:
         await notice_account_template_changed(str(change.get("entry_id") or ""))
 
 
+async def _app_data_change(change: dict, _webhook_event_id: str) -> None:
+    """Coexistencia: la agenda (``smb_app_state_sync``) y el historial
+    (``history``) de la app WhatsApp Business del celular. Los del número de
+    avisos no son del CRM y se ignoran."""
+    value = change.get("value") if isinstance(change.get("value"), dict) else {}
+    phone_number_id = _phone_number_id(value)
+    if phone_number_id is None:
+        raise UnroutableChange(f"Evento {change['field']} sin metadata.phone_number_id")
+    if await _is_notice_number(phone_number_id):
+        metrics.webhook_ignored_extra_number_messages.labels(field=change["field"]).inc()
+        return
+    if change["field"] == "history":
+        await apply_whatsapp_history(phone_number_id, value)
+    else:
+        await apply_whatsapp_app_contacts(phone_number_id, value)
+
+
 async def _calls_change(change: dict, _webhook_event_id: str, *, received_at: datetime | None = None) -> None:
     """Llamadas de voz: las que hace el cliente al número del negocio y los
     avisos de las que hace el negocio (sonando, contestó, rechazó, terminó)."""
@@ -442,6 +460,8 @@ FIELD_HANDLERS: dict[str, ChangeHandler] = {
     "messages": _messages_change,
     # Coexistencia: lo que el negocio manda desde la app de WhatsApp Business.
     "smb_message_echoes": _messages_change,
+    "smb_app_state_sync": _app_data_change,
+    "history": _app_data_change,
     **{field: _template_change for field in TEMPLATE_FIELDS},
     "calls": _calls_change,
 }

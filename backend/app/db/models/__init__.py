@@ -13,6 +13,7 @@ from app.db.models.notifications import UserNotification, PushSubscription
 from app.db.models.reports import IssueReport, IssueReportAttachment, IssueReportComment, IssueReportEvent
 from app.db.models.appointments import Appointment
 from app.db.models.tasks import LeadTask
+from app.db.models.contacts import Contact, ContactImportBatch, ContactImportRow, WhatsAppAppSync, WhatsAppHistoryChunk, ContactSettings
 from app.db.models.media import MediaAsset
 from app.db.models.automations import AutomationRule, AutomationFlowVersion, AutomationRoundRobinState, AutomationExecution
 
@@ -71,6 +72,12 @@ __all__ = [
     'CustomFieldDefinition',
     'Appointment',
     'LeadTask',
+    'Contact',
+    'ContactImportBatch',
+    'ContactImportRow',
+    'WhatsAppAppSync',
+    'WhatsAppHistoryChunk',
+    'ContactSettings',
     'MessageTemplate',
     'TemplateUserState',
     'MediaAsset',

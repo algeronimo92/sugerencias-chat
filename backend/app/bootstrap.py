@@ -32,6 +32,7 @@ from app.modules.catalogs import custom_fields_api as custom_fields, services_ap
 from app.modules.leads import stages_api as lead_stages
 from app.modules.leads.dashboard import api as dashboard
 from app.modules.tasks import api as tasks
+from app.modules.contacts import api as contacts
 from app.integrations.meta_webhook import api as meta_webhook
 from app.modules.ai import assistant_api as ai_assistant, suggestions_api as suggestions
 from app.modules.auth import api as auth, users_api as users
@@ -170,6 +171,7 @@ app.include_router(lead_services.router)
 app.include_router(lead_stages.router)
 app.include_router(template_categories.router)
 app.include_router(tasks.router)
+app.include_router(contacts.router)
 app.include_router(scheduled_messages.router)
 app.include_router(templates.router)
 app.include_router(media_library.router)
