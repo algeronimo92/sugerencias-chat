@@ -13,13 +13,17 @@ import {
 } from 'react'
 import { cn } from '../utils/cn'
 
+// Borde line-control (3,1:1): antes el campo era gris sobre gris sin borde
+// (1,1:1) y no se distinguía dónde escribir (WCAG 1.4.11, doc 18 §3.2).
 export const fieldClass =
-  'w-full text-sm bg-wa-field dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent aria-invalid:border-red-500 aria-invalid:ring-red-500/25 placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-[box-shadow,border-color,background-color] disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full text-sm bg-surface text-fg border border-line-control rounded-lg px-3 py-2 outline-none focus:border-accent-strong focus:ring-2 focus:ring-ring/25 aria-invalid:border-danger aria-invalid:ring-danger/25 placeholder:text-fg-muted transition-[box-shadow,border-color,background-color] disabled:cursor-not-allowed disabled:opacity-50'
 
+// La búsqueda conserva la píldora sin borde: es el patrón de WhatsApp y la
+// lupa la identifica.
 export const pillFieldClass =
-  'w-full text-sm bg-wa-field dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-full px-3 py-1.5 outline-none focus:ring-2 focus:ring-wa-primary/60 placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-[box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full text-sm bg-subtle text-fg border border-transparent rounded-full px-3 py-1.5 outline-none focus:ring-2 focus:ring-ring/40 placeholder:text-fg-muted transition-[box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50'
 
-export const labelClass = 'mb-1 block text-xs font-medium text-wa-muted dark:text-wa-muted-dark'
+export const labelClass = 'mb-1.5 block text-sm font-medium text-fg'
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...rest },
@@ -126,7 +130,7 @@ export function Select({
         aria-invalid={ariaInvalid}
         className={cn(
           fieldClass,
-          'group relative flex min-h-9 min-w-0 cursor-pointer items-center gap-3 text-left shadow-sm enabled:hover:border-wa-border dark:enabled:hover:border-wa-border-dark data-[placeholder]:text-wa-muted dark:data-[placeholder]:text-wa-muted-dark',
+          'group relative flex min-h-10 min-w-0 cursor-pointer items-center gap-3 text-left enabled:hover:border-fg-muted data-[placeholder]:text-fg-muted',
           className,
           'pr-10',
         )}
@@ -135,7 +139,7 @@ export function Select({
           <SelectPrimitive.Value />
         </span>
         <SelectPrimitive.Icon asChild>
-          <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-wa-muted transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none dark:text-wa-muted-dark" aria-hidden="true" />
+          <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-fg-muted transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
@@ -147,9 +151,9 @@ export function Select({
           position="popper"
           sideOffset={5}
           collisionPadding={8}
-          className="ui-select-content z-[145] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-wa-border bg-white text-wa-text shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
+          className="ui-select-content z-[145] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-line bg-surface-raised text-fg shadow-popover"
         >
-          <SelectPrimitive.ScrollUpButton className="flex h-7 items-center justify-center bg-white text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark">
+          <SelectPrimitive.ScrollUpButton className="flex h-7 items-center justify-center bg-surface-raised text-fg-muted">
             <ChevronUp className="h-4 w-4" />
           </SelectPrimitive.ScrollUpButton>
           <SelectPrimitive.Viewport className="p-1">
@@ -158,14 +162,14 @@ export function Select({
               lastGroup = option.group
               return (
                 <SelectPrimitive.Group key={`${option.value}-${index}`}>
-                  {showGroup && <SelectPrimitive.Label className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">{option.group}</SelectPrimitive.Label>}
+                  {showGroup && <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-semibold text-fg-muted">{option.group}</SelectPrimitive.Label>}
                   <SelectPrimitive.Item
                     value={option.value === '' ? EMPTY_VALUE : option.value}
                     disabled={option.disabled}
-                    className="relative flex cursor-default select-none items-center rounded-md py-2 pl-3 pr-9 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-wa-active data-[highlighted]:text-wa-text dark:data-[highlighted]:bg-wa-active-dark dark:data-[highlighted]:text-wa-text-dark"
+                    className="relative flex cursor-default select-none items-center rounded-md py-2 pl-3 pr-9 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-subtle data-[highlighted]:text-fg data-[state=checked]:font-medium"
                   >
                     <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
-                    <SelectPrimitive.ItemIndicator className="absolute right-2.5 inline-flex items-center text-wa-primary-strong dark:text-wa-primary">
+                    <SelectPrimitive.ItemIndicator className="absolute right-2.5 inline-flex items-center text-accent-strong">
                       <Check className="h-4 w-4" />
                     </SelectPrimitive.ItemIndicator>
                   </SelectPrimitive.Item>
@@ -173,7 +177,7 @@ export function Select({
               )
             })}
           </SelectPrimitive.Viewport>
-          <SelectPrimitive.ScrollDownButton className="flex h-7 items-center justify-center bg-white text-wa-muted dark:bg-wa-head-dark dark:text-wa-muted-dark">
+          <SelectPrimitive.ScrollDownButton className="flex h-7 items-center justify-center bg-surface-raised text-fg-muted">
             <ChevronDown className="h-4 w-4" />
           </SelectPrimitive.ScrollDownButton>
         </SelectPrimitive.Content>

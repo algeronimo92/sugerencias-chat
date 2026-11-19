@@ -192,8 +192,8 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
           </header>
 
           <div className="flex gap-1 border-b border-wa-border px-3 py-2 dark:border-wa-border-dark">
-            <button type="button" onClick={() => setUnreadOnly(false)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${!unreadOnly ? 'bg-wa-panel-dark text-white dark:bg-wa-field dark:text-wa-text' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>Todas</button>
-            <button type="button" onClick={() => setUnreadOnly(true)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${unreadOnly ? 'bg-wa-panel-dark text-white dark:bg-wa-field dark:text-wa-text' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>No leídas</button>
+            <button type="button" onClick={() => setUnreadOnly(false)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${!unreadOnly ? 'bg-fg text-surface' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>Todas</button>
+            <button type="button" onClick={() => setUnreadOnly(true)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${unreadOnly ? 'bg-fg text-surface' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>No leídas</button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">

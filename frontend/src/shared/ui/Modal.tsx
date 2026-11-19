@@ -52,23 +52,23 @@ export function Modal({
   return (
     <Dialog.Root open onOpenChange={open => { if (!open && !busy) onClose() }}>
       <Dialog.Portal>
-        <Dialog.Overlay className={cn('fixed inset-0 bg-black/60 backdrop-blur-[1px] data-[state=closed]:animate-out data-[state=open]:animate-in', z.overlay)} />
+        <Dialog.Overlay className={cn('fixed inset-0 bg-scrim data-[state=closed]:animate-out data-[state=open]:animate-in', z.overlay)} />
         <Dialog.Content
           role={alert ? 'alertdialog' : 'dialog'}
           onEscapeKeyDown={block}
           onPointerDownOutside={block}
           onInteractOutside={block}
           className={cn(
-            'fixed left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-wa-border bg-white text-wa-text shadow-2xl outline-none dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark',
+            'fixed left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-surface-raised text-fg shadow-overlay outline-none',
             SIZES[size], z.content,
           )}
         >
           <div className="flex items-start gap-3 px-5 pb-3 pt-5">
-            {icon && <span aria-hidden="true" className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-wa-primary/10 text-wa-primary-strong dark:text-wa-primary">{icon}</span>}
+            {icon && <span aria-hidden="true" className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-deep">{icon}</span>}
             <div className="min-w-0 flex-1">
               <Dialog.Title className="text-base font-semibold leading-snug">{title}</Dialog.Title>
               {description
-                ? <Dialog.Description className="mt-1 text-sm leading-relaxed text-wa-muted dark:text-wa-muted-dark">{description}</Dialog.Description>
+                ? <Dialog.Description className="mt-1 text-sm leading-relaxed text-fg-muted">{description}</Dialog.Description>
                 : <Dialog.Description className="sr-only">{title}</Dialog.Description>}
             </div>
             <button
@@ -76,14 +76,14 @@ export function Modal({
               onClick={onClose}
               disabled={busy}
               aria-label="Cerrar"
-              className="-mr-1.5 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-wa-muted outline-none transition-colors hover:bg-wa-hover hover:text-wa-text focus-visible:ring-2 focus-visible:ring-wa-primary/60 disabled:opacity-40 dark:hover:bg-wa-hover-dark dark:hover:text-wa-text-dark"
+              className="-mr-2 -mt-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
           {children != null && <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1">{children}</div>}
           {footer && (
-            <div className="flex flex-col-reverse gap-2 border-t border-wa-border px-5 py-3.5 sm:flex-row sm:justify-end dark:border-wa-border-dark">
+            <div className="flex flex-col-reverse gap-2 border-t border-line px-6 py-4 sm:flex-row sm:justify-end">
               {footer}
             </div>
           )}

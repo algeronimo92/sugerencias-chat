@@ -100,7 +100,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
               type="button"
               onClick={handleGenerate}
               disabled={isGenerating || !text.trim() || !ttsReady}
-              className="w-full py-2 text-sm font-medium text-white bg-gray-600 hover:bg-wa-active-dark disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mic className="w-3.5 h-3.5" />}
               Generar audio
