@@ -13,12 +13,14 @@ interface Option {
 }
 
 // Lo que la clínica tiene que saber antes de abrir la ventana de Meta, como
-// en ManyChat: los dos caminos y lo que cuesta cada uno. Sin palabras de Meta
-// ("coexistencia", "Cloud API", "WABA"): la dueña de una clínica no las conoce.
+// en ManyChat: los dos caminos y lo que cuesta cada uno. Los títulos dicen lo
+// que pasa con el número, no "Cloud API" ni "WABA"; "Coexistencia" va entre
+// paréntesis porque es el nombre que la clínica ve en la ventana de Meta y en
+// la ayuda de otros CRM.
 const OPTIONS: Option[] = [
   {
     mode: 'business_app',
-    title: 'Seguir usando WhatsApp en tu celular',
+    title: 'Seguir usando WhatsApp en tu celular (Coexistencia)',
     summary: 'Conecta el número que ya usas en la app WhatsApp Business. Lo que escribas desde el celular también aparece en el CRM.',
     points: [
       'En la ventana de Meta elige conectar tu app de WhatsApp Business.',
