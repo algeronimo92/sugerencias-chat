@@ -35,6 +35,8 @@ interface Props {
   onPreview: () => void
   onMarkUnread: () => void
   isMarkingUnread?: boolean
+  /** Sin el aviso de vista rápida (en modo selección tocar la fila la marca). */
+  hideHint?: boolean
 }
 
 const LONG_PRESS_MS = 450
@@ -60,7 +62,7 @@ const TIER_TITLE: Record<string, string> = {
   urgent: 'Esperando respuesta hace bastante — se puede estar enfriando',
 }
 
-export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMatchReason = false, onClick, onPreview, onMarkUnread, isMarkingUnread = false }: Props) {
+export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMatchReason = false, onClick, onPreview, onMarkUnread, isMarkingUnread = false, hideHint = false }: Props) {
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef({ x: 0, y: 0 })
@@ -217,7 +219,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMat
 
   return (
     <>
-    <Tooltip content="Mantén pulsado o usa clic derecho para vista rápida" side="bottom">
+    <Tooltip content={hideHint ? null : "Mantén pulsado o usa clic derecho para vista rápida"} side="bottom">
     <button type="button"
       onClick={(event) => {
         if (suppressClickRef.current) {

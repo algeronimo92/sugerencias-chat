@@ -24,7 +24,7 @@ useGenerateSuggestions,
 useSuggestionStatus,
 } from "../../ai/public/useSuggestions";
 import { useWhatsappStatus } from "../../platform/public/useWhatsapp";
-import { useLayoutContext } from "../layoutContext";
+import { useLayoutContext, type ChatQuickFilter } from "../layoutContext";
 import { useMarkChatRead, useMarkChatUnread } from "../queries";
 import { useUnreadCount } from '../../leads/public/queries'
 import { useChat, useInfiniteChats } from '../../leads/public/queries'
@@ -33,8 +33,9 @@ import { useOpenChat } from "../useOpenChat";
 import { useChatNavigationShortcuts } from "../hooks/useChatNavigationShortcuts";
 import { ChatList } from "./ChatList";
 import { InboxPanel } from "./inbox/InboxPanel";
+import { InboxSheet } from "./inbox/InboxSheet";
 import { ChatListToolbar } from "./inbox/ChatListToolbar";
-import { BulkActionsBar } from "./inbox/BulkActionsBar";
+import { BulkActionsFooter, BulkSelectionHeader } from "./inbox/BulkActionsBar";
 import { useStoredToggle } from "../hooks/useStoredToggle";
 import { ChatThread } from "./ChatThread";
 
@@ -46,6 +47,13 @@ const SuggestionPanel = lazy(() =>
     default: module.SuggestionPanel,
   })),
 );
+
+const INBOX_LABELS: Record<ChatQuickFilter, string> = {
+  all: "Todas",
+  mine: "Mías",
+  unassigned: "Sin asignar",
+  unread: "No leídos",
+};
 
 function ConversationEmptyState() {
   return (
@@ -153,6 +161,8 @@ export function ChatWorkspace() {
   const [inboxesCollapsed, toggleInboxes] = useStoredToggle("inbox-panel-collapsed");
   // Modo selección de la lista: null = apagado; un Set (aunque vacío) = activo.
   const [selection, setSelection] = useState<Set<string> | null>(null);
+  // En el celular las bandejas van en una hoja inferior (doc 18 §6.5).
+  const [inboxSheetOpen, setInboxSheetOpen] = useState(false);
   // Se llegó a cambiar un dato del lead (?editar=…, p. ej. desde Catálogos):
   // fuera de escritorio la ficha vive en el panel deslizable, que arranca
   // cerrado; queda abierto mientras dure ese pedido.
@@ -346,22 +356,30 @@ export function ChatWorkspace() {
             <InboxPanel role={me?.role} filters={chatFilters} onCollapse={toggleInboxes} />
           </div>
         )}
+        {isMobile && (
+          <InboxSheet role={me?.role} filters={chatFilters} open={inboxSheetOpen} onOpenChange={setInboxSheetOpen} />
+        )}
         <div
           className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-72 shrink-0 2xl:w-[324px]"}`}
         >
           <ChatList
-            inboxPanelVisible={showInboxes && !inboxesCollapsed}
-            onShowInboxes={showInboxes && inboxesCollapsed ? toggleInboxes : undefined}
+            // En el celular la hoja de bandejas ya trae estos filtros: con
+            // ellos arriba quedaban cuatro filas de controles sobre los leads.
+            inboxPanelVisible={(showInboxes && !inboxesCollapsed) || isMobile}
+            inboxLabel={isMobile ? INBOX_LABELS[chatFilter] : undefined}
+            onShowInboxes={isMobile ? () => setInboxSheetOpen(true) : showInboxes && inboxesCollapsed ? toggleInboxes : undefined}
             toolbar={selection ? (
-              <BulkActionsBar
+              <BulkSelectionHeader
                 selected={selection}
                 visibleIds={chats.map((chat) => chat.chat_id)}
                 onSelectionChange={setSelection}
                 onCancel={() => setSelection(null)}
-                isAdmin={me?.role === "admin"}
               />
             ) : (
               <ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} onStartSelection={() => setSelection(new Set())} />
+            )}
+            footer={selection && (
+              <BulkActionsFooter selected={selection} onSelectionChange={setSelection} isAdmin={me?.role === "admin"} />
             )}
             selection={selection}
             onToggleSelected={(chatId) => setSelection((current) => {

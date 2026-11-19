@@ -2,6 +2,8 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import type { ReactNode } from 'react'
 
 export function Tooltip({ children, content, side = 'bottom' }: { children: ReactNode; content: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left' }) {
+  // Sin texto no hay globo: así quien lo usa puede apagarlo sin cambiar el árbol.
+  if (content == null || content === '') return <>{children}</>
   return (
     <TooltipPrimitive.Provider delayDuration={450} skipDelayDuration={150}>
       <TooltipPrimitive.Root>

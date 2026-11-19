@@ -38,7 +38,7 @@ export function DropdownMenu({ trigger, children, side = 'bottom', align = 'star
           align={align}
           sideOffset={8}
           collisionPadding={8}
-          className="ui-select-content z-[145] min-w-56 rounded-xl border border-line bg-surface-raised p-1 text-fg shadow-popover outline-none"
+          className="ui-select-content z-[145] max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-56 overflow-y-auto rounded-xl border border-line bg-surface-raised p-1 text-fg shadow-popover outline-none"
         >
           {header && (
             <>

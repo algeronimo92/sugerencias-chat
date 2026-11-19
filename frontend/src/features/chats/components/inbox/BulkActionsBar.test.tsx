@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createTestQueryClient, queryWrapper } from '../../../../test/queryWrapper'
 import { installFakeApi } from '../../../../test/fakeApi'
-import { BulkActionsBar } from './BulkActionsBar'
+import { BulkActionsFooter, BulkSelectionHeader } from './BulkActionsBar'
 
 const api = installFakeApi()
 
@@ -18,16 +18,13 @@ const STAGES = [
   { key: 'perdido', name: 'Perdido', color: '#f43f5e', position: 1, kind: 'lost', is_active: true },
 ]
 
-function Harness({ isAdmin, initial, onCancel }: { isAdmin: boolean; initial: string[]; onCancel?: () => void }) {
+function Harness({ isAdmin, initial }: { isAdmin: boolean; initial: string[] }) {
   const [selected, setSelected] = useState(new Set(initial))
   return (
-    <BulkActionsBar
-      selected={selected}
-      visibleIds={['a', 'b', 'c']}
-      onSelectionChange={setSelected}
-      onCancel={onCancel ?? (() => {})}
-      isAdmin={isAdmin}
-    />
+    <>
+      <BulkSelectionHeader selected={selected} visibleIds={['a', 'b', 'c']} onSelectionChange={setSelected} onCancel={() => {}} />
+      <BulkActionsFooter selected={selected} onSelectionChange={setSelected} isAdmin={isAdmin} />
+    </>
   )
 }
 
@@ -35,9 +32,9 @@ function renderBar(props: Parameters<typeof Harness>[0]) {
   return render(<Harness {...props} />, { wrapper: queryWrapper(createTestQueryClient()) })
 }
 
-async function choose(combobox: string, option: string) {
-  await userEvent.click(await screen.findByRole('combobox', { name: combobox }, SLOW))
-  await userEvent.click(await screen.findByRole('option', { name: option }, SLOW))
+async function choose(menu: string, item: string) {
+  await userEvent.click(await screen.findByRole('button', { name: menu }, SLOW))
+  await userEvent.click(await screen.findByRole('menuitem', { name: item }, SLOW))
 }
 
 describe('acciones masivas de la lista', () => {
@@ -47,15 +44,18 @@ describe('acciones masivas de la lista', () => {
     api.current.on('get', '/api/chats/sellers', { data: [{ id: 7, name: 'Ana Torres', role: 'vendedor' }] })
   })
 
-  it('"Seleccionar todos" marca los visibles y lo vuelve a quitar', async () => {
+  it('sin chats marcados no hay barra de acciones; "Seleccionar todos" marca los visibles', async () => {
     renderBar({ isAdmin: true, initial: [] })
 
-    expect(screen.getByRole('status')).toHaveTextContent('Elige chats')
+    expect(screen.getByText('Toca los chats para elegirlos')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Mover/ })).not.toBeInTheDocument()
+
     await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar todos los visibles' }))
     expect(screen.getByText('3 seleccionados')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Mover 3 chats a otra etapa' }, SLOW)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('checkbox', { name: 'Quitar la selección' }))
-    expect(screen.getByText('Elige chats')).toBeInTheDocument()
+    expect(screen.getByText('Toca los chats para elegirlos')).toBeInTheDocument()
   })
 
   it('asigna vendedora a todos y deja seleccionados los que fallaron', async () => {
@@ -82,8 +82,8 @@ describe('acciones masivas de la lista', () => {
   it('a la vendedora no le ofrece reasignar', async () => {
     renderBar({ isAdmin: false, initial: ['a'] })
 
-    await screen.findByRole('combobox', { name: 'Mover 1 chat a otra etapa' }, SLOW)
-    expect(screen.queryByRole('combobox', { name: /Asignar vendedora/ })).not.toBeInTheDocument()
+    await screen.findByRole('button', { name: 'Mover 1 chat a otra etapa' }, SLOW)
+    expect(screen.queryByRole('button', { name: /Asignar vendedora/ })).not.toBeInTheDocument()
   })
 
   it('mover a una etapa de perdido pide la razón antes', async () => {
