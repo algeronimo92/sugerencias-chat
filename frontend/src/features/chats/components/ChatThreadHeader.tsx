@@ -51,8 +51,9 @@ export function ChatThreadHeader({
           <p className="truncate text-base font-semibold leading-tight text-fg">{displayName(chat)}</p>
           <div className="mt-0.5 flex min-w-0 items-center gap-1 -ml-1">
             <LeadQuickFields chat={chat} isAdmin={isAdmin} />
-            <span className="text-xs text-fg-muted max-sm:hidden" aria-hidden="true">·</span>
-            <span className="min-w-0 shrink max-sm:hidden">
+            <span className="text-xs text-fg-muted" aria-hidden="true">·</span>
+            {/* Solo el tiempo: entra también en el celular. */}
+            <span className="min-w-0 shrink">
               <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
             </span>
           </div>
