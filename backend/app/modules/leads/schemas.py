@@ -233,6 +233,21 @@ class UnreadCount(BaseModel):
     count: int
 
 
+class InboxCounts(BaseModel):
+    """Chats en cada bandeja del panel lateral, con los filtros de la lista."""
+
+    all: int
+    unread: int
+    mine: int
+    unassigned: int
+    open: int
+    closed: int
+    # Último mensaje del cliente: esperan respuesta.
+    waiting: int
+    # Por clave de etapa; una etapa sin chats no aparece.
+    stages: dict[str, int]
+
+
 class PhoneConfig(BaseModel):
     default_country_code: str
 

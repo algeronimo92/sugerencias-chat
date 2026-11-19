@@ -16,12 +16,13 @@ from app.modules.leads.kanban_queries import KANBAN_PAGE_SIZE
 from app.modules.auth.public import get_current_user, list_active_sellers, require_admin
 from app.modules.catalogs.ports.custom_fields import CustomFieldError, normalize_values
 from app.modules.conversations.ports.chat_queries import LeadFilters, fetch_chat, fetch_chats, search_chat_messages
-from app.modules.conversations.ports.inbox_queries import fetch_total_unread_chat_count
+from app.modules.conversations.ports.inbox_queries import fetch_inbox_counts, fetch_total_unread_chat_count
 from app.modules.leads.application import commands
 from app.modules.leads.domain.lead import Actor
 from app.modules.leads.kanban_queries import fetch_kanban_counts, fetch_kanban_snapshot, fetch_kanban_stage
 from app.modules.leads.queries import list_lead_activity
 from app.modules.leads.schemas import (
+    InboxCounts,
     PhoneConfig,
     UnreadCount,
     Chat,
@@ -73,6 +74,8 @@ def _lead_filters(
     inactive_days: int | None = Query(default=None, ge=1, le=3650),
     waiting_time: str | None = Query(default=None, pattern="^(any|fresh|warning|urgent)$"),
     automation_paused: bool = False,
+    unassigned: bool = False,
+    conversation: str | None = Query(default=None, pattern="^(open|closed)$"),
 ) -> LeadFilters:
     """Los filtros de la bandeja, iguales para la lista de chats y para la
     búsqueda por mensaje."""
@@ -95,6 +98,8 @@ def _lead_filters(
         inactive_days=inactive_days,
         waiting_time=waiting_time,
         automation_paused=automation_paused,
+        unassigned=unassigned,
+        conversation=conversation,
     )
 
 
@@ -109,6 +114,9 @@ async def get_chats(
     # "Contactos" del buscador). Por defecto, también los que matchean por
     # un mensaje, como lo piden las versiones anteriores de la app.
     search_in: str = Query(default="all", pattern="^(all|contacts)$"),
+    # "waiting": solo los que esperan respuesta, del que más espera al que
+    # menos. Con una búsqueda no aplica.
+    order: str = Query(default="recent", pattern="^(recent|waiting)$"),
     filters: LeadFilters = Depends(_lead_filters),
 ):
     try:
@@ -120,6 +128,7 @@ async def get_chats(
             filters,
             cursor_rank,
             search_in,
+            order,
         )
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Filtros inválidos")
@@ -150,6 +159,16 @@ async def get_message_search(
 async def get_unread_count():
     """Cantidad de chats no leídos; solo baja al marcar uno como visto."""
     return {"count": await fetch_total_unread_chat_count()}
+
+
+@router.get("/counts", response_model=InboxCounts)
+async def get_inbox_counts(
+    filters: LeadFilters = Depends(_lead_filters),
+    user: User = Depends(get_current_user),
+):
+    """Chats en cada bandeja (todas, no leídos, mías, sin asignar, abiertas,
+    cerradas, esperando respuesta y por etapa), con los filtros de la lista."""
+    return await fetch_inbox_counts(filters, user.id)
 
 
 @router.get("/kanban/counts", response_model=dict[str, int])

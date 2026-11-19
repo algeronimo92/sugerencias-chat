@@ -416,6 +416,11 @@ class LeadFilters:
     inactive_days: int | None = None
     waiting_time: str | None = None
     automation_paused: bool = False
+    # Bandeja "Sin asignar". `seller_id=None` significa "cualquiera", así
+    # que hace falta un filtro aparte (doc 18 §6.1).
+    unassigned: bool = False
+    # Estado de la conversación: "open", "closed" o None (las dos).
+    conversation: str | None = None
 
     @property
     def needs_last_message(self) -> bool:
@@ -444,6 +449,12 @@ def _apply_lead_filters(stmt, last_message, filters: LeadFilters):
         stmt = stmt.where(Lead.servicio_interes.ilike(f"%{filters.service}%"))
     if filters.seller_id is not None:
         stmt = stmt.where(Lead.vendedor_id == filters.seller_id)
+    if filters.unassigned:
+        stmt = stmt.where(Lead.vendedor_id.is_(None))
+    if filters.conversation == "open":
+        stmt = stmt.where(Lead.conversacion_abierta.is_(True))
+    elif filters.conversation == "closed":
+        stmt = stmt.where(Lead.conversacion_abierta.is_(False))
     if filters.origin:
         stmt = stmt.where(Lead.origen.ilike(f"%{filters.origin}%"))
     if filters.last_sender in ("cliente", "vendedor"):
@@ -471,6 +482,25 @@ def _apply_lead_filters(stmt, last_message, filters: LeadFilters):
 SEARCH_IN_ALL = "all"
 SEARCH_IN_CONTACTS = "contacts"
 
+ORDER_RECENT = "recent"
+# "Quién espera más": solo los chats cuyo último mensaje es del cliente, del
+# que lleva más tiempo sin respuesta al más reciente. Es la cola de trabajo
+# de la vendedora; ordenar todos por espera mezclaría a los que ya se
+# atendieron.
+ORDER_WAITING = "waiting"
+
+
+def _waiting_cursor_condition(last_message, cursor_ts: str | None, cursor_id: str):
+    """Keyset del orden por espera (last_message.sent_at ASC, leads.id ASC).
+    Ese orden solo incluye chats con mensajes, así que no hay cola de nulos."""
+    if cursor_ts is None:
+        raise ValueError("El orden por espera necesita cursor_ts")
+    parsed_ts = _parse_ts(cursor_ts)
+    return or_(
+        last_message.c.sent_at > parsed_ts,
+        and_(last_message.c.sent_at == parsed_ts, Lead.id > cursor_id),
+    )
+
 
 async def fetch_chats(
     search: str | None = None,
@@ -480,8 +510,12 @@ async def fetch_chats(
     filters: LeadFilters | None = None,
     cursor_rank: int | None = None,
     search_in: str = SEARCH_IN_ALL,
+    order: str = ORDER_RECENT,
 ) -> dict:
-    """`search_in="contacts"` deja solo los leads que matchean por sus datos:
+    """`order="waiting"` es la cola de los que esperan respuesta (ver
+    ORDER_WAITING); con una búsqueda no aplica: manda la relevancia.
+
+    `search_in="contacts"` deja solo los leads que matchean por sus datos:
     los que matchean por un mensaje los lista `search_chat_messages`, uno por
     mensaje. El valor por defecto conserva la lista mezclada de antes, que
     siguen pidiendo las versiones anteriores de la app y la búsqueda de
@@ -507,6 +541,9 @@ async def fetch_chats(
         stmt = stmt.where(_contact_search_condition(search) if contacts_only else _chat_search_condition(search))
 
     stmt = _apply_lead_filters(stmt, last_message, filters)
+    by_waiting = order == ORDER_WAITING and not search
+    if by_waiting:
+        stmt = stmt.where(last_message.c.sender == "cliente")
 
     # El total va solo en la primera página de "Contactos": la sección muestra
     # unos pocos y dice cuántos hay. La lista sin búsqueda no lo necesita.
@@ -514,7 +551,9 @@ async def fetch_chats(
     if contacts_only and cursor_id is None:
         total_stmt = select(func.count()).select_from(stmt.with_only_columns(Lead.id).subquery())
 
-    if cursor_id is not None:
+    if cursor_id is not None and by_waiting:
+        stmt = stmt.where(_waiting_cursor_condition(last_message, cursor_ts, cursor_id))
+    elif cursor_id is not None:
         base_cursor = _cursor_condition(last_message, cursor_ts, cursor_id)
         if search:
             # El orden con búsqueda antepone search_rank DESC; el cursor
@@ -529,6 +568,8 @@ async def fetch_chats(
     # Se pide una fila de más para saber si hay página siguiente sin un
     # COUNT(*) aparte; se descarta antes de devolver los resultados.
     order_keys = [last_message.c.sent_at.desc().nulls_last(), Lead.id.desc()]
+    if by_waiting:
+        order_keys = [last_message.c.sent_at.asc(), Lead.id.asc()]
     if search:
         # Como WhatsApp: primero los chats cuyo nombre/datos matchean, después
         # los que solo matchean por un mensaje del historial.
