@@ -7,6 +7,9 @@ Create Date: 2026-11-19
 Una fila por llamada con un lead (docs/analisis/17-plan-llamadas-whatsapp.md,
 §4.3). Los índices únicos parciales garantizan una sola llamada viva por chat
 y una por agente, aunque lleguen eventos duplicados o desde dos workers.
+
+Plano tenant: corre en cada schema; donde no está ``leads`` (el schema
+``public`` de la plataforma) no hace nada.
 """
 
 from typing import Sequence, Union
@@ -22,6 +25,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if not _table_exists(op.get_bind(), "leads"):
+        return
     op.create_table('whatsapp_calls',
     sa.Column('id', sa.BigInteger(), nullable=False),
     sa.Column('wa_call_id', sa.Text(), nullable=True),
@@ -57,9 +62,19 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if not _table_exists(op.get_bind(), "whatsapp_calls"):
+        return
     op.drop_index('uq_whatsapp_calls_wa_call_id', table_name='whatsapp_calls', postgresql_where=sa.text('wa_call_id IS NOT NULL'))
     op.drop_index('uq_whatsapp_calls_live_chat', table_name='whatsapp_calls', postgresql_where=sa.text("status IN ('dialing', 'ringing', 'connecting', 'accepted')"))
     op.drop_index('uq_whatsapp_calls_live_agent', table_name='whatsapp_calls', postgresql_where=sa.text("status IN ('dialing', 'connecting', 'accepted') AND handled_by_user_id IS NOT NULL"))
     op.drop_index('idx_whatsapp_calls_open', table_name='whatsapp_calls', postgresql_where=sa.text("status IN ('dialing', 'ringing', 'connecting', 'accepted')"))
     op.drop_index('idx_whatsapp_calls_chat', table_name='whatsapp_calls')
     op.drop_table('whatsapp_calls')
+
+
+def _table_exists(bind, table: str) -> bool:
+    """En el schema activo (el del negocio que se está migrando)."""
+    return bind.execute(sa.text(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = current_schema() AND table_name = :table"
+    ), {"table": table}).first() is not None
