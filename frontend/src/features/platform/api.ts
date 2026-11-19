@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppUser, AsistenteNegocio, CallingReadiness, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, CallingReadiness, CallingSettings, CallingUpdate, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -44,6 +44,16 @@ export async function fetchStatus(): Promise<WhatsappStatus> {
 
 export async function fetchCallingReadiness(): Promise<CallingReadiness> {
   const { data } = await client.get<ApiResponse<'/api/whatsapp/calling-readiness', 'get'>>('/api/whatsapp/calling-readiness')
+  return data
+}
+
+export async function fetchCallingSettings(): Promise<CallingSettings> {
+  const { data } = await client.get<ApiResponse<'/api/whatsapp/calling', 'get'>>('/api/whatsapp/calling')
+  return data
+}
+
+export async function saveCallingSettings(payload: CallingUpdate): Promise<CallingSettings> {
+  const { data } = await client.put<ApiResponse<'/api/whatsapp/calling', 'put'>>('/api/whatsapp/calling', payload)
   return data
 }
 

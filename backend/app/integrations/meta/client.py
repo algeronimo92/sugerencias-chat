@@ -451,6 +451,21 @@ async def get_calling_requirements() -> dict[str, Any]:
     }
 
 
+async def get_calling_settings() -> dict[str, Any]:
+    """La configuración de llamadas del número del CRM, como la guarda Meta."""
+    token, phone_number_id, _waba_id = await _config()
+    body = await _request("GET", _graph_url(f"{phone_number_id}/settings"), token, timeout=20.0)
+    calling = (body or {}).get("calling")
+    return calling if isinstance(calling, dict) else {}
+
+
+async def update_calling_settings(calling: dict[str, Any]) -> None:
+    token, phone_number_id, _waba_id = await _config()
+    await _request(
+        "POST", _graph_url(f"{phone_number_id}/settings"), token, json_body={"calling": calling}, timeout=20.0,
+    )
+
+
 # Una llamada no puede esperar lo que espera un mensaje: el cliente está en
 # línea. Pasado esto, el resultado se da por incierto.
 CALL_TIMEOUT_SECONDS = 8.0

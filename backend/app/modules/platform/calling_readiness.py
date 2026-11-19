@@ -68,3 +68,56 @@ def _readiness(
         "messaging_limit": messaging_limit,
         "messaging_limit_ok": messaging_limit_ok,
     }
+
+
+DAYS = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY")
+_TIME_RE = re.compile(r"^([01]\d|2[0-3])[0-5]\d$")
+
+
+class InvalidCallHours(ValueError):
+    pass
+
+
+def calling_from_meta(calling: dict[str, Any]) -> dict[str, Any]:
+    """Lo que la pantalla necesita de la configuración de Meta: si están
+    activas y el horario semanal. Lo demás (SIP, buzón) no se usa."""
+    hours = calling.get("call_hours") if isinstance(calling.get("call_hours"), dict) else {}
+    slots = [
+        {"day": slot.get("day_of_week"), "open": slot.get("open_time"), "close": slot.get("close_time")}
+        for slot in hours.get("weekly_operating_hours") or []
+        if isinstance(slot, dict) and slot.get("day_of_week") in DAYS
+    ]
+    return {
+        "enabled": calling.get("status") == "ENABLED",
+        "hours_enabled": hours.get("status") == "ENABLED",
+        "hours": slots,
+    }
+
+
+def calling_for_meta(*, enabled: bool, hours: list[dict[str, str]], timezone: str) -> dict[str, Any]:
+    """El cuerpo para Meta. El botón de llamar queda visible para todos los
+    clientes y quien llamó puede ser llamado de vuelta sin pedirle permiso:
+    son decisiones de producto, no opciones (plan §4.7). Con las llamadas
+    activas el horario es obligatorio: sin él, cada llamada fuera de hora
+    queda sin atender y Meta oculta el botón por baja atención."""
+    if not enabled:
+        return {"status": "DISABLED"}
+    if not hours:
+        raise InvalidCallHours("Para activar las llamadas hay que indicar el horario de atención")
+    per_day: dict[str, int] = {}
+    slots = []
+    for slot in hours:
+        day, open_time, close_time = slot.get("day"), slot.get("open") or "", slot.get("close") or ""
+        if day not in DAYS or not _TIME_RE.match(open_time) or not _TIME_RE.match(close_time) or open_time >= close_time:
+            raise InvalidCallHours("El horario de llamadas no es válido")
+        per_day[day] = per_day.get(day, 0) + 1
+        if per_day[day] > 2:
+            raise InvalidCallHours("Meta admite como máximo dos tramos por día")
+        slots.append({"day_of_week": day, "open_time": open_time, "close_time": close_time})
+    return {
+        "status": "ENABLED",
+        "call_icon_visibility": "DEFAULT",
+        "callback_permission_status": "ENABLED",
+        "call_hours": {"status": "ENABLED", "timezone_id": timezone, "weekly_operating_hours": slots},
+    }
+

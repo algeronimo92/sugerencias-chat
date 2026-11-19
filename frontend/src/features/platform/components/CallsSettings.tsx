@@ -4,6 +4,7 @@ import { MIGRATION_CHANGES, canReceiveCallsPermission, messagingLimitLabel, read
 import { useUsers } from '../hooks/useUsers'
 import { useCallingReadiness } from '../hooks/useWhatsapp'
 import type { CallingReadiness } from '../types'
+import { CallsActivation } from './CallsActivation'
 import { UserCallsSwitch } from './UserCallsSwitch'
 
 const muted = 'text-wa-muted dark:text-wa-muted-dark'
@@ -69,6 +70,12 @@ function Readiness() {
   return <ReadinessNotice readiness={data} onRetry={() => refetch()} retrying={isFetching} />
 }
 
+/** Activar solo se ofrece con el número listo: en cualquier otro estado Meta lo rechazaría. */
+function Activation() {
+  const { data } = useCallingReadiness()
+  return data?.state === 'ready' ? <CallsActivation /> : null
+}
+
 function Agents() {
   const { data: users, isLoading, isError } = useUsers(true)
   const candidates = (users ?? []).filter(canReceiveCallsPermission).sort((a, b) => a.name.localeCompare(b.name))
@@ -114,6 +121,7 @@ export function CallsSettings() {
       </p>
       <Readiness />
       <Agents />
+      <Activation />
     </section>
   )
 }

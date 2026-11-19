@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
 from app.core.events import Phase, subscribe
 from app.modules.appointments.public import AppointmentCreated
-from app.modules.auth.ports.users import list_active_sellers
-from app.modules.conversations.public import NoteMentionsAdded, NoteMentionsRead
+from app.db.uow import collect
+from app.modules.auth.ports.users import list_active_sellers, list_call_agents
+from app.modules.conversations.public import CallEnded, CallRinging, NoteMentionsAdded, NoteMentionsRead
 from app.modules.issue_reports.ports.service import list_active_admin_ids
 from app.modules.notifications.events import NotificationCreated, NotificationsRead
 from app.modules.notifications.push_service import send_push_to_user
@@ -101,3 +103,54 @@ async def deliver_notification(event: NotificationCreated) -> None:
     except Exception:
         # La notificación ya quedó guardada; un fallo del push no la deshace.
         logger.exception("No se pudo enviar push de la notificación a user %s", event.user_id)
+
+
+def _caller(name: str | None) -> str:
+    return f"De {name}" if name else "De un cliente"
+
+
+@subscribe(CallEnded, phase=Phase.TRANSACTION)
+async def record_missed_call(event: CallEnded) -> None:
+    """La llamada perdida queda en la campanita de quienes atienden. Va en la
+    misma transacción que cierra la llamada: lo que corre después del commit
+    se ejecuta una sola vez, y si el proceso muere ahí el aviso no existiría
+    nunca. El timbre por push y el WebSocket sí pueden perderse; esto no."""
+    if event.status != "missed":
+        return
+    for agent in await list_call_agents():
+        notification = await create_system_notification(
+            agent["id"], NotificationType.MISSED_CALL, "Llamada perdida", _caller(event.caller_name),
+            lead_id=event.chat_id, source_id=str(event.call_id),
+            metadata={"call_id": event.call_id, "cause": event.cause},
+        )
+        collect(NotificationCreated(
+            user_id=agent["id"], notification=notification, push_title="Llamada perdida",
+            push_body=_caller(event.caller_name), push_url=f"/chat/{event.chat_id}",
+            # El mismo tag que el timbre: en el celular lo reemplaza en vez de apilarse.
+            push_tag=f"call-{event.call_id}",
+        ))
+
+
+# Los push del timbre salen sin esperar: se mandan de a uno y cada envío puede
+# tardar, y este handler corre dentro del carril de llamadas del webhook. Se
+# guarda la referencia para que el recolector no cancele la tarea a medias.
+_ring_pushes: set[asyncio.Task] = set()
+
+
+async def _push_ring(user_ids: list[int], body: str, chat_id: str, call_id: int) -> None:
+    for user_id in user_ids:
+        try:
+            await send_push_to_user(user_id, "Llamada entrante", body, f"/chat/{chat_id}", tag=f"call-{call_id}")
+        except Exception:
+            logger.exception("No se pudo enviar el push de llamada entrante a user %s", user_id)
+
+
+@subscribe(CallRinging, phase=Phase.AFTER_COMMIT)
+async def push_incoming_call(event: CallRinging) -> None:
+    """Para quien tiene el CRM cerrado o en segundo plano: con la app a la
+    vista ya suena por el WebSocket y el service worker no muestra el push."""
+    user_ids = [agent["id"] for agent in await list_call_agents()]
+    task = asyncio.create_task(_push_ring(user_ids, _caller(event.caller_name), event.chat_id, event.call_id))
+    _ring_pushes.add(task)
+    task.add_done_callback(_ring_pushes.discard)
+

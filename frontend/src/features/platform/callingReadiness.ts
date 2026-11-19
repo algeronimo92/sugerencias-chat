@@ -59,7 +59,7 @@ export function readinessCopy(readiness: CallingReadiness): ReadinessCopy {
       return {
         tone: 'ok',
         title: 'El número cumple los requisitos de Meta para llamadas',
-        body: 'Ya puedes elegir quiénes atenderán. Activar las llamadas llega en una próxima versión del CRM.',
+        body: 'Elige quiénes atienden y actívalas abajo, con su horario.',
       }
     default:
       return {
@@ -82,3 +82,41 @@ export const MIGRATION_CHANGES = [
   'Las llamadas se atienden solo desde el CRM, por las personas que elijas abajo. Con el CRM cerrado no suena como un teléfono: llega una notificación.',
   'Los chats y el historial del CRM no cambian.',
 ] as const
+
+export const WEEK_DAYS = [
+  ['MONDAY', 'Lun'], ['TUESDAY', 'Mar'], ['WEDNESDAY', 'Mié'], ['THURSDAY', 'Jue'],
+  ['FRIDAY', 'Vie'], ['SATURDAY', 'Sáb'], ['SUNDAY', 'Dom'],
+] as const
+export type WeekDay = typeof WEEK_DAYS[number][0]
+
+export interface HoursForm {
+  days: WeekDay[]
+  /** "HH:MM", como lo da un campo de hora. */
+  open: string
+  close: string
+}
+
+export const DEFAULT_HOURS: HoursForm = { days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'], open: '09:00', close: '19:00' }
+
+/** El formulario maneja un solo tramo para los días elegidos: es lo que usa
+ *  una clínica. Si en Meta hay algo más fino, se muestra su primer tramo. */
+export function hoursFormFrom(slots: { day: string; open: string; close: string }[]): HoursForm {
+  if (slots.length === 0) return DEFAULT_HOURS
+  const [first] = slots
+  const colon = (value: string) => `${value.slice(0, 2)}:${value.slice(2, 4)}`
+  return {
+    days: WEEK_DAYS.map(([day]) => day).filter(day => slots.some(slot => slot.day === day)),
+    open: colon(first.open),
+    close: colon(first.close),
+  }
+}
+
+export function hoursSlots(form: HoursForm): { day: WeekDay; open: string; close: string }[] {
+  return form.days.map(day => ({ day, open: form.open.replace(':', ''), close: form.close.replace(':', '') }))
+}
+
+export function hoursError(form: HoursForm): string | null {
+  if (form.days.length === 0) return 'Elige al menos un día'
+  if (!form.open || !form.close || form.open >= form.close) return 'La hora de cierre tiene que ser posterior a la de apertura'
+  return null
+}

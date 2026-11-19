@@ -172,3 +172,100 @@ def test_when_meta_does_not_answer_the_state_is_not_invented(client, monkeypatch
 
     assert response.status_code == 502
     assert "Meta no respondió" in response.json()["detail"]
+
+
+# --- Activar las llamadas y su horario ------------------------------------
+
+from app.modules.platform.calling_readiness import InvalidCallHours, calling_for_meta, calling_from_meta  # noqa: E402
+
+WEEKDAY = {"day": "MONDAY", "open": "0900", "close": "1900"}
+
+
+def test_enabling_sends_the_hours_and_the_product_decisions():
+    assert calling_for_meta(enabled=True, hours=[WEEKDAY], timezone="America/Lima") == {
+        "status": "ENABLED",
+        # Decisiones de producto, no opciones: botón visible para todos y
+        # devolver llamadas sin pedir permiso.
+        "call_icon_visibility": "DEFAULT",
+        "callback_permission_status": "ENABLED",
+        "call_hours": {
+            "status": "ENABLED", "timezone_id": "America/Lima",
+            "weekly_operating_hours": [{"day_of_week": "MONDAY", "open_time": "0900", "close_time": "1900"}],
+        },
+    }
+    assert calling_for_meta(enabled=False, hours=[], timezone="America/Lima") == {"status": "DISABLED"}
+
+
+@pytest.mark.parametrize("hours", [
+    [],
+    [{"day": "MONDAY", "open": "1900", "close": "0900"}],
+    [{"day": "MONDAY", "open": "2500", "close": "2600"}],
+    [{"day": "LUNES", "open": "0900", "close": "1900"}],
+    [WEEKDAY, {"day": "MONDAY", "open": "2000", "close": "2100"}, {"day": "MONDAY", "open": "2200", "close": "2300"}],
+])
+def test_calls_are_not_enabled_without_valid_hours(hours):
+    with pytest.raises(InvalidCallHours):
+        calling_for_meta(enabled=True, hours=hours, timezone="America/Lima")
+
+
+def test_meta_settings_are_read_back_for_the_screen():
+    assert calling_from_meta({
+        "status": "ENABLED",
+        "call_hours": {"status": "ENABLED", "weekly_operating_hours": [{"day_of_week": "MONDAY", "open_time": "0900", "close_time": "1900"}]},
+    }) == {"enabled": True, "hours_enabled": True, "hours": [WEEKDAY]}
+    assert calling_from_meta({}) == {"enabled": False, "hours_enabled": False, "hours": []}
+
+
+@pytest.fixture
+def calling(client, monkeypatch):
+    monkeypatch.setattr(whatsapp_api.meta_service, "get_calling_settings", AsyncMock(return_value={"status": "ENABLED"}))
+    monkeypatch.setattr(whatsapp_api.meta_service, "update_calling_settings", AsyncMock())
+    monkeypatch.setattr(whatsapp_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}]))
+    monkeypatch.setattr(whatsapp_api, "get_effective_many", AsyncMock(return_value={"business_timezone": "America/Lima"}))
+    monkeypatch.setattr(whatsapp_api, "update_settings", AsyncMock())
+    return client
+
+
+def test_enabling_calls_configures_meta_and_the_permission_request(calling):
+    response = calling.put("/api/whatsapp/calling", json={"enabled": True, "hours": [WEEKDAY]})
+
+    assert response.status_code == 200
+    assert response.json() == {"enabled": True, "hours_enabled": False, "hours": [], "agents": 1}
+    sent = whatsapp_api.meta_service.update_calling_settings.await_args.args[0]
+    assert sent["status"] == "ENABLED" and sent["call_hours"]["timezone_id"] == "America/Lima"
+    whatsapp_api.update_settings.assert_awaited_once_with({"meta_call_permission_enabled": "true"})
+
+
+def test_calls_are_not_enabled_while_nobody_answers(calling, monkeypatch):
+    monkeypatch.setattr(whatsapp_api, "list_call_agents", AsyncMock(return_value=[]))
+
+    response = calling.put("/api/whatsapp/calling", json={"enabled": True, "hours": [WEEKDAY]})
+
+    assert response.status_code == 409
+    whatsapp_api.meta_service.update_calling_settings.assert_not_awaited()
+
+
+def test_enabling_without_hours_is_refused_before_asking_meta(calling):
+    response = calling.put("/api/whatsapp/calling", json={"enabled": True, "hours": []})
+
+    assert response.status_code == 422
+    whatsapp_api.meta_service.update_calling_settings.assert_not_awaited()
+
+
+def test_a_refusal_from_meta_does_not_flip_the_permission_request(calling):
+    whatsapp_api.meta_service.update_calling_settings.side_effect = meta_service.MetaApiError("138015", status_code=400)
+
+    response = calling.put("/api/whatsapp/calling", json={"enabled": True, "hours": [WEEKDAY]})
+
+    assert response.status_code == 502
+    whatsapp_api.update_settings.assert_not_awaited()
+
+
+def test_disabling_needs_neither_hours_nor_agents(calling, monkeypatch):
+    monkeypatch.setattr(whatsapp_api, "list_call_agents", AsyncMock(return_value=[]))
+
+    response = calling.put("/api/whatsapp/calling", json={"enabled": False})
+
+    assert response.status_code == 200
+    assert whatsapp_api.meta_service.update_calling_settings.await_args.args[0] == {"status": "DISABLED"}
+    whatsapp_api.update_settings.assert_awaited_once_with({"meta_call_permission_enabled": "false"})

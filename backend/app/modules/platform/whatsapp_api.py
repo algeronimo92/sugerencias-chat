@@ -19,8 +19,20 @@ from app.modules.leads.ports.ad_conversions import (
 from app.modules.leads.schemas import MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate
 from app.modules.platform.meta_costs import sync_all_meta_costs
 from app.modules.platform.meta_costs_queries import monthly_costs
-from app.modules.platform.calling_readiness import calling_readiness
-from app.modules.platform.schemas import WhatsappCallingReadiness, WhatsappCostsSummary, WhatsappStatusItem
+from app.modules.auth.ports.users import list_call_agents
+from app.modules.platform.calling_readiness import (
+    InvalidCallHours,
+    calling_for_meta,
+    calling_from_meta,
+    calling_readiness,
+)
+from app.modules.platform.schemas import (
+    WhatsappCallingReadiness,
+    WhatsappCallingSettings,
+    WhatsappCallingUpdate,
+    WhatsappCostsSummary,
+    WhatsappStatusItem,
+)
 from app.modules.platform.settings_service import get_effective_many, update_settings
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
@@ -51,6 +63,55 @@ async def whatsapp_calling_readiness():
         logger.warning("No se pudo consultar a Meta el estado para llamadas: %s", exc)
         raise HTTPException(502, "Meta no respondió. Intenta de nuevo en unos minutos.")
     return calling_readiness(requirements)
+
+
+CALL_PERMISSION_KEY = "meta_call_permission_enabled"
+
+
+async def _calling_settings() -> dict:
+    try:
+        calling = await meta_service.get_calling_settings()
+    except (meta_service.MetaApiError, httpx.HTTPError) as exc:
+        logger.warning("No se pudo leer la configuración de llamadas de Meta: %s", exc)
+        raise HTTPException(502, "Meta no respondió. Intenta de nuevo en unos minutos.")
+    return {**calling_from_meta(calling), "agents": len(await list_call_agents())}
+
+
+@router.get("/calling", response_model=WhatsappCallingSettings)
+async def whatsapp_calling():
+    """Si las llamadas están activas en el número y con qué horario."""
+    if not await meta_service.is_configured():
+        raise HTTPException(409, "WhatsApp no está conectado")
+    return await _calling_settings()
+
+
+@router.put("/calling", response_model=WhatsappCallingSettings)
+async def update_whatsapp_calling(body: WhatsappCallingUpdate):
+    """Activa o desactiva las llamadas en Meta y fija su horario. No se
+    activan sin nadie que atienda: sonarían en el vacío y Meta oculta el
+    botón de llamar cuando pocas llamadas se atienden."""
+    if not await meta_service.is_configured():
+        raise HTTPException(409, "WhatsApp no está conectado")
+    if body.enabled and not await list_call_agents():
+        raise HTTPException(409, "Elige primero quiénes atienden las llamadas")
+    timezone = (await get_effective_many(("business_timezone",)))["business_timezone"].strip() or "America/Lima"
+    try:
+        calling = calling_for_meta(
+            enabled=body.enabled, hours=[slot.model_dump() for slot in body.hours], timezone=timezone,
+        )
+    except InvalidCallHours as exc:
+        raise HTTPException(422, str(exc))
+    try:
+        await meta_service.update_calling_settings(calling)
+    except meta_service.MetaApiError as exc:
+        logger.warning("Meta no aceptó la configuración de llamadas: %s", exc)
+        raise HTTPException(502, "Meta no aceptó el cambio. Revisa que el número cumpla los requisitos para llamadas.")
+    except httpx.HTTPError as exc:
+        logger.warning("Meta no respondió al configurar llamadas: %s", exc)
+        raise HTTPException(502, "Meta no respondió. Intenta de nuevo en unos minutos.")
+    # El pedido de permiso de llamada del chat sigue al estado real en Meta.
+    await update_settings({CALL_PERMISSION_KEY: "true" if body.enabled else "false"})
+    return await _calling_settings()
 
 
 def _month(value: str | None) -> date:

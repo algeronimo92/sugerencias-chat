@@ -8,10 +8,14 @@ const mocks = vi.hoisted(() => ({
   readiness: { data: null as Record<string, unknown> | null, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() },
   users: [] as Record<string, unknown>[],
   update: vi.fn(),
+  save: vi.fn(),
+  calling: { enabled: false, hours_enabled: false, hours: [], agents: 1 } as Record<string, unknown>,
 }))
 
 vi.mock('../hooks/useWhatsapp', () => ({
   useCallingReadiness: () => mocks.readiness,
+  useCallingSettings: () => ({ data: mocks.calling, isLoading: false, isError: false, refetch: vi.fn() }),
+  useSaveCallingSettings: () => ({ mutate: mocks.save, isPending: false }),
 }))
 vi.mock('../hooks/useUsers', () => ({
   useUsers: () => ({ data: mocks.users, isLoading: false, isError: false }),
@@ -32,6 +36,8 @@ describe('CallsSettings', () => {
     mocks.readiness = { data: readiness(), isLoading: false, isError: false, isFetching: false, refetch: vi.fn() }
     mocks.users = []
     mocks.update.mockReset()
+    mocks.save.mockReset()
+    mocks.calling = { enabled: false, hours_enabled: false, hours: [], agents: 1 }
   })
 
   it('con el número en la app de WhatsApp Business avisa que hay que mudarlo y qué cambia', () => {
@@ -51,10 +57,16 @@ describe('CallsSettings', () => {
     expect(screen.getByText(/\(hoy: 250\)/)).toBeInTheDocument()
   })
 
-  it('listo: no promete que las llamadas ya funcionan y muestra el límite', () => {
+  it('listo: muestra el límite y deja activar con el horario elegido', async () => {
+    const userEvents = userEvent.setup()
     render(<CallsSettings />)
 
-    expect(screen.getByText(/próxima versión/)).toBeInTheDocument()
+    await userEvents.click(screen.getByRole('button', { name: 'Sáb' }))
+    await userEvents.click(screen.getByRole('button', { name: 'Activar llamadas' }))
+    expect(mocks.save).toHaveBeenCalledWith(
+      { enabled: true, hours: expect.arrayContaining([{ day: 'SATURDAY', open: '0900', close: '1900' }]) },
+      expect.anything(),
+    )
     expect(screen.getByText('Límite de mensajes de la cuenta: 2000 por día.')).toBeInTheDocument()
   })
 
@@ -94,6 +106,21 @@ describe('CallsSettings', () => {
 
     await userEvents.click(screen.getByRole('switch', { name: 'Bea atiende llamadas' }))
     expect(mocks.update).toHaveBeenCalledWith({ id: 2, can_handle_calls: true }, expect.anything())
+  })
+
+  it('sin nadie que atienda no deja activar', () => {
+    mocks.calling = { enabled: false, hours_enabled: false, hours: [], agents: 0 }
+    render(<CallsSettings />)
+
+    expect(screen.getByRole('button', { name: 'Activar llamadas' })).toBeDisabled()
+    expect(screen.getByText(/sonarían en el vacío/)).toBeInTheDocument()
+  })
+
+  it('mientras haya que mudar el número no ofrece activar', () => {
+    mocks.readiness.data = readiness({ state: 'requires_migration', on_business_app: true })
+    render(<CallsSettings />)
+
+    expect(screen.queryByRole('button', { name: 'Activar llamadas' })).not.toBeInTheDocument()
   })
 
   it('sin nadie elegido lo dice', () => {

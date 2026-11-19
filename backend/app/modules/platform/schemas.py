@@ -184,6 +184,26 @@ class WhatsappCallingReadiness(BaseModel):
     messaging_limit_ok: bool | None = None
 
 
+class CallHoursSlot(BaseModel):
+    day: Literal["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+    # "HHMM", como lo pide Meta.
+    open: str = Field(pattern=r"^\d{4}$")
+    close: str = Field(pattern=r"^\d{4}$")
+
+
+class WhatsappCallingSettings(BaseModel):
+    enabled: bool
+    hours_enabled: bool = False
+    hours: list[CallHoursSlot] = []
+    # Cuántas personas tienen el permiso de atender.
+    agents: int = 0
+
+
+class WhatsappCallingUpdate(BaseModel):
+    enabled: bool
+    hours: list[CallHoursSlot] = []
+
+
 class WhatsappCostAccount(BaseModel):
     """Lo de una WABA en el mes: ``chats`` (la del CRM) o ``notices`` (la
     propia del número de avisos de cita)."""

@@ -370,3 +370,35 @@ async def test_a_connect_that_arrives_late_does_not_ring(tenant, seen) -> None:
         )
         assert (row["status"], row["cause"]) == ("missed", "late_notice")
     assert [type(event).__name__ for event in seen] == ["CallEnded"]
+
+
+async def _notifications(call_id: int) -> list[tuple[int, str, str]]:
+    async with get_sessionmaker()() as session:
+        rows = await session.execute(text(
+            "SELECT user_id, notification_type, body FROM user_notifications WHERE source_id = :id ORDER BY user_id"
+        ), {"id": str(call_id)})
+        return [tuple(row) for row in rows]
+
+
+async def test_a_missed_call_is_left_in_the_bell_of_everyone_who_answers(tenant, meta_calls, seen) -> None:
+    context, _phone, _ids = tenant
+    missed, answered = _wacid(), _wacid()
+    with tenant_context(context):
+        ana, bea = await _agents("Ana", "Bea")
+    await _deliver(tenant, _connect(missed))
+    await _deliver(tenant, _terminate(missed))
+    # Un aviso repetido de Meta no deja una segunda notificación.
+    await _deliver(tenant, _terminate(missed, biz="dup"))
+
+    await _deliver(tenant, _connect(answered, phone="51999000222"))
+    with tenant_context(context):
+        row = await _call(answered)
+        await calls.answer_call(row["id"], user_id=ana, client_id="a", sdp=ANSWER)
+    await _deliver(tenant, _terminate(answered, phone="51999000222", duration=30, start_time="1700000000", end_time="1700000030"))
+
+    with tenant_context(context):
+        missed_id = (await _call(missed))["id"]
+        assert await _notifications(missed_id) == [
+            (ana, "missed_call", "De Josefina"), (bea, "missed_call", "De Josefina"),
+        ]
+        assert await _notifications((await _call(answered))["id"]) == []

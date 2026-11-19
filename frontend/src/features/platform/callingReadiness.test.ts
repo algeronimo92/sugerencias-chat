@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { canReceiveCallsPermission, messagingLimitLabel, readinessCopy } from './callingReadiness'
+import { DEFAULT_HOURS, canReceiveCallsPermission, hoursError, hoursFormFrom, hoursSlots, messagingLimitLabel, readinessCopy } from './callingReadiness'
 import type { AppUser, CallingReadiness } from './types'
 
 const readiness = (overrides: Partial<CallingReadiness> = {}): CallingReadiness => ({
@@ -38,8 +38,8 @@ describe('readinessCopy', () => {
     expect(copy.body).toContain('(hoy: 250)')
   })
 
-  it('no promete que las llamadas ya funcionan', () => {
-    expect(readinessCopy(readiness()).body).toMatch(/próxima versión/)
+  it('listo: manda a activarlas', () => {
+    expect(readinessCopy(readiness()).body).toMatch(/actívalas abajo/)
   })
 })
 
@@ -52,5 +52,23 @@ describe('canReceiveCallsPermission', () => {
     [user({ is_active: false, invitation_pending: true }), true],
   ])('%#', (candidate, expected) => {
     expect(canReceiveCallsPermission(candidate)).toBe(expected)
+  })
+})
+
+describe('horario de llamadas', () => {
+  it('va y vuelve del formato de Meta', () => {
+    const slots = hoursSlots({ days: ['MONDAY', 'SATURDAY'], open: '09:30', close: '18:00' })
+    expect(slots).toEqual([
+      { day: 'MONDAY', open: '0930', close: '1800' },
+      { day: 'SATURDAY', open: '0930', close: '1800' },
+    ])
+    expect(hoursFormFrom(slots)).toEqual({ days: ['MONDAY', 'SATURDAY'], open: '09:30', close: '18:00' })
+    expect(hoursFormFrom([])).toEqual(DEFAULT_HOURS)
+  })
+
+  it('no acepta sin días ni con el cierre antes de la apertura', () => {
+    expect(hoursError(DEFAULT_HOURS)).toBeNull()
+    expect(hoursError({ ...DEFAULT_HOURS, days: [] })).toMatch(/un día/)
+    expect(hoursError({ ...DEFAULT_HOURS, open: '19:00', close: '09:00' })).toMatch(/cierre/)
   })
 })

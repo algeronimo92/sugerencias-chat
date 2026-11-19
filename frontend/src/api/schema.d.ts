@@ -2005,6 +2005,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/calling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Calling
+         * @description Si las llamadas están activas en el número y con qué horario.
+         */
+        get: operations["whatsapp_calling_api_whatsapp_calling_get"];
+        /**
+         * Update Whatsapp Calling
+         * @description Activa o desactiva las llamadas en Meta y fija su horario. No se
+         *     activan sin nadie que atienda: sonarían en el vacío y Meta oculta el
+         *     botón de llamar cuando pocas llamadas se atienden.
+         */
+        put: operations["update_whatsapp_calling_api_whatsapp_calling_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/whatsapp/costs": {
         parameters: {
             query?: never;
@@ -4837,6 +4863,18 @@ export interface components {
             /** Cause */
             cause?: string | null;
         };
+        /** CallHoursSlot */
+        CallHoursSlot: {
+            /**
+             * Day
+             * @enum {string}
+             */
+            day: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+            /** Open */
+            open: string;
+            /** Close */
+            close: string;
+        };
         /**
          * CallItem
          * @description Una llamada de WhatsApp como la ve la pantalla. Nunca trae la oferta SDP.
@@ -7326,7 +7364,7 @@ export interface components {
          * NotificationType
          * @enum {string}
          */
-        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed";
+        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed" | "missed_call";
         /** OnboardingStatus */
         OnboardingStatus: {
             /** Steps */
@@ -8516,6 +8554,36 @@ export interface components {
             messaging_limit?: string | null;
             /** Messaging Limit Ok */
             messaging_limit_ok?: boolean | null;
+        };
+        /** WhatsappCallingSettings */
+        WhatsappCallingSettings: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Hours Enabled
+             * @default false
+             */
+            hours_enabled: boolean;
+            /**
+             * Hours
+             * @default []
+             */
+            hours: components["schemas"]["CallHoursSlot"][];
+            /**
+             * Agents
+             * @default 0
+             */
+            agents: number;
+        };
+        /** WhatsappCallingUpdate */
+        WhatsappCallingUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Hours
+             * @default []
+             */
+            hours: components["schemas"]["CallHoursSlot"][];
         };
         /**
          * WhatsappCostAccount
@@ -12468,6 +12536,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WhatsappCallingReadiness"];
+                };
+            };
+        };
+    };
+    whatsapp_calling_api_whatsapp_calling_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCallingSettings"];
+                };
+            };
+        };
+    };
+    update_whatsapp_calling_api_whatsapp_calling_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatsappCallingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCallingSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

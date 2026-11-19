@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchCallingReadiness, fetchMetaConversionEvents, fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
+import { fetchCallingReadiness, fetchCallingSettings, saveCallingSettings, fetchMetaConversionEvents, fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
 
@@ -36,6 +36,19 @@ export function useCallingReadiness(enabled = true) {
     enabled,
     staleTime: 0,
     retry: false,
+  })
+}
+
+/** Si las llamadas están activas en el número y su horario, leído de Meta. */
+export function useCallingSettings(enabled = true) {
+  return useQuery({ queryKey: whatsappKeys.calling, queryFn: fetchCallingSettings, enabled, retry: false })
+}
+
+export function useSaveCallingSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: saveCallingSettings,
+    onSuccess: (data) => queryClient.setQueryData(whatsappKeys.calling, data),
   })
 }
 

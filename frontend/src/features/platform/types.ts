@@ -41,6 +41,10 @@ export type WhatsappStatus = Delivered<ApiSchemas['WhatsappStatusItem']>
 export type WhatsappState = WhatsappStatus['state']
 /** Si el número puede activar las llamadas de WhatsApp, según Meta. */
 export type CallingReadiness = Delivered<ApiSchemas['WhatsappCallingReadiness']>
+/** Si las llamadas están activas en Meta y con qué horario. */
+export type CallingSettings = Delivered<ApiSchemas['WhatsappCallingSettings']>
+export type CallingUpdate = ApiSchemas['WhatsappCallingUpdate']
+export type CallHoursSlot = ApiSchemas['CallHoursSlot']
 export type WhatsappCostsSummary = Delivered<ApiSchemas['WhatsappCostsSummary']>
 /** La API de Conversiones de Meta: citas de leads de anuncios informadas a Meta. */
 export type MetaConversionsStatus = Delivered<ApiSchemas['MetaConversionsStatus']>

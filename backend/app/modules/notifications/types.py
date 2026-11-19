@@ -12,3 +12,5 @@ class NotificationType(StrEnum):
     # genérico con metadata.error_code, ahora es su propio evento para poder
     # distinguirlo (ícono, filtros, etc.) sin depender de leer la metadata.
     SERVICE_WINDOW_CLOSED = "service_window_closed"
+    # Un cliente llamó por WhatsApp y nadie atendió.
+    MISSED_CALL = "missed_call"
