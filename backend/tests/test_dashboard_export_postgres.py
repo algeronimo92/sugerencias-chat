@@ -114,7 +114,7 @@ async def test_every_report_reads_the_real_tables_and_leaves_a_record(tenant) ->
         assert ana_row[1] == "+51999000111" and ana_row[5] == "Grecia" and ana_row[6] == "VIP"
 
         backup = await build_export(ExportReport.BACKUP, 30, admin, personal_data=True)
-        assert sheet_names(backup.content) == ["Leads", "Citas", "Tareas", "Servicios y paquetes"]
+        assert sheet_names(backup.content) == ["Leads", "Citas", "Tareas", "Servicios y paquetes", "Llamadas"]
         assert len(read_sheet(backup.content, 1)) == 4  # encabezado + tres leads, también el viejo
         assert len(read_sheet(backup.content, 2)) == 4  # sin la de prueba, con la duplicada
         assert read_sheet(backup.content, 3)[1][2] == "Llamar"

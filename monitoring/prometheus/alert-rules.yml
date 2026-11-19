@@ -26,6 +26,26 @@ groups:
           summary: "Más de 3 mensajes agotaron sus reintentos en la última hora"
           description: "Meta Cloud API caída, token vencido o número mal configurado. outbox_failed_last_hour = {{ $value }}."
 
+      # Meta da entre 30 y 60 s para atender una llamada: si el aviso tarda
+      # segundos en procesarse, la llamada suena tarde o no suena
+      # (docs/analisis/17-plan-llamadas-whatsapp.md, §4.8).
+      - alert: LlamadasAvisoLento
+        expr: histogram_quantile(0.95, sum by (le) (rate(meta_call_notice_delay_seconds_bucket[10m]))) > 3
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Las llamadas de WhatsApp tardan más de 3 s en avisarse al equipo"
+          description: "El carril de llamadas del webhook está lento o detenido. p95 = {{ $value }}s."
+
+      - alert: LlamadasCodigoDesconocido
+        expr: sum(increase(meta_call_unknown_error_codes_total[1h])) > 0
+        labels:
+          severity: medium
+        annotations:
+          summary: "Meta mandó un código de error de llamadas que el catálogo no conoce"
+          description: "Hay que sumarlo al catálogo de causas (conversations/domain/calls.py)."
+
       - alert: AutomatizacionesFallando
         expr: automation_failed_last_hour > 5
         for: 5m

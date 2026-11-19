@@ -1,7 +1,7 @@
 import { AlertTriangle, PhoneMissed } from 'lucide-react'
 
 import type { DashboardCalls, DashboardMetrics } from '../types'
-import { answerRateLabel } from './callsFormat'
+import { answerRateLabel, isAnswerRateLow, previousRateLabel } from './callsFormat'
 import { formatNumber } from './format'
 import { NoData, Panel, StatGrid } from './primitives'
 
@@ -97,12 +97,21 @@ export function CallsTab({ data, days, onOpenChat }: Props) {
         </div>
       )}
 
+      {isAnswerRateLow(calls) && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 lg:col-span-2 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <p>
+            <span className="font-semibold">Se están perdiendo muchas llamadas.</span> Si sigue así, WhatsApp puede ocultar el botón de llamar a tus clientes. Revisa el horario de llamadas y quiénes atienden, en Integraciones.
+          </p>
+        </div>
+      )}
+
       <Panel anchor="llamadas-atencion" title="Atención de llamadas" subtitle={`Las que hicieron tus clientes · ${period}`} className="lg:col-span-2">
         <StatGrid
           stats={[
             { label: 'Atendidas', value: formatNumber(calls.inbound_answered) },
             { label: 'Perdidas', value: formatNumber(calls.inbound_missed), hint: calls.quick_hangups ? `Sin contar ${calls.quick_hangups} que colgaron enseguida` : undefined },
-            { label: 'Tasa de atención', value: answerRateLabel(calls), hint: 'Si baja mucho, WhatsApp oculta el botón de llamar' },
+            { label: 'Tasa de atención', value: answerRateLabel(calls), hint: previousRateLabel(calls) ?? 'Si baja mucho, WhatsApp oculta el botón de llamar' },
             { label: 'Duración media', value: duration(calls.avg_duration_seconds) },
             { label: 'Llamadas a clientes', value: formatNumber(calls.outbound_total), hint: `${formatNumber(calls.outbound_answered)} contestadas` },
           ]}

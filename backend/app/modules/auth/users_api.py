@@ -12,13 +12,20 @@ from app.modules.auth.account_actions import (
     revoke_pending_invitations,
 )
 from app.modules.auth.auth_service import invalidate_user_cache, require_admin
-from app.modules.auth.errors import AnalystCannotHandleCallsError, UserAlreadyActiveError
-from app.modules.auth.users_service import EmailAlreadyExistsError, LastAdminError, get_user_by_id, list_users, update_user
+from app.modules.auth.errors import AnalystCannotHandleCallsError, LastCallAgentError, UserAlreadyActiveError
+from app.modules.auth.users_service import (
+    EmailAlreadyExistsError,
+    LastAdminError,
+    get_user_by_id,
+    list_call_agents,
+    list_users,
+    update_user,
+)
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
 from app.modules.auth.session_service import revoke_all_for_user
 from app.modules.auth.types import UserRole
 from app.core.phone_utils import PhoneValidationError, normalize_phone
-from app.modules.platform.public import effective_country_code
+from app.modules.platform.public import calls_enabled, effective_country_code
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
@@ -37,6 +44,21 @@ async def _normalized_phone(raw: str | None) -> str | None:
         return normalize_phone(raw, await effective_country_code())
     except PhoneValidationError as exc:
         raise HTTPException(status_code=400, detail="El teléfono no es válido") from exc
+
+
+async def _keep_someone_answering(user_id: int, values: dict) -> None:
+    """Quitarle el permiso, desactivar o pasar a analista a la última persona
+    que atiende, con las llamadas activas, se rechaza."""
+    leaves = (
+        values.get("can_handle_calls") is False
+        or values.get("is_active") is False
+        or values.get("role") == UserRole.ANALYST
+    )
+    if not leaves or not await calls_enabled():
+        return
+    agents = [agent["id"] for agent in await list_call_agents()]
+    if agents == [user_id]:
+        raise LastCallAgentError()
 
 
 @router.get("", response_model=list[UserItem])
@@ -94,6 +116,7 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
         # Un null explícito no es "quitar el permiso": la columna no lo admite.
         values.pop("can_handle_calls", None)
     try:
+        await _keep_someone_answering(user_id, values)
         user = await update_user(user_id, values)
     except LastAdminError:
         raise HTTPException(status_code=400, detail="No puedes dejar la cuenta sin ningún administrador activo")
@@ -103,6 +126,11 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
         raise HTTPException(
             status_code=409,
             detail="El correo solo se puede cambiar mientras la invitación está pendiente",
+        )
+    except LastCallAgentError:
+        raise HTTPException(
+            status_code=409,
+            detail="Es la única persona que atiende llamadas. Elige a otra o desactiva las llamadas en Integraciones.",
         )
     except AnalystCannotHandleCallsError:
         raise HTTPException(status_code=400, detail="Un analista no puede atender llamadas: solo ve el dashboard")

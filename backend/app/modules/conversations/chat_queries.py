@@ -669,6 +669,17 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
         .correlate(Lead)
         .scalar_subquery()
     )
+    # Una llamada en la que se habló con el cliente abre o renueva la ventana,
+    # igual que un mensaje suyo (así lo cobra Meta). Solo cuentan las que
+    # conectaron: de una perdida no hay confirmación de que la abra, y decir
+    # "abierta" de más haría fallar el envío en Meta.
+    last_connected_call = (
+        select(func.max(func.coalesce(WhatsAppCall.accepted_at, WhatsAppCall.ringing_at)))
+        .where(WhatsAppCall.chat_id == Lead.id, WhatsAppCall.status.in_(("accepted", "completed")),
+               WhatsAppCall.accepted_at.is_not(None))
+        .correlate(Lead)
+        .scalar_subquery()
+    )
     entry_point_expires = (
         select(WhatsAppEntryPointWindow.expires_at)
         .where(WhatsAppEntryPointWindow.chat_id == Lead.id)
@@ -681,6 +692,7 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
                 Lead.id,
                 last_customer_message.label("last_customer_message_at"),
                 last_ad_message.label("last_ad_message_at"),
+                last_connected_call.label("last_connected_call_at"),
                 entry_point_expires.label("free_entry_point_expires_at"),
             )
             .where(Lead.id == chat_id)
@@ -702,7 +714,11 @@ async def get_customer_service_window(chat_id: str) -> dict | None:
 
     now = datetime.now(timezone.utc)
     last_customer_message_at = row["last_customer_message_at"]
-    expires_at = last_customer_message_at + CUSTOMER_SERVICE_WINDOW if last_customer_message_at else None
+    opened_at = max(
+        (moment for moment in (last_customer_message_at, row["last_connected_call_at"]) if moment is not None),
+        default=None,
+    )
+    expires_at = opened_at + CUSTOMER_SERVICE_WINDOW if opened_at else None
     seconds_remaining = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
 
     entry_point_expires_at = row["free_entry_point_expires_at"]

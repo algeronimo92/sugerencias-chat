@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from app.core.events import Phase, subscribe
@@ -20,6 +21,7 @@ from app.modules.notifications.service import (
     mark_lead_notifications_read,
 )
 from app.realtime.ws_manager import manager
+from app.tenancy.context import get_current_tenant
 from app.modules.notifications.types import NotificationType
 
 logger = logging.getLogger(__name__)
@@ -155,4 +157,35 @@ async def push_incoming_call(event: CallRinging) -> None:
     task = asyncio.create_task(_push_ring(user_ids, _caller(event.caller_name), event.chat_id, event.call_id))
     _ring_pushes.add(task)
     task.add_done_callback(_ring_pushes.discard)
+
+
+# Un aviso por día y por negocio: cada llamada que falle con la cuenta pausada
+# repetiría el mismo mensaje. Es memoria del proceso; tras un reinicio puede
+# avisar una vez más, que es preferible a no avisar.
+_paused_notified: dict[str | None, str] = {}
+
+
+@subscribe(CallEnded, phase=Phase.AFTER_COMMIT)
+async def warn_admins_calls_are_paused(event: CallEnded) -> None:
+    """No puede esperar a que alguien abra el dashboard: mientras dure la
+    pausa, ninguna llamada entra ni sale."""
+    if event.cause != "account_paused":
+        return
+    context = get_current_tenant()
+    key = str(context.organization_id) if context else None
+    today = datetime.now(timezone.utc).date().isoformat()
+    if _paused_notified.get(key) == today:
+        return
+    _paused_notified[key] = today
+    title = "Meta pausó las llamadas de WhatsApp"
+    body = "El número no puede recibir ni hacer llamadas. Revisa el motivo en WhatsApp Manager."
+    for admin_id in await list_active_admin_ids():
+        try:
+            notification = await create_system_notification(
+                admin_id, NotificationType.CALLS_PAUSED, title, body, source_id=f"calls-paused:{today}",
+            )
+            await manager.send_to_user(admin_id, {"type": "notification_created", "notification": notification})
+            await send_push_to_user(admin_id, title, body, "/integraciones#whatsapp", tag="calls-paused")
+        except Exception:
+            logger.exception("No se pudo avisar a la admin %s de la pausa de llamadas", admin_id)
 

@@ -14,6 +14,11 @@ class AnalystCannotHandleCallsError(Exception):
     así que una llamada nunca podría sonarle."""
 
 
+class LastCallAgentError(Exception):
+    """Con las llamadas activas no puede quedar nadie para atenderlas:
+    sonarían en el vacío y WhatsApp oculta el botón de llamar."""
+
+
 class UserAlreadyActiveError(Exception):
     """La cuenta ya fue activada alguna vez: no hay invitación pendiente que
     reenviar, copiar ni cuyo correo corregir."""

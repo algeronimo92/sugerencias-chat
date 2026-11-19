@@ -14,3 +14,5 @@ class NotificationType(StrEnum):
     SERVICE_WINDOW_CLOSED = "service_window_closed"
     # Un cliente llamó por WhatsApp y nadie atendió.
     MISSED_CALL = "missed_call"
+    # Meta pausó las llamadas del número (suele ser por reportes de clientes).
+    CALLS_PAUSED = "calls_paused"

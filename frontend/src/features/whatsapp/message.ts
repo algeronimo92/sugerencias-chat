@@ -69,6 +69,7 @@ const INTERACTIVE_META: Record<string, KindMeta> = {
   catalog_message: { icon: LayoutGrid, label: "Catálogo" },
   flow: { icon: Workflow, label: "Formulario" },
   call_permission_request: { icon: PhoneCall, label: "Permiso de llamada" },
+  voice_call: { icon: PhoneCall, label: "Botón Llámanos" },
 };
 
 function unknownKindMeta(kind: string, subtype: string | null): KindMeta {
@@ -196,6 +197,8 @@ function interactiveTemplate(interactive: JsonObject): TemplateMessage | null {
     buttons = cta ? [{ text: cta, url: null }] : [];
   } else if (subtype === "catalog_message") {
     buttons = [{ text: "Ver catálogo", url: null }];
+  } else if (subtype === "voice_call") {
+    buttons = [{ text: asString(asObject(action.parameters).display_text) || "Llamar ahora", url: null }];
   } else if (subtype === "call_permission_request") {
     buttons = [{ text: "Permitir llamadas", url: null }];
   }

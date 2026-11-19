@@ -8,6 +8,8 @@ import asyncio
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from unittest.mock import AsyncMock
+
 import pytest
 from sqlalchemy import select, text, update
 
@@ -647,3 +649,81 @@ async def test_the_dashboard_numbers_keep_missed_and_failed_apart(tenant, meta_c
 
         empty = await call_metrics(user_id=None, start=now - timedelta(days=30), end=now - timedelta(days=29), timezone=ZoneInfo("America/Lima"))
         assert (empty["total"], empty["answer_rate"], empty["failed_by_cause"]) == (0, None, [])
+
+
+# --- Pendientes cerrados: ventana de 24 h, permiso y racha -----------------
+
+async def test_a_call_someone_answered_renews_the_24_hour_window_and_a_missed_one_does_not(tenant, meta_calls, seen) -> None:
+    from app.modules.conversations.chat_queries import get_customer_service_window
+
+    context, _phone, _ids = tenant
+    missed, answered = _wacid(), _wacid()
+    await _deliver(tenant, _connect(missed, phone="51999000771"))
+    await _deliver(tenant, _terminate(missed, phone="51999000771"))
+    await _deliver(tenant, _connect(answered, phone="51999000772"))
+    with tenant_context(context):
+        [ana] = await _agents("Ana")
+        row = await _call(answered)
+        await calls.answer_call(row["id"], user_id=ana, client_id="a", sdp=ANSWER)
+
+        assert (await get_customer_service_window(row["chat_id"]))["is_open"] is True
+        # De la perdida no hay confirmación de que la abra: no se da por abierta.
+        assert (await get_customer_service_window((await _call(missed))["chat_id"]))["is_open"] is False
+
+
+async def test_the_permission_tells_how_close_the_business_is_to_losing_it(tenant, meta_calls, seen, monkeypatch) -> None:
+    context, phone_number_id, _ids = tenant
+
+    async def permission(_chat_id):
+        return {"permission": {"status": "permanent"}, "actions": [{"action_name": "start_call", "can_perform_action": True}]}
+
+    monkeypatch.setattr(meta_calls, "permission", permission, raising=False)
+    with tenant_context(context):
+        [ana] = await _agents("Ana")
+        chat_id = await _lead("51999000881")
+        assert (await calls.call_permission(chat_id))["calls_left_before_losing_permission"] is None
+        wacids = []
+        for _ in range(3):
+            meta_calls.next_wacid = _wacid()
+            wacids.append(meta_calls.next_wacid)
+            await calls.start_call(chat_id, user_id=ana, client_id="t", sdp=SDP, phone_number_id=phone_number_id)
+            # No contestó: Meta manda el fin sin duración.
+            await calls.record_outbound_end(
+                wa_call_id=wacids[-1], opaque=None, duration_seconds=None, started_at=None, ended_at=None,
+                error_code=None, event={},
+            )
+        summary = await calls.call_permission(chat_id)
+        assert (summary["unanswered_streak"], summary["calls_left_before_losing_permission"]) == (3, 1)
+
+        # Una contestada corta la racha.
+        meta_calls.next_wacid = _wacid()
+        await calls.start_call(chat_id, user_id=ana, client_id="t", sdp=SDP, phone_number_id=phone_number_id)
+        await calls.record_outbound_end(
+            wa_call_id=meta_calls.next_wacid, opaque=None, duration_seconds=20, started_at=None, ended_at=None,
+            error_code=None, event={},
+        )
+        assert (await calls.call_permission(chat_id))["unanswered_streak"] == 0
+
+
+async def test_meta_pausing_calls_warns_the_admins_once_a_day(tenant, meta_calls, monkeypatch) -> None:
+    from app.modules.notifications import subscribers as notification_subscribers
+
+    context, _phone, _ids = tenant
+    monkeypatch.setattr(notification_subscribers, "send_push_to_user", AsyncMock())
+    notification_subscribers._paused_notified.clear()
+    with tenant_context(context):
+        async with get_sessionmaker()() as session:
+            admin = (await session.execute(text(
+                "INSERT INTO users (email, name, password_hash, role, is_active, created_at) "
+                "VALUES (:e, 'Admin', 'x', 'admin', true, now()) RETURNING id"), {"e": f"adm-{secrets.token_hex(3)}@example.test"})).scalar_one()
+            await session.commit()
+    for phone in ("51999000991", "51999000992"):
+        wacid = _wacid()
+        await _deliver(tenant, _connect(wacid, phone=phone))
+        await _deliver(tenant, _terminate(wacid, phone=phone, errors=[{"code": 138014}]))
+
+    with tenant_context(context):
+        async with get_sessionmaker()() as session:
+            rows = (await session.execute(text(
+                "SELECT user_id, notification_type FROM user_notifications WHERE notification_type = 'calls_paused'"))).all()
+        assert [tuple(row) for row in rows] == [(admin, "calls_paused")]

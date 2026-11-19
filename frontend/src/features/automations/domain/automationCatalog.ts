@@ -268,6 +268,7 @@ export const NotificationType = {
   Appointment: 'appointment',
   ServiceWindowClosed: 'service_window_closed',
   MissedCall: 'missed_call',
+  CallsPaused: 'calls_paused',
 } as const
 export type NotificationTypeValue = ValueOf<typeof NotificationType>
 

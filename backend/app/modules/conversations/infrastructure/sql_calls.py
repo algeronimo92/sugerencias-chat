@@ -182,6 +182,22 @@ class SqlCallStore:
             )).all()
         return [_row(row) for row in rows]
 
+    async def unanswered_streak(self, chat_id: str) -> int:
+        async with session_scope() as session:
+            recent = (await session.execute(
+                select(WhatsAppCall.status, WhatsAppCall.cause)
+                .where(WhatsAppCall.chat_id == chat_id, WhatsAppCall.direction == rules.OUTBOUND,
+                       WhatsAppCall.status.in_(tuple(rules.FINAL_STATUSES)))
+                .order_by(WhatsAppCall.ringing_at.desc()).limit(10)
+            )).all()
+        streak = 0
+        for status, cause in recent:
+            if status in (rules.REJECTED,) or cause == "customer_no_answer":
+                streak += 1
+            else:
+                break
+        return streak
+
     async def for_chat(self, chat_id: str, limit: int) -> list[dict]:
         async with session_scope() as session:
             rows = (await session.scalars(

@@ -16,6 +16,7 @@ from app.modules.auth.public import User, get_current_user
 from app.modules.conversations.application.calls import (
     answer_call,
     call_permission,
+    request_call_permission,
     start_call,
     confirm_call_connected,
     dismiss_call,
@@ -65,6 +66,14 @@ async def get_call_permission(chat_id: str = Query(min_length=1), _user: User = 
         return await call_permission(chat_id)
     except (ChannelError, httpx.HTTPError) as exc:
         raise CallNotAllowed(None) from exc
+
+
+@router.post("/permission-request", status_code=202)
+async def ask_call_permission(chat_id: str = Query(min_length=1), user: User = Depends(require_call_agent)):
+    """Le pide al cliente permiso para llamarlo. Fuera de la ventana de 24 h
+    se rechaza como cualquier mensaje libre: ahí hace falta una plantilla."""
+    await request_call_permission(chat_id, user_id=user.id)
+    return {"status": "queued"}
 
 
 @router.post("", response_model=CallItem, status_code=201)

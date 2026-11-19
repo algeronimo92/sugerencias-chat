@@ -265,6 +265,10 @@ class CallPermission(BaseModel):
     expires_at: datetime | None = None
     can_call: bool
     can_request: bool
+    # Llamadas seguidas que el cliente no contestó.
+    unanswered_streak: int = 0
+    # Cuántas más puede no contestar antes de que Meta quite el permiso; None si todavía no hay riesgo.
+    calls_left_before_losing_permission: int | None = None
 
 
 class CallAnswerRequest(BaseModel):

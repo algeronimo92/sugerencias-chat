@@ -362,8 +362,42 @@ def permission_summary(meta: dict) -> dict:
     }
 
 
+# Meta avisa al cliente a las dos llamadas seguidas sin contestar y le quita
+# el permiso al negocio a las cuatro.
+UNANSWERED_WARNING_AT = 2
+UNANSWERED_REVOKES_AT = 4
+
+
 async def call_permission(chat_id: str) -> dict:
-    return permission_summary(await _control().permission(chat_id))
+    summary = permission_summary(await _control().permission(chat_id))
+    streak = await _ports().calls.unanswered_streak(chat_id)
+    summary["unanswered_streak"] = streak
+    summary["calls_left_before_losing_permission"] = (
+        max(0, UNANSWERED_REVOKES_AT - streak) if streak >= UNANSWERED_WARNING_AT else None
+    )
+    return summary
+
+
+PERMISSION_REQUEST_TEXT = "¿Podemos llamarte por WhatsApp?"
+
+
+async def request_call_permission(chat_id: str, *, user_id: int) -> dict:
+    """Le manda al cliente el pedido de permiso para llamarlo. Va por la cola
+    de mensajes como cualquier otro: respeta la ventana de 24 h y queda en el chat."""
+    from app.modules.conversations.application.outbound import queue_messages
+
+    [message] = await queue_messages(
+        chat_id,
+        [{
+            "content": PERMISSION_REQUEST_TEXT,
+            "message": {"type": "interactive", "interactive": {
+                "type": "call_permission_request", "action": {"name": "call_permission_request"},
+                "body": {"text": PERMISSION_REQUEST_TEXT},
+            }},
+        }],
+        actor_user_id=user_id, author_user_id=user_id,
+    )
+    return message
 
 
 async def reap_calls() -> int:

@@ -230,6 +230,14 @@ def _validate_flow(interactive: dict, errors: list[str]) -> None:
             errors.append(f"El Flow necesita {field}")
 
 
+def _validate_voice_call(interactive: dict, errors: list[str]) -> None:
+    """El botón "Llámanos": el cliente toca y llama al número del negocio."""
+    _validate_named_action("voice_call")(interactive, errors)
+    parameters = _object(_object(interactive.get("action")).get("parameters"))
+    if not _text(parameters.get("display_text")):
+        errors.append("El botón de llamada necesita su texto")
+
+
 INTERACTIVE_VALIDATORS = {
     "button": _validate_button,
     "list": _validate_list,
@@ -238,6 +246,7 @@ INTERACTIVE_VALIDATORS = {
     "catalog_message": _validate_named_action("catalog_message"),
     "flow": _validate_flow,
     "call_permission_request": _validate_named_action("call_permission_request"),
+    "voice_call": _validate_voice_call,
 }
 
 

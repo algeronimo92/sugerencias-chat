@@ -35,6 +35,8 @@ def client(monkeypatch) -> TestClient:
     monkeypatch.setattr(users_api, "invite_user", AsyncMock(side_effect=lambda **kw: _user(2, kw["role"])))
     monkeypatch.setattr(users_api, "update_user", AsyncMock(side_effect=lambda user_id, values: _user(user_id, values.get("role", "vendedor"))))
     monkeypatch.setattr(users_api, "invalidate_user_cache", lambda *_: None)
+    monkeypatch.setattr(users_api, "calls_enabled", AsyncMock(return_value=False))
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[]))
     app = FastAPI()
     app.include_router(users_api.router)
     app.dependency_overrides[require_admin] = lambda: ADMIN
@@ -184,3 +186,29 @@ async def test_the_calls_permission_is_refused_for_a_role_that_cannot_answer(mon
     monkeypatch.setattr(users_repository, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(role=current_role)))
     with pytest.raises(AnalystCannotHandleCallsError):
         await users_repository._with_calls_permission_rule(7, values)
+
+
+@pytest.mark.parametrize("change", [{"can_handle_calls": False}, {"is_active": False}, {"role": "analista"}])
+def test_the_last_person_answering_calls_cannot_be_removed_while_calls_are_on(client, monkeypatch, change):
+    monkeypatch.setattr(users_api, "calls_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}]))
+    monkeypatch.setattr(users_api, "revoke_all_for_user", AsyncMock())
+
+    response = client.patch("/api/users/2", json=change)
+
+    assert response.status_code == 409
+    assert "única persona" in response.json()["detail"]
+    users_api.update_user.assert_not_awaited()
+
+
+def test_an_agent_can_be_removed_when_someone_else_still_answers(client, monkeypatch):
+    monkeypatch.setattr(users_api, "calls_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}, {"id": 3, "name": "Bea"}]))
+
+    assert client.patch("/api/users/2", json={"can_handle_calls": False}).status_code == 200
+
+
+def test_with_calls_off_the_last_agent_can_be_removed(client, monkeypatch):
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}]))
+
+    assert client.patch("/api/users/2", json={"can_handle_calls": False}).status_code == 200

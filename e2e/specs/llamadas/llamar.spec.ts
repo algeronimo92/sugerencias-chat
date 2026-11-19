@@ -32,7 +32,7 @@ test('con permiso del cliente, el botón Llamar inicia la llamada y conecta cuan
   api
     .on('get', '/api/auth/me', { ...ADMIN, can_handle_calls: true })
     .on('get', '/api/calls/ringing', [])
-    .on('get', '/api/calls/permission', { status: 'temporary', expires_at: '2026-11-25T15:00:00Z', can_call: true, can_request: false })
+    .on('get', '/api/calls/permission', { status: 'temporary', expires_at: '2026-11-25T15:00:00Z', can_call: true, can_request: false, unanswered_streak: 0, calls_left_before_losing_permission: null })
     .on('post', '/api/calls', SALIENTE)
     .on('get', '/api/calls/{call_id}/answer', { call: { ...SALIENTE, status: 'accepted' }, sdp: 'v=0\r\na=setup:active\r\n' })
     .on('post', '/api/calls/{call_id}/terminate', { ...SALIENTE, status: 'completed' })
@@ -54,18 +54,36 @@ test('con permiso del cliente, el botón Llamar inicia la llamada y conecta cuan
   await expect(page.getByText(/Llamada terminada/)).toBeVisible()
 })
 
-test('sin permiso del cliente el botón no llama y dice por qué', async ({ page, api }) => {
+test('sin permiso del cliente, el botón le pide permiso en vez de llamar', async ({ page, api }) => {
   api
     .on('get', '/api/auth/me', { ...ADMIN, can_handle_calls: true })
     .on('get', '/api/calls/ringing', [])
-    .on('get', '/api/calls/permission', { status: 'none', expires_at: null, can_call: false, can_request: true })
+    .on('get', '/api/calls/permission', { status: 'none', expires_at: null, can_call: false, can_request: true, unanswered_streak: 0, calls_left_before_losing_permission: null })
+    .on('post', '/api/calls/permission-request', { status: 'queued' })
   await page.addInitScript(() => localStorage.setItem('calls.devicePrepared', '1'))
 
   await page.goto(`/chat/${LEAD.chat_id}`)
 
-  const llamar = page.getByRole('button', { name: /todavía no dio permiso/ })
-  await expectFullyOnScreen(llamar)
-  await expect(llamar).toHaveAttribute('aria-disabled', 'true')
-  await llamar.click({ force: true })
+  const pedir = page.getByRole('button', { name: /Pedir permiso para llamar/ })
+  await expectFullyOnScreen(pedir)
+  await pedir.click()
+  await expect(page.getByText('Pedido de permiso enviado')).toBeVisible()
+  expect(api.calls('post', '/api/calls')).toEqual([])
+  expect(api.calls('post', '/api/calls/permission-request')).toHaveLength(1)
+})
+
+test('si ya se le pidió permiso, el botón no hace nada y dice por qué', async ({ page, api }) => {
+  api
+    .on('get', '/api/auth/me', { ...ADMIN, can_handle_calls: true })
+    .on('get', '/api/calls/ringing', [])
+    .on('get', '/api/calls/permission', { status: 'none', expires_at: null, can_call: false, can_request: false, unanswered_streak: 0, calls_left_before_losing_permission: null })
+  await page.addInitScript(() => localStorage.setItem('calls.devicePrepared', '1'))
+
+  await page.goto(`/chat/${LEAD.chat_id}`)
+
+  const boton = page.getByRole('button', { name: /ya se le pidió/ })
+  await expectFullyOnScreen(boton)
+  await expect(boton).toHaveAttribute('aria-disabled', 'true')
+  await boton.click({ force: true })
   expect(api.calls('post', '/api/calls')).toEqual([])
 })

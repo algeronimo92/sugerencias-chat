@@ -11,6 +11,7 @@ export type NativeInteractiveKind =
   | 'catalog_message'
   | 'flow'
   | 'call_permission_request'
+  | 'voice_call'
 
 export const NATIVE_INTERACTIVE_LABELS: Record<NativeInteractiveKind, string> = {
   product: 'Producto',
@@ -18,6 +19,7 @@ export const NATIVE_INTERACTIVE_LABELS: Record<NativeInteractiveKind, string> = 
   catalog_message: 'Catálogo',
   flow: 'Formulario (Flow)',
   call_permission_request: 'Permiso de llamada',
+  voice_call: 'Botón "Llámanos"',
 }
 
 export type FlowAction = 'navigate' | 'data_exchange'
@@ -64,7 +66,7 @@ export function availableNativeInteractives(capabilities: Capabilities | undefin
   const kinds: NativeInteractiveKind[] = []
   if (capabilities.catalog_enabled && capabilities.catalog_id) kinds.push('product', 'product_list', 'catalog_message')
   if (capabilities.flows_enabled && capabilities.published_flows?.length) kinds.push('flow')
-  if (capabilities.call_permission_enabled) kinds.push('call_permission_request')
+  if (capabilities.call_permission_enabled) kinds.push('call_permission_request', 'voice_call')
   return kinds
 }
 
@@ -184,6 +186,17 @@ export function buildNativeInteractive(form: NativeInteractiveForm, capabilities
         body: body ?? { text: '' },
         ...(footer ? { footer } : {}),
         action: { name: 'call_permission_request' },
+      }
+      break
+    }
+    case 'voice_call': {
+      // El cliente toca el botón y llama al número del negocio.
+      if (!body) errors.push('Escribe el cuerpo del mensaje.')
+      interactive = {
+        type: 'voice_call',
+        body: body ?? { text: '' },
+        ...(footer ? { footer } : {}),
+        action: { name: 'voice_call', parameters: { display_text: 'Llamar ahora' } },
       }
       break
     }

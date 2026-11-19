@@ -2991,6 +2991,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calls/permission-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Call Permission
+         * @description Le pide al cliente permiso para llamarlo. Fuera de la ventana de 24 h
+         *     se rechaza como cualquier mensaje libre: ahí hace falta una plantilla.
+         */
+        post: operations["ask_call_permission_api_calls_permission_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calls/{call_id}/answer": {
         parameters: {
             query?: never;
@@ -4997,6 +5018,13 @@ export interface components {
             can_call: boolean;
             /** Can Request */
             can_request: boolean;
+            /**
+             * Unanswered Streak
+             * @default 0
+             */
+            unanswered_streak: number;
+            /** Calls Left Before Losing Permission */
+            calls_left_before_losing_permission?: number | null;
         };
         /** CallStartRequest */
         CallStartRequest: {
@@ -5379,6 +5407,8 @@ export interface components {
             quick_hangups: number;
             /** Answer Rate */
             answer_rate?: number | null;
+            /** Previous Answer Rate */
+            previous_answer_rate?: number | null;
             /**
              * Outbound Total
              * @default 0
@@ -7570,7 +7600,7 @@ export interface components {
          * NotificationType
          * @enum {string}
          */
-        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed" | "missed_call";
+        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed" | "missed_call" | "calls_paused";
         /** OnboardingStatus */
         OnboardingStatus: {
             /** Steps */
@@ -14802,6 +14832,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CallPermission"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_call_permission_api_calls_permission_request_post: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

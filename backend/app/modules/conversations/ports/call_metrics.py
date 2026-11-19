@@ -2,6 +2,7 @@
 
 from app.modules.conversations.call_metrics import (
     call_metrics,
+    export_calls,
 )
 
-__all__ = ['call_metrics']
+__all__ = ['call_metrics', 'export_calls']

@@ -17,3 +17,6 @@ async def list_users() -> list[dict]:
 
 async def update_user(user_id: int, values: dict) -> dict | None:
     return await users_repository.update_user(user_id, values)
+
+async def list_call_agents() -> list[dict]:
+    return await users_repository.list_call_agents()

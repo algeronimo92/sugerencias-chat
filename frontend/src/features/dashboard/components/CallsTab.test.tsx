@@ -13,7 +13,7 @@ const cause = (key: string, label: string, group: string, count: number, action 
 function calls(overrides: Partial<Calls> = {}): Calls {
   return {
     total: 42, inbound_answered: 30, inbound_missed: 6, quick_hangups: 2, answer_rate: 0.833, outbound_total: 4,
-    outbound_answered: 3, avg_duration_seconds: 222, missed_by_cause: [], failed_total: 0, failed_by_cause: [],
+    outbound_answered: 3, avg_duration_seconds: 222, previous_answer_rate: null, missed_by_cause: [], failed_total: 0, failed_by_cause: [],
     failed_by_agent: [], by_hour: [], pending_callbacks: [], ...overrides,
   }
 }
@@ -75,6 +75,23 @@ describe('CallsTab', () => {
   it('el analista ve las perdidas sin enlace', () => {
     renderTab(calls({ pending_callbacks: [{ chat_id: 'lead-1', ringing_at: '2026-11-19T15:00:00Z' }] }))
     expect(screen.queryByRole('button', { name: /Abrir chat/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('tasa de atención', () => {
+  it('avisa cuando se pierden muchas llamadas, y no con pocas', () => {
+    renderTab(calls({ inbound_answered: 6, inbound_missed: 6, answer_rate: 0.5 }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Se están perdiendo muchas llamadas')
+  })
+
+  it('con pocas llamadas no alarma', () => {
+    renderTab(calls({ inbound_answered: 1, inbound_missed: 2, answer_rate: 0.333 }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('compara con el período anterior cuando lo hay', () => {
+    renderTab(calls({ previous_answer_rate: 0.6 }))
+    expect(screen.getByText('Período anterior: 60%')).toBeInTheDocument()
   })
 })
 

@@ -588,6 +588,8 @@ class DashboardCalls(BaseModel):
     quick_hangups: int = 0
     # None sin llamadas que atender en el período.
     answer_rate: float | None = None
+    # La del período anterior de la misma duración; None si no hubo llamadas.
+    previous_answer_rate: float | None = None
     outbound_total: int = 0
     outbound_answered: int = 0
     avg_duration_seconds: int | None = None

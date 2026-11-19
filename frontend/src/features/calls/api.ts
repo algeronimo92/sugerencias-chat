@@ -53,3 +53,8 @@ export async function fetchCallAnswer(callId: number): Promise<{ call: Call; sdp
   const { data } = await client.get<ApiResponse<'/api/calls/{call_id}/answer', 'get'>>(`/api/calls/${callId}/answer`)
   return { call: data.call, sdp: data.sdp ?? null }
 }
+
+/** Le manda al cliente el pedido de permiso para llamarlo. */
+export async function requestCallPermission(chatId: string): Promise<void> {
+  await client.post<ApiResponse<'/api/calls/permission-request', 'post'>>('/api/calls/permission-request', null, { params: { chat_id: chatId } })
+}

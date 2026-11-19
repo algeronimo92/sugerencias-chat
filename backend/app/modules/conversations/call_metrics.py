@@ -77,6 +77,15 @@ async def call_metrics(*, start: datetime, end: datetime, user_id: int | None, t
             .limit(PENDING_CALLBACKS_LIMIT)
         )).all() if user_id is None else []
 
+        # La misma ventana, justo antes: para decir si la atención mejora o empeora.
+        previous = dict((await session.execute(
+            select(WhatsAppCall.status, func.count())
+            .where(WhatsAppCall.ringing_at >= start - (end - start), WhatsAppCall.ringing_at < start, *mine, inbound,
+                   WhatsAppCall.status.in_((rules.COMPLETED, rules.MISSED)),
+                   func.coalesce(WhatsAppCall.cause, "") != "quick_hangup")
+            .group_by(WhatsAppCall.status)
+        )).all())
+
     def count(direction: str, *statuses: str) -> int:
         return sum(by_status.get(f"{direction}:{status}", 0) for status in statuses)
 
@@ -97,6 +106,9 @@ async def call_metrics(*, start: datetime, end: datetime, user_id: int | None, t
         "inbound_missed": missed_total,
         "quick_hangups": quick,
         "answer_rate": round(answered / offered, 3) if offered else None,
+        "previous_answer_rate": (
+            round(previous.get(rules.COMPLETED, 0) / sum(previous.values()), 3) if sum(previous.values()) else None
+        ),
         "outbound_total": sum(total for key, total in by_status.items() if key.startswith(f"{rules.OUTBOUND}:")),
         "outbound_answered": count(rules.OUTBOUND, rules.COMPLETED, rules.ACCEPTED),
         "avg_duration_seconds": round(float(avg_duration)) if avg_duration is not None else None,
@@ -110,3 +122,19 @@ async def call_metrics(*, start: datetime, end: datetime, user_id: int | None, t
         "by_hour": [hours[key] for key in sorted(hours)],
         "pending_callbacks": [{"chat_id": chat_id, "ringing_at": at} for chat_id, at in pending],
     }
+
+
+async def export_calls() -> list[dict]:
+    """Todas las llamadas del negocio para su respaldo, con la causa en texto."""
+    async with session_scope() as session:
+        rows = (await session.scalars(select(WhatsAppCall).order_by(WhatsAppCall.ringing_at))).all()
+    names = await user_names(row.handled_by_user_id for row in rows)
+    return [
+        {
+            "chat_id": row.chat_id, "direction": row.direction, "status": row.status,
+            "cause": (rules.CAUSES.get(row.cause or "") or rules.CAUSES["other"]).label if row.cause else None,
+            "error_code": row.error_code, "ringing_at": row.ringing_at, "duration_seconds": row.duration_seconds,
+            "handled_by": names.get(row.handled_by_user_id),
+        }
+        for row in rows
+    ]

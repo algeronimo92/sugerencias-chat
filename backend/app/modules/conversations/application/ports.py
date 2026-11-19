@@ -166,6 +166,9 @@ class CallStore(Protocol):
 
     async def ringing(self) -> list[dict]: ...
 
+    async def unanswered_streak(self, chat_id: str) -> int:
+        """Llamadas salientes seguidas que el cliente no contestó, contando desde la última."""
+
     async def for_chat(self, chat_id: str, limit: int) -> list[dict]: ...
 
     async def stale(self, *, ringing_before: datetime, claim_expired_at: datetime, accepted_before: datetime) -> list[dict]: ...
