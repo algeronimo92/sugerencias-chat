@@ -16,7 +16,11 @@ self.addEventListener('push', (event) => {
     return
   }
 
-  const { title, body, url, tag } = payload
+  const { title, body, url, tag, kind } = payload
+  // Una llamada entrante se queda en pantalla y vibra hasta que la tocan o
+  // la reemplaza su cierre ("Llamada perdida", mismo tag): un aviso común se
+  // iría solo en segundos, antes de que alguien llegue a atender.
+  const ringing = kind === 'incoming_call'
 
   event.waitUntil(
     (async () => {
@@ -32,6 +36,7 @@ self.addEventListener('push', (event) => {
         icon: '/icon-192.png',
         tag: tag || 'push-generico',
         data: { url },
+        ...(ringing ? { requireInteraction: true, renotify: true, vibrate: [400, 200, 400, 200, 400] } : {}),
       })
     })()
   )

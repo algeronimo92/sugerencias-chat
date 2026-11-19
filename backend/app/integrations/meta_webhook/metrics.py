@@ -5,7 +5,7 @@ una salida rechazada no rompen nada, y justamente por eso necesitan una señal
 propia: si no, se pierden hasta que alguien mira un chat puntual.
 """
 
-from prometheus_client import Counter
+from prometheus_client import Counter, Histogram
 
 webhook_signature_rejected = Counter(
     "meta_webhook_signature_rejected_total",
@@ -80,4 +80,22 @@ meta_conversions_skipped = Counter(
     "meta_conversions_skipped_total",
     "Eventos de conversión que no se mandan, por motivo",
     ["reason"],
+)
+
+# Llamadas de voz (docs/analisis/17-plan-llamadas-whatsapp.md, §4.8).
+call_events = Counter(
+    "meta_call_events_total",
+    "Eventos de llamadas de Meta procesados, por tipo",
+    ["event"],
+)
+call_unknown_error_codes = Counter(
+    "meta_call_unknown_error_codes_total",
+    "Códigos de error de llamadas de Meta que el catálogo de causas no conoce",
+    ["code"],
+)
+call_notice_delay_seconds = Histogram(
+    "meta_call_notice_delay_seconds",
+    "Segundos entre que el webhook guardó el aviso de una llamada y se procesó. "
+    "Meta da 30 a 60 s para atender: una demora de segundos acá es una llamada que suena tarde.",
+    buckets=(0.25, 0.5, 1, 2, 3, 5, 10, 30, 60),
 )

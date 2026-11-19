@@ -23,7 +23,7 @@ describe('availableNativeInteractives', () => {
     expect(availableNativeInteractives({ ...CAPABILITIES, flows_enabled: false, call_permission_enabled: false }))
       .toEqual(['product', 'product_list', 'catalog_message'])
     expect(availableNativeInteractives({ ...CAPABILITIES, catalog_enabled: false, catalog_id: null }))
-      .toEqual(['flow', 'call_permission_request'])
+      .toEqual(['flow', 'call_permission_request', 'voice_call'])
   })
 })
 
@@ -106,6 +106,16 @@ describe('buildNativeInteractive', () => {
         body: { text: '¿Podemos llamarte?' },
         action: { name: 'call_permission_request' },
       })
+  })
+
+  it('arma el botón para que el cliente llame', () => {
+    expect(buildNativeInteractive(form('voice_call', { body: '¿Prefieres hablar?' }), CAPABILITIES).interactive)
+      .toEqual({
+        type: 'voice_call',
+        body: { text: '¿Prefieres hablar?' },
+        action: { name: 'voice_call', parameters: { display_text: 'Llamar ahora' } },
+      })
+    expect(buildNativeInteractive(form('voice_call'), CAPABILITIES).errors).toEqual(['Escribe el cuerpo del mensaje.'])
   })
 
   it('valida los campos obligatorios y los límites de Meta', () => {

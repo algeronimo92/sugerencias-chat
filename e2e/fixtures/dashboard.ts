@@ -49,6 +49,11 @@ export function emptyDashboard(days = 30): Dashboard {
       slot_hours: 2, engagement_window_hours: 24, weekday_occurrences: [4, 4, 4, 4, 4, 5, 5],
       start_date: '2026-10-16', person_peaks: { messages: 0, flows_manual: 0 }, people: [], cells: [],
     },
+    calls: {
+      total: 0, inbound_answered: 0, inbound_missed: 0, quick_hangups: 0, answer_rate: null, previous_answer_rate: null, outbound_total: 0,
+      outbound_answered: 0, avg_duration_seconds: null, missed_by_cause: [], failed_total: 0, failed_by_cause: [],
+      failed_by_agent: [], by_hour: [], pending_callbacks: [],
+    },
     generated_at: '2026-11-14T15:00:00Z',
   }
 }

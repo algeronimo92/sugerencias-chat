@@ -25,7 +25,7 @@ from sqlalchemy import delete, insert, select, update
 from app.db.models.automations import AutomationExecution
 from app.db.models.leads import Lead, LeadActivity, LeadNote, LeadTagAssignment, MetaConversionEvent, WhatsAppIdentity, WhatsappAdConversion
 from app.db.models.tasks import LeadTask
-from app.db.models.conversations import MessageOutbox, ScheduledMessage, WspMessage
+from app.db.models.conversations import MessageOutbox, ScheduledMessage, WhatsAppCall, WspMessage
 from app.db.models.notifications import UserNotification
 from app.modules.leads.domain.errors import LeadMergeError
 
@@ -51,6 +51,9 @@ _OWNED_BY_LEAD = (
     # Lo ya informado a Meta (o en cola) también: su event_key conserva el
     # lead de origen, así que no choca con los del destino.
     (MetaConversionEvent, MetaConversionEvent.lead_id),
+    # Las llamadas: quien llamó solo con su nombre de usuario y después se le
+    # conoce el número queda con dos fichas, y la fusión no puede borrarlas.
+    (WhatsAppCall, WhatsAppCall.chat_id),
 )
 
 # Campos que el destino adopta del origen solo si los tiene vacíos. El lead

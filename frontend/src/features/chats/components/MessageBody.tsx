@@ -368,6 +368,9 @@ function OutboundInteractiveBody(ctx: MessageBodyContext) {
   if (subtype === 'catalog_message') {
     return <><Card icon={LayoutGrid} title="Catálogo" /><InteractiveText parsed={parsed} /></>
   }
+  if (subtype === 'voice_call') {
+    return <><Card icon={PhoneCall} title="Botón para llamarnos" /><InteractiveText parsed={parsed} /></>
+  }
   if (subtype === 'call_permission_request') {
     return <><Card icon={PhoneCall} title="Permiso para llamar" /><InteractiveText parsed={parsed} /></>
   }
@@ -403,6 +406,7 @@ const INTERACTIVE_RENDERERS: Record<string, BodyRenderer> = {
   catalog_message: OutboundInteractiveBody,
   flow: OutboundInteractiveBody,
   call_permission_request: OutboundInteractiveBody,
+  voice_call: OutboundInteractiveBody,
 }
 
 function InteractiveBody(ctx: MessageBodyContext) {

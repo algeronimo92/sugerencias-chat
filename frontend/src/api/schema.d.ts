@@ -1983,6 +1983,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/calling-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Calling Readiness
+         * @description Si el número puede activar las llamadas, preguntado a Meta en el
+         *     momento: no se guarda, porque cambia fuera del CRM (el negocio muda el
+         *     número o Meta le sube el límite) y nadie avisa.
+         */
+        get: operations["whatsapp_calling_readiness_api_whatsapp_calling_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/whatsapp/calling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Calling
+         * @description Si las llamadas están activas en el número y con qué horario.
+         */
+        get: operations["whatsapp_calling_api_whatsapp_calling_get"];
+        /**
+         * Update Whatsapp Calling
+         * @description Activa o desactiva las llamadas en Meta y fija su horario. No se
+         *     activan sin nadie que atienda: sonarían en el vacío y Meta oculta el
+         *     botón de llamar cuando pocas llamadas se atienden.
+         */
+        put: operations["update_whatsapp_calling_api_whatsapp_calling_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/whatsapp/costs": {
         parameters: {
             query?: never;
@@ -2896,6 +2944,201 @@ export interface paths {
         head?: never;
         /** Patch Note */
         patch: operations["patch_note_api_chats__chat_id__notes__note_id__patch"];
+        trace?: never;
+    };
+    "/api/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat Calls
+         * @description Las llamadas de un chat, para intercalarlas en el hilo.
+         */
+        get: operations["list_chat_calls_api_calls_get"];
+        put?: never;
+        /**
+         * Place Call
+         * @description Llama al cliente de ese chat. Meta la rechaza si no dio permiso.
+         */
+        post: operations["place_call_api_calls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/ringing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ringing Calls
+         * @description Las que suenan ahora. La pantalla la consulta cada pocos segundos: el
+         *     aviso en vivo puede fallar sin que el navegador lo note.
+         */
+        get: operations["list_ringing_calls_api_calls_ringing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/permission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Call Permission
+         * @description Lo que Meta dice ahora sobre el permiso del cliente. Se pregunta cada
+         *     vez: Meta no avisa cuando un permiso temporal vence.
+         */
+        get: operations["get_call_permission_api_calls_permission_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/permission-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Call Permission
+         * @description Le pide al cliente permiso para llamarlo. Fuera de la ventana de 24 h
+         *     se rechaza como cualquier mensaje libre: ahí hace falta una plantilla.
+         */
+        post: operations["ask_call_permission_api_calls_permission_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Call Answer */
+        get: operations["get_call_answer_api_calls__call_id__answer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Call Offer */
+        get: operations["get_call_offer_api_calls__call_id__offer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Call */
+        post: operations["accept_call_api_calls__call_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/connected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Connected
+         * @description El navegador confirma que hay audio, por si Meta no llegó a responder.
+         */
+        post: operations["call_connected_api_calls__call_id__connected_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore Call
+         * @description Deja de sonarle a esta persona. No le corta al cliente.
+         */
+        post: operations["ignore_call_api_calls__call_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calls/{call_id}/terminate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Terminate Call */
+        post: operations["terminate_call_api_calls__call_id__terminate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/issue-reports": {
@@ -4687,6 +4930,132 @@ export interface components {
             /** Description Template */
             description_template: string;
         };
+        /** CallAnswerRequest */
+        CallAnswerRequest: {
+            /** Sdp */
+            sdp: string;
+            /** Client Id */
+            client_id: string;
+            /**
+             * Pre Accept
+             * @default false
+             */
+            pre_accept: boolean;
+        };
+        /**
+         * CallAnswerState
+         * @description Cómo va una llamada saliente y, cuando llega, la respuesta de audio del cliente.
+         */
+        CallAnswerState: {
+            call: components["schemas"]["CallItem"];
+            /** Sdp */
+            sdp?: string | null;
+        };
+        /** CallHangUpRequest */
+        CallHangUpRequest: {
+            /** Cause */
+            cause?: string | null;
+        };
+        /** CallHoursSlot */
+        CallHoursSlot: {
+            /**
+             * Day
+             * @enum {string}
+             */
+            day: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+            /** Open */
+            open: string;
+            /** Close */
+            close: string;
+        };
+        /**
+         * CallItem
+         * @description Una llamada de WhatsApp como la ve la pantalla. Nunca trae la oferta SDP.
+         */
+        CallItem: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "inbound" | "outbound";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "dialing" | "ringing" | "connecting" | "accepted" | "completed" | "missed" | "rejected" | "failed";
+            /** Cause */
+            cause?: string | null;
+            /** Cause Label */
+            cause_label?: string | null;
+            /** Cause Group */
+            cause_group?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Ringing At
+             * Format: date-time
+             */
+            ringing_at: string;
+            /** Accepted At */
+            accepted_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Handled By User Id */
+            handled_by_user_id?: number | null;
+            /** Handled By Name */
+            handled_by_name?: string | null;
+            /** Caller Name */
+            caller_name?: string | null;
+        };
+        /**
+         * CallOffer
+         * @description La oferta de audio de Meta para una llamada que suena.
+         */
+        CallOffer: {
+            /** Call Id */
+            call_id: number;
+            /** Sdp */
+            sdp: string;
+        };
+        /**
+         * CallPermission
+         * @description Si el cliente dio permiso para ser llamado y qué se puede hacer ahora.
+         */
+        CallPermission: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "temporary" | "permanent";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Can Call */
+            can_call: boolean;
+            /** Can Request */
+            can_request: boolean;
+            /**
+             * Unanswered Streak
+             * @default 0
+             */
+            unanswered_streak: number;
+            /** Calls Left Before Losing Permission */
+            calls_left_before_losing_permission?: number | null;
+        };
+        /** CallStartRequest */
+        CallStartRequest: {
+            /** Chat Id */
+            chat_id: string;
+            /** Sdp */
+            sdp: string;
+            /** Client Id */
+            client_id: string;
+        };
         /** Chat */
         Chat: {
             /** Chat Id */
@@ -5000,6 +5369,110 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** DashboardCallAgent */
+        DashboardCallAgent: {
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
+        /** DashboardCallCause */
+        DashboardCallCause: {
+            /** Cause */
+            cause: string;
+            /** Label */
+            label: string;
+            /** Group */
+            group: string;
+            /** Action */
+            action: string;
+            /** Count */
+            count: number;
+        };
+        /** DashboardCallHour */
+        DashboardCallHour: {
+            /** Hour */
+            hour: number;
+            /** Answered */
+            answered: number;
+            /** Missed */
+            missed: number;
+        };
+        /**
+         * DashboardCalls
+         * @description Llamadas de WhatsApp del período. Perdidas (de operación) y fallidas
+         *     (técnicas o de la cuenta) van separadas y nunca se suman.
+         */
+        DashboardCalls: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Inbound Answered
+             * @default 0
+             */
+            inbound_answered: number;
+            /**
+             * Inbound Missed
+             * @default 0
+             */
+            inbound_missed: number;
+            /**
+             * Quick Hangups
+             * @default 0
+             */
+            quick_hangups: number;
+            /** Answer Rate */
+            answer_rate?: number | null;
+            /** Previous Answer Rate */
+            previous_answer_rate?: number | null;
+            /**
+             * Outbound Total
+             * @default 0
+             */
+            outbound_total: number;
+            /**
+             * Outbound Answered
+             * @default 0
+             */
+            outbound_answered: number;
+            /** Avg Duration Seconds */
+            avg_duration_seconds?: number | null;
+            /**
+             * Missed By Cause
+             * @default []
+             */
+            missed_by_cause: components["schemas"]["DashboardCallCause"][];
+            /**
+             * Failed Total
+             * @default 0
+             */
+            failed_total: number;
+            /**
+             * Failed By Cause
+             * @default []
+             */
+            failed_by_cause: components["schemas"]["DashboardCallCause"][];
+            /**
+             * Failed By Agent
+             * @default []
+             */
+            failed_by_agent: components["schemas"]["DashboardCallAgent"][];
+            /**
+             * By Hour
+             * @default []
+             */
+            by_hour: components["schemas"]["DashboardCallHour"][];
+            /**
+             * Pending Callbacks
+             * @default []
+             */
+            pending_callbacks: components["schemas"]["DashboardPendingCallback"][];
+        };
         /** DashboardCoverage */
         DashboardCoverage: {
             /** Total */
@@ -5265,6 +5738,23 @@ export interface components {
             appointments: components["schemas"]["DashboardAppointments"];
             activity: components["schemas"]["DashboardActivity"];
             hours: components["schemas"]["DashboardHours"];
+            /**
+             * @default {
+             *       "total": 0,
+             *       "inbound_answered": 0,
+             *       "inbound_missed": 0,
+             *       "quick_hangups": 0,
+             *       "outbound_total": 0,
+             *       "outbound_answered": 0,
+             *       "missed_by_cause": [],
+             *       "failed_total": 0,
+             *       "failed_by_cause": [],
+             *       "failed_by_agent": [],
+             *       "by_hour": [],
+             *       "pending_callbacks": []
+             *     }
+             */
+            calls: components["schemas"]["DashboardCalls"];
             /** Generated At */
             generated_at: string;
         };
@@ -5274,6 +5764,16 @@ export interface components {
             leads: number;
             /** Total */
             total: number;
+        };
+        /** DashboardPendingCallback */
+        DashboardPendingCallback: {
+            /** Chat Id */
+            chat_id: string;
+            /**
+             * Ringing At
+             * Format: date-time
+             */
+            ringing_at: string;
         };
         /** DashboardPersonHourCell */
         DashboardPersonHourCell: {
@@ -7121,7 +7621,7 @@ export interface components {
          * NotificationType
          * @enum {string}
          */
-        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed";
+        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed" | "missed_call" | "calls_paused";
         /** OnboardingStatus */
         OnboardingStatus: {
             /** Steps */
@@ -8240,6 +8740,8 @@ export interface components {
             is_active?: boolean | null;
             /** Phone */
             phone?: string | null;
+            /** Can Handle Calls */
+            can_handle_calls?: boolean | null;
         };
         /** UserItem */
         UserItem: {
@@ -8256,6 +8758,11 @@ export interface components {
             invitation_pending: boolean;
             /** Phone */
             phone?: string | null;
+            /**
+             * Can Handle Calls
+             * @default false
+             */
+            can_handle_calls: boolean;
         };
         /** UserOut */
         UserOut: {
@@ -8266,6 +8773,11 @@ export interface components {
             /** Name */
             name: string;
             role: components["schemas"]["UserRole"];
+            /**
+             * Can Handle Calls
+             * @default false
+             */
+            can_handle_calls: boolean;
         };
         /**
          * UserRole
@@ -8285,6 +8797,58 @@ export interface components {
         VapidPublicKeyResponse: {
             /** Public Key */
             public_key: string;
+        };
+        /**
+         * WhatsappCallingReadiness
+         * @description Si el número del negocio puede activar las llamadas de WhatsApp.
+         *
+         *     - ``requires_migration``: el número también se usa en la app de WhatsApp
+         *       Business; Meta solo admite llamadas por la API en números que no.
+         *     - ``limit_too_low``: la cuenta no llega al límite de mensajería que exige.
+         *     - ``unverified``: Meta no informó alguno de los dos datos.
+         */
+        WhatsappCallingReadiness: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "not_connected" | "requires_migration" | "limit_too_low" | "unverified" | "ready";
+            /** On Business App */
+            on_business_app?: boolean | null;
+            /** Messaging Limit */
+            messaging_limit?: string | null;
+            /** Messaging Limit Ok */
+            messaging_limit_ok?: boolean | null;
+        };
+        /** WhatsappCallingSettings */
+        WhatsappCallingSettings: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Hours Enabled
+             * @default false
+             */
+            hours_enabled: boolean;
+            /**
+             * Hours
+             * @default []
+             */
+            hours: components["schemas"]["CallHoursSlot"][];
+            /**
+             * Agents
+             * @default 0
+             */
+            agents: number;
+        };
+        /** WhatsappCallingUpdate */
+        WhatsappCallingUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Hours
+             * @default []
+             */
+            hours: components["schemas"]["CallHoursSlot"][];
         };
         /**
          * WhatsappCostAccount
@@ -12221,6 +12785,79 @@ export interface operations {
             };
         };
     };
+    whatsapp_calling_readiness_api_whatsapp_calling_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCallingReadiness"];
+                };
+            };
+        };
+    };
+    whatsapp_calling_api_whatsapp_calling_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCallingSettings"];
+                };
+            };
+        };
+    };
+    update_whatsapp_calling_api_whatsapp_calling_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatsappCallingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCallingSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     whatsapp_costs_api_whatsapp_costs_get: {
         parameters: {
             query?: {
@@ -14144,6 +14781,346 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InternalNoteItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chat_calls_api_calls_get: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_call_api_calls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ringing_calls_api_calls_ringing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"][];
+                };
+            };
+        };
+    };
+    get_call_permission_api_calls_permission_get: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallPermission"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_call_permission_api_calls_permission_request_post: {
+        parameters: {
+            query: {
+                chat_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_call_answer_api_calls__call_id__answer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallAnswerState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_call_offer_api_calls__call_id__offer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallOffer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_call_api_calls__call_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_connected_api_calls__call_id__connected_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_call_api_calls__call_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    terminate_call_api_calls__call_id__terminate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallHangUpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallItem"];
                 };
             };
             /** @description Validation Error */

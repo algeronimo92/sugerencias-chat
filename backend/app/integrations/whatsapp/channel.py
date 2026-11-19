@@ -86,9 +86,39 @@ class ChannelStatus(Protocol):
     async def availability(self) -> ChannelAvailability: ...
 
 
+class CallControl(Protocol):
+    """Control de una llamada de voz. El audio no pasa por acá: va directo
+    entre el navegador de quien atiende y el proveedor."""
+
+    async def accept(self, call_id: str, sdp: str, *, pre_accept: bool = False) -> None: ...
+
+    async def reject(self, call_id: str) -> None: ...
+
+    async def terminate(self, call_id: str) -> None: ...
+
+    async def start(self, chat_id: str, sdp: str, *, opaque: str) -> str:
+        """Llama al lead; devuelve el id que el proveedor le dio a la llamada."""
+
+    async def permission(self, chat_id: str) -> dict:
+        """Lo que el proveedor informa sobre el permiso del cliente para ser llamado."""
+
+
+class CallRefused(ChannelError):
+    """El proveedor rechazó iniciar la llamada. ``code`` es su código literal."""
+
+    def __init__(self, message: str, *, code: str | None = None, status_code: int | None = None):
+        super().__init__(message, status_code=status_code)
+        self.code = code
+
+
+class CallOutcomeUnknown(ChannelError):
+    """El proveedor no respondió a tiempo: la operación pudo haberse hecho o no."""
+
+
 @dataclass(frozen=True)
 class WhatsAppChannel:
     name: str
     sender: MessageSender
     actions: ConversationActions
     status: ChannelStatus
+    calls: CallControl | None = None

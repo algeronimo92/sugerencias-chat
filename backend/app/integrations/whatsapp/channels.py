@@ -1,4 +1,4 @@
-from app.integrations.meta.channel import MetaChannelStatus, MetaConversationActions, MetaMessageSender
+from app.integrations.meta.channel import MetaCallControl, MetaChannelStatus, MetaConversationActions, MetaMessageSender
 from app.integrations.whatsapp.channel import WhatsAppChannel
 
 ACTIVE_CHANNEL = "meta"
@@ -9,6 +9,7 @@ CHANNELS: dict[str, WhatsAppChannel] = {
         sender=MetaMessageSender(),
         actions=MetaConversationActions(),
         status=MetaChannelStatus(),
+        calls=MetaCallControl(),
     ),
 }
 

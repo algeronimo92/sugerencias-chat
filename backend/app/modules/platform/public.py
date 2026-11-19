@@ -34,3 +34,10 @@ async def business_timezone() -> tzinfo:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo(DEFAULT_BUSINESS_TIMEZONE)
+
+
+async def calls_enabled() -> bool:
+    """Si el negocio tiene activas las llamadas de WhatsApp. Lo escribe el
+    panel de Integraciones al activarlas o desactivarlas en Meta."""
+    return (await get_effective("meta_call_permission_enabled")).strip().lower() == "true"
+

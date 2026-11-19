@@ -61,6 +61,13 @@ def _contacts(message: dict) -> Projection:
 def _interactive(message: dict) -> Projection:
     subtype = message_subtype(message)
     reply = _nested(_nested(message, "interactive"), subtype or "")
+    if subtype == "call_permission_reply":
+        # La respuesta al pedido de permiso para llamarlo: se guarda como
+        # texto legible, porque no trae ninguno.
+        accepted = reply.get("response") == "accept"
+        if not accepted:
+            return Projection(content="No aceptó que le llamen")
+        return Projection(content="Aceptó que le llamen" + (" siempre" if reply.get("is_permanent") else ""))
     if subtype == "nfm_reply":
         return Projection(content=_text(reply.get("body")) or _text(reply.get("name")))
     return Projection(content=_text(reply.get("title")) or _text(reply.get("id")))

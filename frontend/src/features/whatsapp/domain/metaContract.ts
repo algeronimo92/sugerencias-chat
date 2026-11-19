@@ -32,7 +32,8 @@ export const META_CONTRACT = {
       "interactive": [
         "button_reply",
         "list_reply",
-        "nfm_reply"
+        "nfm_reply",
+        "call_permission_reply"
       ]
     }
   },
@@ -58,7 +59,8 @@ export const META_CONTRACT = {
         "product_list",
         "catalog_message",
         "flow",
-        "call_permission_request"
+        "call_permission_request",
+        "voice_call"
       ]
     },
     "capabilities": {
@@ -67,6 +69,7 @@ export const META_CONTRACT = {
       "interactive/catalog_message": "catalog",
       "interactive/flow": "flow",
       "interactive/call_permission_request": "call_permission",
+      "interactive/voice_call": "call_permission",
       "template": "approved_template"
     },
     "window_exempt_root_types": [

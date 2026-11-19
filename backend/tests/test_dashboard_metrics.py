@@ -12,6 +12,10 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from zoneinfo import ZoneInfo
+
+from app.modules.leads.dashboard import queries as dashboard_queries
+from app.modules.leads.schemas import DashboardCalls
 from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
@@ -73,7 +77,32 @@ def compiled_sql(monkeypatch):
         monkeypatch.setattr(block, "execute_mapping", fake_execute_mapping)
     # La moneda sale del perfil IA, que abriría una sesión real.
     monkeypatch.setattr(currency, "_profile_currency", fake_currency)
+
+    # Las llamadas las mide conversations con su propia sesión (su SQL se
+    # prueba contra PostgreSQL en test_calls_postgres): acá solo se comprueba
+    # que el dashboard las pide con el período y el alcance correctos.
+    async def fake_call_metrics(**kwargs):
+        call_requests.append(kwargs)
+        return DashboardCalls().model_dump()
+
+    async def fake_timezone():
+        return ZoneInfo("America/Lima")
+
+    monkeypatch.setattr(dashboard_queries, "call_metrics", fake_call_metrics)
+    monkeypatch.setattr(dashboard_queries, "business_timezone", fake_timezone)
     return statements
+
+
+call_requests: list[dict] = []
+
+
+async def test_the_calls_block_is_asked_with_the_dashboard_scope(compiled_sql):
+    call_requests.clear()
+    mine = await dashboard_queries.get_dashboard_metrics(30, "mine", 7)
+    team = await dashboard_queries.get_dashboard_metrics(30, "team", 7)
+
+    assert [request["user_id"] for request in call_requests] == [7, None]
+    assert mine["calls"]["total"] == 0 and team["calls"]["failed_by_cause"] == []
 
 
 @pytest.fixture(autouse=True)

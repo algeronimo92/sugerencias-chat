@@ -15,6 +15,7 @@ export const TAB_SLUGS = {
   tags: 'etiquetas',
   pipeline: 'embudo',
   sales: 'ventas',
+  calls: 'llamadas',
 } as const
 
 export type TabId = keyof typeof TAB_SLUGS

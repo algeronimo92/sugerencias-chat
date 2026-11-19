@@ -8,9 +8,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.integrations.email_service import EmailNotConfiguredError
-from app.modules.auth import users_api
+from app.modules.auth import users_api, users_repository
 from app.modules.auth.auth_service import require_admin
-from app.modules.auth.errors import EmailAlreadyExistsError, UserAlreadyActiveError
+from app.modules.auth.errors import AnalystCannotHandleCallsError, EmailAlreadyExistsError, UserAlreadyActiveError
 
 ADMIN = SimpleNamespace(id=1, email="admin@example.com", name="Admin", role="admin", is_active=True)
 
@@ -35,6 +35,8 @@ def client(monkeypatch) -> TestClient:
     monkeypatch.setattr(users_api, "invite_user", AsyncMock(side_effect=lambda **kw: _user(2, kw["role"])))
     monkeypatch.setattr(users_api, "update_user", AsyncMock(side_effect=lambda user_id, values: _user(user_id, values.get("role", "vendedor"))))
     monkeypatch.setattr(users_api, "invalidate_user_cache", lambda *_: None)
+    monkeypatch.setattr(users_api, "calls_enabled", AsyncMock(return_value=False))
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[]))
     app = FastAPI()
     app.include_router(users_api.router)
     app.dependency_overrides[require_admin] = lambda: ADMIN
@@ -137,3 +139,76 @@ def test_a_phone_is_stored_as_the_whatsapp_id_and_empty_clears_it(client, monkey
     assert users_api.update_user.await_args.args == (2, {"phone": None})
 
     assert client.patch("/api/users/2", json={"phone": "12"}).status_code == 400
+
+
+def test_the_calls_permission_is_given_per_user(client):
+    response = client.patch("/api/users/2", json={"can_handle_calls": True})
+    assert response.status_code == 200
+    assert users_api.update_user.await_args.args == (2, {"can_handle_calls": True})
+
+
+def test_an_explicit_null_does_not_touch_the_calls_permission(client):
+    response = client.patch("/api/users/2", json={"can_handle_calls": None, "role": "admin"})
+    assert response.status_code == 200
+    assert users_api.update_user.await_args.args == (2, {"role": "admin"})
+
+
+def test_an_analyst_cannot_be_given_the_calls_permission(client, monkeypatch):
+    monkeypatch.setattr(users_api, "update_user", AsyncMock(side_effect=AnalystCannotHandleCallsError()))
+    response = client.patch("/api/users/2", json={"can_handle_calls": True})
+    assert response.status_code == 400
+    assert "analista" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(("current_role", "values", "expected"), [
+    # Pasar a analista quita el permiso aunque no se haya pedido.
+    ("vendedor", {"role": "analista"}, {"role": "analista", "can_handle_calls": False}),
+    ("vendedor", {"role": "analista", "can_handle_calls": False}, {"role": "analista", "can_handle_calls": False}),
+    # Los demás cambios no lo tocan.
+    ("vendedor", {"role": "admin"}, {"role": "admin"}),
+    ("vendedor", {"can_handle_calls": True}, {"can_handle_calls": True}),
+    ("admin", {"can_handle_calls": True, "role": "vendedor"}, {"can_handle_calls": True, "role": "vendedor"}),
+    ("analista", {"can_handle_calls": False}, {"can_handle_calls": False}),
+    # Sale de analista y recibe el permiso en el mismo cambio.
+    ("analista", {"role": "vendedor", "can_handle_calls": True}, {"role": "vendedor", "can_handle_calls": True}),
+    ("vendedor", {"phone": "51999888777"}, {"phone": "51999888777"}),
+])
+async def test_the_calls_permission_follows_the_role(monkeypatch, current_role, values, expected):
+    monkeypatch.setattr(users_repository, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(role=current_role)))
+    assert await users_repository._with_calls_permission_rule(7, values) == expected
+
+
+@pytest.mark.parametrize(("current_role", "values"), [
+    ("analista", {"can_handle_calls": True}),
+    ("vendedor", {"role": "analista", "can_handle_calls": True}),
+])
+async def test_the_calls_permission_is_refused_for_a_role_that_cannot_answer(monkeypatch, current_role, values):
+    monkeypatch.setattr(users_repository, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(role=current_role)))
+    with pytest.raises(AnalystCannotHandleCallsError):
+        await users_repository._with_calls_permission_rule(7, values)
+
+
+@pytest.mark.parametrize("change", [{"can_handle_calls": False}, {"is_active": False}, {"role": "analista"}])
+def test_the_last_person_answering_calls_cannot_be_removed_while_calls_are_on(client, monkeypatch, change):
+    monkeypatch.setattr(users_api, "calls_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}]))
+    monkeypatch.setattr(users_api, "revoke_all_for_user", AsyncMock())
+
+    response = client.patch("/api/users/2", json=change)
+
+    assert response.status_code == 409
+    assert "única persona" in response.json()["detail"]
+    users_api.update_user.assert_not_awaited()
+
+
+def test_an_agent_can_be_removed_when_someone_else_still_answers(client, monkeypatch):
+    monkeypatch.setattr(users_api, "calls_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}, {"id": 3, "name": "Bea"}]))
+
+    assert client.patch("/api/users/2", json={"can_handle_calls": False}).status_code == 200
+
+
+def test_with_calls_off_the_last_agent_can_be_removed(client, monkeypatch):
+    monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[{"id": 2, "name": "Ana"}]))
+
+    assert client.patch("/api/users/2", json={"can_handle_calls": False}).status_code == 200

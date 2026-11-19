@@ -122,6 +122,63 @@ class MessageContract(Protocol):
         """Cuerpo final de una reacción (no pasa por el outbox)."""
 
 
+class CallStore(Protocol):
+    """Las llamadas de WhatsApp. Cada transición es condicional: devuelve la
+    fila solo si la cambió, para que un evento repetido no se cuente dos veces."""
+
+    async def insert_ringing(self, **values: Any) -> tuple[dict, bool]:
+        """Crea la llamada entrante; si el ``wacid`` ya existe, la devuelve sin tocarla."""
+
+    async def insert_dialing(self, *, chat_id: str, phone_number_id: str, user_id: int, client_id: str, at: datetime) -> dict:
+        """Crea la llamada saliente. Levanta ``CallInProgress`` o ``AgentBusy``
+        si el chat o la persona ya tienen una llamada viva."""
+
+    async def set_wa_call_id(self, call_id: int, wa_call_id: str) -> None: ...
+
+    async def advance_outbound(self, call_id: int, *, status: str | None, sdp: str | None, at: datetime) -> dict | None:
+        """``dialing``/``ringing`` → ``ringing``/``accepted``; guarda la
+        respuesta de audio del cliente si vino."""
+
+    async def get(self, call_id: int) -> dict | None: ...
+
+    async def get_by_wa_call_id(self, wa_call_id: str) -> dict | None: ...
+
+    async def claim(self, call_id: int, *, user_id: int, client_id: str, until: datetime) -> dict | None:
+        """``ringing`` → ``connecting``. Levanta ``AgentBusy`` si la persona ya está en otra."""
+
+    async def release(self, call_id: int, *, user_id: int) -> dict | None:
+        """``connecting`` → ``ringing``, solo si la reclamó esa persona."""
+
+    async def mark_accepted(self, call_id: int, *, user_id: int, at: datetime) -> dict | None: ...
+
+    async def finish(
+        self, call_id: int, *, status: str, cause: str | None, error_code: str | None,
+        ended_at: datetime, accepted_at: datetime | None, duration_seconds: int | None,
+        closed_by: str | None,
+    ) -> dict | None:
+        """Cierra una llamada viva, o corrige un cierre del ciclo de limpieza
+        cuando llega el de Meta (``closed_by`` nulo)."""
+
+    async def dismiss(self, call_id: int, user_id: int) -> dict | None:
+        """Agrega a la persona a quienes la ignoraron, si sigue sonando."""
+
+    async def append_event(self, call_id: int, event: dict) -> None: ...
+
+    async def ringing(self) -> list[dict]: ...
+
+    async def unanswered_streak(self, chat_id: str) -> int:
+        """Llamadas salientes seguidas que el cliente no contestó, contando desde la última."""
+
+    async def for_chat(self, chat_id: str, limit: int) -> list[dict]: ...
+
+    async def stale(self, *, ringing_before: datetime, claim_expired_at: datetime, accepted_before: datetime) -> list[dict]: ...
+
+
+class CallAgents(Protocol):
+    async def __call__(self) -> list[dict]:
+        """Quienes atienden llamadas hoy: ``{id, name}``."""
+
+
 class WindowReader(Protocol):
     async def __call__(self, chat_id: str) -> dict | None: ...
 
@@ -135,6 +192,8 @@ class ConversationPorts:
     contract: MessageContract
     service_window: WindowReader
     channel: Any  # () -> WhatsAppChannel
+    calls: CallStore | None = None
+    call_agents: CallAgents | None = None
 
     def current_channel(self) -> WhatsAppChannel:
         return self.channel()

@@ -103,6 +103,7 @@ def test_admin_creates_an_invitation_without_choosing_password(monkeypatch) -> N
         "is_active": False,
         "invitation_pending": True,
         "phone": None,
+        "can_handle_calls": False,
     }
     invite = AsyncMock(return_value=invited)
     monkeypatch.setattr(users, "invite_user", invite)

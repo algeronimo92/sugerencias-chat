@@ -211,6 +211,24 @@
       }
     }
   },
+  "interactive_call_permission_reply": {
+    "message": {
+      "from": "51987654321",
+      "id": "wamid.CALLPERMISSION1",
+      "timestamp": "1790000016",
+      "type": "interactive",
+      "context": {"from": "51999000111", "id": "wamid.OUTBOUND5"},
+      "interactive": {
+        "type": "call_permission_reply",
+        "call_permission_reply": {
+          "response": "accept",
+          "is_permanent": false,
+          "expiration_timestamp": "1790604816",
+          "response_source": "user_action"
+        }
+      }
+    }
+  },
   "button": {
     "message": {
       "from": "51987654321",

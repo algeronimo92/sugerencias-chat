@@ -116,5 +116,13 @@
       "body": {"text": "¿Podemos llamarte?"},
       "action": {"name": "call_permission_request"}
     }
+  },
+  "interactive_voice_call": {
+    "type": "interactive",
+    "interactive": {
+      "type": "voice_call",
+      "body": {"text": "¿Prefieres hablar? Llámanos."},
+      "action": {"name": "voice_call", "parameters": {"display_text": "Llamar ahora", "ttl_minutes": 1440}}
+    }
   }
 }

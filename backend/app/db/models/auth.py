@@ -22,6 +22,11 @@ class User(Base):
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # WhatsApp del usuario en E.164 sin "+", para el aviso de cita al equipo.
     phone: Mapped[str | None] = mapped_column(Text)
+    # Le suenan las llamadas de WhatsApp del negocio y puede llamar a clientes.
+    # Lo decide el admin persona por persona: no todo el que ve los chats
+    # atiende el teléfono. ``server_default`` porque en un despliegue
+    # blue-green el color viejo sigue creando usuarios sin conocer la columna.
+    can_handle_calls: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'vendedor', 'analista')", name="users_role_check"),
