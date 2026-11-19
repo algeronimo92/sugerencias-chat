@@ -319,6 +319,12 @@ class TemplateLibraryAttachmentCreate(BaseModel):
     asset_id: int
 
 
+class TemplateAttachmentOrder(BaseModel):
+    """Los ids de los adjuntos en el orden nuevo: todos, una vez cada uno."""
+
+    attachment_ids: list[int] = Field(max_length=10)
+
+
 class SendTemplateRequest(BaseModel):
     text: str | None = None
     parameters: list[str] = Field(default_factory=list)

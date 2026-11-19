@@ -2776,6 +2776,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/templates/{template_id}/attachments/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Attachment Order
+         * @description El orden de los adjuntos: el texto de la plantilla va como pie del
+         *     primero que lo admite, así que elegir cuál va primero cambia el mensaje.
+         */
+        put: operations["put_attachment_order_api_templates__template_id__attachments_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/templates/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -8366,6 +8387,14 @@ export interface components {
             position: number;
             /** Library Asset Id */
             library_asset_id?: number | null;
+        };
+        /**
+         * TemplateAttachmentOrder
+         * @description Los ids de los adjuntos en el orden nuevo: todos, una vez cada uno.
+         */
+        TemplateAttachmentOrder: {
+            /** Attachment Ids */
+            attachment_ids: number[];
         };
         /** TemplateCapabilities */
         TemplateCapabilities: {
@@ -14291,6 +14320,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateAttachmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_attachment_order_api_templates__template_id__attachments_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateAttachmentOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateAttachmentItem"][];
                 };
             };
             /** @description Validation Error */

@@ -8,6 +8,7 @@ from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
 from app.db.models.catalogs import MessageTemplate, TemplateAttachment, TemplateUserState
 from app.modules.catalogs.template_policies import _meta_managed_template_values, _references_template
+from app.modules.catalogs.template_validation import attachment_positions
 from app.db.uow import session_scope
 from app.modules.catalogs.template_queries import list_templates
 
@@ -215,6 +216,28 @@ async def add_template_attachment(
         "id": attachment_id, "media_url": media_url, "content_type": content_type,
         "filename": filename, "position": position, "library_asset_id": library_asset_id,
     }
+
+async def reorder_template_attachments(template_id: int, attachment_ids: list[int]) -> list[dict] | None:
+    async with session_scope() as session:
+        if await session.get(MessageTemplate, template_id) is None:
+            return None
+        attachments = (await session.execute(
+            select(TemplateAttachment).where(TemplateAttachment.template_id == template_id)
+        )).scalars().all()
+        positions = attachment_positions([attachment.id for attachment in attachments], attachment_ids)
+        for attachment in attachments:
+            attachment.position = positions[attachment.id]
+        await session.flush()
+        ordered = sorted(attachments, key=lambda attachment: attachment.position)
+        return [
+            {
+                "id": attachment.id, "media_url": attachment.media_url, "content_type": attachment.content_type,
+                "filename": attachment.filename, "position": attachment.position,
+                "library_asset_id": attachment.library_asset_id,
+            }
+            for attachment in ordered
+        ]
+
 
 async def remove_template_attachment(attachment_id: int) -> dict | None:
     async with session_scope() as session:

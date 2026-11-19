@@ -33,11 +33,14 @@ interface Props {
   variables: string[]
   values: string[]
   onChange: (values: string[]) => void
+  /** Sin el grupo «De la cita»: una automatización no sabe de qué cita se
+   *  trata, así que ahí esos datos dejarían la plantilla sin poder enviarse. */
+  leadOnly?: boolean
 }
 
 /** Las variables de una plantilla oficial: qué dato del lead o de la cita
  *  lleva cada una, mezclado con texto libre, y el ejemplo que verá Meta. */
-export function OfficialVariablesSection({ variables, values, onChange }: Props) {
+export function OfficialVariablesSection({ variables, values, onChange, leadOnly = false }: Props) {
   const [draft, setDraft] = useState(() => draftOf(values))
 
   // El texto de la plantilla manda cuántas variables hay: si cambió, se
@@ -62,7 +65,7 @@ export function OfficialVariablesSection({ variables, values, onChange }: Props)
 
   return (
     <VariablesBuilder
-      groups={GROUPS}
+      groups={leadOnly ? GROUPS.filter(group => group.id === 'lead') : GROUPS}
       labels={PARAMETER_LABELS}
       variables={variables}
       draft={draft}

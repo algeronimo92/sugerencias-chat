@@ -13,7 +13,6 @@ from datetime import timedelta
 
 from app.integrations.whatsapp.channel import SEND_FAILURES, is_transient_send_failure
 from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus
-from app.modules.catalogs.ports.types import InteractiveType, TemplateType
 from app.modules.notifications.ports.types import NotificationType
 
 from app.modules.automations.application.deps import AutomationDeps
@@ -25,7 +24,9 @@ from app.modules.automations.domain.events import (
 from app.modules.automations.domain.execution import execution_actor, resolve_recipient
 from app.modules.automations.domain.limits import MAX_MEDIA_CAPTION_LENGTH, MAX_WHATSAPP_TEXT_LENGTH
 from app.modules.automations.domain.rules import render_variables
+from app.modules.automations.domain.templates import automatic_template_problem, is_official, official_parameters
 from app.modules.catalogs.ports.template_delivery import build_internal_template_items
+from app.modules.conversations.ports.template_sending import ChatMessagingError
 from app.modules.conversations.ports.message_items import interactive_item, media_item, text_item
 from app.modules.conversations.ports.message_media import mediatype_from_content_type
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_CLOSED_ERROR
@@ -166,15 +167,37 @@ async def _queued(chat: dict, deps: AutomationDeps) -> None:
     await deps.publish(AutomationMessagesQueued(chat_id=chat["chat_id"]))
 
 
+async def _send_official_template(template: dict, chat, rule, deps: AutomationDeps) -> dict:
+    """Una plantilla aprobada por Meta sale aunque la ventana de 24 h esté
+    cerrada: es justamente lo que Meta permite para volver a escribirle a un
+    lead que dejó de contestar. Cada envío lo cobra Meta."""
+    parameters = official_parameters(template, chat)
+    if any(not value for value in parameters):
+        raise StepFailed(
+            "Una variable de la plantilla de Meta quedó vacía para este lead "
+            "(por ejemplo, el lead no tiene nombre o servicio de interés)"
+        )
+    try:
+        items = await deps.build_official_template_items(template, parameters)
+    except ChatMessagingError as exc:
+        raise StepFailed(str(exc)) from exc
+    sent = await deps.enqueue_messages(chat["chat_id"], items)
+    await deps.record_template_use(template["id"], rule.created_by_user_id)
+    await _queued(chat, deps)
+    return {
+        "status": AutomationExecutionStatus.COMPLETED,
+        "message_ids": [message["id"] for message in sent],
+        "template_id": template["id"],
+    }
+
+
 async def _action_send_template(action, chat, execution, rule, deps: AutomationDeps) -> dict:
     template = await deps.load_template(action["template_id"])
-    if (
-        not template
-        or not template["is_active"]
-        or template["template_type"] != TemplateType.INTERNAL
-        or template["interactive_type"] != InteractiveType.NONE
-    ):
-        raise StepFailed("La plantilla automática dejó de ser una plantilla interna válida")
+    problem = automatic_template_problem(template)
+    if problem:
+        raise StepFailed(problem)
+    if is_official(template):
+        return await _send_official_template(template, chat, rule, deps)
     attachments = template["attachments"]
     await require_service_window(chat, execution, deps)
     text = render_variables(template["content"], chat).strip()
@@ -360,7 +383,8 @@ ACTION_HANDLERS = {
 # Las acciones cuyo handler llama a ``require_service_window``. El simulador
 # las usa para anticipar el fallo: antes solo lo hacía con SEND_TEMPLATE y
 # daba por buenos los envíos de texto, audio o archivo con la ventana cerrada.
-# Un test compara esta lista con los handlers.
+# Un test compara esta lista con los handlers. SEND_TEMPLATE la exige solo
+# con una plantilla interna: una de Meta aprobada sale con la ventana cerrada.
 SERVICE_WINDOW_ACTIONS = frozenset({
     AutomationActionType.SEND_TEMPLATE,
     AutomationActionType.SEND_MESSAGE,

@@ -23,6 +23,7 @@ from app.modules.automations.application.deps import AutomationDeps
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.execution import child_flow_payload, require_invocable
 from app.modules.automations.domain.rules import business_timezone, is_business_hours, render_variables, wait_seconds
+from app.modules.automations.domain.templates import automatic_template_problem, is_official
 from app.modules.automations.domain.errors import StepFailed
 
 
@@ -159,7 +160,17 @@ class ActionNode(FlowNodeHandler):
     async def simulate(self, node: dict, simulation: FlowSimulation) -> str | None:
         action = node["data"]["action"]
         result = {"type": action["type"], "status": "would_run"}
-        if action["type"] in SERVICE_WINDOW_ACTIONS and await _service_window_closed(simulation):
+        needs_window = action["type"] in SERVICE_WINDOW_ACTIONS
+        if action["type"] == AutomationActionType.SEND_TEMPLATE:
+            template = await simulation.deps.load_template(action["template_id"])
+            problem = automatic_template_problem(template)
+            if problem:
+                result.update(status="would_fail", detail=problem)
+                needs_window = False
+            elif is_official(template):
+                result.update(detail="Plantilla de Meta: se envía aunque la ventana de 24 horas esté cerrada")
+                needs_window = False
+        if needs_window and await _service_window_closed(simulation):
             result.update(status="would_fail", detail=_WINDOW_CLOSED_DETAIL)
         simulation.record(node["id"], **result)
         return simulation.edges[(node["id"], FlowHandle.NEXT)]

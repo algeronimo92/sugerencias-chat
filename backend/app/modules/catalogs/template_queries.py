@@ -61,7 +61,11 @@ async def list_templates(user_id: int, include_inactive=False):
 
 
 async def fetch_template_for_delivery(template_id: int) -> dict | None:
-    """La plantilla con sus adjuntos en orden, lista para armar el envío."""
+    """La plantilla con sus adjuntos en orden, lista para armar el envío.
+
+    Trae también lo que pide una plantilla oficial de Meta (nombre, idioma,
+    estado, valores de las variables, encabezado, pie y botones), con las
+    mismas claves que ``list_templates``."""
     async with session_scope() as session:
         template = await session.get(MessageTemplate, template_id)
         if template is None:
@@ -70,12 +74,27 @@ async def fetch_template_for_delivery(template_id: int) -> dict | None:
             select(TemplateAttachment).where(TemplateAttachment.template_id == template_id)
             .order_by(TemplateAttachment.position, TemplateAttachment.id)
         )).scalars().all()
+        header_media = (
+            await session.get(MediaAsset, template.official_header_media_asset_id)
+            if template.official_header_media_asset_id else None
+        )
     return {
         "id": template.id,
+        "name": template.name,
         "content": template.content,
         "is_active": template.is_active,
         "template_type": template.template_type,
         "interactive_type": template.interactive_type,
+        "official_name": template.official_name,
+        "official_language": template.official_language,
+        "official_status": template.official_status,
+        "official_parameter_values": template.official_parameter_values or [],
+        "official_header_type": template.official_header_type,
+        "official_header_text": template.official_header_text,
+        "official_header_media_url": header_media.media_url if header_media else None,
+        "official_header_media_filename": header_media.filename if header_media else None,
+        "official_footer": template.official_footer,
+        "official_buttons": template.official_buttons or [],
         "attachments": [
             {
                 "id": attachment.id,

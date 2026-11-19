@@ -24,7 +24,7 @@ async def verify_references(refs: ActionReferences, references: ReferenceChecker
     if refs.tags and await references.inactive_tags(refs.tags):
         raise InvalidAutomation("Una de las etiquetas elegidas ya no existe o está desactivada. Elige otra.")
     if refs.templates and await references.unusable_templates(refs.templates):
-        raise InvalidAutomation("Una de las plantillas elegidas no se puede enviar sola: tiene que ser una plantilla interna activa y sin botones ni listas. Elige otra.")
+        raise InvalidAutomation("Una de las plantillas elegidas no se puede enviar sola: tiene que ser una plantilla interna activa sin botones ni listas, o una de Meta aprobada cuyas variables salgan del lead (no de la cita). Elige otra.")
     if refs.media_assets and await references.missing_media_assets(refs.media_assets):
         raise InvalidAutomation("Uno de los archivos elegidos ya no está en la librería de medios. Elige otro.")
 
