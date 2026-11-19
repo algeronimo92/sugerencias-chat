@@ -28,8 +28,8 @@ def client(monkeypatch):
     stored = AsyncMock(return_value=(["evt-1"], 0))
     monkeypatch.setattr(meta_webhook, "store_changes", stored)
     notified = []
-    async def notify():
-        notified.append(True)
+    async def notify(event_types=None):
+        notified.append(event_types)
 
     monkeypatch.setattr(meta_webhook, "notify_new_events", notify)
     app = FastAPI()
@@ -74,7 +74,8 @@ def test_signed_body_is_stored_raw_per_change_and_wakes_the_worker(client):
     assert len(changes) == 1
     assert changes[0]["field"] == "messages"
     assert changes[0]["value"] == body["entry"][0]["changes"][0]["value"]
-    assert client.notified == [True]
+    # Solo despierta al ciclo de mensajes: no hay llamadas en la entrega.
+    assert client.notified == [{"messages"}]
 
 
 @pytest.mark.parametrize("signature", [None, "sha256=deadbeef", "md5=abc"])

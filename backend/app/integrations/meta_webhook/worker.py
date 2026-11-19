@@ -13,7 +13,17 @@ import logging
 import traceback
 from time import monotonic
 
-from app.integrations.meta_webhook.inbox import InboxEvent, claim_events, complete_event, purge_processed
+from app.integrations.meta_webhook.inbox import (
+    CALLS_EVENT_TYPE,
+    CALLS_LANE,
+    MESSAGES_LANE,
+    InboxEvent,
+    Lane,
+    claim_events,
+    complete_event,
+    purge_processed,
+    release_event,
+)
 from app.integrations.meta_webhook.processor import process_change
 from app.db.signals import ring, signal
 
@@ -24,36 +34,51 @@ IDLE_POLL_SECONDS = 2.0
 PURGE_INTERVAL_SECONDS = 3600.0
 
 META_INBOX_SIGNAL = "meta-inbox"
+# Señal propia: si los dos ciclos esperaran la misma, el primero en despertar
+# la apaga y el otro duerme hasta su sondeo (2 s de una llamada sonando).
+META_CALLS_SIGNAL = "meta-inbox-calls"
+CALLS_IDLE_POLL_SECONDS = 1.0
 
 
-async def notify_new_events() -> None:
-    """Despierta al worker apenas el webhook guardó eventos nuevos, aunque el
-    webhook haya entrado por otra réplica."""
-    await ring(META_INBOX_SIGNAL)
+async def notify_new_events(event_types: set[str] | None = None) -> None:
+    """Despierta al ciclo que corresponda apenas el webhook guardó eventos
+    nuevos, aunque el webhook haya entrado por otra réplica. Sin tipos,
+    despierta a los dos."""
+    if event_types is None or CALLS_EVENT_TYPE in event_types:
+        await ring(META_CALLS_SIGNAL)
+    if event_types is None or event_types - {CALLS_EVENT_TYPE}:
+        await ring(META_INBOX_SIGNAL)
 
 
-async def run_event(event: InboxEvent) -> bool:
+async def run_event(event: InboxEvent, *, release_on_cancel: bool = False) -> bool:
     """Procesa un evento y deja su resultado en el inbox. True si salió bien."""
     try:
         await process_change(event)
     except asyncio.CancelledError:
+        if release_on_cancel:
+            # Un deploy apaga el worker: el evento vuelve a la fila en vez de
+            # esperar a que venza su reclamo.
+            await asyncio.shield(release_event(event.id))
         raise
     except Exception as exc:
         logger.exception("Falló el evento %s de Meta (intento %s)", event.id, event.attempts)
         # El final del traceback dice dónde falló sin tener que ir a buscar
         # el log de ese momento.
         where = "".join(traceback.format_tb(exc.__traceback__)[-3:])
-        await complete_event(event.id, error=f"{type(exc).__name__}: {exc}\n{where}")
+        # De una llamada no se guarda el texto del error: uno de validación
+        # repite su entrada, y la entrada trae la oferta SDP.
+        detail = type(exc).__name__ if event.event_type == CALLS_EVENT_TYPE else f"{type(exc).__name__}: {exc}"
+        await complete_event(event.id, error=f"{detail}\n{where}")
         return False
     await complete_event(event.id)
     return True
 
 
-async def drain_once(limit: int = BATCH_SIZE) -> int:
+async def drain_once(limit: int = BATCH_SIZE, *, lane: Lane = MESSAGES_LANE) -> int:
     """Reclama y procesa una tanda. Devuelve cuántos eventos tomó."""
-    events = await claim_events(limit)
+    events = await claim_events(limit, lane=lane)
     for event in events:
-        await run_event(event)
+        await run_event(event, release_on_cancel=lane is CALLS_LANE)
     return len(events)
 
 
@@ -68,10 +93,24 @@ async def watch_meta_webhook_inbox() -> None:
             if monotonic() >= next_purge_at:
                 next_purge_at = monotonic() + PURGE_INTERVAL_SECONDS
                 await purge_processed()
-            if await drain_once():
+            if await drain_once(lane=MESSAGES_LANE):
                 continue
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Error al vaciar el inbox de Meta")
         await _wait_for_work()
+
+
+async def watch_meta_calls_inbox() -> None:
+    """El carril de las llamadas: de a un evento, para que una llamada nunca
+    espere detrás de otra tanda ni detrás de un mensaje."""
+    while True:
+        try:
+            if await drain_once(1, lane=CALLS_LANE):
+                continue
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Error al vaciar el carril de llamadas de Meta")
+        await signal(META_CALLS_SIGNAL).wait(CALLS_IDLE_POLL_SECONDS)

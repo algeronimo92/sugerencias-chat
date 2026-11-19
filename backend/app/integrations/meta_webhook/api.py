@@ -55,9 +55,10 @@ async def receive_webhook(request: Request) -> dict:
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Cuerpo JSON inválido")
 
-    accepted, duplicates = await store_changes(split_changes(body))
+    changes = split_changes(body)
+    accepted, duplicates = await store_changes(changes)
     if duplicates:
         metrics.webhook_duplicate_changes.inc(duplicates)
     if accepted:
-        await notify_new_events()
+        await notify_new_events({change["field"] for change in changes})
     return {"received": len(accepted), "duplicates": duplicates}
