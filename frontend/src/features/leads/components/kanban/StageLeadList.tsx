@@ -2,6 +2,7 @@ import { Check, Loader2, Minus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { STAGE_DOT_CLASS, stageColorStyle, type LeadStageCatalog } from '../../domain/leadStageMeta'
 import { useKanbanPageSize } from '../../hooks/useKanbanView'
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useKanbanStagePage, type KanbanPage } from '../../kanban-queries'
 import type { Chat, LeadStage, LeadStageDefinition } from '../../types'
 import { LeadRow } from './LeadRow'
@@ -21,6 +22,8 @@ interface StageLeadListProps {
   onOpen: (chat: Chat) => void
   onDragStart: (chat: Chat) => void
   onDragEnd: () => void
+  /** Hay un lead en el aire: la lista se desplaza sola cerca de sus bordes. */
+  isDragging: boolean
   onMove: (chat: Chat, stage: LeadStage) => void
 }
 
@@ -39,11 +42,13 @@ export function StageLeadList({
   onOpen,
   onDragStart,
   onDragEnd,
+  isDragging,
   onMove,
 }: StageLeadListProps) {
   const [pageSize, setPageSize] = useKanbanPageSize()
   const [requestedPage, setRequestedPage] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
+  useDragAutoScroll(scrollRef, 'y', isDragging)
   useEffect(() => setRequestedPage(0), [search])
 
   // Si al mover leads la etapa se achica, la última página puede dejar de

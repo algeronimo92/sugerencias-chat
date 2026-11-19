@@ -1,5 +1,5 @@
 import { AlertCircle, ArrowRight, Inbox, Loader2, Search } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -19,6 +19,7 @@ import { StageSidebar } from './kanban/StageSidebar'
 import { KanbanColumn } from './kanban/BoardColumn'
 import { ViewSwitch } from './kanban/ViewSwitch'
 import { useKanbanView } from '../hooks/useKanbanView'
+import { useDragAutoScroll } from '../hooks/useDragAutoScroll'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -33,9 +34,11 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   const [view, setView] = useKanbanView()
+  const boardRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [draggedChat, setDraggedChat] = useState<Chat | null>(null)
+  useDragAutoScroll(boardRef, 'x', view === 'tablero' && draggedChat !== null)
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkError, setBulkError] = useState<string | null>(null)
@@ -229,7 +232,10 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
           </div>
         </div>
       ) : view === 'tablero' ? (
-        <div role="region" aria-label="Etapas del embudo comercial" tabIndex={0} className="flex min-h-0 min-w-0 w-full max-w-full flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong sm:snap-none sm:p-4">
+        <div ref={boardRef} role="region" aria-label="Etapas del embudo comercial" tabIndex={0} className={`flex min-h-0 min-w-0 w-full max-w-full flex-1 gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong sm:snap-none sm:p-4 ${
+          // El imán de columnas del celular deshacía el desplazamiento al arrastrar.
+          draggedChat ? 'snap-none' : 'snap-x snap-mandatory'
+        }`}>
           {columns.map((stage) => (
             <KanbanColumn
               key={stage.key}
@@ -270,6 +276,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onSelectMany={selectMany}
+            isDragging={draggedChat !== null}
             onClearSelection={() => {
               setSelectedIds(new Set())
               setBulkError(null)

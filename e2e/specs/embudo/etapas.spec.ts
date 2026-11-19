@@ -1,6 +1,6 @@
 import { chat } from '../../fixtures/crm'
 import { expectNoPageOverflow } from '../../fixtures/screen'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '../../fixtures/test'
 
 const STAGES = [
@@ -216,4 +216,81 @@ test('la lista pagina por 10, 20 o 50 y recuerda las filas elegidas', async ({ p
 
   await page.reload()
   await expect(page.getByRole('list', { name: 'Leads en Nuevo' }).getByRole('listitem')).toHaveCount(50)
+})
+
+// En el Chrome de la clínica (Windows) el desplazamiento propio del navegador
+// al arrastrar se trababa; el embudo ahora se desplaza por su cuenta a partir
+// de los `dragover`. El Chromium de Playwright no entrega `dragover` a la
+// página al mover el mouse durante un arrastre (sí desplaza por su cuenta,
+// lo que escondería un fallo nuestro), así que acá el arrastre se inicia de
+// verdad y los `dragover` se emiten a mano con la posición del puntero.
+// El mouse real se queda donde empezó el arrastre, lejos de los bordes, para
+// que el desplazamiento del propio navegador no haga pasar la prueba.
+async function arrastrarSobre(page: Page, x: number, y: number) {
+  await page.evaluate(([clientX, clientY]) => {
+    document.dispatchEvent(new DragEvent('dragover', { clientX, clientY, bubbles: true, cancelable: true }))
+  }, [x, y])
+}
+
+/** Inicia un arrastre real (para que el embudo sepa que hay un lead en el aire). */
+async function empezarArrastre(page: Page, origen: Locator) {
+  await origen.hover()
+  await page.mouse.down()
+  const caja = (await origen.boundingBox())!
+  await page.mouse.move(caja.x + caja.width / 2 + 10, caja.y + caja.height / 2 + 10, { steps: 3 })
+}
+
+test.describe('al arrastrar cerca del borde, el embudo se desplaza solo', () => {
+  test.skip(({ isMobile }) => isMobile, 'Con el mouse: en el celular no se arrastra con el dedo')
+
+  test('la lista baja y sube sin atinar a un punto exacto', async ({ page, api }) => {
+    const nuevos = leadsIn('nuevo', 10)
+    api.on('get', '/api/chats/kanban/snapshot', {
+      counts: { nuevo: 10, agendado: 0 },
+      stages: { nuevo: { items: nuevos, has_more: false }, agendado: { items: [], has_more: false } },
+    })
+    await abrirLista(page)
+    const lista = page.getByRole('list', { name: 'Leads en Nuevo' })
+    const contenedor = lista.locator('xpath=..')
+    const caja = (await contenedor.boundingBox())!
+    const maximo = await contenedor.evaluate((el) => el.scrollHeight - el.clientHeight)
+    expect(maximo).toBeGreaterThan(0)
+    const centroX = caja.x + caja.width / 2
+
+    await empezarArrastre(page, lista.getByRole('listitem').first())
+    // Debajo de la lista, sobre la paginación: igual baja hasta el final.
+    await arrastrarSobre(page, centroX, caja.y + caja.height + 20)
+    await expect.poll(() => contenedor.evaluate((el) => el.scrollTop), { timeout: 4000 }).toBeGreaterThanOrEqual(maximo - 2)
+    // Sobre la cabecera de la etapa: sube hasta arriba.
+    await arrastrarSobre(page, centroX, caja.y - 20)
+    await expect.poll(() => contenedor.evaluate((el) => el.scrollTop), { timeout: 4000 }).toBe(0)
+    await page.mouse.up()
+  })
+
+  test('la lista de etapas se desplaza para llegar a la de abajo', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 420 })
+    await abrirLista(page)
+    const etapas = page.getByRole('navigation', { name: 'Etapas del embudo' }).locator('visible=true')
+    const caja = (await etapas.boundingBox())!
+    expect(await etapas.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+
+    await empezarArrastre(page, page.getByRole('list', { name: 'Leads en Nuevo' }).getByRole('listitem').first())
+    await arrastrarSobre(page, caja.x + caja.width / 2, caja.y + caja.height - 10)
+    await expect(etapas.getByRole('button', { name: /^Perdido, 1 lead/ })).toBeInViewport()
+    await page.mouse.up()
+  })
+
+  test('el tablero avanza de lado sin trabarse', async ({ page }) => {
+    await page.goto('/kanban')
+    const tablero = page.getByRole('region', { name: 'Etapas del embudo comercial' })
+    const caja = (await tablero.boundingBox())!
+    const maximo = await tablero.evaluate((el) => el.scrollWidth - el.clientWidth)
+    expect(maximo).toBeGreaterThan(0)
+
+    await empezarArrastre(page, tablero.getByRole('region', { name: /^Nuevo, 6 leads/ }).getByRole('article').first())
+    await arrastrarSobre(page, caja.x + caja.width - 8, caja.y + 200)
+    // Pegado al borde derecho: llega hasta el final, no solo unos píxeles.
+    await expect.poll(() => tablero.evaluate((el) => el.scrollLeft), { timeout: 4000 }).toBeGreaterThanOrEqual(maximo - 2)
+    await page.mouse.up()
+  })
 })
