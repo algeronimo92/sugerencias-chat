@@ -1,4 +1,5 @@
 import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react'
+import { TagChip } from '../../../shared/ui/TagChip'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Select } from '../../../shared/ui/Input'
@@ -55,8 +56,7 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
         {chat.tags.map((tag) => {
           const isRemoving = removeTag.isPending && removeTag.variables === tag.id
           return (
-          <span key={tag.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-white" style={{ backgroundColor: tag.color }}>
-            {tag.name}
+          <TagChip key={tag.id} name={tag.name} color={tag.color} size="md">
             <button
               type="button"
               onClick={() => removeTag.mutate(tag.id, {
@@ -69,11 +69,11 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
               disabled={removeTag.isPending}
               aria-label={isRemoving ? `Quitando ${tag.name}` : `Quitar ${tag.name}`}
               aria-busy={isRemoving}
-              className="rounded-full hover:bg-black/20 disabled:cursor-wait disabled:opacity-60"
+              className="-mr-1 flex h-5 w-5 items-center justify-center rounded-full text-fg-muted outline-none hover:bg-selected hover:text-fg focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
             >
               {isRemoving ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
             </button>
-          </span>
+          </TagChip>
           )
         })}
         {chat.tags.length === 0 && <span className="text-xs text-wa-muted">Sin etiquetas</span>}

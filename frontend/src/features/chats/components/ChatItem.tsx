@@ -1,4 +1,5 @@
 import { CalendarX, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2, ZapOff } from 'lucide-react'
+import { TagChip } from '../../../shared/ui/TagChip'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -330,18 +331,12 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMat
           </p>
         )}
         {chat.tags.length > 0 && (
-          <div className="mt-1 flex gap-1 overflow-hidden">
+          <div className="mt-1 flex items-center gap-1 overflow-hidden">
             {chat.tags.slice(0, 2).map((tag) => (
-              <span
-                key={tag.id}
-                className="max-w-24 truncate rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white"
-                style={{ backgroundColor: tag.color }}
-              >
-                {tag.name}
-              </span>
+              <TagChip key={tag.id} name={tag.name} color={tag.color} className="max-w-28" />
             ))}
             {chat.tags.length > 2 && (
-              <span className="text-[10px] text-wa-muted dark:text-wa-muted-dark">+{chat.tags.length - 2}</span>
+              <span className="text-xs text-fg-muted">+{chat.tags.length - 2}</span>
             )}
           </div>
         )}

@@ -146,7 +146,7 @@ export function Sidebar({
     <aside
       className={cn(
         'relative flex shrink-0 flex-col border-r border-line bg-surface pt-safe transition-[width] duration-150 motion-reduce:transition-none',
-        expanded ? 'w-60' : 'w-16',
+        expanded ? 'w-54' : 'w-16',
       )}
     >
       <div className={cn('flex h-14 shrink-0 items-center gap-2.5', expanded ? 'px-4' : 'justify-center')}>

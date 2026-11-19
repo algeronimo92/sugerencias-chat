@@ -1,5 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Tooltip } from "../../../shared/ui/Tooltip";
+import { TagChip } from "../../../shared/ui/TagChip";
+import { displayName } from "../../leads/public/chat";
 import type { ReactNode } from "react";
 import {
 AlertCircle,
@@ -61,6 +63,10 @@ interface Props {
   onShowInboxes?: () => void;
   /** Estado de la conversación y orden, debajo del buscador. */
   toolbar?: ReactNode;
+  /** Modo selección: los chats marcados (null = apagado). Tocar una fila la
+   *  marca en vez de abrir el chat. */
+  selection?: ReadonlySet<string> | null;
+  onToggleSelected?: (chatId: string) => void;
   chats: Chat[];
   isLoading: boolean;
   error: boolean;
@@ -138,6 +144,8 @@ export function ChatList({
   inboxPanelVisible = false,
   onShowInboxes,
   toolbar,
+  selection = null,
+  onToggleSelected,
   chats,
   isLoading,
   error,
@@ -626,21 +634,16 @@ export function ChatList({
                       key={tag.id}
                       type="button"
                       onClick={() => toggleTag(tag.id)}
-                      className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
-                        advancedFilters.tagIds.includes(tag.id)
-                          ? "text-white"
-                          : "border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-                      }`}
-                      style={
-                        advancedFilters.tagIds.includes(tag.id)
-                          ? {
-                              backgroundColor: tag.color,
-                              borderColor: tag.color,
-                            }
-                          : undefined
-                      }
+                      aria-pressed={advancedFilters.tagIds.includes(tag.id)}
+                      className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {tag.name}
+                      <TagChip
+                        name={tag.name}
+                        color={tag.color}
+                        size="md"
+                        selected={advancedFilters.tagIds.includes(tag.id)}
+                        className={advancedFilters.tagIds.includes(tag.id) ? "ring-1 ring-line-control" : "hover:bg-selected"}
+                      />
                     </button>
                   ))}
                 </div>
@@ -870,6 +873,29 @@ export function ChatList({
                   }}
                 >
                   {chat ? (
+                    selection && onToggleSelected ? (
+                      <div className="flex items-center">
+                        <span className="flex shrink-0 pl-3">
+                          <Checkbox
+                            aria-label={`Seleccionar ${displayName(chat)}`}
+                            checked={selection.has(chat.chat_id)}
+                            onCheckedChange={() => onToggleSelected(chat.chat_id)}
+                          />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <ChatItem
+                            chat={chat}
+                            isSelected={selection.has(chat.chat_id)}
+                            isHighlighted={false}
+                            search={search}
+                            onClick={() => onToggleSelected(chat.chat_id)}
+                            onPreview={() => onPreview(chat)}
+                            onMarkUnread={() => onMarkUnread(chat)}
+                            isMarkingUnread={markingUnreadId === chat.chat_id}
+                          />
+                        </div>
+                      </div>
+                    ) : (
                     <ChatItem
                       chat={chat}
                       isSelected={chat.chat_id === selectedId}
@@ -880,6 +906,7 @@ export function ChatList({
                       onMarkUnread={() => onMarkUnread(chat)}
                       isMarkingUnread={markingUnreadId === chat.chat_id}
                     />
+                    )
                   ) : (
                     <LoadMoreRow
                       isFetchingNextPage={isFetchingNextPage}

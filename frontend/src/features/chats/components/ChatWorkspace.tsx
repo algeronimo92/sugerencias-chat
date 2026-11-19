@@ -34,6 +34,7 @@ import { useChatNavigationShortcuts } from "../hooks/useChatNavigationShortcuts"
 import { ChatList } from "./ChatList";
 import { InboxPanel } from "./inbox/InboxPanel";
 import { ChatListToolbar } from "./inbox/ChatListToolbar";
+import { BulkActionsBar } from "./inbox/BulkActionsBar";
 import { useStoredToggle } from "../hooks/useStoredToggle";
 import { ChatThread } from "./ChatThread";
 
@@ -150,6 +151,8 @@ export function ChatWorkspace() {
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const showInboxes = useMediaQuery("(min-width: 1440px)") && !isMobile;
   const [inboxesCollapsed, toggleInboxes] = useStoredToggle("inbox-panel-collapsed");
+  // Modo selección de la lista: null = apagado; un Set (aunque vacío) = activo.
+  const [selection, setSelection] = useState<Set<string> | null>(null);
   // Se llegó a cambiar un dato del lead (?editar=…, p. ej. desde Catálogos):
   // fuera de escritorio la ficha vive en el panel deslizable, que arranca
   // cerrado; queda abierto mientras dure ese pedido.
@@ -344,12 +347,29 @@ export function ChatWorkspace() {
           </div>
         )}
         <div
-          className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-80 shrink-0 2xl:w-[360px]"}`}
+          className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-72 shrink-0 2xl:w-[324px]"}`}
         >
           <ChatList
             inboxPanelVisible={showInboxes && !inboxesCollapsed}
             onShowInboxes={showInboxes && inboxesCollapsed ? toggleInboxes : undefined}
-            toolbar={<ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} />}
+            toolbar={selection ? (
+              <BulkActionsBar
+                selected={selection}
+                visibleIds={chats.map((chat) => chat.chat_id)}
+                onSelectionChange={setSelection}
+                onCancel={() => setSelection(null)}
+                isAdmin={me?.role === "admin"}
+              />
+            ) : (
+              <ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} onStartSelection={() => setSelection(new Set())} />
+            )}
+            selection={selection}
+            onToggleSelected={(chatId) => setSelection((current) => {
+              const next = new Set(current ?? [])
+              if (next.has(chatId)) next.delete(chatId)
+              else next.add(chatId)
+              return next
+            })}
             chats={chats}
             isLoading={isLoading}
             error={!!error}
@@ -437,7 +457,7 @@ export function ChatWorkspace() {
           1280px las tres columnas dejarían la conversación inusable, así
           que las sugerencias pasan a un panel deslizable. */}
         {isDesktop && (
-          <div className="h-full w-[380px] shrink-0 overflow-hidden rounded-2xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark 2xl:w-[400px]">
+          <div className="h-full w-80 shrink-0 overflow-hidden rounded-2xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark 2xl:w-[340px]">
             {selectedChat ? (
               // Suspense propio: sin él, la primera carga del chunk suspende
               // hasta el boundary de MainLayout y tapa lista y conversación.

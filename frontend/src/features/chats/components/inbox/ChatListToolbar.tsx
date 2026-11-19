@@ -1,4 +1,6 @@
+import { ListChecks } from 'lucide-react'
 import { useMemo } from 'react'
+import { Tooltip } from '../../../../shared/ui/Tooltip'
 import { Select } from '../../../../shared/ui/Input'
 import { useInboxCounts } from '../../../leads/public/queries'
 import type { ChatFilters, ChatOrder } from '../../../leads/types'
@@ -17,6 +19,8 @@ interface Props {
   filters: ChatFiltersState
   /** Con una búsqueda manda la relevancia: no se ofrece ordenar. */
   searching: boolean
+  /** Entra al modo selección (acciones masivas). */
+  onStartSelection?: () => void
 }
 
 /**
@@ -24,7 +28,7 @@ interface Props {
  * hay, como el "Open 46" de Manychat, y el orden. Los números siguen a la
  * bandeja y a los filtros elegidos, para que coincidan con la lista.
  */
-export function ChatListToolbar({ filters, searching }: Props) {
+export function ChatListToolbar({ filters, searching, onStartSelection }: Props) {
   const { effectiveFilters, conversation, setConversation, order, setOrder } = filters
   const countFilters = useMemo<ChatFilters>(() => ({ ...effectiveFilters, conversation: '' }), [effectiveFilters])
   const { data: counts } = useInboxCounts(countFilters)
@@ -52,6 +56,18 @@ export function ChatListToolbar({ filters, searching }: Props) {
             <option key={key} value={key}>{ORDER_LABELS[key]}</option>
           ))}
         </Select>
+      )}
+      {onStartSelection && (
+        <Tooltip content="Seleccionar chats">
+          <button
+            type="button"
+            onClick={onStartSelection}
+            aria-label="Seleccionar chats"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-control text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ListChecks className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </Tooltip>
       )}
     </div>
   )

@@ -6,6 +6,7 @@ import { Counter } from './Badge'
 import { Button } from './Button'
 import { Field } from './Field'
 import { Input } from './Input'
+import { TagChip } from './TagChip'
 
 describe('Field', () => {
   it('conecta la etiqueta y la ayuda con el control', () => {
@@ -72,5 +73,17 @@ describe('Avatar', () => {
     const renamed = render(<Avatar name="Ana Torres" seed="lead-42" />).container.firstElementChild?.className
 
     expect(renamed).toBe(first)
+  })
+})
+
+describe('TagChip', () => {
+  it('lleva el color solo en el punto y el texto en el color del tema', () => {
+    const { container } = render(<TagChip name="Láser" color="#f59e0b" />)
+
+    const chip = container.firstElementChild as HTMLElement
+    expect(chip).toHaveTextContent('Láser')
+    expect(chip).toHaveClass('bg-subtle', 'text-fg')
+    expect(chip.getAttribute('style')).toBeNull()
+    expect(chip.querySelector('[aria-hidden="true"]')).toHaveStyle({ backgroundColor: '#f59e0b' })
   })
 })
