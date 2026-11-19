@@ -416,6 +416,41 @@ async def list_phone_numbers(waba_id: str | None = None) -> list[dict]:
     ]
 
 
+async def get_calling_requirements() -> dict[str, Any]:
+    """Lo que Meta exige del número del CRM para activarle las llamadas.
+
+    - ``on_business_app``: el número sigue en la app de WhatsApp Business
+      (coexistencia). Ahí Meta no admite llamadas por la API.
+    - ``messaging_limit``: el nivel literal de Meta (``TIER_250``...).
+
+    ``None`` en cualquiera de los dos es "Meta no lo informó", no un no.
+
+    Son dos pedidos y no uno: Graph rechaza el pedido entero si no reconoce
+    un campo, y el del límite cambió de nombre (``messaging_limit_tier`` quedó
+    obsoleto). Que el límite no se pueda leer no tiene que esconder si el
+    número está en coexistencia, que es lo que decide.
+    """
+    token, phone_number_id, _waba_id = await _config()
+    number = await _request(
+        "GET", _graph_url(phone_number_id), token,
+        params={"fields": "is_on_biz_app,platform_type"}, timeout=20.0,
+    )
+    on_business_app = (number or {}).get("is_on_biz_app")
+    try:
+        limits = await _request(
+            "GET", _graph_url(phone_number_id), token,
+            params={"fields": "whatsapp_business_manager_messaging_limit"}, timeout=20.0,
+        )
+    except MetaApiError as exc:
+        logger.warning("Meta no informó el límite de mensajería del número: %s", exc)
+        limits = {}
+    limit = (limits or {}).get("whatsapp_business_manager_messaging_limit")
+    return {
+        "on_business_app": on_business_app if isinstance(on_business_app, bool) else None,
+        "messaging_limit": limit if isinstance(limit, str) and limit else None,
+    }
+
+
 async def get_waba_name(waba_id: str) -> str:
     token, _phone_number_id, _crm_waba = await _config()
     body = await _request("GET", _graph_url(waba_id), token, params={"fields": "name"}, timeout=20.0)

@@ -80,6 +80,8 @@ class UserItem(BaseModel):
     invitation_pending: bool
     # WhatsApp para el aviso de cita al equipo; nulo si no lo cargaron.
     phone: str | None = None
+    # Le suenan las llamadas de WhatsApp del negocio y puede llamar a clientes.
+    can_handle_calls: bool = False
 
 class CreateUserRequest(BaseModel):
     email: str
@@ -92,6 +94,7 @@ class UpdateUserRequest(BaseModel):
     is_active: bool | None = None
     # Vacío lo borra.
     phone: str | None = Field(default=None, max_length=30)
+    can_handle_calls: bool | None = None
 
 class InvitationLinkOut(BaseModel):
     url: str

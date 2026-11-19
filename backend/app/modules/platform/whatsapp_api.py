@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import date, datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.integrations.meta import client as meta_service
@@ -18,7 +19,8 @@ from app.modules.leads.ports.ad_conversions import (
 from app.modules.leads.schemas import MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate
 from app.modules.platform.meta_costs import sync_all_meta_costs
 from app.modules.platform.meta_costs_queries import monthly_costs
-from app.modules.platform.schemas import WhatsappCostsSummary, WhatsappStatusItem
+from app.modules.platform.calling_readiness import calling_readiness
+from app.modules.platform.schemas import WhatsappCallingReadiness, WhatsappCostsSummary, WhatsappStatusItem
 from app.modules.platform.settings_service import get_effective_many, update_settings
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
@@ -34,6 +36,21 @@ async def whatsapp_status():
     if await meta_service.is_configured():
         return {"state": "open", "instance": None}
     return {"state": "not_configured", "instance": None}
+
+
+@router.get("/calling-readiness", response_model=WhatsappCallingReadiness)
+async def whatsapp_calling_readiness():
+    """Si el número puede activar las llamadas, preguntado a Meta en el
+    momento: no se guarda, porque cambia fuera del CRM (el negocio muda el
+    número o Meta le sube el límite) y nadie avisa."""
+    if not await meta_service.is_configured():
+        return calling_readiness(None)
+    try:
+        requirements = await meta_service.get_calling_requirements()
+    except (meta_service.MetaApiError, httpx.HTTPError) as exc:
+        logger.warning("No se pudo consultar a Meta el estado para llamadas: %s", exc)
+        raise HTTPException(502, "Meta no respondió. Intenta de nuevo en unos minutos.")
+    return calling_readiness(requirements)
 
 
 def _month(value: str | None) -> date:

@@ -1983,6 +1983,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/whatsapp/calling-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Calling Readiness
+         * @description Si el número puede activar las llamadas, preguntado a Meta en el
+         *     momento: no se guarda, porque cambia fuera del CRM (el negocio muda el
+         *     número o Meta le sube el límite) y nadie avisa.
+         */
+        get: operations["whatsapp_calling_readiness_api_whatsapp_calling_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/whatsapp/costs": {
         parameters: {
             query?: never;
@@ -8211,6 +8233,8 @@ export interface components {
             is_active?: boolean | null;
             /** Phone */
             phone?: string | null;
+            /** Can Handle Calls */
+            can_handle_calls?: boolean | null;
         };
         /** UserItem */
         UserItem: {
@@ -8227,6 +8251,11 @@ export interface components {
             invitation_pending: boolean;
             /** Phone */
             phone?: string | null;
+            /**
+             * Can Handle Calls
+             * @default false
+             */
+            can_handle_calls: boolean;
         };
         /** UserOut */
         UserOut: {
@@ -8256,6 +8285,28 @@ export interface components {
         VapidPublicKeyResponse: {
             /** Public Key */
             public_key: string;
+        };
+        /**
+         * WhatsappCallingReadiness
+         * @description Si el número del negocio puede activar las llamadas de WhatsApp.
+         *
+         *     - ``requires_migration``: el número también se usa en la app de WhatsApp
+         *       Business; Meta solo admite llamadas por la API en números que no.
+         *     - ``limit_too_low``: la cuenta no llega al límite de mensajería que exige.
+         *     - ``unverified``: Meta no informó alguno de los dos datos.
+         */
+        WhatsappCallingReadiness: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "not_connected" | "requires_migration" | "limit_too_low" | "unverified" | "ready";
+            /** On Business App */
+            on_business_app?: boolean | null;
+            /** Messaging Limit */
+            messaging_limit?: string | null;
+            /** Messaging Limit Ok */
+            messaging_limit_ok?: boolean | null;
         };
         /**
          * WhatsappCostAccount
@@ -12188,6 +12239,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WhatsappStatusItem"];
+                };
+            };
+        };
+    };
+    whatsapp_calling_readiness_api_whatsapp_calling_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappCallingReadiness"];
                 };
             };
         };

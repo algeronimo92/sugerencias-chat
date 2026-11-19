@@ -5,7 +5,13 @@ from sqlalchemy import false, func, insert, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import User
-from app.modules.auth.errors import EmailAlreadyExistsError, LastAdminError, UserAlreadyActiveError
+from app.modules.auth.errors import (
+    AnalystCannotHandleCallsError,
+    EmailAlreadyExistsError,
+    LastAdminError,
+    UserAlreadyActiveError,
+)
+from app.modules.auth.role_policy import calls_allowed_for
 from app.db.uow import session_scope
 
 
@@ -18,6 +24,7 @@ def _row_to_user(user: User) -> dict:
         "is_active": user.is_active,
         "invitation_pending": user.invitation_pending,
         "phone": user.phone,
+        "can_handle_calls": user.can_handle_calls,
     }
 
 
@@ -99,9 +106,14 @@ async def count_active_admins(exclude_user_id: int | None = None) -> int:
 
 
 async def update_user(user_id: int, values: dict) -> dict | None:
-    """values puede traer 'email', 'role', 'is_active' y/o 'phone'. Si el cambio dejaría
-    sin ningún admin activo, se rechaza con LastAdminError antes de aplicarlo;
-    un correo que ya usa otra cuenta, con EmailAlreadyExistsError.
+    """values puede traer 'email', 'role', 'is_active', 'phone' y/o
+    'can_handle_calls'. Si el cambio dejaría sin ningún admin activo, se
+    rechaza con LastAdminError antes de aplicarlo; un correo que ya usa otra
+    cuenta, con EmailAlreadyExistsError.
+
+    El permiso de llamadas sigue al rol: pasar a alguien a un rol que no
+    atiende llamadas se lo quita, y dárselo a quien tiene ese rol se rechaza
+    con AnalystCannotHandleCallsError.
 
     El correo solo cambia mientras la invitación sigue pendiente: es la
     identidad con la que esa persona entra, y cambiárselo a alguien que ya
@@ -112,6 +124,8 @@ async def update_user(user_id: int, values: dict) -> dict | None:
         user = await get_user_by_id(user_id)
         if user is not None and user.role == "admin" and await count_active_admins(exclude_user_id=user_id) == 0:
             raise LastAdminError()
+
+    values = await _with_calls_permission_rule(user_id, values)
 
     if not values:
         user = await get_user_by_id(user_id)
@@ -133,6 +147,19 @@ async def update_user(user_id: int, values: dict) -> dict | None:
 
     user = await get_user_by_id(user_id)
     return _row_to_user(user) if user else None
+
+
+async def _with_calls_permission_rule(user_id: int, values: dict) -> dict:
+    new_role = values.get("role")
+    if new_role is not None and not calls_allowed_for(new_role):
+        if values.get("can_handle_calls") is True:
+            raise AnalystCannotHandleCallsError()
+        return {**values, "can_handle_calls": False}
+    if values.get("can_handle_calls") is True and new_role is None:
+        user = await get_user_by_id(user_id)
+        if user is not None and not calls_allowed_for(user.role):
+            raise AnalystCannotHandleCallsError()
+    return values
 
 
 async def set_user_password(user_id: int, password_hash: str) -> bool:

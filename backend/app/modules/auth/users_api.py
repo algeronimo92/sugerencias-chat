@@ -12,7 +12,7 @@ from app.modules.auth.account_actions import (
     revoke_pending_invitations,
 )
 from app.modules.auth.auth_service import invalidate_user_cache, require_admin
-from app.modules.auth.errors import UserAlreadyActiveError
+from app.modules.auth.errors import AnalystCannotHandleCallsError, UserAlreadyActiveError
 from app.modules.auth.users_service import EmailAlreadyExistsError, LastAdminError, get_user_by_id, list_users, update_user
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
 from app.modules.auth.session_service import revoke_all_for_user
@@ -90,6 +90,9 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
             raise HTTPException(status_code=400, detail="El correo no es válido")
     if "phone" in values:
         values["phone"] = await _normalized_phone(values["phone"])
+    if values.get("can_handle_calls") is None:
+        # Un null explícito no es "quitar el permiso": la columna no lo admite.
+        values.pop("can_handle_calls", None)
     try:
         user = await update_user(user_id, values)
     except LastAdminError:
@@ -101,6 +104,8 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
             status_code=409,
             detail="El correo solo se puede cambiar mientras la invitación está pendiente",
         )
+    except AnalystCannotHandleCallsError:
+        raise HTTPException(status_code=400, detail="Un analista no puede atender llamadas: solo ve el dashboard")
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")

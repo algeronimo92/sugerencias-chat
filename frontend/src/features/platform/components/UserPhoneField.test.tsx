@@ -11,7 +11,7 @@ vi.mock('../../../shared/http/client', () => ({ default: api }))
 
 const grecia: AppUser = {
   id: 5, email: 'grecia@example.com', name: 'Grecia', role: 'vendedor',
-  is_active: true, invitation_pending: false, phone: null,
+  is_active: true, invitation_pending: false, phone: null, can_handle_calls: false,
 }
 
 function renderField(user: AppUser) {
