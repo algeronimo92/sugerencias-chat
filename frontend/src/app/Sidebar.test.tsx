@@ -65,12 +65,40 @@ describe('riel lateral', () => {
     expect(screen.getByRole('button', { name: 'Contraer menú' })).toBeInTheDocument()
   })
 
-  it('la cuenta, el tema y cerrar sesión quedan abajo y responden', async () => {
-    const handlers = renderRail('admin')
+  it('expandido, las herramientas van en una fila de iconos y no como vistas', async () => {
+    localStorage.setItem('rail-expanded', 'true')
+    renderRail('admin')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Abrir acceso y seguridad' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Activar modo oscuro' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
+    const settings = screen.getByRole('button', { name: 'Configuración' })
+    const help = screen.getByRole('button', { name: 'Ayuda y reportes' })
+    // Sin etiqueta visible: el nombre lo dan aria-label y el tooltip.
+    expect(settings).toHaveTextContent('')
+    expect(help).toHaveTextContent('')
+    expect(settings.parentElement).toBe(help.parentElement)
+  })
+
+  it('ayuda y cuenta reúnen lo que antes eran iconos sueltos', async () => {
+    renderRail('admin')
+
+    // Cuatro accesos fijos abajo, sin tema ni cerrar sesión sueltos.
+    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Activar modo oscuro' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Reportes' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ayuda y reportes' }))
+    expect(await screen.findByRole('menuitem', { name: 'Ver mis reportes' })).toBeInTheDocument()
+  })
+
+  it('el menú de la cuenta abre seguridad, cambia el tema y cierra sesión', async () => {
+    const handlers = renderRail('admin')
+    const account = screen.getByRole('button', { name: 'Menú de la cuenta' })
+
+    await userEvent.click(account)
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Acceso y seguridad' }))
+    await userEvent.click(account)
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Modo oscuro' }))
+    await userEvent.click(account)
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }))
 
     expect(handlers.onOpenSecurity).toHaveBeenCalledOnce()
     expect(handlers.onToggleTheme).toHaveBeenCalledOnce()

@@ -124,15 +124,9 @@ function setMeta(name: string, content: string) {
   document.querySelector(`meta[name="${name}"]`)?.setAttribute('content', content)
 }
 
-/** Color de la barra del sistema en tema claro: el encabezado de la app. */
-export function lightThemeColor(): string {
-  return brandShades(current.primary_color).strong
-}
-
 export function applyBrand(brand: Brand) {
   current = brand
   const shades = brandShades(brand.primary_color)
-  const { strong } = shades
   const root = document.documentElement.style
   root.setProperty('--brand', shades.primary)
   root.setProperty('--brand-strong', shades.strong)
@@ -140,7 +134,6 @@ export function applyBrand(brand: Brand) {
   root.setProperty('--brand-dark', shades.dark)
   document.title = brand.name
   setMeta('apple-mobile-web-app-title', brand.name)
-  if (!document.documentElement.classList.contains('dark')) setMeta('theme-color', strong)
   const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (icon) icon.href = brand.icon_url ?? DEFAULT_ICON
   try {

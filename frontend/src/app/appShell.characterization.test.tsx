@@ -31,6 +31,13 @@ installFakeSocket()
 // defecto se queda corto sin que haya nada roto.
 configure({ asyncUtilTimeout: 5_000 })
 
+// Cerrar sesión vive en el menú de la cuenta del riel: hay que abrirlo antes.
+// "Menú de la cuenta" es también la señal de que el shell ya cargó.
+async function signOutFromAccountMenu() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Menú de la cuenta' }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }))
+}
+
 const ADMIN = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin' }
 const SELLER = { id: 2, email: 'vendedor@clinica.test', name: 'Vendedor', role: 'vendedor' }
 const ANALYST = { id: 3, email: 'analista@clinica.test', name: 'Ana', role: 'analista' }
@@ -65,7 +72,7 @@ describe('sesión', () => {
 
     expect(await screen.findByText('No se pudo establecer conexión con el servidor.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar conexión' }))
-    expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Menú de la cuenta' })).toBeInTheDocument()
   })
 
   it('si el servidor no contesta, el spinner de arranque da paso al aviso de conexión', async () => {
@@ -90,14 +97,14 @@ describe('sesión', () => {
     })
     at('/')
     render(<App />)
-    expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Menú de la cuenta' })).toBeInTheDocument()
 
     vi.useFakeTimers({ shouldAdvanceTime: true })
     void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY })
     await waitFor(() => expect(attempts).toBe(2))
     await vi.advanceTimersByTimeAsync(SESSION_CHECK_TIMEOUT_MS * 4)
 
-    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Menú de la cuenta' })).toBeInTheDocument()
     expect(screen.queryByText('Backend no disponible')).not.toBeInTheDocument()
   })
 
@@ -111,7 +118,7 @@ describe('sesión', () => {
     await userEvent.type(screen.getByLabelText('Contraseña'), 'secreta-123')
     await userEvent.click(screen.getByRole('button', { name: /Ingresar a/ }))
 
-    expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Menú de la cuenta' })).toBeInTheDocument()
     expect(api.current.calls('post', '/api/auth/login').map(request => request.body)).toEqual([{
       email: 'vendedor@clinica.test', password: 'secreta-123', remember_device: true, mfa_code: null,
     }])
@@ -134,7 +141,7 @@ describe('sesión', () => {
     api.current.on('get', '/api/auth/me', { data: SELLER })
     at('/')
     render(<App />)
-    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await screen.findByRole('button', { name: 'Menú de la cuenta' })
 
     api.current.on('get', '/api/auth/me', { status: 401 })
     api.current.on('get', '/api/cualquier-cosa', { status: 401 })
@@ -150,7 +157,7 @@ describe('sesión', () => {
     at('/dashboard')
     render(<App />)
 
-    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await screen.findByRole('button', { name: 'Menú de la cuenta' })
     await waitFor(() => expect(window.location.pathname).toBe('/'))
     // El riel usa enlaces: buscar un botón haría pasar la aserción siempre.
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
@@ -167,7 +174,7 @@ describe('sesión', () => {
     at('/')
     render(<App />)
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Cerrar sesión' }))
+    await signOutFromAccountMenu()
 
     expect(await screen.findByLabelText('Correo electrónico')).toBeInTheDocument()
     expect(api.current.calls('post', '/api/auth/logout')).toHaveLength(1)
@@ -181,7 +188,7 @@ describe('sesión', () => {
     at('/')
     render(<App />)
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Cerrar sesión' }))
+    await signOutFromAccountMenu()
 
     expect(await screen.findByLabelText('Correo electrónico')).toBeInTheDocument()
   })
@@ -195,7 +202,7 @@ describe('autorización de rutas', () => {
       at(path)
       render(<App />)
 
-      await screen.findByRole('button', { name: 'Cerrar sesión' })
+      await screen.findByRole('button', { name: 'Menú de la cuenta' })
       await waitFor(() => expect(window.location.pathname).toBe('/'))
     },
   )
@@ -205,7 +212,7 @@ describe('autorización de rutas', () => {
     at('/templates')
     render(<App />)
 
-    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await screen.findByRole('button', { name: 'Menú de la cuenta' })
     await waitFor(() => expect(api.current.calls('get', '/api/templates').length).toBeGreaterThan(0))
     expect(window.location.pathname).toBe('/templates')
   })
@@ -215,7 +222,7 @@ describe('autorización de rutas', () => {
     at('/')
     render(<App />)
 
-    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await screen.findByRole('button', { name: 'Menú de la cuenta' })
     expect(screen.queryByRole('button', { name: 'Configuración' })).not.toBeInTheDocument()
   })
 
@@ -224,7 +231,7 @@ describe('autorización de rutas', () => {
     at('/no-existe')
     render(<App />)
 
-    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await screen.findByRole('button', { name: 'Menú de la cuenta' })
     await waitFor(() => expect(window.location.pathname).toBe('/'))
   })
 })
@@ -237,7 +244,7 @@ describe('analista', () => {
       at(path)
       render(<App />)
 
-      await screen.findByRole('button', { name: 'Cerrar sesión' })
+      await screen.findByRole('button', { name: 'Menú de la cuenta' })
       await waitFor(() => expect(window.location.pathname).toBe('/dashboard'))
       const nav = screen.getByRole('navigation', { name: 'Vista principal' })
       expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['Dashboard'])
@@ -249,7 +256,7 @@ describe('analista', () => {
     at('/dashboard')
     render(<App />)
 
-    await screen.findByRole('button', { name: 'Cerrar sesión' })
+    await screen.findByRole('button', { name: 'Menú de la cuenta' })
     // El dashboard se carga de forma diferida y trae la librería de gráficos:
     // con la suite en paralelo tarda más que el resto de las pantallas.
     await waitFor(() => expect(api.current.calls('get', '/api/dashboard').length).toBeGreaterThan(0), { timeout: 15_000 })

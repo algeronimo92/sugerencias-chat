@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
-import { Bug, ChevronsLeft, ChevronsRight, LogOut, Moon, Settings as SettingsIcon, Sun } from 'lucide-react'
+import { Bug, ChevronsLeft, ChevronsRight, CircleHelp, ClipboardList, LogOut, Moon, Settings as SettingsIcon, ShieldCheck, Sun } from 'lucide-react'
 import { isNavItemActive, NAV_GROUP_LABELS, visibleNavItems, type NavGroup, type NavItem } from './navigation'
 import { useMediaQuery } from '../shared/hooks/useBreakpoint'
 import { cn } from '../shared/utils/cn'
 import { Avatar } from '../shared/ui/Avatar'
 import { Counter } from '../shared/ui/Badge'
 import { BrandLogo } from '../shared/ui/BrandLogo'
+import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../shared/ui/DropdownMenu'
 import { Tooltip } from '../shared/ui/Tooltip'
 
 // Preferencia por equipo, no por usuario en el servidor: es comodidad, no dato.
@@ -108,12 +109,17 @@ interface Props {
 
 /**
  * Navegación de tablet y escritorio. Reemplaza también a la barra superior:
- * logo arriba, vistas en grupos y, fijos abajo, notificaciones, reportes,
- * configuración y la cuenta. Así le devuelve 56 px de alto al chat.
+ * logo arriba, vistas en grupos y, abajo, solo cuatro accesos fijos:
+ * notificaciones, ayuda, configuración y la cuenta. Tema, cerrar sesión y
+ * los reportes viven en los menús de ayuda y de cuenta: con un icono suelto
+ * cada uno, el pie compacto llegó a nueve iconos (dos bichos iguales) y le
+ * quitaba alto a las vistas, que terminaban con barra de desplazamiento.
  */
 export function Sidebar({
   role, unreadCount, brandName, account, theme, onToggleTheme, onLogout, onOpenSettings, onOpenIssueReport, renderNotifications, extras,
 }: Props) {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
   const isWide = useMediaQuery(WIDE_QUERY)
   const [stored, setStored] = useState<boolean | null>(readStoredExpanded)
   const expanded = stored ?? isWide
@@ -131,12 +137,15 @@ export function Sidebar({
   const items = visibleNavItems(role)
   const byGroup = (group: NavGroup) => items.filter((item) => item.group === group)
   const chatBadge = unreadCount > 0 ? <Counter value={unreadCount} /> : null
-  const themeLabel = theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'
+  const reportsItem = byGroup('footer').find((item) => item.path === '/reports')
+  const hasHelp = Boolean(onOpenIssueReport || reportsItem)
+  const toggleLabel = expanded ? 'Contraer menú' : 'Expandir menú'
+  const menuSide = expanded ? 'top' : 'right'
 
   return (
     <aside
       className={cn(
-        'flex shrink-0 flex-col border-r border-line bg-surface pt-safe transition-[width] duration-150 motion-reduce:transition-none',
+        'relative flex shrink-0 flex-col border-r border-line bg-surface pt-safe transition-[width] duration-150 motion-reduce:transition-none',
         expanded ? 'w-60' : 'w-16',
       )}
     >
@@ -144,6 +153,19 @@ export function Sidebar({
         <BrandLogo sizeClass="h-8 w-8" iconClass="h-4 w-4" />
         {expanded && <span className="min-w-0 truncate text-base font-semibold text-fg">{brandName}</span>}
       </div>
+      {/* Expandir y contraer es un control del menú, no una acción: va en el
+          borde, a la altura del logo, sin ocupar una fila. */}
+      <Tooltip content={toggleLabel} side="right">
+        <button
+          type="button"
+          onClick={toggleExpanded}
+          aria-label={toggleLabel}
+          aria-expanded={expanded}
+          className="absolute -right-3 top-[calc(env(safe-area-inset-top)+1rem)] z-10 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-fg-muted shadow-popover outline-none transition-colors hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {expanded ? <ChevronsLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronsRight className="h-3.5 w-3.5" aria-hidden="true" />}
+        </button>
+      </Tooltip>
 
       <nav aria-label="Vista principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
         {byGroup('main').map((item) => (
@@ -168,49 +190,85 @@ export function Sidebar({
       </nav>
 
       <div className="flex shrink-0 flex-col gap-0.5 border-t border-line px-2 py-2">
-        {extras && <div className={cn('flex flex-wrap gap-1', expanded ? 'px-1 pb-1' : 'flex-col items-center')}>{extras}</div>}
-        {renderNotifications?.(expanded)}
-        {byGroup('footer').map((item) => (
-          <RailLink key={item.path} item={item} expanded={expanded} />
-        ))}
-        {onOpenIssueReport && <RailButton icon={Bug} label="Reportar un problema" expanded={expanded} onClick={onOpenIssueReport} />}
-        {onOpenSettings && <RailButton icon={SettingsIcon} label="Configuración" expanded={expanded} onClick={onOpenSettings} />}
-
-        <div className={cn('mt-1 flex items-center gap-1 border-t border-line pt-2', !expanded && 'flex-col')}>
-          {account && withTooltip(
-            expanded,
-            'Acceso y seguridad',
-            <button
-              type="button"
-              onClick={account.onOpenSecurity}
-              aria-label="Abrir acceso y seguridad"
-              className={cn('flex min-w-0 items-center gap-2.5 rounded-lg py-1.5 text-left outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring', expanded ? 'flex-1 px-2' : 'justify-center p-1')}
+        {/* Herramientas (notificaciones, ayuda, configuración, primeros pasos).
+            Expandido: una fila de iconos, con otra forma que las vistas para
+            que no se lean como secciones de la app. Compacto: apiladas, como
+            todo el riel. */}
+        <div className={expanded ? 'flex items-center gap-1 px-1 pb-1' : 'flex flex-col gap-0.5'}>
+          {renderNotifications?.(expanded)}
+          {hasHelp && (
+            <DropdownMenu
+              side={menuSide}
+              align={expanded ? 'start' : 'end'}
+              tooltip="Ayuda y reportes"
+              tooltipSide={expanded ? 'top' : 'right'}
+              trigger={
+                expanded ? (
+                  <button type="button" aria-label="Ayuda y reportes" className={toolIconClass}>
+                    <CircleHelp className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <button type="button" className={railItemClass(Boolean(reportsItem && pathname === reportsItem.path), false)}>
+                    <RailEntryContent icon={CircleHelp} label="Ayuda y reportes" expanded={false} />
+                  </button>
+                )
+              }
             >
-              <Avatar name={account.name} size="sm" />
-              {/* Compacto: nombre y rol quedan para lectores de pantalla. */}
-              <span className={expanded ? 'min-w-0' : 'sr-only'}>
-                <span className="block truncate text-sm font-medium text-fg">{account.name}</span>
-                <span className="block truncate text-xs text-fg-muted">{account.role}</span>
-              </span>
-            </button>,
+              {onOpenIssueReport && <DropdownMenuItem icon={Bug} onSelect={onOpenIssueReport}>Reportar un problema</DropdownMenuItem>}
+              {reportsItem && <DropdownMenuItem icon={ClipboardList} onSelect={() => navigate(reportsItem.path)}>Ver mis reportes</DropdownMenuItem>}
+            </DropdownMenu>
           )}
-          <Tooltip content={themeLabel} side={expanded ? 'top' : 'right'}>
-            <button type="button" onClick={onToggleTheme} aria-label={themeLabel} className={railIconClass}>
-              {theme === 'dark' ? <Sun className="h-4.5 w-4.5" aria-hidden="true" /> : <Moon className="h-4.5 w-4.5" aria-hidden="true" />}
-            </button>
-          </Tooltip>
-          <Tooltip content="Cerrar sesión" side={expanded ? 'top' : 'right'}>
-            <button type="button" onClick={onLogout} aria-label="Cerrar sesión" className={railIconClass}>
-              <LogOut className="h-4.5 w-4.5" aria-hidden="true" />
-            </button>
-          </Tooltip>
+          {onOpenSettings && (expanded ? (
+            <Tooltip content="Configuración" side="top">
+              <button type="button" onClick={onOpenSettings} aria-label="Configuración" className={toolIconClass}>
+                <SettingsIcon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : (
+            <RailButton icon={SettingsIcon} label="Configuración" expanded={false} onClick={onOpenSettings} />
+          ))}
+          {extras && <div className={expanded ? 'ml-auto flex items-center gap-1' : 'flex flex-col items-center gap-0.5'}>{extras}</div>}
         </div>
 
-        <RailButton icon={expanded ? ChevronsLeft : ChevronsRight} label={expanded ? 'Contraer menú' : 'Expandir menú'} expanded={expanded} onClick={toggleExpanded} />
+        {account && (
+          <DropdownMenu
+            side={menuSide}
+            align="end"
+            tooltip={expanded ? undefined : 'Tu cuenta'}
+            tooltipSide="right"
+            header={
+              <>
+                <p className="truncate text-sm font-semibold text-fg">{account.name}</p>
+                <p className="truncate text-xs text-fg-muted">{account.role}</p>
+              </>
+            }
+            trigger={
+              <button
+                type="button"
+                aria-label="Menú de la cuenta"
+                className={cn('mt-1 flex min-w-0 items-center gap-2.5 rounded-lg py-1.5 text-left outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selected', expanded ? 'px-2' : 'justify-center p-1')}
+              >
+                <Avatar name={account.name} size="sm" />
+                {/* Compacto: nombre y rol quedan para lectores de pantalla. */}
+                <span className={expanded ? 'min-w-0 flex-1' : 'sr-only'}>
+                  <span className="block truncate text-sm font-medium text-fg">{account.name}</span>
+                  <span className="block truncate text-xs text-fg-muted">{account.role}</span>
+                </span>
+              </button>
+            }
+          >
+            <DropdownMenuItem icon={ShieldCheck} onSelect={account.onOpenSecurity}>Acceso y seguridad</DropdownMenuItem>
+            <DropdownMenuItem icon={theme === 'dark' ? Sun : Moon} onSelect={onToggleTheme}>
+              {theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem icon={LogOut} onSelect={onLogout} danger>Cerrar sesión</DropdownMenuItem>
+          </DropdownMenu>
+        )}
       </div>
     </aside>
   )
 }
 
-const railIconClass =
-  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring'
+const toolIconClass =
+  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selected data-[state=open]:text-fg'

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { lightThemeColor } from '../branding'
 
 type Theme = 'light' | 'dark'
 
@@ -7,10 +6,10 @@ const STORAGE_KEY = 'theme'
 
 /* Color de la interfaz del navegador (barra de direcciones móvil, título de PWA).
    Debe coincidir con la barra superior real de la app:
-   claro → --brand-strong (el tono del color del negocio), oscuro → --surface-raised. */
-const THEME_COLOR: Record<Theme, () => string> = {
-  light: lightThemeColor,
-  dark: () => '#182127',
+   la cabecera, que es blanca (--surface): #ffffff en claro y #11181d en oscuro. */
+const THEME_COLOR: Record<Theme, string> = {
+  light: '#ffffff',
+  dark: '#11181d',
 }
 
 function getInitialTheme(): Theme {
@@ -27,7 +26,7 @@ export function useTheme() {
     localStorage.setItem(STORAGE_KEY, theme)
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', THEME_COLOR[theme]())
+      ?.setAttribute('content', THEME_COLOR[theme])
   }, [theme])
 
   function toggleTheme() {

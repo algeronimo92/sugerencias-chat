@@ -13,10 +13,12 @@ import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHi
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { usePushSubscription } from '../hooks/usePushSubscription'
 interface Props {
-  /** `rail`: ítem del riel lateral de escritorio, con el panel abriendo al costado. */
-  placement?: 'header' | 'rail'
-  /** Solo en el riel: muestra la etiqueta y el contador al lado. */
-  expanded?: boolean
+  /**
+   * `header`: icono de la barra superior del celular (el panel abre abajo).
+   * `rail`: ítem del riel compacto (abre al costado).
+   * `toolbar`: icono de la fila de herramientas del riel expandido (abre arriba).
+   */
+  placement?: 'header' | 'rail' | 'toolbar'
   browserPermission: NotificationPermissionState
   onRequestBrowserPermission: () => void
   onNewNotification: (notification: {
@@ -92,7 +94,7 @@ function notificationTime(value: string) {
   return date.toLocaleDateString()
 }
 
-export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification, placement = 'header', expanded = false }: Props) {
+export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification, placement = 'header' }: Props) {
   const navigate = useNavigate()
   const { data: me } = useMe()
   const isAdmin = me?.role === 'admin'
@@ -106,6 +108,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   const lastSurfacedIdRef = useRef(0)
   const unreadCount = data?.pages[0]?.unread_count ?? 0
   const inRail = placement === 'rail'
+  const PANEL_POSITION = { header: 'sm:right-0 sm:top-11', rail: 'sm:bottom-0 sm:left-full sm:top-auto sm:ml-2', toolbar: 'sm:bottom-full sm:left-0 sm:top-auto sm:mb-2' }
   const notifications = data?.pages.flatMap(page => page.items) ?? []
   const latestUnread = notifications.find(notification => !notification.read_at)
 
@@ -163,41 +166,29 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
 
   return (
     <div ref={rootRef} className="relative">
-      {/* En el riel es un ítem más (etiqueta visible si está expandido); en
-          la barra superior del celular, un ícono. */}
-      <Tooltip content="Notificaciones" side={inRail ? 'right' : 'bottom'}>
+      <Tooltip content="Notificaciones" side={inRail ? 'right' : placement === 'toolbar' ? 'top' : 'bottom'}>
       <button
         type="button"
         onClick={() => setOpen(current => !current)}
         aria-label="Centro de notificaciones"
         aria-expanded={open}
         className={inRail
-          ? `relative flex h-10 w-full items-center rounded-lg text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${expanded ? 'gap-3 px-3' : 'justify-center'} ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`
-          : `relative flex h-10 w-10 items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`}
+          ? `relative flex h-10 w-full items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`
+          : `relative flex items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${placement === 'toolbar' ? 'h-9 w-9' : 'h-10 w-10'} ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`}
       >
         <span className="relative flex shrink-0">
-          <Bell className={inRail ? 'h-5 w-5' : 'h-4.5 w-4.5'} strokeWidth={1.75} aria-hidden="true" />
-          {unreadCount > 0 && !(inRail && expanded) && (
+          <Bell className={placement === 'header' ? 'h-4.5 w-4.5' : 'h-5 w-5'} strokeWidth={1.75} aria-hidden="true" />
+          {unreadCount > 0 && (
             <span className="absolute -right-2.5 -top-2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent-fill px-1 text-[11px] font-semibold leading-none tabular-nums text-on-accent ring-2 ring-surface">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
         </span>
-        {inRail && expanded && (
-          <>
-            <span aria-hidden="true" className="min-w-0 flex-1 truncate text-left">Notificaciones</span>
-            {unreadCount > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fill px-1.5 text-xs font-semibold tabular-nums text-on-accent">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </>
-        )}
       </button>
       </Tooltip>
 
       {open && (
-        <div className={`fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface-raised shadow-overlay sm:absolute sm:inset-x-auto sm:w-96 sm:max-w-[calc(100vw-2rem)] ${inRail ? 'sm:bottom-0 sm:left-full sm:top-auto sm:ml-2' : 'sm:right-0 sm:top-11'}`}>
+        <div className={`fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface-raised shadow-overlay sm:absolute sm:inset-x-auto sm:w-96 sm:max-w-[calc(100vw-2rem)] ${PANEL_POSITION[placement]}`}>
           <header className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div>
               <h2 className="text-sm font-semibold text-wa-text dark:text-white">Notificaciones</h2>

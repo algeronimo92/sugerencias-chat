@@ -1064,25 +1064,19 @@ revisar el cambio a ojo; `toHaveScreenshot` en CI es opcional por las diferencia
 
 ---
 
-## 10. Preguntas abiertas para el usuario
+## 10. Decisiones del usuario (2026-11-19)
 
-1. **Visibilidad de la vendedora**: ¿ve todas las conversaciones del negocio o solo las suyas y las
-   sin asignar? Define si "Todas" y "Equipo" aparecen para ese rol.
-2. **Barra de estado y cabecera**: ¿blanca como la referencia (y la barra del sistema en el celular
-   también blanca) o se mantiene el color de la marca arriba?
-3. **No leídos**: ¿solo punto, como la referencia, o punto más número, como WhatsApp? La propuesta
-   es número (la vendedora decide por cuántos mensajes la esperan).
-4. **A 1280-1599 px**: ¿la ficha queda fija y las bandejas se pliegan, o al revés? La propuesta:
-   bandejas visibles desde 1440 y ficha siempre fija desde 1280, con `<<` para plegar.
-5. **Dependencias**: ¿se aprueba agregar `@radix-ui/react-dropdown-menu` y `@radix-ui/react-popover`
-   (y opcionalmente `@radix-ui/react-tabs`)? Sin ellas, menús y popovers siguen a mano.
-6. **Fuente**: ¿seguir con la del sistema (cero peso, cambia entre Windows, Mac y Android) o
-   autoalojar una variable tipo Inter (unos 100 KB en la caché de la PWA, idéntica en todos lados)?
-7. **Barra inferior en móvil**: propuesta Chats, Embudo, Tareas, Contactos y Más. Hoy es Chats,
-   Tareas, Reportes y Más.
-8. **Configuración**: ¿pasa de diálogo a página con secciones, absorbiendo Integraciones, Asistente
-   IA, Catálogos y Archivos?
-9. **Vistas propias**: ¿se guardan en el servidor para que sigan a la vendedora entre la PC y el
-   celular? Hoy viven en el navegador.
-10. **Backend de bandejas**: ¿se aprueban los cinco cambios de §6.1 (contadores, sin asignar,
-    estado, orden, asignación masiva) como PRs de contrato previos a la fase 4b?
+Las preguntas que estaban abiertas, ya respondidas:
+
+| # | Tema | Decisión |
+|---|---|---|
+| 1 | Visibilidad de la vendedora | Ve solo sus conversaciones y las sin asignar: las bandejas "Todas" y "Equipo" no aparecen para ese rol |
+| 2 | Barra del sistema y cabecera | Blanca, igual que la cabecera (en oscuro, el gris de la app). En escritorio ya no hay barra superior (fase 3) |
+| 3 | No leídos | Punto + número, como WhatsApp |
+| 4 | Entre 1280 y 1599 px | La ficha queda fija desde 1280 px; las bandejas aparecen desde 1440 px y se pliegan con `<<` |
+| 5 | Dependencias | Aprobados `@radix-ui/react-dropdown-menu` (ya instalado, 2.1.22), `@radix-ui/react-popover` y `@radix-ui/react-tabs` |
+| 6 | Fuente | La del sistema |
+| 7 | Barra inferior en móvil | Chats, Tareas, Contactos y Más (Reportes pasa a "Más"; Embudo queda en "Más") |
+| 8 | Configuración | Pasa a página con secciones y absorbe Integraciones, Asistente IA, Catálogos y Archivos |
+| 9 | Vistas propias | Se guardan en el servidor (PR de contrato aparte) |
+| 10 | Backend de bandejas | Aprobados los cuatro: contadores + sin asignar, estado abierta/cerrada, orden por espera y asignación masiva, cada uno en su PR antes de la fase 4b |

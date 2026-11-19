@@ -30,12 +30,13 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <!-- Se funde con el header de la app: --brand-strong en claro, --surface-raised en oscuro.
+    <!-- Se funde con la cabecera de la app, que es blanca (--surface): #ffffff en claro y
+         #11181d en oscuro. Antes era del color de la marca (decisión 2 del doc 18).
          El tema es un toggle manual (localStorage), así que el script de abajo y useTheme
          mantienen este meta sincronizado; el valor inicial es solo fallback sin JS.
          Safari 26+ lo ignora y muestrea el background del <body> (ver index.css);
          Chrome Android y la PWA instalada sí lo usan. -->
-    <meta name="theme-color" content="#008069" />
+    <meta name="theme-color" content="#ffffff" />
     <title>CRM</title>
     <script>
       (function () {
@@ -44,7 +45,6 @@
         document.documentElement.classList.toggle('dark', isDark)
         // Marca del negocio guardada en la visita anterior (ver src/branding.ts):
         // se aplica antes del primer frame para no mostrar otra marca un instante.
-        var strong = '#008069'
         try {
           var brand = JSON.parse(localStorage.getItem('brand') || 'null')
           if (brand && location.pathname.indexOf('/platform') !== 0) {
@@ -59,7 +59,6 @@
               shades && hex.test(shades.primary) && hex.test(shades.strong) && hex.test(shades.deep) && hex.test(shades.dark) &&
               shades.primary === String(brand.primary_color).toLowerCase() && shades.primary !== '#00a884'
             ) {
-              strong = shades.strong
               var root = document.documentElement.style
               root.setProperty('--brand', shades.primary)
               root.setProperty('--brand-strong', shades.strong)
@@ -69,7 +68,7 @@
           }
         } catch (e) {}
         var meta = document.querySelector('meta[name="theme-color"]')
-        if (meta) meta.setAttribute('content', isDark ? '#182127' : strong)
+        if (meta) meta.setAttribute('content', isDark ? '#11181d' : '#ffffff')
       })()
     </script>
   </head>

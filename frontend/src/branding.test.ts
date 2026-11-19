@@ -46,7 +46,8 @@ describe('branding', () => {
 
     expect(document.title).toBe('Clínica Norte')
     expect(document.documentElement.style.getPropertyValue('--brand')).toBe('#1e40af')
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#173185')
+    // La barra del sistema sigue a la cabecera blanca, no a la marca.
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#008069')
     expect(document.querySelector('link[rel="icon"]')?.getAttribute('href')).toBe('/api/branding/logo?size=192&v=2')
     expect(currentBrandName()).toBe('Clínica Norte')
     expect(JSON.parse(localStorage.getItem('brand') ?? '{}').name).toBe('Clínica Norte')

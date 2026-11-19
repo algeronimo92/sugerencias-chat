@@ -147,11 +147,10 @@ export function MainLayout() {
   const headerIconButtonClass =
     "flex h-10 w-10 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring";
 
-  const notificationCenter = (placement: "header" | "rail", expanded = false) =>
+  const notificationCenter = (placement: "header" | "rail" | "toolbar") =>
     isAnalyst ? null : (
       <NotificationCenter
         placement={placement}
-        expanded={expanded}
         browserPermission={notificationPermission}
         onRequestBrowserPermission={requestNotificationPermission}
         onNewNotification={showInternalMention}
@@ -288,11 +287,11 @@ export function MainLayout() {
             onLogout={signOut}
             onOpenSettings={isAdmin ? () => openSettings("general") : undefined}
             onOpenIssueReport={isAnalyst ? undefined : () => setIsIssueReportOpen(true)}
-            renderNotifications={(expanded) => notificationCenter("rail", expanded)}
+            renderNotifications={(expanded) => notificationCenter(expanded ? "toolbar" : "rail")}
             extras={
               <>
                 <PwaUpdateChip />
-                <OnboardingReopenButton enabled={isAdmin} className={headerIconButtonClass} />
+                <OnboardingReopenButton enabled={isAdmin} className={headerIconButtonClass.replace("h-10 w-10", "h-9 w-9")} />
               </>
             }
           />

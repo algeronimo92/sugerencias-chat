@@ -436,10 +436,9 @@ body {
   -webkit-tap-highlight-color: transparent;
   /* Safari 26+ (Liquid Glass) ignora <meta theme-color> y tiñe su barra con
      el background-color del <body> (el <html> no cuenta). Se pinta del color
-     del header para que la barra se funda con la app; el fondo gris real de
-     la app vive en #root, que cubre todo el viewport. Sigue al tono de marca
-     mientras la barra superior sea de color (pregunta abierta 2 del doc 18). */
-  background: var(--accent-strong);
+     de la cabecera (blanca, --surface) para que la barra se funda con la app;
+     el fondo gris real de la app vive en #root, que cubre todo el viewport. */
+  background: var(--surface);
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -459,9 +458,6 @@ html.dark {
   color-scheme: dark;
 }
 
-.dark body {
-  background: var(--surface-raised);
-}
 
 #root {
   width: 100%;

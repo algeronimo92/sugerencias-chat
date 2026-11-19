@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, m } from 'motion/react'
 import { Bug, LogOut, Moon, MoreHorizontal, Settings as SettingsIcon, Sun, type LucideIcon } from 'lucide-react'
 import { Counter } from '../shared/ui/Badge'
-import { isNavItemActive, visibleNavItems } from './navigation'
+import { isNavItemActive, MOBILE_TAB_PATHS, visibleNavItems } from './navigation'
 import type { NavItem } from './navigation'
 
 /** Lo que en escritorio son íconos de la barra superior. */
@@ -53,8 +53,8 @@ export function MobileNavBar({ role, unreadCount, account }: Props) {
   }, [isMoreOpen])
 
   const items = visibleNavItems(role)
-  const primaryItems = items.filter((item) => item.primary)
-  const secondaryItems = items.filter((item) => !item.primary)
+  const primaryItems = MOBILE_TAB_PATHS.flatMap((path) => items.filter((item) => item.path === path))
+  const secondaryItems = items.filter((item) => !MOBILE_TAB_PATHS.includes(item.path))
 
   function go(item: NavItem) {
     setIsMoreOpen(false)
