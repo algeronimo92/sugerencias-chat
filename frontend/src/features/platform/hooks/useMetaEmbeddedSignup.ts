@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MetaEmbeddedSignupPayload } from '../types'
+import type { MetaEmbeddedSignupPayload, MetaSignupMode } from '../types'
 import { useFacebookSdk } from './useFacebookSdk'
 import { useMetaPublicConfig } from './useSettings'
 
@@ -12,6 +12,14 @@ const LEGACY_META_CONFIG_ID = import.meta.env.VITE_FACEBOOK_CONFIG_ID as string 
 interface EmbeddedSignupData {
   phone_number_id?: string
   waba_id?: string
+}
+
+/** Cómo quedó el número según el evento de Meta: el de la app del celular
+ *  (coexistencia) ya está registrado; el otro queda solo en la API y el
+ *  backend tiene que registrarlo. */
+const MODE_BY_EVENT: Record<string, MetaSignupMode> = {
+  FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING: 'business_app',
+  FINISH: 'cloud_api',
 }
 
 function isEmbeddedSignupMessage(
@@ -27,11 +35,13 @@ function isEmbeddedSignupMessage(
 const CANCELLED = 'Se canceló la vinculación con Meta.'
 
 /**
- * El Embedded Signup de Meta con coexistencia: vincula un número que ya está
- * activo en la app de WhatsApp Business sin desconectarlo de ahí. Junta el
- * `code` de FB.login() y el {waba_id, phone_number_id} del postMessage de
- * Meta, que llegan por separado y en cualquier orden, y se los pasa a
- * `onComplete`. Quien lo usa decide qué hace el backend con ese número: el
+ * El Embedded Signup de Meta. Con la opción de coexistencia, la ventana de
+ * Meta ofrece los dos caminos (como en ManyChat): conectar el número que ya
+ * está en la app de WhatsApp Business sin sacarlo del celular, o elegir una
+ * cuenta y escribir un número que queda solo en la API. Junta el `code` de
+ * FB.login() y el {waba_id, phone_number_id} del postMessage de Meta, que
+ * llegan por separado y en cualquier orden, y se los pasa a `onComplete`
+ * junto con el modo en que quedó el número. Quien lo usa decide qué hace el backend con ese número: el
  * del CRM o el de avisos de cita.
  */
 export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPayload) => void) {
@@ -44,6 +54,7 @@ export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPa
   const [error, setError] = useState<string | null>(null)
   const pendingCode = useRef<string | null>(null)
   const pendingData = useRef<EmbeddedSignupData | null>(null)
+  const pendingMode = useRef<MetaSignupMode>('business_app')
   // Solo escucha la ventana de Meta la instancia que abrió el login: hay dos
   // botones en la misma página (el del CRM y el de avisos) y cada uno guarda
   // el número en un lugar distinto.
@@ -66,7 +77,7 @@ export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPa
     pendingData.current = null
     started.current = false
     setError(null)
-    completeRef.current({ code, waba_id: data.waba_id, phone_number_id: data.phone_number_id })
+    completeRef.current({ code, waba_id: data.waba_id, phone_number_id: data.phone_number_id, mode: pendingMode.current })
   }
 
   useEffect(() => {
@@ -80,13 +91,12 @@ export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPa
         return
       }
       if (!isEmbeddedSignupMessage(payload)) return
-      // 'FINISH' es el signup normal (WABA + número nuevo); en coexistencia
+      // 'FINISH' es el signup normal (número solo en la API); en coexistencia
       // con la app de WhatsApp Business el evento es distinto y su payload
       // trae solo waba_id.
-      if (
-        (payload.event === 'FINISH' || payload.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING')
-        && payload.data
-      ) {
+      const mode = MODE_BY_EVENT[payload.event]
+      if (mode && payload.data) {
+        pendingMode.current = mode
         pendingData.current = payload.data
         trySubmit()
       } else if (payload.event === 'CANCEL' || payload.event === 'ERROR') {
@@ -99,7 +109,11 @@ export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function start() {
+  /** ``preferred`` es lo que la clínica eligió antes de abrir Meta: con
+   *  ``business_app`` la ventana ofrece conectar la app del celular; con
+   *  ``cloud_api`` va directo a elegir cuenta y número. Lo que manda al
+   *  backend es lo que Meta informó al terminar, no esta elección. */
+  function start(preferred: MetaSignupMode = 'business_app') {
     if (!window.FB || !configId) return
     setError(null)
     pendingCode.current = null
@@ -124,7 +138,9 @@ export function useMetaEmbeddedSignup(onComplete: (payload: MetaEmbeddedSignupPa
         override_default_response_type: true,
         extras: {
           setup: {},
-          featureType: 'whatsapp_business_app_onboarding',
+          // Agrega la opción de la app del celular; no quita la de un número
+          // solo para la API (doc de Meta, "Onboarding WhatsApp Business app users").
+          ...(preferred === 'business_app' ? { featureType: 'whatsapp_business_app_onboarding' } : {}),
           sessionInfoVersion: '3',
         },
       },

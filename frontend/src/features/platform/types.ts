@@ -86,12 +86,10 @@ export type PlatformEmailStatus = Delivered<ApiSchemas['PlatformEmailStatus']>
 export type PlatformEmailPayload = ApiSchemas['PlatformEmailUpdate']
 export type EmailOAuthProvider = ApiSchemas['EmailConnectRequest']['provider']
 
-export interface MetaEmbeddedSignupPayload {
-  code: string
-  waba_id: string
-  // Ausente en coexistencia con la app de WhatsApp Business (ver WhatsappPanel.tsx).
-  phone_number_id?: string
-}
+// `phone_number_id` falta en coexistencia con la app de WhatsApp Business;
+// `mode` dice si el número sigue en el celular o quedó solo en la API.
+export type MetaEmbeddedSignupPayload = ApiSchemas['MetaEmbeddedSignupRequest']
+export type MetaSignupMode = MetaEmbeddedSignupPayload['mode']
 
 export type Domain = Delivered<ApiSchemas['OrganizationDomainItem']>;
 

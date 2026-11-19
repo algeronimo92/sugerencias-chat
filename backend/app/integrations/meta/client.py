@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 import logging
+import secrets
 from time import perf_counter
 from typing import Any
 
@@ -228,11 +229,55 @@ async def _exchange_code(code: str) -> str:
     return access_token
 
 
+# Cómo quedó el número al cerrar el Embedded Signup. Lo dice el evento que
+# Meta manda al navegador: `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` es el
+# número que sigue en la app del celular; `FINISH`, uno que queda solo en la API.
+BUSINESS_APP = "business_app"
+CLOUD_API = "cloud_api"
+SIGNUP_MODES = (BUSINESS_APP, CLOUD_API)
+
+# El PIN de la verificación en dos pasos con que se registra en la API un
+# número que no viene de la app. Se guarda para volver a registrarlo (al
+# cambiar de token, o si Meta lo pide) sin preguntarle a la clínica un PIN que
+# nunca eligió. Uno por número: el de los chats y el de avisos de cita.
+CRM_PIN_KEY = "meta_registration_pin"
+NOTICE_PIN_KEY = "appointment_notice_registration_pin"
+_META_ERROR_CODE_PIN_MISMATCH = 133005
+
+
+async def _register_cloud_api_number(phone_number_id: str, access_token: str, pin_key: str) -> None:
+    """Registra en la Cloud API un número que el Embedded Signup dejó solo en
+    la API. Sin esto Meta lo muestra como pendiente y rechaza los envíos. En
+    la app del celular no se hace: ese número ya está registrado (doc de Meta,
+    "Onboarding WhatsApp Business app users").
+
+    El PIN se guarda antes de registrar: si se guardara después y fallara el
+    guardado, el número quedaría con un PIN que nadie conoce."""
+    pin = (await get_effective_many((pin_key,)))[pin_key] or f"{secrets.randbelow(10**6):06d}"
+    await update_settings({pin_key: pin})
+    try:
+        await _request(
+            "POST", _graph_url(f"{phone_number_id}/register"), access_token,
+            json_body={"messaging_product": "whatsapp", "pin": pin}, timeout=30.0,
+        )
+    except MetaApiError as exc:
+        if exc.error.get("code") == _META_ERROR_CODE_PIN_MISMATCH:
+            # El número trae verificación en dos pasos de antes (otro
+            # proveedor, o la clínica la activó): Meta no deja pisarla.
+            raise MetaApiError(
+                "Ese número tiene activada la verificación en dos pasos con un PIN anterior. "
+                "Desactívala en el Administrador de WhatsApp de Meta y vuelve a conectar",
+                error=exc.error, status_code=exc.status_code,
+            ) from exc
+        raise
+
+
 async def complete_notice_number_signup(
-    code: str, waba_id: str, phone_number_id: str | None = None,
+    code: str, waba_id: str, phone_number_id: str | None = None, mode: str = BUSINESS_APP,
 ) -> dict[str, str]:
     """El Embedded Signup (también con coexistencia) del número de avisos de
-    cita. A diferencia de ``complete_embedded_signup`` no guarda nada: el
+    cita. A diferencia de ``complete_embedded_signup`` no guarda credenciales
+    (solo el PIN, si el número quedó solo en la API): el
     token, la WABA y el número del CRM quedan como estaban, y devuelve
     ``{phone_number_id, waba_id}`` del número vinculado para que se elija
     como número de avisos.
@@ -259,10 +304,14 @@ async def complete_notice_number_signup(
         phone_number_id = await _resolve_phone_number_id(waba_id, access_token, exclude={crm_number})
     if phone_number_id == crm_number:
         raise MetaApiError("Ese es el número del CRM: vincula otro número para los avisos")
+    if mode == CLOUD_API:
+        await _register_cloud_api_number(phone_number_id, access_token, NOTICE_PIN_KEY)
     return {"phone_number_id": phone_number_id, "waba_id": waba_id}
 
 
-async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str | None = None) -> None:
+async def complete_embedded_signup(
+    code: str, waba_id: str, phone_number_id: str | None = None, mode: str = BUSINESS_APP,
+) -> None:
     """Cierra el flujo de WhatsApp Embedded Signup: cambia el `code` de un
     solo uso que dio `FB.login()` por un token de acceso, suscribe esta app a
     los webhooks de la WABA elegida y guarda las tres credenciales
@@ -289,6 +338,11 @@ async def complete_embedded_signup(code: str, waba_id: str, phone_number_id: str
         phone_number_id = await _resolve_phone_number_id(
             waba_id, access_token, exclude={notice_number} if notice_number else None,
         )
+
+    # Antes de guardar las credenciales: si Meta no deja registrar el número,
+    # el CRM sigue con el que tenía en vez de pasar a uno que no envía.
+    if mode == CLOUD_API:
+        await _register_cloud_api_number(phone_number_id, access_token, CRM_PIN_KEY)
 
     await update_settings({
         "meta_access_token": access_token,

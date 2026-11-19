@@ -222,8 +222,10 @@ class FakeSenders:
     async def unregister(self, phone_number_id: str) -> None:
         self.unregistered.append(phone_number_id)
 
-    async def complete_signup(self, code: str, waba_id: str, phone_number_id: str | None) -> dict[str, str]:
-        self.signups.append({"code": code, "waba_id": waba_id, "phone_number_id": phone_number_id})
+    async def complete_signup(
+        self, code: str, waba_id: str, phone_number_id: str | None, *, mode: str = "business_app",
+    ) -> dict[str, str]:
+        self.signups.append({"code": code, "waba_id": waba_id, "phone_number_id": phone_number_id, "mode": mode})
         if self.signup_error is not None:
             raise self.signup_error
         return {"phone_number_id": phone_number_id or "AVISOS_ID", "waba_id": self.signup_account or waba_id}

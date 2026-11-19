@@ -109,6 +109,9 @@ SETTING_DEFS: list[SettingDef] = [
     # las herramientas comerciales de Meta, y eso lo registra su panel
     # (platform/whatsapp_api.py) con quién y cuándo. Un switch genérico se lo
     # saltaría.
+    # PIN de la verificación en dos pasos con que el CRM registra un número
+    # que queda solo en la API (meta/client._register_cloud_api_number).
+    SettingDef("meta_registration_pin", "PIN de registro del número", "meta", "Meta Cloud API (WhatsApp)", secret=True, hidden=True),
     SettingDef("meta_capi_enabled", "Enviar eventos de conversión a Meta", "meta", "Meta Cloud API (WhatsApp)", secret=False, boolean=True, hidden=True),
     SettingDef("meta_capi_accepted_by", "Quién aceptó las Condiciones de las herramientas comerciales", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
     SettingDef("meta_capi_accepted_at", "Cuándo se aceptaron las Condiciones de las herramientas comerciales", "meta", "Meta Cloud API (WhatsApp)", secret=False, hidden=True),
@@ -244,6 +247,7 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef("appointment_staff_notice_parameters", "Campos de cada variable (equipo)", "appointments", "Avisos de cita", secret=False, hidden=True),
     SettingDef("appointment_notice_phone_number_id", "Número de avisos (phone number id)", "appointments", "Avisos de cita", secret=False, hidden=True),
     SettingDef("appointment_notice_waba_id", "Cuenta de WhatsApp Business del número de avisos", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_notice_registration_pin", "PIN de registro del número de avisos", "appointments", "Avisos de cita", secret=True, hidden=True),
     # SMTP propio del negocio para invitaciones y avisos (pestaña Correo). Se
     # editan solo por app/modules/platform/email_settings.py, que valida el
     # conjunto: un host suelto sin remitente no sirve. Los nombres no

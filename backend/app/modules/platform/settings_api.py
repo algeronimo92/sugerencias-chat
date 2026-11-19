@@ -65,7 +65,7 @@ async def get_meta_public_config():
 @router.post("/meta/embedded-signup", response_model=list[SettingItem])
 async def post_meta_embedded_signup(body: MetaEmbeddedSignupRequest):
     try:
-        await meta_service.complete_embedded_signup(body.code, body.waba_id, body.phone_number_id)
+        await meta_service.complete_embedded_signup(body.code, body.waba_id, body.phone_number_id, body.mode)
     except MetaApiError as e:
         # El detail viaja al frontend, pero un proxy intermedio puede reemplazar
         # la respuesta 502 por su propia pantalla de error y perderlo.

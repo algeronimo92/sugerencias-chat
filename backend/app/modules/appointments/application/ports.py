@@ -115,7 +115,9 @@ class NoticeSenders(Protocol):
     async def unregister(self, phone_number_id: str) -> None:
         """Deja de recibir los webhooks del número que dejó de ser el de avisos."""
 
-    async def complete_signup(self, code: str, waba_id: str, phone_number_id: str | None) -> dict[str, str]:
+    async def complete_signup(
+        self, code: str, waba_id: str, phone_number_id: str | None, *, mode: str = "business_app",
+    ) -> dict[str, str]:
         """Cierra el Embedded Signup (con coexistencia o sin ella) de un número
         nuevo sin tocar las credenciales del CRM, y devuelve
         ``{phone_number_id, waba_id}``. Levanta ``NoticeSenderNotLinked`` si

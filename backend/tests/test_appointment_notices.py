@@ -598,11 +598,36 @@ async def test_linking_a_number_with_meta_makes_it_the_notice_number(stored, in_
     result = await notice.link_sender("CODE", "WABA_ID", None, 1)
 
     assert in_memory_appointments.senders.signups == [
-        {"code": "CODE", "waba_id": "WABA_ID", "phone_number_id": None},
+        {"code": "CODE", "waba_id": "WABA_ID", "phone_number_id": None, "mode": "business_app"},
     ]
     assert result["phone_number_id"] == "AVISOS_ID"
     assert stored[notice.SENDER_KEY] == "AVISOS_ID"
     assert in_memory_appointments.senders.registered == ["AVISOS_ID"]
+
+
+async def test_a_notice_number_left_only_in_the_api_says_so_to_meta(stored, in_memory_appointments):
+    await notice.link_sender("CODE", "WABA_ID", "AVISOS_ID", 1, mode="cloud_api")
+
+    assert in_memory_appointments.senders.signups[0]["mode"] == "cloud_api"
+
+
+async def test_a_notice_number_left_only_in_the_api_is_registered_with_its_own_pin(monkeypatch):
+    meta_client, calls, saved = _graph(monkeypatch, ["CRM_ID", "AVISOS_ID"])
+
+    await meta_client.complete_notice_number_signup("CODE", "WABA_ID", "AVISOS_ID", "cloud_api")
+
+    assert ("POST", meta_client._graph_url("AVISOS_ID/register")) in calls
+    # El PIN del número de avisos no pisa el del número de los chats.
+    assert [list(values) for values in saved] == [[meta_client.NOTICE_PIN_KEY]]
+
+
+async def test_a_notice_number_from_the_phone_app_is_not_registered_again(monkeypatch):
+    meta_client, calls, saved = _graph(monkeypatch, ["CRM_ID", "AVISOS_ID"])
+
+    await meta_client.complete_notice_number_signup("CODE", "WABA_ID")
+
+    assert not any(url.endswith("/register") for _method, url in calls)
+    assert saved == []
 
 
 async def test_a_failed_link_changes_nothing(stored, in_memory_appointments):

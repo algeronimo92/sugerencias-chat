@@ -5,20 +5,40 @@ import { Button } from "../../../shared/ui/Button";
 import { extractErrorMessage } from "../../../shared/utils/errors";
 import { useMetaEmbeddedSignup } from "../hooks/useMetaEmbeddedSignup";
 import { useCompleteMetaEmbeddedSignup } from "../hooks/useSettings";
-import { useWhatsappStatus } from "../hooks/useWhatsapp";
+import { useCallingReadiness, useWhatsappStatus } from "../hooks/useWhatsapp";
 import { CallsSettings } from "./CallsSettings";
+import { MetaConnectGuide } from "./MetaConnectGuide";
 import { MetaConversionsPanel } from "./MetaConversionsPanel";
 import { WhatsappCostsPanel } from "./WhatsappCostsPanel";
 
-// Panel de coexistencia con Meta (WhatsApp Embedded Signup): vincula un
-// número que ya está activo en la app oficial de WhatsApp Business sin
-// desconectarlo de ahí. Completa las mismas credenciales que se pueden
-// tipear a mano en las claves de Meta (meta_access_token/waba_id/phone_number_id).
-// El número de avisos de cita se vincula aparte, en su propia tarjeta: este
-// botón reemplaza el número de los chats.
+// Cómo quedó el número, preguntado a Meta (la misma consulta que usan las
+// llamadas): cambia fuera del CRM si la clínica muda el número.
+function LinkedMode({ onBusinessApp }: { onBusinessApp: boolean | null | undefined }) {
+  const text =
+    onBusinessApp === true
+      ? "Número vinculado. Sigue funcionando en la app de WhatsApp Business."
+      : onBusinessApp === false
+        ? "Número vinculado solo al CRM. No funciona en la app del celular."
+        : "Número vinculado.";
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
+      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+      {text}
+    </p>
+  );
+}
+
+// Conexión con Meta (WhatsApp Embedded Signup), con los dos caminos: el
+// número que ya está en la app de WhatsApp Business sigue ahí (coexistencia),
+// o un número queda solo en el CRM. Completa las mismas credenciales que se
+// pueden tipear a mano en las claves de Meta (meta_access_token/waba_id/
+// phone_number_id). El número de avisos de cita se vincula aparte, en su
+// propia tarjeta: este botón reemplaza el número de los chats.
 function MetaEmbeddedSignupPanel() {
   const { data: whatsappStatus } = useWhatsappStatus();
   const isLinked = whatsappStatus?.state === "open";
+  const { data: readiness } = useCallingReadiness(isLinked);
+  const [choosing, setChoosing] = useState(false);
   const { mutate: complete, isPending } = useCompleteMetaEmbeddedSignup();
   const [success, setSuccess] = useState(false);
   const signup = useMetaEmbeddedSignup(payload =>
@@ -38,7 +58,7 @@ function MetaEmbeddedSignupPanel() {
       <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
         <div className="flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">
           <Link2 className="h-4 w-4" />
-          Coexistencia con Meta
+          Conexión con Meta
         </div>
         <p className="text-[11px] text-amber-800 dark:text-amber-300">
           El operador de plataforma todavía no configuró el App ID y el Configuration ID de Embedded Signup.
@@ -51,34 +71,41 @@ function MetaEmbeddedSignupPanel() {
     <div className="space-y-2 rounded-xl border border-wa-border p-4 dark:border-wa-border-dark">
       <div className="flex items-center gap-2 text-sm font-medium text-wa-text dark:text-wa-text-dark">
         <Link2 className="h-4 w-4" />
-        Coexistencia con Meta
+        Conexión con Meta
       </div>
       {isLinked ? (
-        <p className="flex items-center gap-1.5 text-xs text-wa-primary-strong dark:text-wa-primary">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Número vinculado. Sigue funcionando en la app de WhatsApp Business.
-        </p>
+        <LinkedMode onBusinessApp={readiness?.on_business_app} />
       ) : (
         <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
-          Vincula el número que ya usas en WhatsApp Business, sin desconectarlo
-          de la app.
+          Vincula el número que ya usas en WhatsApp Business sin sacarlo del
+          celular, o un número solo para el CRM.
         </p>
       )}
-      <Button
-        onClick={() => {
-          setSuccess(false);
-          signup.start();
-        }}
-        disabled={!signup.ready || isPending}
-        variant="ghost"
-      >
-        {isPending ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        ) : (
-          <Link2 className="h-4 w-4" aria-hidden="true" />
-        )}
-        {isLinked ? "Cambiar el número de los chats" : "Vincular con Meta"}
-      </Button>
+      {choosing ? (
+        <MetaConnectGuide
+          onCancel={() => setChoosing(false)}
+          onContinue={mode => {
+            setChoosing(false);
+            setSuccess(false);
+            signup.start(mode);
+          }}
+          disabled={!signup.ready}
+          pending={isPending}
+        />
+      ) : (
+        <Button
+          onClick={() => setChoosing(true)}
+          disabled={!signup.ready || isPending}
+          variant="ghost"
+        >
+          {isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Link2 className="h-4 w-4" aria-hidden="true" />
+          )}
+          {isLinked ? "Cambiar el número de los chats" : "Vincular con Meta"}
+        </Button>
+      )}
       {success && (
         <p className="flex items-center gap-1 text-xs text-wa-primary-strong dark:text-wa-primary">
           <CheckCircle2 className="h-3.5 w-3.5" /> Credenciales guardadas.

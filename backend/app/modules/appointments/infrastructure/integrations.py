@@ -168,9 +168,11 @@ class MetaNoticeSenders:
     async def unregister(self, phone_number_id: str) -> None:
         await MetaAccountNumbers().unregister(phone_number_id)
 
-    async def complete_signup(self, code: str, waba_id: str, phone_number_id: str | None) -> dict[str, str]:
+    async def complete_signup(
+        self, code: str, waba_id: str, phone_number_id: str | None, *, mode: str = "business_app",
+    ) -> dict[str, str]:
         try:
-            return await MetaAccountNumbers().complete_signup(code, waba_id, phone_number_id)
+            return await MetaAccountNumbers().complete_signup(code, waba_id, phone_number_id, mode=mode)
         except (*SEND_FAILURES, httpx.HTTPError) as exc:
             logger.warning("No se vinculó el número de avisos: %s", exc)
             raise NoticeSenderNotLinked(str(exc)) from exc

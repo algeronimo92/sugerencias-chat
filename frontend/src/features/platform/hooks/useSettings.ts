@@ -56,6 +56,8 @@ export function useCompleteMetaEmbeddedSignup() {
     onSettled: (_data, error) => {
       if (error) queryClient.invalidateQueries({ queryKey: settingsKeys.all, exact: true })
       queryClient.invalidateQueries({ queryKey: whatsappKeys.status })
+      // El modo del número (celular o solo API) se lee de Meta con esta consulta.
+      queryClient.invalidateQueries({ queryKey: whatsappKeys.callingReadiness })
     },
   })
 }

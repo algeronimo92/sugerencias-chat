@@ -7360,6 +7360,12 @@ export interface components {
             waba_id: string;
             /** Phone Number Id */
             phone_number_id?: string | null;
+            /**
+             * Mode
+             * @default business_app
+             * @enum {string}
+             */
+            mode: "business_app" | "cloud_api";
         };
         /** MetaPublicConfig */
         MetaPublicConfig: {
@@ -7514,6 +7520,12 @@ export interface components {
             waba_id: string;
             /** Phone Number Id */
             phone_number_id?: string | null;
+            /**
+             * Mode
+             * @default business_app
+             * @enum {string}
+             */
+            mode: "business_app" | "cloud_api";
         };
         /**
          * NoticeSenderTemplate

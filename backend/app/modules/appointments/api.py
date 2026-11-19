@@ -67,7 +67,7 @@ async def put_notice_sender(body: NoticeSenderUpdate, user: User = Depends(requi
 
 @router.post("/notice-sender/embedded-signup", response_model=NoticeSender)
 async def post_notice_sender_signup(body: NoticeSenderSignup, user: User = Depends(require_admin)):
-    return await notice.link_sender(body.code, body.waba_id, body.phone_number_id, user.id)
+    return await notice.link_sender(body.code, body.waba_id, body.phone_number_id, user.id, mode=body.mode)
 
 
 @router.post("/notice-sender/templates", response_model=NoticeSender)
