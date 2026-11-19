@@ -9,6 +9,7 @@ import { createAiRealtime } from '../features/ai/public/realtime'
 import { createAppointmentsRealtime } from '../features/appointments/public/realtime'
 import { createAutomationsRealtime } from '../features/automations/public/realtime'
 import { createChatsRealtime } from '../features/chats/public/realtime'
+import { createContactsRealtime } from '../features/contacts/public/realtime'
 import { createDashboardRealtime } from '../features/dashboard/public/realtime'
 import { createIssueReportsRealtime } from '../features/issue-reports/public/realtime'
 import { createLeadsRealtime } from '../features/leads/public/realtime'
@@ -22,6 +23,7 @@ export function createAppRealtimeBus(): RealtimeBus {
     createChatsRealtime(),
     createLeadsRealtime(),
     createTasksRealtime(),
+    createContactsRealtime(),
     createDashboardRealtime(),
     createTemplatesRealtime(),
     createAppointmentsRealtime(),

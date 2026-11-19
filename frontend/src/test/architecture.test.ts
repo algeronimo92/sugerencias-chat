@@ -66,6 +66,7 @@ const FEATURE_LAYERS: Record<string, number> = {
   platform: 2,
   leads: 3,
   tasks: 4,
+  contacts: 4,
   templates: 5,
   appointments: 5,
   ai: 5,

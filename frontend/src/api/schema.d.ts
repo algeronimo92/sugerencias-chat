@@ -1637,6 +1637,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/meta/app-sync/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Meta App Sync Retry
+         * @description Repite el pedido de contactos e historial de la app del celular que
+         *     falló al conectar el número, mientras Meta todavía lo acepte.
+         */
+        post: operations["post_meta_app_sync_retry_api_settings_meta_app_sync_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/google-calendar/status": {
         parameters: {
             query?: never;
@@ -2504,6 +2525,281 @@ export interface paths {
         head?: never;
         /** Patch Task */
         patch: operations["patch_task_api_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Contacts */
+        get: operations["get_contacts_api_contacts_get"];
+        put?: never;
+        /** Post Contact */
+        post: operations["post_contact_api_contacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Contact Tags */
+        get: operations["get_contact_tags_api_contacts_tags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/bulk/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Bulk Tags */
+        post: operations["post_bulk_tags_api_contacts_bulk_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/bulk/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Bulk Leads */
+        post: operations["post_bulk_leads_api_contacts_bulk_leads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/bulk/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Bulk Delete */
+        post: operations["post_bulk_delete_api_contacts_bulk_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports/csv/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Csv Preview */
+        post: operations["post_csv_preview_api_contacts_imports_csv_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Csv Import */
+        post: operations["post_csv_import_api_contacts_imports_csv_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Imports */
+        get: operations["get_imports_api_contacts_imports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import */
+        get: operations["get_import_api_contacts_imports__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports/{batch_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import Rows */
+        get: operations["get_import_rows_api_contacts_imports__batch_id__rows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports/{batch_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Import Confirm */
+        post: operations["post_import_confirm_api_contacts_imports__batch_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/imports/{batch_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Import Discard */
+        post: operations["post_import_discard_api_contacts_imports__batch_id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/whatsapp-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Whatsapp Sync */
+        get: operations["get_whatsapp_sync_api_contacts_whatsapp_sync_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/whatsapp-sync/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Whatsapp Sync Settings */
+        put: operations["put_whatsapp_sync_settings_api_contacts_whatsapp_sync_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/contacts/{contact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get One Contact */
+        get: operations["get_one_contact_api_contacts__contact_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Contact */
+        delete: operations["delete_contact_api_contacts__contact_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Contact */
+        patch: operations["patch_contact_api_contacts__contact_id__patch"];
+        trace?: never;
+    };
+    "/api/contacts/{contact_id}/lead": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Contact Lead */
+        post: operations["post_contact_lead_api_contacts__contact_id__lead_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/chats/{chat_id}/scheduled-messages": {
@@ -4029,6 +4325,11 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** AffectedCount */
+        AffectedCount: {
+            /** Count */
+            count: number;
+        };
         /**
          * AiModelParam
          * @description Un parámetro que el modelo acepta (registro de app.integrations.llm.catalog).
@@ -4809,12 +5110,105 @@ export interface components {
             /** Completed */
             completed: number;
         };
+        /** ContactCreate */
+        ContactCreate: {
+            /** Telefono */
+            telefono: string;
+            /** Nombre */
+            nombre?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Notas */
+            notas?: string | null;
+            /** Etiquetas */
+            etiquetas?: string[];
+            /**
+             * Consentimiento Marketing
+             * @default false
+             */
+            consentimiento_marketing: boolean;
+        };
+        /** ContactIds */
+        ContactIds: {
+            /** Ids */
+            ids: string[];
+        };
+        /** ContactItem */
+        ContactItem: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string | null;
+            /** Telefono */
+            telefono: string | null;
+            /** Wa User Id */
+            wa_user_id: string | null;
+            /** Username */
+            username: string | null;
+            /** Email */
+            email: string | null;
+            /** Notas */
+            notas: string | null;
+            /** Etiquetas */
+            etiquetas: string[];
+            origen: components["schemas"]["ContactOrigin"];
+            /** Consentimiento Marketing */
+            consentimiento_marketing: boolean;
+            /** Consentimiento At */
+            consentimiento_at: string | null;
+            /** Lead Id */
+            lead_id: string | null;
+            /** Eliminado En App At */
+            eliminado_en_app_at: string | null;
+            /** Ultima Interaccion At */
+            ultima_interaccion_at: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * ContactOrigin
+         * @enum {string}
+         */
+        ContactOrigin: "manual" | "csv" | "whatsapp_app" | "lead";
+        /** ContactPage */
+        ContactPage: {
+            /** Items */
+            items: components["schemas"]["ContactItem"][];
+            /** Total */
+            total: number;
+        };
         /** ContactShareItem */
         ContactShareItem: {
             /** Full Name */
             full_name: string;
             /** Phone Number */
             phone_number: string;
+        };
+        /** ContactTagsChange */
+        ContactTagsChange: {
+            /** Ids */
+            ids: string[];
+            /** Add */
+            add?: string[];
+            /** Remove */
+            remove?: string[];
+        };
+        /** ContactUpdate */
+        ContactUpdate: {
+            /** Telefono */
+            telefono?: string | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Notas */
+            notas?: string | null;
+            /** Etiquetas */
+            etiquetas?: string[] | null;
+            /** Consentimiento Marketing */
+            consentimiento_marketing?: boolean | null;
         };
         /** CreateUserRequest */
         CreateUserRequest: {
@@ -4827,6 +5221,49 @@ export interface components {
              * @default vendedor
              */
             role: string;
+        };
+        /**
+         * CsvColumnMapping
+         * @description Índice de la columna del CSV que llena cada campo; None si ninguna.
+         */
+        CsvColumnMapping: {
+            /** Nombre */
+            nombre?: number | null;
+            /** Telefono */
+            telefono?: number | null;
+            /** Email */
+            email?: number | null;
+            /** Etiquetas */
+            etiquetas?: number | null;
+            /** Notas */
+            notas?: number | null;
+            /** Consentimiento */
+            consentimiento?: number | null;
+        };
+        /** CsvImportCreate */
+        CsvImportCreate: {
+            /** File Name */
+            file_name?: string | null;
+            /** Data Base64 */
+            data_base64: string;
+            mapping: components["schemas"]["CsvColumnMapping"];
+        };
+        /** CsvPreview */
+        CsvPreview: {
+            /** Headers */
+            headers: string[];
+            /** Sample */
+            sample: string[][];
+            /** Total Rows */
+            total_rows: number;
+            mapping: components["schemas"]["CsvColumnMapping"];
+        };
+        /** CsvUpload */
+        CsvUpload: {
+            /** File Name */
+            file_name?: string | null;
+            /** Data Base64 */
+            data_base64: string;
         };
         /** CustomFieldDefinitionCreate */
         CustomFieldDefinitionCreate: {
@@ -5459,6 +5896,11 @@ export interface components {
              */
             is_primary: boolean;
         };
+        /**
+         * DuplicatePolicy
+         * @enum {string}
+         */
+        DuplicatePolicy: "skip" | "fill_empty";
         /** EmailConnectRequest */
         EmailConnectRequest: {
             /**
@@ -5729,10 +6171,118 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImportCounts */
+        ImportCounts: {
+            /** Pending */
+            pending: number;
+            /** Invalid */
+            invalid: number;
+            /** Existing */
+            existing: number;
+            /** With Interaction */
+            with_interaction: number;
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Skipped */
+            skipped: number;
+            /** Discarded */
+            discarded: number;
+        };
+        /** ImportResult */
+        ImportResult: {
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Skipped */
+            skipped: number;
+        };
+        /** ImportRowItem */
+        ImportRowItem: {
+            /** Id */
+            id: number;
+            /** Row Number */
+            row_number: number | null;
+            /** Nombre */
+            nombre: string | null;
+            /** Telefono */
+            telefono: string | null;
+            /** Wa User Id */
+            wa_user_id: string | null;
+            /** Email */
+            email: string | null;
+            /** Etiquetas */
+            etiquetas: string[];
+            /** Consentimiento */
+            consentimiento: boolean;
+            /** Ultima Interaccion At */
+            ultima_interaccion_at: string | null;
+            /** Error */
+            error: string | null;
+            outcome: components["schemas"]["RowOutcome"] | null;
+            /** Exists */
+            exists: boolean;
+        };
+        /** ImportRowPage */
+        ImportRowPage: {
+            /** Items */
+            items: components["schemas"]["ImportRowItem"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ImportSelection
+         * @description Qué parte de la importación pasa a la agenda.
+         */
+        ImportSelection: {
+            /** @default all */
+            mode: components["schemas"]["SelectionMode"];
+            /** Days */
+            days?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Row Ids */
+            row_ids?: number[];
+            /** @default skip */
+            duplicates: components["schemas"]["DuplicatePolicy"];
+            /** Tags */
+            tags?: string[];
+            /**
+             * Close
+             * @default false
+             */
+            close: boolean;
+        };
+        /**
+         * ImportSource
+         * @enum {string}
+         */
+        ImportSource: "csv" | "whatsapp_app";
         /** ImportStickerBody */
         ImportStickerBody: {
             /** Media Url */
             media_url: string;
+        };
+        /** ImportSummary */
+        ImportSummary: {
+            /** Id */
+            id: string;
+            source: components["schemas"]["ImportSource"];
+            /** Status */
+            status: string;
+            /** File Name */
+            file_name: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            counts: components["schemas"]["ImportCounts"];
+            /** Recent */
+            recent: components["schemas"]["RecentWindowCount"][];
         };
         /** InteractiveLimits */
         InteractiveLimits: {
@@ -6739,6 +7289,11 @@ export interface components {
              */
             total_capped: boolean;
         };
+        /** MetaAppSyncRetry */
+        MetaAppSyncRetry: {
+            /** Retried */
+            retried: string[];
+        };
         /**
          * MetaConversionCounts
          * @description Cuántos eventos de un tipo hubo en el período, por estado.
@@ -7354,6 +7909,18 @@ export interface components {
             /** Value */
             value?: string | null;
         };
+        /** PromotedLead */
+        PromotedLead: {
+            /** Lead Id */
+            lead_id: string;
+        };
+        /** PromotedLeads */
+        PromotedLeads: {
+            /** Promoted */
+            promoted: number;
+            /** Failed */
+            failed: number;
+        };
         /** PushSubscribeRequest */
         PushSubscribeRequest: {
             /** Endpoint */
@@ -7380,11 +7947,23 @@ export interface components {
              */
             emoji: string;
         };
+        /** RecentWindowCount */
+        RecentWindowCount: {
+            /** Days */
+            days: number;
+            /** Count */
+            count: number;
+        };
         /** RecoveryCodesOut */
         RecoveryCodesOut: {
             /** Recovery Codes */
             recovery_codes: string[];
         };
+        /**
+         * RowOutcome
+         * @enum {string}
+         */
+        RowOutcome: "created" | "updated" | "skipped" | "discarded";
         /** ScheduledMessageCreate */
         ScheduledMessageCreate: {
             /** Text */
@@ -7421,6 +8000,12 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /**
+         * SelectionMode
+         * @description Qué parte de una importación pasa a la agenda.
+         * @enum {string}
+         */
+        SelectionMode: "all" | "recent" | "manual";
         /** SellerItem */
         SellerItem: {
             /** Id */
@@ -7744,6 +8329,16 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * SyncStatus
+         * @enum {string}
+         */
+        SyncStatus: "requested" | "failed" | "receiving" | "done" | "declined";
+        /**
+         * SyncType
+         * @enum {string}
+         */
+        SyncType: "smb_app_state_sync" | "history";
         /** Tag */
         Tag: {
             /** Id */
@@ -8285,6 +8880,39 @@ export interface components {
         VapidPublicKeyResponse: {
             /** Public Key */
             public_key: string;
+        };
+        /** WhatsAppSyncItem */
+        WhatsAppSyncItem: {
+            /** Phone Number Id */
+            phone_number_id: string;
+            sync_type: components["schemas"]["SyncType"];
+            status: components["schemas"]["SyncStatus"];
+            /** Error */
+            error: string | null;
+            /** Progress */
+            progress: number | null;
+            /** Requested At */
+            requested_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Window Ends At */
+            window_ends_at: string | null;
+            /** Can Retry */
+            can_retry: boolean;
+        };
+        /** WhatsAppSyncSettings */
+        WhatsAppSyncSettings: {
+            /** Auto Import */
+            auto_import: boolean;
+        };
+        /** WhatsAppSyncStatus */
+        WhatsAppSyncStatus: {
+            /** Auto Import */
+            auto_import: boolean;
+            /** Open Batch Id */
+            open_batch_id: string | null;
+            /** Syncs */
+            syncs: components["schemas"]["WhatsAppSyncItem"][];
         };
         /**
          * WhatsappCostAccount
@@ -11550,6 +12178,26 @@ export interface operations {
             };
         };
     };
+    post_meta_app_sync_retry_api_settings_meta_app_sync_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAppSyncRetry"];
+                };
+            };
+        };
+    };
     get_google_calendar_status_api_settings_google_calendar_status_get: {
         parameters: {
             query?: never;
@@ -13247,6 +13895,592 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_contacts_api_contacts_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                origen?: components["schemas"]["ContactOrigin"] | null;
+                tag?: string | null;
+                has_lead?: boolean | null;
+                removed_in_app?: boolean | null;
+                consent?: boolean | null;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_contact_api_contacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_contact_tags_api_contacts_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    post_bulk_tags_api_contacts_bulk_tags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactTagsChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AffectedCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_bulk_leads_api_contacts_bulk_leads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotedLeads"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_bulk_delete_api_contacts_bulk_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AffectedCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_csv_preview_api_contacts_imports_csv_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_csv_import_api_contacts_imports_csv_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_imports_api_contacts_imports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSummary"][];
+                };
+            };
+        };
+    };
+    get_import_api_contacts_imports__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_rows_api_contacts_imports__batch_id__rows_get: {
+        parameters: {
+            query?: {
+                status?: "pending" | "invalid" | "processed";
+                search?: string | null;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRowPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_import_confirm_api_contacts_imports__batch_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_import_discard_api_contacts_imports__batch_id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_whatsapp_sync_api_contacts_whatsapp_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsAppSyncStatus"];
+                };
+            };
+        };
+    };
+    put_whatsapp_sync_settings_api_contacts_whatsapp_sync_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatsAppSyncSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsAppSyncStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_contact_api_contacts__contact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contact_api_contacts__contact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_contact_api_contacts__contact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_contact_lead_api_contacts__contact_id__lead_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotedLead"];
                 };
             };
             /** @description Validation Error */
