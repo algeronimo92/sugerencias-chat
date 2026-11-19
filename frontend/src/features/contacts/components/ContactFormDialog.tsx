@@ -21,9 +21,9 @@ export function ContactFormDialog({ contact, onClose }: Props) {
   const create = useCreateContact()
   const update = useUpdateContact()
   const [nombre, setNombre] = useState(contact?.nombre ?? '')
-  const [telefono, setTelefono] = useState(contact?.telefono ? `+${contact.telefono}` : '')
+  const [telefono, setTelefono] = useState(() => (contact?.telefono ? `+${contact.telefono}` : ''))
   const [email, setEmail] = useState(contact?.email ?? '')
-  const [etiquetas, setEtiquetas] = useState(contact?.etiquetas.join(', ') ?? '')
+  const [etiquetas, setEtiquetas] = useState(() => contact?.etiquetas.join(', ') ?? '')
   const [notas, setNotas] = useState(contact?.notas ?? '')
   const [consent, setConsent] = useState(contact?.consentimiento_marketing ?? false)
   const busy = create.isPending || update.isPending

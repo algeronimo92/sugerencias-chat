@@ -12,6 +12,27 @@ import type { CsvColumnMapping, CsvField, CsvPreview } from '../types'
 
 const FIELDS = Object.keys(CSV_FIELD_LABELS) as CsvField[]
 
+/** La vista previa con una clave fija por columna y por fila: la posición en
+ *  el archivo es su identidad (dos columnas pueden llamarse igual). */
+interface PreviewTable {
+  totalRows: number
+  columns: { id: string; index: number; name: string }[]
+  rows: { id: string; cells: { id: string; value: string }[] }[]
+}
+
+function previewTable(result: CsvPreview): PreviewTable {
+  const columns = result.headers.map((name, index) => ({ id: `col-${index}`, index, name }))
+  return {
+    totalRows: result.total_rows,
+    columns,
+    // +2: la fila 1 del archivo son los encabezados.
+    rows: result.sample.map((cells, rowIndex) => ({
+      id: `row-${rowIndex + 2}`,
+      cells: columns.map(column => ({ id: column.id, value: cells[column.index] ?? '' })),
+    })),
+  }
+}
+
 interface Props {
   onClose: () => void
   /** La importación quedó lista para elegir qué parte pasa. */
@@ -25,7 +46,7 @@ export function CsvImportDialog({ onClose, onCreated }: Props) {
   const preview = usePreviewCsv()
   const create = useCreateCsvImport()
   const [file, setFile] = useState<{ name: string; data: string } | null>(null)
-  const [table, setTable] = useState<CsvPreview | null>(null)
+  const [table, setTable] = useState<PreviewTable | null>(null)
   const [mapping, setMapping] = useState<CsvColumnMapping>({})
   const busy = preview.isPending || create.isPending
 
@@ -39,7 +60,7 @@ export function CsvImportDialog({ onClose, onCreated }: Props) {
     preview.mutate({ fileName: selected.name, dataBase64: data }, {
       onSuccess: result => {
         setFile({ name: selected.name, data })
-        setTable(result)
+        setTable(previewTable(result))
         setMapping(result.mapping)
       },
       onError: err => toast.error('No se pudo leer el archivo', { description: extractErrorMessage(err) }),
@@ -88,6 +109,8 @@ export function CsvImportDialog({ onClose, onCreated }: Props) {
         type="file"
         accept=".csv,text/csv,text/plain"
         className="sr-only"
+        aria-label="Archivo CSV de contactos"
+        tabIndex={-1}
         onChange={event => { void choose(event.target.files?.[0]); event.target.value = '' }}
       />
       <Button variant="secondary" onClick={() => input.current?.click()} disabled={busy} className="w-full">
@@ -98,7 +121,7 @@ export function CsvImportDialog({ onClose, onCreated }: Props) {
       {table && (
         <div className="mt-4 space-y-4">
           <p className="text-sm text-wa-muted dark:text-wa-muted-dark">
-            {table.total_rows.toLocaleString('es-PE')} filas. Revisa qué columna corresponde a cada dato; el teléfono es obligatorio.
+            {table.totalRows.toLocaleString('es-PE')} filas. Revisa qué columna corresponde a cada dato; el teléfono es obligatorio.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {FIELDS.map(field => (
@@ -106,7 +129,7 @@ export function CsvImportDialog({ onClose, onCreated }: Props) {
                 <span className={labelClass}>{CSV_FIELD_LABELS[field]}{field === 'telefono' ? ' *' : ''}</span>
                 <Select value={mapping[field] == null ? '' : String(mapping[field])} onChange={event => setColumn(field, event.target.value)}>
                   <option value="">No importar</option>
-                  {table.headers.map((header, index) => <option key={`${header}-${index}`} value={index}>{header}</option>)}
+                  {table.columns.map(column => <option key={column.id} value={column.index}>{column.name}</option>)}
                 </Select>
               </label>
             ))}
@@ -115,11 +138,11 @@ export function CsvImportDialog({ onClose, onCreated }: Props) {
             <table className="min-w-full text-left text-xs">
               <caption className="sr-only">Primeras filas del archivo</caption>
               <thead className="bg-wa-field text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
-                <tr>{table.headers.map((header, index) => <th key={index} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{header}</th>)}</tr>
+                <tr>{table.columns.map(column => <th key={column.id} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{column.name}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-wa-border text-wa-text dark:divide-wa-border-dark dark:text-wa-text-dark">
-                {table.sample.map((row, rowIndex) => (
-                  <tr key={rowIndex}>{table.headers.map((_, index) => <td key={index} className="whitespace-nowrap px-3 py-1.5">{row[index] ?? ''}</td>)}</tr>
+                {table.rows.map(row => (
+                  <tr key={row.id}>{row.cells.map(cell => <td key={cell.id} className="whitespace-nowrap px-3 py-1.5">{cell.value}</td>)}</tr>
                 ))}
               </tbody>
             </table>

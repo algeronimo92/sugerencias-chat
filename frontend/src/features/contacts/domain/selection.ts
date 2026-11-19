@@ -1,4 +1,4 @@
-import type { ContactOrigin, CsvField, ImportSelection, ImportSummary } from '../types'
+import type { ContactOrigin, CsvField, ImportResult, ImportSelection, ImportSummary } from '../types'
 
 /**
  * Cuántos contactos pasan de una importación a la agenda.
@@ -115,4 +115,13 @@ export function formatPhone(phone: string | null): string {
     return `+51 ${phone.slice(2, 5)} ${phone.slice(5, 8)} ${phone.slice(8)}`
   }
   return `+${phone}`
+}
+
+/** Lo que no se creó: completados y repetidos. Undefined si no hubo nada. */
+export function importResultDetail(result: ImportResult): string | undefined {
+  const parts = [
+    result.updated ? `${result.updated} existentes completados` : '',
+    result.skipped ? `${result.skipped} ya estaban y se dejaron igual` : '',
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : undefined
 }
