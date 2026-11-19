@@ -57,7 +57,7 @@ describe('el equipo por horas', () => {
     expect(grecia.rows[6].cells[6].value).toBe(5)
   })
 
-  it('con un mes va de lunes a domingo y en promedio por día de la semana', () => {
+  it('con un mes va de lunes a domingo y cada celda suma los días de ese nombre', () => {
     const month: DashboardHours = { ...WEEK, weekday_occurrences: [5, 5, 4, 4, 4, 4, 4], start_date: '2026-10-13' }
     const team = buildTeamHours(month, 'messages')
     const grecia = team.people[0]
@@ -65,8 +65,8 @@ describe('el equipo por horas', () => {
     expect(team.dated).toBe(false)
     expect(grecia.rows.map(row => row.label)).toEqual(['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'])
     expect(grecia.total).toBe(15)
-    expect(grecia.rows[3].cells[5].description).toBe('Jue, 10–12 h: 2.5 mensajes escritos en el CRM en promedio')
-    expect(team.whatsapp!.rows[3].cells[5].description).toBe('Jue, 10–12 h: 50 mensajes en promedio, sin autor')
+    expect(grecia.rows[3].cells[5].description).toBe('Jue, 10–12 h: 10 mensajes escritos en el CRM en 4 jueves')
+    expect(team.whatsapp!.rows[3].cells[5].description).toBe('Jue, 10–12 h: 200 mensajes en 4 jueves, sin autor')
   })
 
   it('sin la fecha de inicio (backend anterior) no inventa fechas', () => {

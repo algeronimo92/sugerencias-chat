@@ -67,7 +67,7 @@ export function TeamHoursPanel({ hours }: { hours: DashboardHours | undefined })
         onChange={(key) => { setReadingKey(key); setPicked(null) }}
       />
       <p className="mb-4 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-        {reading.hint} {team.dated ? 'Cada fila es un día.' : 'En promedio por día de la semana.'}
+        {reading.hint} {team.dated ? 'Cada fila es un día.' : 'Cada fila suma todos los días de ese nombre en el período.'}
       </p>
 
       {team.people.length > 0 && (
@@ -127,13 +127,13 @@ export function TeamHoursPanel({ hours }: { hours: DashboardHours | undefined })
           {team.people.length > 0 && (
             <span className="flex items-center gap-1.5">
               <Ramp tone="crm" />
-              Personas: hasta {formatAverage(team.max)} por franja, misma escala para todas
+              Personas: hasta {formatAverage(team.max)} en una franja, misma escala para todas
             </span>
           )}
           {whatsapp && (
             <span className="flex items-center gap-1.5">
               <Ramp tone="whatsapp" />
-              WhatsApp: hasta {formatAverage(whatsapp.max)} por franja, escala propia
+              WhatsApp: hasta {formatAverage(whatsapp.max)} en una franja, escala propia
             </span>
           )}
         </div>

@@ -490,8 +490,8 @@ class DashboardHourCell(BaseModel):
 
 
 class DashboardHourPeaks(BaseModel):
-    # La franja más cargada de la persona más activa del equipo, en promedio
-    # por día de la semana. Es el tope de color de los mapas por persona.
+    # La franja más cargada de la persona más activa del equipo, en el total
+    # del período. Es el tope de color de los mapas por persona.
     messages: float
     flows_manual: float
 

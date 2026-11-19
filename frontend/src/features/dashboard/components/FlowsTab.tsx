@@ -30,8 +30,8 @@ const TRIGGER_HINTS: Record<string, string> = Object.fromEntries(
 // chat dice "Iniciar flujo"), "a mano" o "automático". Convivían disparar,
 // activar, arrancar y "ejecuciones", y se leían como cosas distintas.
 const FLOW_READINGS: HoursReadingOption[] = [
-  { key: 'flows_manual', label: 'A mano', hint: 'Flujos que alguien inició desde un chat, en promedio por día de la semana.' },
-  { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que se iniciaron solos, por su disparador, en promedio por día de la semana.' },
+  { key: 'flows_manual', label: 'A mano', hint: 'Flujos que alguien inició desde un chat. Total del período en cada franja.' },
+  { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que se iniciaron solos, por su disparador. Total del período en cada franja.' },
 ]
 
 function FailuresPanel({ failures, period }: { failures: DashboardMetrics['automations']['failures']; period: string }) {

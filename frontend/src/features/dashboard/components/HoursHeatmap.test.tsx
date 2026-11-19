@@ -22,8 +22,8 @@ describe('HoursHeatmap', () => {
     render(<HoursHeatmap hours={HOURS} days={30} readings={READINGS} label="Horas de más movimiento" />)
 
     expect(screen.getByRole('table', { name: 'Horas de más movimiento: Cuántas llegan' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Lun 20–22 h: 2 conversaciones nuevas en promedio' }))
-    expect(screen.getByText('Lun 20–22 h: 2 conversaciones nuevas en promedio')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Lun 20–22 h: 10 conversaciones nuevas en 5 lunes' }))
+    expect(screen.getByText('Lun 20–22 h: 10 conversaciones nuevas en 5 lunes')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Siguieron conversando' }))
     expect(screen.getByRole('button', { name: 'Siguieron conversando' })).toHaveAttribute('aria-pressed', 'true')
@@ -36,8 +36,8 @@ describe('HoursHeatmap', () => {
     const readings: HoursReadingOption[] = [{ key: 'separations', label: 'Separaciones', hint: 'La hora en que se registró, no la de la cita.' }]
     render(<HoursHeatmap hours={hours} days={30} readings={readings} label="A qué hora se separan las citas" />)
 
-    // Cinco separaciones en cinco lunes: una por lunes.
-    expect(screen.getByRole('button', { name: 'Lun 20–22 h: 1 separación registrada en promedio' })).toBeInTheDocument()
+    // El total, sin dividir: cinco separaciones son cinco.
+    expect(screen.getByRole('button', { name: 'Lun 20–22 h: 5 separaciones registradas en 5 lunes' })).toBeInTheDocument()
     expect(screen.getByText('La hora en que se registró, no la de la cita.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Separaciones' })).not.toBeInTheDocument()
   })
@@ -46,11 +46,11 @@ describe('HoursHeatmap', () => {
     localStorage.removeItem('dashboard-mapa-numeros')
     const user = userEvent.setup()
     const first = render(<HoursHeatmap hours={HOURS} days={30} readings={READINGS} label="Horas de más movimiento" />)
-    const cell = () => screen.getByRole('button', { name: 'Lun 20–22 h: 2 conversaciones nuevas en promedio' })
+    const cell = () => screen.getByRole('button', { name: 'Lun 20–22 h: 10 conversaciones nuevas en 5 lunes' })
 
     // En pantalla ancha arrancan encendidos.
     expect(screen.getByRole('switch', { name: 'Mostrar números' })).toBeChecked()
-    expect(cell()).toHaveTextContent('2')
+    expect(cell()).toHaveTextContent('10')
 
     await user.click(screen.getByRole('switch', { name: 'Mostrar números' }))
     expect(cell()).toBeEmptyDOMElement()
@@ -72,7 +72,7 @@ describe('HoursHeatmap', () => {
     const readings: HoursReadingOption[] = [{ key: 'messages', label: 'Mensajes escritos', hint: 'Escritos en el CRM.' }]
     render(<HoursHeatmap hours={hours} days={30} readings={readings} label="A qué hora se escribe" teamScale />)
 
-    expect(screen.getByText(/10 por franja/)).toBeInTheDocument()
+    expect(screen.getByText(/Hasta 10 en una franja/)).toBeInTheDocument()
     expect(screen.getByText('Misma escala para todas las personas')).toBeInTheDocument()
   })
 

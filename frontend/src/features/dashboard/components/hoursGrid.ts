@@ -1,8 +1,8 @@
 import type { DashboardHours } from '../types'
 import { compactNumber, intensityOf } from './heat'
 
-/** Qué se lee sobre la cuadrícula. Los conteos van como promedio por día de
- *  la semana; `engaged` es un porcentaje. */
+/** Qué se lee sobre la cuadrícula. Los conteos son el total del período en esa
+ *  franja; `engaged` es un porcentaje. */
 export type HoursReading = 'conversations' | 'engaged' | 'flows_manual' | 'flows_automatic' | 'messages' | 'phone_messages' | 'separations'
 
 export const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const
@@ -54,11 +54,27 @@ export function countPhrase(reading: Exclude<HoursReading, 'engaged'>, amount: n
   return `${formatAverage(amount)} ${formatAverage(amount) === '1' ? one : many}`
 }
 
-function describe(reading: HoursReading, value: number | null): string {
+const WEEKDAYS_PLURAL = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados', 'domingos'] as const
+
+/**
+ * "en 5 lunes": cuántos días de ese nombre juntó la celda.
+ *
+ * Las celdas llevan el total y no el promedio por día: "0.8 separaciones" se
+ * leía como un porcentaje y nadie sabía de dónde salía. El costo es que en 30
+ * días hay nombres de día que caen cinco veces y otros cuatro; se dice acá, en
+ * la frase de la celda, para que quien compare dos días lo tenga a la vista.
+ */
+export function acrossDays(hours: DashboardHours, weekday: number): string {
+  const occurrences = hours.weekday_occurrences[weekday] ?? 0
+  if (occurrences <= 0) return ''
+  return ` en ${occurrences} ${occurrences === 1 ? WEEKDAYS_PLURAL[weekday].replace(/os$/, 'o') : WEEKDAYS_PLURAL[weekday]}`
+}
+
+function describe(hours: DashboardHours, weekday: number, reading: HoursReading, value: number | null): string {
   if (reading === 'engaged') {
     return value === null ? 'muy pocos casos para un porcentaje' : `${Math.round(value)} % siguió conversando`
   }
-  return `${countPhrase(reading, value ?? 0)} en promedio`
+  return `${countPhrase(reading, value ?? 0)}${acrossDays(hours, weekday)}`
 }
 
 /** Tope común del equipo para una lectura, si la lectura lo tiene. */
@@ -83,10 +99,7 @@ export function buildHoursGrid(hours: DashboardHours, reading: HoursReading, sca
     if (isRate) {
       values[cell.weekday][cell.slot] = cell.settled >= MIN_CASES_FOR_RATE ? (cell.engaged / cell.settled) * 100 : null
     } else {
-      // Promedio y no suma: un período con cinco lunes y cuatro martes haría
-      // ver al lunes más cargado de lo que es.
-      const occurrences = hours.weekday_occurrences[cell.weekday] ?? 0
-      values[cell.weekday][cell.slot] = occurrences > 0 ? cell[reading] / occurrences : 0
+      values[cell.weekday][cell.slot] = cell[reading]
     }
   }
 
@@ -109,7 +122,7 @@ export function buildHoursGrid(hours: DashboardHours, reading: HoursReading, sca
           intensity: intensityOf(value, max),
           // Un 0 % con casos suficientes es un dato y se escribe; un conteo en cero, no.
           text: value === null ? '' : isRate ? String(Math.round(value)) : compactNumber(value),
-          description: `${weekday} ${from}–${from + hours.slot_hours} h: ${describe(reading, value)}`,
+          description: `${weekday} ${from}–${from + hours.slot_hours} h: ${describe(hours, day, reading, value)}`,
         }
       }),
     })),
