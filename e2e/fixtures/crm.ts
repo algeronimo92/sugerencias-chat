@@ -7,7 +7,7 @@ type Message = ApiResponse<'/api/chats/{chat_id}/messages', 'post'>
 type Flow = ApiResponse<'/api/automations/manual', 'get'>[number]
 type Execution = ApiResponse<'/api/automations/{rule_id}/start', 'post'>
 
-export const ADMIN: User = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin' }
+export const ADMIN: User = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin', can_handle_calls: false }
 
 export const CHAT_ID = '51999000111'
 
@@ -212,6 +212,7 @@ export function crmDefaults(api: MockApi) {
       has_more: false,
     })
     .on('get', '/api/chats/{chat_id}/notes', [])
+    .on('get', '/api/calls', [])
     .on('get', '/api/chats/{chat_id}/activity', [])
     .on('get', '/api/chats/{chat_id}/pinned-messages', { items: [] })
     .on('get', '/api/chats/{chat_id}/service-window', () => ({

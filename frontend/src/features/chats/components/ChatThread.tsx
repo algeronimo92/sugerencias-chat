@@ -32,6 +32,7 @@ import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
+import { CallCard } from '../../calls/public/CallCard'
 import { FlowEventCard } from './FlowEventCard'
 import { StageChangeCard } from './StageChangeCard'
 import { originGroupKey, originLabel } from '../domain/messageOrigin'
@@ -530,6 +531,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                     </div>
                   </Fragment>
                 )
+              }
+              if (item.kind === 'call') {
+                return <CallCard key={item.key} call={item.call} />
               }
               if (item.kind === 'flow') {
                 return (

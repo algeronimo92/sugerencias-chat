@@ -12,6 +12,7 @@ import { useChatFiltersState } from '../features/chats/public/useChatFiltersStat
 import { MobileNavBar } from "./MobileNavBar";
 import { roleLabel } from "./navigation";
 import { PwaUpdateChip } from "./PwaUpdateChip";
+import { CallCenterProvider, CallDock } from '../features/calls';
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
@@ -350,6 +351,12 @@ export function MainLayout() {
           </Suspense>
         </div>
       </div>
+
+      {/* Llamadas de WhatsApp: fuera de cualquier ruta, para que cambiar de
+          pantalla no corte una llamada en curso. */}
+      <CallCenterProvider>
+        <CallDock />
+      </CallCenterProvider>
 
       <CommandPalette
         role={me?.role}

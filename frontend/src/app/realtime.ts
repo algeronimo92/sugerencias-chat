@@ -8,6 +8,7 @@ import { createRealtimeBus, type RealtimeBus } from '../realtime/bus'
 import { createAiRealtime } from '../features/ai/public/realtime'
 import { createAppointmentsRealtime } from '../features/appointments/public/realtime'
 import { createAutomationsRealtime } from '../features/automations/public/realtime'
+import { createCallsRealtime } from '../features/calls/public/realtime'
 import { createChatsRealtime } from '../features/chats/public/realtime'
 import { createDashboardRealtime } from '../features/dashboard/public/realtime'
 import { createIssueReportsRealtime } from '../features/issue-reports/public/realtime'
@@ -30,5 +31,6 @@ export function createAppRealtimeBus(): RealtimeBus {
     createMediaRealtime(),
     createNotificationsRealtime(),
     createIssueReportsRealtime(),
+    createCallsRealtime(),
   ])
 }

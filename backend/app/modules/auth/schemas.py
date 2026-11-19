@@ -31,6 +31,8 @@ class UserOut(BaseModel):
     email: str
     name: str
     role: UserRole
+    # Le suenan las llamadas de WhatsApp: la app monta el timbre solo para ellos.
+    can_handle_calls: bool = False
 
 class PinStatusOut(BaseModel):
     available: bool

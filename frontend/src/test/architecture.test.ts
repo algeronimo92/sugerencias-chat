@@ -70,6 +70,7 @@ const FEATURE_LAYERS: Record<string, number> = {
   appointments: 5,
   ai: 5,
   automations: 6,
+  calls: 6,
   chats: 7,
   dashboard: 8,
   notifications: 8,

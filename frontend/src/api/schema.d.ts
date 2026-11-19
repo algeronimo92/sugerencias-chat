@@ -8470,6 +8470,11 @@ export interface components {
             /** Name */
             name: string;
             role: components["schemas"]["UserRole"];
+            /**
+             * Can Handle Calls
+             * @default false
+             */
+            can_handle_calls: boolean;
         };
         /**
          * UserRole
