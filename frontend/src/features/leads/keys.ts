@@ -34,6 +34,8 @@ export const leadKeys = {
 export const kanbanKeys = {
   all: ['kanban'] as const,
   snapshot: (search: string) => ['kanban', 'snapshot', search] as const,
+  /** Una página de una etapa en la vista de lista. */
+  stagePage: (stage: string, search: string, offset: number, limit: number) => ['kanban', 'stage', stage, search, offset, limit] as const,
 }
 
 export const stageKeys = {

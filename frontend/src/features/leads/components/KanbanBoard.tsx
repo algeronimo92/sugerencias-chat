@@ -16,6 +16,9 @@ import { LostReasonDialog } from './LostReasonDialog'
 import { BulkActionsBar } from './kanban/BulkActionsBar'
 import { StageLeadList } from './kanban/StageLeadList'
 import { StageSidebar } from './kanban/StageSidebar'
+import { KanbanColumn } from './kanban/BoardColumn'
+import { ViewSwitch } from './kanban/ViewSwitch'
+import { useKanbanView } from '../hooks/useKanbanView'
 
 // Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
 // cada render, lo que además rompía la memoización de los hijos.
@@ -29,6 +32,7 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
+  const [view, setView] = useKanbanView()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [draggedChat, setDraggedChat] = useState<Chat | null>(null)
@@ -166,54 +170,64 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     columns.find((stage) => stage.key === requestedStage)
     ?? columns.find((stage) => (snapshot?.counts[stage.key] ?? 0) > 0)
     ?? columns[0]
-  const boardDescription = snapshotLoading || snapshotError
-    ? 'Consulta el avance de tus leads por etapa.'
-    : totalLeads === 0
-      ? debouncedSearch ? 'No hay leads que coincidan con tu búsqueda.' : 'Aquí verás tus leads organizados por etapa.'
-      : `${totalLeads} ${totalLeads === 1 ? 'lead' : 'leads'} ${debouncedSearch ? 'en esta búsqueda' : 'en el embudo'}. Elige una etapa para ver sus leads; para moverlos, arrástralos sobre otra etapa o usa su selector.`
+  // Solo el conteo: cómo mover un lead lo dicen el selector de cada fila y el
+  // aviso que aparece en la lista de etapas al arrastrar.
+  const countLabel = snapshotLoading || snapshotError
+    ? null
+    : `${totalLeads} ${totalLeads === 1 ? 'lead' : 'leads'}${debouncedSearch ? ' encontrados' : ''}`
 
   return (
     <main className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark">
-      <div className="flex w-full min-w-0 shrink-0 flex-wrap items-end gap-3 border-b border-wa-border bg-wa-panel px-4 py-4 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold text-wa-text dark:text-wa-text-dark">Embudo comercial</h1>
-          <p className="mt-1 text-sm leading-5 text-wa-muted dark:text-wa-muted-dark">{boardDescription}</p>
-        </div>
-        <div className="w-full sm:w-72">
-          <label htmlFor="kanban-search" className="mb-1.5 block text-sm font-medium text-wa-text dark:text-wa-text-dark">Buscar leads</label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted" aria-hidden="true" />
-            <Input
-              id="kanban-search"
-              type="search"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value)
+      {/* La barra de selección ocupa la fila de la cabecera en vez de sumar
+          otra: al marcar un lead la lista no salta hacia abajo. En el celular
+          la cabecera son dos filas de controles de 36 px (+ separación,
+          relleno y borde): la barra reserva esa misma altura. */}
+      <div className={`flex min-h-[calc(4.5rem+0.5rem+1.25rem+1px)] w-full sm:min-h-14 min-w-0 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-wa-border px-4 py-2.5 sm:px-6 dark:border-wa-border-dark ${
+        selectedIds.size > 0 ? 'bg-wa-field dark:bg-wa-head-dark' : 'bg-wa-panel dark:bg-wa-panel-dark'
+      }`}>
+        {selectedIds.size > 0 ? (
+          <>
+            <h1 className="sr-only">Embudo comercial</h1>
+            <BulkActionsBar
+              count={selectedIds.size}
+              catalog={catalog}
+              tags={tags}
+              isBusy={isBulkBusy}
+              error={bulkError}
+              onMove={(stage) => handleBulkMove(stage)}
+              onTag={handleBulkTag}
+              onClear={() => {
                 setSelectedIds(new Set())
                 setBulkError(null)
               }}
-              placeholder="Nombre, servicio o mensaje"
-              className="h-11 border-wa-border pl-9 focus:ring-wa-primary-strong dark:border-wa-border-dark"
             />
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+              <h1 className="truncate text-lg font-semibold text-wa-text dark:text-wa-text-dark">Embudo comercial</h1>
+              {countLabel && <span className="shrink-0 text-sm text-wa-muted dark:text-wa-muted-dark">{countLabel}</span>}
+            </div>
+            <ViewSwitch value={view} onChange={setView} />
+            <div className="relative w-full sm:w-80">
+              <label htmlFor="kanban-search" className="sr-only">Buscar leads</label>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
+              <Input
+                id="kanban-search"
+                type="search"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setSelectedIds(new Set())
+                  setBulkError(null)
+                }}
+                placeholder="Buscar por nombre, servicio o mensaje"
+                className="h-9 border-wa-border pl-9 text-sm focus:ring-wa-primary-strong dark:border-wa-border-dark"
+              />
+            </div>
+          </>
+        )}
       </div>
-
-      {selectedIds.size > 0 && (
-        <BulkActionsBar
-          count={selectedIds.size}
-          catalog={catalog}
-          tags={tags}
-          isBusy={isBulkBusy}
-          error={bulkError}
-          onMove={(stage) => handleBulkMove(stage)}
-          onTag={handleBulkTag}
-          onClear={() => {
-            setSelectedIds(new Set())
-            setBulkError(null)
-          }}
-        />
-      )}
 
       {snapshotLoading ? (
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-wa-muted dark:text-wa-muted-dark" role="status">
@@ -240,6 +254,27 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
               <Link to="/" className="mt-5 inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-wa-primary-strong px-4 text-sm font-semibold text-white hover:bg-wa-primary-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong">Ir a Conversaciones <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
             )}
           </div>
+        </div>
+      ) : view === 'tablero' ? (
+        <div role="region" aria-label="Etapas del embudo comercial" tabIndex={0} className="flex min-h-0 min-w-0 w-full max-w-full flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong sm:snap-none sm:p-4">
+          {columns.map((stage) => (
+            <KanbanColumn
+              key={stage.key}
+              stage={stage}
+              catalog={catalog}
+              search={debouncedSearch}
+              total={snapshot?.counts[stage.key] ?? 0}
+              initialPage={snapshot?.stages[stage.key]}
+              draggedChat={draggedChat}
+              movingIds={movingIds}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onOpen={onOpenChat}
+              onDragStart={setDraggedChat}
+              onDragEnd={() => setDraggedChat(null)}
+              onMove={handleMove}
+            />
+          ))}
         </div>
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">

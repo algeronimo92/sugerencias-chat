@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchKanbanSnapshot, fetchKanbanStage, moveLeadStage, bulkAssignTag, bulkMoveStage } from './api'
 import type { LeadStage } from './types'
 import { kanbanKeys, leadKeys } from './keys'
@@ -13,6 +13,19 @@ export function useKanbanSnapshot(search: string) {
     queryFn: () => fetchKanbanSnapshot(search),
     staleTime: 20_000,
     retry: false,
+  })
+}
+
+/** Una página de una etapa. `enabled` en falso cuando la página ya vino en
+ *  el snapshot: así abrir el embudo no suma un pedido. Mientras llega la
+ *  página siguiente se sigue mostrando la anterior, sin parpadeo. */
+export function useKanbanStagePage(stage: LeadStage, search: string, offset: number, limit: number, enabled: boolean) {
+  return useQuery({
+    queryKey: kanbanKeys.stagePage(stage, search, offset, limit),
+    queryFn: () => fetchKanbanStage(stage, search, offset, limit),
+    enabled,
+    staleTime: 20_000,
+    placeholderData: keepPreviousData,
   })
 }
 

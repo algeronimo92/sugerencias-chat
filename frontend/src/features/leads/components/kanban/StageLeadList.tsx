@@ -1,9 +1,11 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { STAGE_DOT_CLASS, stageColorStyle, type LeadStageCatalog } from '../../domain/leadStageMeta'
-import { useLoadKanbanStage, type KanbanPage } from '../../kanban-queries'
+import { useKanbanPageSize } from '../../hooks/useKanbanView'
+import { useKanbanStagePage, type KanbanPage } from '../../kanban-queries'
 import type { Chat, LeadStage, LeadStageDefinition } from '../../types'
 import { LeadRow } from './LeadRow'
+import { Pagination } from './Pagination'
 
 interface StageLeadListProps {
   stage: LeadStageDefinition
@@ -21,7 +23,7 @@ interface StageLeadListProps {
   onMove: (chat: Chat, stage: LeadStage) => void
 }
 
-/** Los leads de la etapa elegida, paginados como antes cada columna. */
+/** Los leads de la etapa elegida, por páginas de 10, 20 o 50. */
 export function StageLeadList({
   stage,
   catalog,
@@ -37,22 +39,29 @@ export function StageLeadList({
   onDragEnd,
   onMove,
 }: StageLeadListProps) {
-  const [extraPages, setExtraPages] = useState<KanbanPage[]>([])
-  const { mutate: loadPage, isPending: isLoadingPage, isError: isPageError, reset: resetPage } = useLoadKanbanStage()
-  useEffect(() => {
-    setExtraPages([])
-    resetPage()
-  }, [initialPage, search, stage.key, resetPage])
-  const chats = [...(initialPage?.items ?? []), ...extraPages.flatMap((page) => page.items)]
-  const lastPage = extraPages.at(-1) ?? initialPage
-  const hasNextPage = lastPage?.has_more ?? false
+  const [pageSize, setPageSize] = useKanbanPageSize()
+  const [requestedPage, setRequestedPage] = useState(0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => setRequestedPage(0), [search])
+
+  // Si al mover leads la etapa se achica, la última página puede dejar de
+  // existir: se muestra la última que quede en vez de una vacía.
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const page = Math.min(requestedPage, pageCount - 1)
+  const offset = page * pageSize
+
+  // El snapshot trae los primeros leads de cada etapa: las páginas que caen
+  // dentro de ellos no piden nada al servidor.
+  const snapshotItems = initialPage?.items ?? []
+  const fromSnapshot = initialPage !== undefined && (offset + pageSize <= snapshotItems.length || !initialPage.has_more)
+  const { data: fetchedPage, isPending, isFetching, isError, refetch } = useKanbanStagePage(stage.key, search, offset, pageSize, !fromSnapshot)
+  const chats = fromSnapshot ? snapshotItems.slice(offset, offset + pageSize) : fetchedPage?.items ?? []
+  const isLoadingPage = !fromSnapshot && isPending
   const allVisibleSelected = chats.length > 0 && chats.every((chat) => selectedIds.has(chat.chat_id))
 
-  function fetchNextPage() {
-    loadPage(
-      { stage: stage.key, search, offset: chats.length },
-      { onSuccess: (page) => setExtraPages((current) => [...current, page]) }
-    )
+  function goToPage(next: number) {
+    setRequestedPage(next)
+    scrollRef.current?.scrollTo({ top: 0 })
   }
 
   return (
@@ -70,21 +79,42 @@ export function StageLeadList({
           <button
             type="button"
             onClick={() => onSelectMany(chats.map((chat) => chat.chat_id), !allVisibleSelected)}
-            className="ml-auto min-h-9 rounded-md px-2.5 text-sm font-medium text-wa-primary-strong hover:bg-wa-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-primary dark:hover:bg-wa-hover-dark"
+            className="ml-auto min-h-9 shrink-0 rounded-md px-2.5 text-sm font-medium text-wa-primary-strong hover:bg-wa-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-primary dark:hover:bg-wa-hover-dark"
           >
-            {allVisibleSelected ? 'Quitar selección' : `Seleccionar ${chats.length === total ? 'todos' : `los ${chats.length} visibles`}`}
+            {allVisibleSelected ? (
+              'Quitar selección'
+            ) : chats.length === total ? (
+              'Seleccionar todos'
+            ) : (
+              <>
+                {/* En el celular la frase larga bajaba a otra línea. */}
+                <span className="sm:hidden">Seleccionar {chats.length}</span>
+                <span className="hidden sm:inline">Seleccionar los {chats.length} de esta página</span>
+              </>
+            )}
           </button>
         )}
-        {stage.description && <p className="w-full text-xs text-wa-muted dark:text-wa-muted-dark">{stage.description}</p>}
+        {stage.description && <p className="hidden w-full text-xs sm:block text-wa-muted dark:text-wa-muted-dark">{stage.description}</p>}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {chats.length === 0 ? (
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto" aria-busy={isFetching && !fromSnapshot}>
+        {isLoadingPage ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-wa-muted dark:text-wa-muted-dark" role="status">
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Cargando leads…
+          </div>
+        ) : isError && chats.length === 0 ? (
+          <div role="alert" className="m-4 flex flex-col items-center gap-3 rounded-lg border border-red-500/30 px-4 py-8 text-center text-sm text-red-700 sm:m-6 dark:text-red-300">
+            No se pudo cargar esta página.
+            <button type="button" onClick={() => void refetch()} className="min-h-9 rounded-md border border-wa-border px-3 font-medium text-wa-text hover:bg-wa-hover dark:border-wa-border-dark dark:text-wa-text-dark dark:hover:bg-wa-hover-dark">
+              Reintentar
+            </button>
+          </div>
+        ) : chats.length === 0 ? (
           <div className="m-4 rounded-lg border border-dashed border-wa-border px-4 py-10 text-center text-sm text-wa-muted sm:m-6 dark:border-wa-border-dark dark:text-wa-muted-dark">
             {search ? 'Sin coincidencias en esta etapa.' : 'Ningún lead en esta etapa todavía.'}
           </div>
         ) : (
-          <ul aria-label={`Leads en ${stage.name}`} className="bg-wa-panel dark:bg-wa-panel-dark">
+          <ul aria-label={`Leads en ${stage.name}`} className={`bg-wa-panel transition-opacity dark:bg-wa-panel-dark ${isFetching && !fromSnapshot ? 'opacity-60' : ''}`}>
             {chats.map((chat) => (
               <LeadRow
                 key={chat.chat_id}
@@ -101,21 +131,20 @@ export function StageLeadList({
             ))}
           </ul>
         )}
-        {hasNextPage && (
-          <div className="p-4">
-            <button
-              type="button"
-              onClick={() => fetchNextPage()}
-              disabled={isLoadingPage}
-              className="mx-auto flex min-h-10 items-center justify-center gap-2 rounded-lg border border-wa-border bg-wa-panel px-4 text-sm font-medium text-wa-text hover:bg-wa-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong disabled:cursor-wait dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark dark:hover:bg-wa-active-dark"
-            >
-              {isLoadingPage && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-              Cargar más ({total - chats.length} restantes)
-            </button>
-          </div>
-        )}
-        {isPageError && <p role="alert" className="pb-4 text-center text-xs text-red-700 dark:text-red-300">No se cargaron más leads. Vuelve a intentarlo.</p>}
       </div>
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={goToPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            goToPage(0)
+          }}
+        />
+      )}
     </section>
   )
 }

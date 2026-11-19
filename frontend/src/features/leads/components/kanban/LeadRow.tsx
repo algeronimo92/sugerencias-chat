@@ -1,9 +1,11 @@
 import { Check, GripVertical, MessageCircle, UserRound, ZapOff } from 'lucide-react'
+import { useState } from 'react'
 import { Select } from '../../../../shared/ui/Input'
 import { parseContent } from '../../../whatsapp/public/message'
 import { stageOptions, type LeadStageCatalog } from '../../domain/leadStageMeta'
 import type { Chat, LeadStage } from '../../types'
 import { avatarInitial, displayName, formatElapsedShort, isBotAttended } from '../../utils/chat'
+import { setLeadDragPreview } from './dragPreview'
 
 interface LeadRowProps {
   chat: Chat
@@ -27,6 +29,7 @@ export function LeadRow({ chat, catalog, isMoving, isSelected, onToggleSelect, o
   const name = displayName(chat)
   const elapsed = chat.timestamp ? formatElapsedShort(Date.now() - new Date(chat.timestamp).getTime()) : null
   const botAttended = isBotAttended(chat)
+  const [isDragging, setIsDragging] = useState(false)
   const accessibleSummary = `Abrir chat de ${name}. ${chat.phone || chat.chat_id}. ${previewText}.${chat.unread_count > 0 ? ` ${chat.unread_count} ${chat.unread_count === 1 ? 'mensaje sin leer' : 'mensajes sin leer'}.` : ''}`
 
   return (
@@ -35,12 +38,17 @@ export function LeadRow({ chat, catalog, isMoving, isSelected, onToggleSelect, o
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = 'move'
         event.dataTransfer.setData('text/plain', String(chat.chat_id))
+        setLeadDragPreview(event, name, avatarInitial(chat))
+        setIsDragging(true)
         onDragStart(chat)
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={() => {
+        setIsDragging(false)
+        onDragEnd()
+      }}
       className={`group flex items-center gap-1 border-b border-wa-border last:border-b-0 dark:border-wa-border-dark ${
         isSelected ? 'bg-wa-primary-strong/5 dark:bg-wa-primary/10' : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
-      } ${isMoving ? 'opacity-50' : ''}`}
+      } ${isMoving || isDragging ? 'opacity-50' : ''}`}
     >
       <GripVertical className="ml-1 hidden h-4 w-4 shrink-0 cursor-grab text-wa-muted opacity-0 group-hover:opacity-100 md:block dark:text-wa-muted-dark" aria-hidden="true" />
       <button
@@ -87,14 +95,22 @@ export function LeadRow({ chat, catalog, isMoving, isSelected, onToggleSelect, o
             <PreviewIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">{previewText}</span>
           </p>
-        </div>
-
-        <div className="hidden w-44 shrink-0 flex-col items-start gap-1 lg:flex">
-          {chat.servicio_interes && <span className="max-w-full truncate rounded-md bg-wa-field px-2 py-0.5 text-xs font-medium text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary">{chat.servicio_interes}</span>}
-          {chat.vendedor && (
-            <span className="flex max-w-full items-center gap-1 text-xs text-wa-muted dark:text-wa-muted-dark">
-              <UserRound className="h-3 w-3 shrink-0" aria-hidden="true" /><span className="truncate">{chat.vendedor}</span>
-            </span>
+          {/* Qué tratamiento busca y quién lo atiende: lo primero que mira el
+              equipo al repasar una etapa, así que va en todos los anchos. */}
+          {(chat.servicio_interes || chat.vendedor) && (
+            <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5">
+              {chat.servicio_interes && (
+                <span className="max-w-full truncate rounded-md bg-wa-field px-2 py-0.5 text-xs font-medium text-wa-primary-strong dark:bg-wa-active-dark dark:text-wa-primary">
+                  {chat.servicio_interes}
+                </span>
+              )}
+              {chat.vendedor && (
+                <span className="flex max-w-full items-center gap-1 rounded-md bg-wa-field px-2 py-0.5 text-xs text-wa-muted dark:bg-wa-active-dark dark:text-wa-muted-dark">
+                  <UserRound className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{chat.vendedor}</span>
+                </span>
+              )}
+            </div>
           )}
         </div>
 

@@ -17,8 +17,8 @@ interface BulkActionsBarProps {
 export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, onTag, onClear }: BulkActionsBarProps) {
   const noun = count === 1 ? 'lead' : 'leads'
   return (
-    <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-wa-border bg-wa-field px-4 py-2.5 sm:px-6 dark:border-wa-border-dark dark:bg-wa-head-dark">
-      <span className="mr-1 text-sm font-semibold text-wa-text dark:text-wa-text-dark" role="status">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <span className="mr-1 shrink-0 text-sm font-semibold text-wa-text dark:text-wa-text-dark" role="status">
         {count} seleccionado{count === 1 ? '' : 's'}
       </span>
 
@@ -29,7 +29,7 @@ export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, on
         onChange={(event) => {
           if (event.target.value) onMove(event.target.value)
         }}
-        className="h-10 w-auto min-w-40 border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
+        className="h-9 w-auto min-w-0 flex-1 sm:min-w-40 sm:flex-none border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
       >
         <option value="">Mover a...</option>
         {catalog.active.map((stage) => (
@@ -38,7 +38,7 @@ export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, on
       </Select>
 
       {tags.length > 0 && (
-        <div className="flex items-center gap-1">
+        <div className="order-last flex w-full items-center gap-1 sm:order-none sm:w-auto">
           <TagIcon className="h-4 w-4 text-wa-muted dark:text-wa-muted-dark" aria-hidden="true" />
           <Select
             value=""
@@ -47,7 +47,7 @@ export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, on
             onChange={(event) => {
               if (event.target.value) onTag(Number(event.target.value))
             }}
-            className="h-10 w-auto min-w-44 border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
+            className="h-9 w-auto min-w-0 flex-1 sm:min-w-44 sm:flex-none border-wa-border bg-wa-panel text-sm focus:ring-wa-primary-strong disabled:cursor-wait disabled:opacity-60 dark:border-wa-border-dark dark:bg-wa-panel-dark"
           >
             <option value="">Agregar etiqueta...</option>
             {tags.map((tag) => (
@@ -63,9 +63,12 @@ export function BulkActionsBar({ count, catalog, tags, isBusy, error, onMove, on
       <button
         type="button"
         onClick={onClear}
-        className="ml-auto flex min-h-10 items-center gap-1 rounded-md px-3 text-sm font-medium text-wa-text hover:bg-wa-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-text-dark dark:hover:bg-wa-panel-dark"
+        title="Cancelar selección"
+        className="ml-auto flex h-9 shrink-0 items-center gap-1 rounded-md px-2.5 sm:px-3 text-sm font-medium text-wa-text hover:bg-wa-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong dark:text-wa-text-dark dark:hover:bg-wa-panel-dark"
       >
-        <X className="h-4 w-4" aria-hidden="true" /> Cancelar selección
+        <X className="h-4 w-4" aria-hidden="true" />
+        {/* En el celular basta la X: el texto partía la barra en dos filas. */}
+        <span className="sr-only sm:not-sr-only">Cancelar selección</span>
       </button>
     </div>
   )
