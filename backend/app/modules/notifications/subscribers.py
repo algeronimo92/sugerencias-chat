@@ -137,6 +137,8 @@ async def record_missed_call(event: CallEnded) -> None:
 # tardar, y este handler corre dentro del carril de llamadas del webhook. Se
 # guarda la referencia para que el recolector no cancele la tarea a medias.
 _ring_pushes: set[asyncio.Task] = set()
+# Meta da entre 30 y 60 s para atender.
+RING_PUSH_TTL_SECONDS = 45
 
 
 async def _push_ring(user_ids: list[int], body: str, chat_id: str, call_id: int) -> None:
@@ -144,6 +146,9 @@ async def _push_ring(user_ids: list[int], body: str, chat_id: str, call_id: int)
         try:
             await send_push_to_user(
                 user_id, "Llamada entrante", body, f"/chat/{chat_id}", tag=f"call-{call_id}", kind="incoming_call",
+                # Pasado ese tiempo la llamada ya terminó: un timbre que llega
+                # tarde solo confunde. Y no puede esperar a que el teléfono cargue.
+                ttl_seconds=RING_PUSH_TTL_SECONDS, urgency="high",
             )
         except Exception:
             logger.exception("No se pudo enviar el push de llamada entrante a user %s", user_id)
