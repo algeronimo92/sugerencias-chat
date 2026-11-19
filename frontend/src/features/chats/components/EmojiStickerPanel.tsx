@@ -55,10 +55,8 @@ export function EmojiStickerPanel({
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Emojis y stickers"
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary/60 disabled:cursor-not-allowed disabled:opacity-50 ${
-          open
-            ? 'bg-wa-active text-wa-primary dark:bg-wa-active-dark'
-            : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+          open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'
         }`}
       >
         <Smile className="h-5 w-5" />

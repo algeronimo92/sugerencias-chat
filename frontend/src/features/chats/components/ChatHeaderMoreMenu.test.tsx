@@ -14,13 +14,13 @@ describe('ChatHeaderMoreMenu', () => {
     const user = userEvent.setup()
     const { onToggleConversation, onToggleAutomation } = renderMenu()
 
-    await user.click(screen.getByRole('button', { name: 'Más acciones' }))
+    await user.click(screen.getByRole('button', { name: 'Más acciones del chat' }))
     await user.click(screen.getByRole('menuitem', { name: /Cerrar conversación/ }))
     expect(onToggleConversation).toHaveBeenCalledTimes(1)
     // Elegir una opción cierra el menú.
     expect(screen.queryByRole('menu')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Más acciones' }))
+    await user.click(screen.getByRole('button', { name: 'Más acciones del chat' }))
     await user.click(screen.getByRole('menuitem', { name: /No iniciar automatizaciones nuevas/ }))
     expect(onToggleAutomation).toHaveBeenCalledTimes(1)
   })
@@ -29,7 +29,7 @@ describe('ChatHeaderMoreMenu', () => {
     const user = userEvent.setup()
     renderMenu({ conversationOpen: false, automationPaused: true })
 
-    await user.click(screen.getByRole('button', { name: 'Más acciones (hay algo para revisar)' }))
+    await user.click(screen.getByRole('button', { name: 'Más acciones del chat (hay algo para revisar)' }))
     expect(screen.getByRole('menuitem', { name: /Abrir conversación/ })).toHaveTextContent('Ahora está cerrada')
     expect(screen.getByRole('menuitem', { name: /Reactivar automatizaciones nuevas/ })).toHaveTextContent('Ahora están pausadas')
   })

@@ -7,7 +7,6 @@ import {
 AlertCircle,
 Loader2,
 MessagesSquare,
-ChevronDown,
 PanelLeftOpen,
 RefreshCw,
 Search,
@@ -446,19 +445,6 @@ export function ChatList({
         {/* Cabecera compacta: la lista es lo que importa, no el encabezado. */}
         <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            {onShowInboxes && inboxLabel && (
-              // Celular: dice en qué bandeja está la lista y abre la hoja.
-              <button
-                type="button"
-                onClick={onShowInboxes}
-                aria-label={`Bandeja: ${inboxLabel}. Cambiar de bandeja`}
-                className="-ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line-control px-3 text-sm font-medium text-fg outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <PanelLeftOpen className="h-4 w-4 text-fg-muted" strokeWidth={1.75} aria-hidden="true" />
-                {inboxLabel}
-                <ChevronDown className="h-4 w-4 text-fg-muted" aria-hidden="true" />
-              </button>
-            )}
             {onShowInboxes && !inboxLabel && (
               <Tooltip content="Mostrar bandejas">
                 <button
@@ -528,6 +514,23 @@ export function ChatList({
             </button>
           )}
         </div>
+        {onShowInboxes && inboxLabel && (
+          // Celular: las bandejas se abren desde un icono junto al buscador.
+          <Tooltip content={`Bandeja: ${inboxLabel}`}>
+            <button
+              type="button"
+              onClick={onShowInboxes}
+              aria-label={`Bandeja: ${inboxLabel}. Cambiar de bandeja`}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-control text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PanelLeftOpen className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        )}
+        {/* Filtros avanzados: ocultos en el celular por ahora, a pedido
+            (2026-11-19); su lugar lo toma el icono de bandejas. El código y
+            el panel siguen: solo no se muestra el botón. */}
+        {!inboxLabel && (
         <button
           type="button"
           onClick={() => setShowFilters((value) => !value)}
@@ -547,6 +550,7 @@ export function ChatList({
             </span>
           )}
         </button>
+        )}
         </div>
         {/* Con el panel de bandejas a la vista, estos filtros y las vistas
             rápidas lo repetían: viven en el panel (doc 18 §6.3). */}

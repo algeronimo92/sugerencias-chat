@@ -7,6 +7,9 @@ import { useAutomationExecutions, useManualFlows, useStartManualFlow } from '../
 
 interface Props {
   chatId: string
+  /** `composer`: en la fila del cuadro de escritura, con la lista hacia
+   *  arriba. `header`: en la cabecera del hilo, con la lista hacia abajo. */
+  placement?: 'header' | 'composer'
 }
 
 /**
@@ -14,13 +17,15 @@ interface Props {
  * manual que el admin marcó visibles (o todos, si quien mira es admin) y
  * dispara uno sobre este lead puntual. Mismo patrón que TemplatePicker.
  *
- * Vive en la cabecera del hilo, junto al interruptor de automatizaciones, y no en la fila de
- * composición: ahí estaba pegado a "Plantillas" con el mismo icono gris, a
- * 36 px y sin nombre accesible (solo `title`, que no existe en táctil). Una
- * admin lanzó un flujo creyendo que mandaba una plantilla. El popover abre
- * hacia abajo y alineado a la derecha porque ahora cuelga de la cabecera.
+ * Volvió a la fila de composición (2026-11-19, a pedido: la cabecera
+ * necesitaba lugar para la etapa y la vendedora). Ya estuvo ahí, pegado a
+ * "Plantillas" con el mismo icono gris, a 36 px y sin nombre accesible (solo
+ * `title`, que no existe en táctil), y una admin lanzó un flujo creyendo que
+ * mandaba una plantilla. Por eso ahora lleva el color de acento (no el gris
+ * de los demás), nombre accesible, tooltip y un separador antes; quien lo
+ * monte en el compositor tiene que respetar ese separador.
  */
-export function FlowPicker({ chatId }: Props) {
+export function FlowPicker({ chatId, placement = 'header' }: Props) {
   const [open, setOpen] = useState(false)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
   // Solo con el popover abierto: el picker vive montado en el composer de
@@ -69,14 +74,20 @@ export function FlowPicker({ chatId }: Props) {
         aria-expanded={open}
         title="Iniciar un flujo automático para este lead"
         onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${
-          open ? 'bg-black/5 text-wa-primary-strong dark:bg-white/5 dark:text-wa-primary' : 'text-wa-muted dark:text-wa-muted-dark'
-        }`}
+        className={placement === 'composer'
+          ? `flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent-strong outline-none transition-colors hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-ring ${open ? 'bg-accent-soft' : ''}`
+          : `flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${
+            open ? 'bg-black/5 text-wa-primary-strong dark:bg-white/5 dark:text-wa-primary' : 'text-wa-muted dark:text-wa-muted-dark'
+          }`}
       >
-        <Workflow className="h-5 w-5" />
+        <Workflow className={placement === 'composer' ? 'h-4.5 w-4.5' : 'h-5 w-5'} aria-hidden="true" />
       </button>
       {open && (
-        <div className="absolute right-2 top-[4.25rem] z-30 w-72 sm:right-0 sm:top-12 max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
+        <div className={`${placement === 'composer'
+          // Igual que la lista de plantillas: hacia arriba, a lo ancho en el
+          // celular y anclada al botón desde sm.
+          ? 'absolute inset-x-2 bottom-full z-30 mb-2 sm:inset-x-auto sm:bottom-11 sm:right-0 sm:mb-0 sm:w-72'
+          : 'absolute right-2 top-[4.25rem] z-30 w-72 sm:right-0 sm:top-12'} max-w-[calc(100vw-2rem)] rounded-xl border border-wa-border bg-white p-2 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark`}>
           <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">
             Iniciar flujo
           </p>

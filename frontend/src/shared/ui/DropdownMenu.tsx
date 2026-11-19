@@ -66,7 +66,7 @@ export function DropdownMenuItem({ icon: Icon, children, onSelect, danger = fals
     <Menu.Item
       onSelect={onSelect}
       className={cn(
-        'flex h-10 cursor-default select-none items-center gap-3 rounded-lg px-3 text-sm outline-none transition-colors data-[disabled]:opacity-50',
+        'flex min-h-10 cursor-default select-none items-center gap-3 rounded-lg px-3 text-sm outline-none transition-colors data-[disabled]:opacity-50',
         danger ? 'text-danger-fg data-[highlighted]:bg-danger-soft' : 'text-fg data-[highlighted]:bg-subtle',
       )}
     >
