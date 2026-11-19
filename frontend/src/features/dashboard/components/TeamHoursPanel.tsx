@@ -2,7 +2,8 @@ import { useId, useState } from 'react'
 import type { DashboardHours } from '../types'
 import { formatNumber } from './format'
 import { HoursMiniGrid } from './HoursMiniGrid'
-import { LEVEL_CLASS, WHATSAPP_LEVEL_CLASS, formatAverage } from './hoursGrid'
+import { TONE_CLASS, type HeatTone } from './heat'
+import { formatAverage } from './hoursGrid'
 import { NoData } from './primitives'
 import { ReadingToggle } from './ReadingToggle'
 import { buildTeamHours, teamHeadline, type PersonReading } from './teamHours'
@@ -28,12 +29,8 @@ const READINGS: { key: PersonReading; label: string; hint: string; unit: [string
   },
 ]
 
-function Ramp({ levels }: { levels: string[] }) {
-  return (
-    <span className="flex gap-0.5" aria-hidden="true">
-      {levels.slice(1).map(levelClass => <span key={levelClass} className={`h-3 w-3 rounded-[2px] ${levelClass}`} />)}
-    </span>
-  )
+function Ramp({ tone }: { tone: HeatTone }) {
+  return <span className={`heat-ramp h-3 w-14 shrink-0 rounded-[2px] ${TONE_CLASS[tone]}`} aria-hidden="true" />
 }
 
 /**
@@ -89,7 +86,6 @@ export function TeamHoursPanel({ hours }: { hours: DashboardHours | undefined })
                 label={`${person.name}: ${reading.label}`}
                 slots={team.slots}
                 rows={person.rows}
-                levelClass={LEVEL_CLASS}
                 onRead={description => setPicked(`${person.name} · ${description}`)}
               />
             </li>
@@ -119,7 +115,7 @@ export function TeamHoursPanel({ hours }: { hours: DashboardHours | undefined })
               label="WhatsApp, fuera del CRM: mensajes sin autor"
               slots={team.slots}
               rows={whatsapp.rows}
-              levelClass={WHATSAPP_LEVEL_CLASS}
+              tone="whatsapp"
               onRead={description => setPicked(`WhatsApp, fuera del CRM · ${description}`)}
             />
           </div>
@@ -130,13 +126,13 @@ export function TeamHoursPanel({ hours }: { hours: DashboardHours | undefined })
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {team.people.length > 0 && (
             <span className="flex items-center gap-1.5">
-              <Ramp levels={LEVEL_CLASS} />
+              <Ramp tone="crm" />
               Personas: hasta {formatAverage(team.max)} por franja, misma escala para todas
             </span>
           )}
           {whatsapp && (
             <span className="flex items-center gap-1.5">
-              <Ramp levels={WHATSAPP_LEVEL_CLASS} />
+              <Ramp tone="whatsapp" />
               WhatsApp: hasta {formatAverage(whatsapp.max)} por franja, escala propia
             </span>
           )}

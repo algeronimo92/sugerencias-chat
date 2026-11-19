@@ -1,6 +1,7 @@
 import type { DashboardHours } from '../types'
 import { formatNumber } from './format'
-import { LEVELS, WEEKDAYS, countPhrase, formatAverage, type HoursCell } from './hoursGrid'
+import { compactNumber, intensityOf } from './heat'
+import { WEEKDAYS, countPhrase, formatAverage, type HoursCell } from './hoursGrid'
 
 /** Lo que se sabe de cada persona por franja: las dos cosas llevan autor. */
 export type PersonReading = 'messages' | 'flows_manual'
@@ -103,7 +104,8 @@ function toRows(
       const from = slot * hours.slot_hours
       return {
         value,
-        level: value <= 0 || max <= 0 ? 0 : Math.max(1, Math.ceil((value / max) * LEVELS)),
+        intensity: intensityOf(value, max),
+        text: compactNumber(value),
         description: `${row.spoken}, ${from}–${from + hours.slot_hours} h: ${describe(value)}`,
       }
     }),

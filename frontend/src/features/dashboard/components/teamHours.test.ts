@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { DashboardHourCell, DashboardHours, DashboardPersonHourCell } from '../types'
-import { LEVELS } from './hoursGrid'
 import { buildTeamHours, teamHeadline } from './teamHours'
 
 const cell = (weekday: number, slot: number, values: Partial<DashboardPersonHourCell> = {}): DashboardPersonHourCell => ({
@@ -32,19 +31,19 @@ describe('el equipo por horas', () => {
     const team = buildTeamHours(WEEK, 'messages')
 
     expect(team.people.map(person => [person.name, person.total])).toEqual([['Grecia', 15], ['Antonella', 2], ['Zoe', 0]])
-    expect(team.people[2].rows.flatMap(row => row.cells).every(item => item.level === 0)).toBe(true)
+    expect(team.people[2].rows.flatMap(row => row.cells).every(item => item.intensity === 0)).toBe(true)
   })
 
   it('pinta a todas contra el mismo tope: lo poco de una se ve más claro que lo mucho de otra', () => {
     const team = buildTeamHours(WEEK, 'messages')
-    const level = (name: string) => {
+    const peak = (name: string) => {
       const person = team.people.find(item => item.name === name)!
-      return Math.max(...person.rows.flatMap(row => row.cells.map(item => item.level)))
+      return Math.max(...person.rows.flatMap(row => row.cells.map(item => item.intensity)))
     }
 
     expect(team.max).toBe(10)
-    expect(level('Grecia')).toBe(LEVELS)
-    expect(level('Antonella')).toBe(1)
+    expect(peak('Grecia')).toBe(1)
+    expect(peak('Antonella')).toBeCloseTo(0.2)
   })
 
   it('con una semana cada fila es una fecha, de la más vieja a hoy', () => {
@@ -88,7 +87,7 @@ describe('lo que sale por WhatsApp fuera del CRM', () => {
     // No comparte tope con las personas: con el suyo (200) las dejaría en blanco.
     expect(team.whatsapp!.max).toBe(200)
     expect(team.max).toBe(10)
-    expect(team.whatsapp!.rows[0].cells[5]).toMatchObject({ value: 200, level: LEVELS })
+    expect(team.whatsapp!.rows[0].cells[5]).toMatchObject({ value: 200, intensity: 1 })
     expect(team.whatsapp!.rows[0].cells[5].description).toMatch(/^Jue 5 nov\.?, 10–12 h: 200 mensajes, sin autor$/)
     // Y no le suma a nadie.
     expect(team.people.reduce((sum, person) => sum + person.total, 0)).toBe(17)
