@@ -12,16 +12,15 @@ export function useStoredToggle(storageKey: string, initial = false): [boolean, 
     }
   })
 
+  // Guardar fuera del updater: React puede llamarlo dos veces y debe ser puro.
   function toggle() {
-    setValue((current) => {
-      const next = !current
-      try {
-        localStorage.setItem(storageKey, String(next))
-      } catch {
-        // Sin almacenamiento el cambio vale para esta sesión.
-      }
-      return next
-    })
+    const next = !value
+    setValue(next)
+    try {
+      localStorage.setItem(storageKey, String(next))
+    } catch {
+      // Sin almacenamiento el cambio vale para esta sesión.
+    }
   }
 
   return [value, toggle]

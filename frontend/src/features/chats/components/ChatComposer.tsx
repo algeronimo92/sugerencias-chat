@@ -629,7 +629,7 @@ export function ChatComposer({
                         con su propio color: ya hubo quien lanzó un flujo
                         creyendo que mandaba una plantilla (ver FlowPicker). */}
                     <span className="mx-0.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />
-                    <FlowPicker chatId={chat.chat_id} placement="composer" />
+                    <FlowPicker chatId={chat.chat_id} />
                   </>
                 )}
               </div>

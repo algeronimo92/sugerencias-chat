@@ -34,18 +34,16 @@ export function PanelSection({ title, count, action, defaultOpen = true, storage
   const [open, setOpen] = useState(() => readStored(storageKey, defaultOpen))
   const contentId = useId()
 
+  // Guardar fuera del updater: React puede llamarlo dos veces y debe ser puro.
   function toggle() {
-    setOpen((current) => {
-      const next = !current
-      if (storageKey) {
-        try {
-          localStorage.setItem(storageKey, String(next))
-        } catch {
-          // Sin almacenamiento el cambio vale para esta sesión.
-        }
-      }
-      return next
-    })
+    const next = !open
+    setOpen(next)
+    if (!storageKey) return
+    try {
+      localStorage.setItem(storageKey, String(next))
+    } catch {
+      // Sin almacenamiento el cambio vale para esta sesión.
+    }
   }
 
   return (

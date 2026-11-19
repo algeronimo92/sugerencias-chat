@@ -190,6 +190,7 @@ export function ChatList({
   const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead();
   // Solo los usa el panel de filtros: no se piden al cargar la lista.
   const { data: tags = [] } = useTags(false, { enabled: showFilters });
+  const selectedTagIds = new Set(advancedFilters.tagIds);
   const stageCatalog = useLeadStageCatalog();
   // Todas las etapas, también las desactivadas (sus leads siguen ahí), y las
   // de un filtro ya aplicado aunque el negocio las haya borrado.
@@ -653,23 +654,26 @@ export function ChatList({
                   </Select>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => toggleTag(tag.id)}
-                      aria-pressed={advancedFilters.tagIds.includes(tag.id)}
-                      className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <TagChip
-                        name={tag.name}
-                        color={tag.color}
-                        size="md"
-                        selected={advancedFilters.tagIds.includes(tag.id)}
-                        className={advancedFilters.tagIds.includes(tag.id) ? "ring-1 ring-line-control" : "hover:bg-selected"}
-                      />
-                    </button>
-                  ))}
+                  {tags.map((tag) => {
+                    const selected = selectedTagIds.has(tag.id)
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        aria-pressed={selected}
+                        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <TagChip
+                          name={tag.name}
+                          color={tag.color}
+                          size="md"
+                          selected={selected}
+                          className={selected ? "ring-1 ring-line-control" : "hover:bg-selected"}
+                        />
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
