@@ -4,7 +4,7 @@ Fecha: 2026-11-18 · Actualizado: 2026-11-19 (decisiones de producto, detalle po
 
 Fuentes: la documentación de Meta leída el 2026-11-18 (`developers.facebook.com/documentation/business-messaging/whatsapp/calling/*`: overview, call-settings, user-initiated-calls, business-initiated-calls, user-call-permissions, sip, reference, faq, pricing; y `embedded-signup/onboarding-business-app-users` para coexistencia) y el código del repo a esa fecha. Lo que no se pudo verificar está marcado.
 
-Cómo leerlo: §1–§3 son el qué y el porqué; §4 es el diseño; §5 es el detalle de cada fase (trabajo, pantallas, criterios de usabilidad y pruebas); §8 es la revisión de arquitectura y backend, con lo que cambió en el plan a raíz de ella.
+Cómo leerlo: §1–§3 son el qué y el porqué; §4 es el diseño; §4.9 es cómo se registran los fallos y sus causas y la fase 4 de §5 cómo se muestran en el dashboard; §5 es el detalle de cada fase (trabajo, pantallas, criterios de usabilidad y pruebas); §8 es la revisión de arquitectura y backend, con lo que cambió en el plan a raíz de ella.
 
 ## 1. Qué se quiere y qué ofrece Meta
 
@@ -194,7 +194,7 @@ Lo que no puede perderse va **en la misma transacción** (`Phase.TRANSACTION`); 
 | `GET /api/calls/{id}/offer` | Agentes, solo mientras está `ringing` | Es la única que devuelve un SDP entrante |
 | `POST /api/calls/{id}/accept` · `connected` | Agentes | `connected` solo quien la reclamó |
 | `POST /api/calls/{id}/dismiss` | Agentes | Deja de sonarle a esa persona; no rechaza al cliente |
-| `POST /api/calls/{id}/terminate` | Quien la atiende, o admin | Nadie cuelga la llamada de otra persona |
+| `POST /api/calls/{id}/terminate` | Quien la atiende, o admin | Nadie cuelga la llamada de otra persona. Lleva el motivo que vio el navegador, de una lista cerrada (§4.9) |
 | `POST /api/calls` · `GET /api/calls/{id}/answer` | Agentes; `answer` solo quien llamó | Saliente |
 | `GET /api/calls?chat_id=` | Admin y vendedor | Tarjetas del hilo; sin SDP |
 | `GET /api/calls/readiness` · configuración | Admin | |
@@ -208,7 +208,7 @@ Lo que no puede perderse va **en la misma transacción** (`Phase.TRANSACTION`); 
 Dos revisiones Alembic, cada una en su PR:
 
 - **`users.can_handle_calls`**: booleano, `NOT NULL`, con `server_default false` (durante el blue-green el color viejo sigue insertando usuarios sin conocer la columna). Al cambiarlo se invalida la caché de usuario.
-- **`whatsapp_calls`**: `id`, `wa_call_id` (único, nulo hasta que Meta lo asigna), `chat_id` → `leads`, `phone_number_id`, `direction`, `status`, `closed_by`, `created_at`, `ringing_at`, `accepted_at`, `ended_at`, `duration_seconds`, `handled_by_user_id`, `claimed_by_client_id`, `claim_expires_at`, `dismissed_by` (ids de agentes), `error_code`, `remote_sdp` (se borra al terminar), `events` (JSONB con cada webhook, sin el SDP). Índices: por `(chat_id, ringing_at)`, y únicos parciales sobre las no terminadas por `chat_id` y por `handled_by_user_id`. **Sin audio ni transcripción: las llamadas no se graban.**
+- **`whatsapp_calls`**: `id`, `wa_call_id` (único, nulo hasta que Meta lo asigna), `chat_id` → `leads`, `phone_number_id`, `direction`, `status`, `closed_by`, `created_at`, `ringing_at`, `accepted_at`, `ended_at`, `duration_seconds`, `handled_by_user_id`, `claimed_by_client_id`, `claim_expires_at`, `dismissed_by` (ids de agentes), `cause` (la causa del catálogo de §4.9), `error_code` (el código literal de Meta, si lo hubo), `remote_sdp` (se borra al terminar), `events` (JSONB con cada webhook, sin el SDP). Índices: por `(chat_id, ringing_at)`, y únicos parciales sobre las no terminadas por `chat_id` y por `handled_by_user_id`. **Sin audio ni transcripción: las llamadas no se graban.**
 
 Decisiones:
 
@@ -295,6 +295,64 @@ Todo en Integraciones → WhatsApp → Llamadas, solo admin:
 - **Apagado**: por negocio, desactivar las llamadas en Meta; para toda la plataforma, una variable que detiene el carril.
 - `conversations.subscribers` ya está en la lista manual de suscriptores de `composition.py`; un módulo nuevo habría tenido que acordarse de sumarse, y ningún test lo detecta.
 
+### 4.9 Fallos y sus causas
+
+Para poder mostrar en el dashboard qué falló y por qué, la causa se guarda **cuando ocurre**, con un vocabulario propio y cerrado. No se reconstruye después a partir de textos de error.
+
+**Perdida no es fallida.** Son dos cosas distintas y se muestran por separado:
+
+- **Perdida**: el cliente llamó y nadie habló con él. Es un resultado de la operación; se arregla con horario y gente.
+- **Fallida**: alguien quiso atender o llamar y algo lo impidió. Es un problema técnico o de la cuenta.
+
+**De dónde sale la causa.** Hay tres fuentes y ninguna alcanza sola:
+
+| Fuente | Qué sabe | Ejemplo |
+|---|---|---|
+| Meta (`errors[].code` del webhook o de la respuesta de Graph) | Lo que pasó de su lado | `138021`, no recibió audio |
+| El navegador de quien atiende | Lo que Meta no ve | Micrófono bloqueado, se cayó la red |
+| El backend | Lo que pasó entre los dos | El aviso llegó tarde, Meta no confirmó, nadie conectado |
+
+El navegador informa su motivo al colgar, eligiendo de una lista cerrada (nunca texto libre). El backend traduce los códigos de Meta con un catálogo en el dominio (`conversations/domain/calls.py`).
+
+**Catálogo.** Cada causa tiene un nombre en lenguaje del negocio, quién puede resolverla y qué hacer. Esas tres cosas son lo que se muestra.
+
+| Grupo (quién lo resuelve) | Causa | Origen | Qué hacer |
+|---|---|---|---|
+| **Equipo** (perdidas) | Sonó y nadie atendió | Backend | Revisar horario y quiénes atienden |
+| | No había nadie conectado | Backend | Ídem; alguien con permiso debe tener el CRM abierto |
+| | Todos la ignoraron | Backend | — |
+| | El cliente colgó enseguida (menos de 5 s) | Backend | Nada: no cuenta contra la tasa de atención del equipo |
+| **Dispositivo o red** de quien atiende | Micrófono bloqueado o sin micrófono | Navegador | Preparar el dispositivo (fase 2) |
+| | No conectó el audio | Meta `138004`, `138019`, `138020`, `138021`, `138022`, `138023`; navegador | Probar otra red; si se repite en una persona, es su equipo |
+| | Se cortó en medio de la llamada | Navegador | Ídem |
+| **Cliente** (salientes) | No contestó | Meta | Recordar que 4 seguidas quitan el permiso |
+| | Rechazó la llamada | Meta | — |
+| | No dio permiso o ya venció | Meta `138006` | Pedir permiso |
+| | No puede recibir llamadas | Meta `138001` | Escribirle |
+| **Cuenta de WhatsApp** | Meta pausó las llamadas del número | Meta `138014` | Ver el motivo en WhatsApp Manager; suele ser por reportes de clientes |
+| | Las llamadas no están activas o no se pueden activar | Meta `138000`, `138015`, `138018`, `138013` | Revisar la sección Llamadas en Integraciones |
+| | Se alcanzó un límite (llamadas del día, pedidos de permiso, simultáneas) | Meta `138012`, `138037`, `138009`, `138005`, `138002` | Esperar; el botón ya lo avisa antes (fase 3) |
+| **Sistema** (CliniVentas) | El aviso llegó tarde al CRM | Backend (`connect` con más de 60 s) | Avisar a soporte |
+| | Meta no confirmó la llamada | Backend (resultado incierto, `138007`) | Avisar a soporte si se repite |
+| | Cerrada sin respuesta de Meta | Backend (ciclo de limpieza) | Ídem |
+| | Otro | Código desconocido | Avisar a soporte, con el código |
+
+Reglas del catálogo, las mismas que ya usa el contrato de mensajes:
+
+- **Un código que Meta agregue mañana no se pierde ni rompe nada**: se guarda literal en `error_code`, cae en "Otro" y dispara una métrica para que alguien lo sume al catálogo.
+- **El texto en inglés de Meta nunca llega a la pantalla.** El código se muestra solo a la admin, como dato para soporte.
+- Los códigos de la tabla salen de la referencia de Meta leída el 2026-11-18; se confirman contra eventos reales en la fase 0.
+
+**Dónde se ve cada causa.**
+
+| Lugar | Qué muestra | Para quién |
+|---|---|---|
+| Al momento, en la llamada | El mensaje de la tabla de errores de la fase 2 | Quien atiende |
+| Tarjeta en el hilo | "Llamada fallida · no conectó el audio" | Quien abre el chat |
+| Integraciones → Llamadas | Las causas del grupo "Cuenta de WhatsApp" que sigan vigentes, arriba y destacadas | Admin |
+| Notificación a las admins | Solo cuando Meta pausa las llamadas del número: no puede esperar a que alguien abra el dashboard | Admin |
+| Dashboard | El conjunto y la tendencia (fase 4) | Dueña, admin, analista |
+
 ## 5. Fases, en detalle
 
 Cada fase termina cuando pasan sus pruebas **y** sus criterios de usabilidad. En todas vale lo mismo de fondo: los comandos de CI de `CLAUDE.md` en verde, `test_layering.py` y `architecture.test.ts` **sin ampliar ninguna allowlist**, y `alembic check` limpio.
@@ -373,6 +431,7 @@ Cada fase termina cuando pasan sus pruebas **y** sus criterios de usabilidad. En
 - Rutas de §4.2 (menos las salientes).
 - Notificaciones de §4.5: tipo `missed_call`, push con vigencia, urgencia y tiempo máximo, despachador de push, cambios del service worker.
 - Ciclo de limpieza.
+- Catálogo de causas y su registro en cada cierre (§4.9); aviso a las admins cuando Meta pausa las llamadas.
 - Configuración: activar, horario, devolución sin permiso (`POST settings`).
 - Operación (§4.8): métricas, alertas, interruptor del carril.
 - Suscribir la app de producción a `calls`, al desplegar.
@@ -438,6 +497,8 @@ Cada fase termina cuando pasan sus pruebas **y** sus criterios de usabilidad. En
 - Bandeja y ventana: una llamada sube el chat, la perdida lo deja sin leer, un lead nuevo queda con la conversación abierta, la ventana de 24 h se mueve.
 - Notificaciones: la perdida crea una `missed_call` por agente dentro de la transacción y un push con el mismo `tag` que el timbre; la atendida no crea notificación guardada.
 - Fusión de leads: las llamadas del origen quedan en el destino.
+- Catálogo de causas, por tabla: cada código de Meta listado en §4.9 da su causa; un código desconocido da "Otro", conserva el código y suma a la métrica; el motivo del navegador solo acepta valores de la lista.
+- Cada forma de terminar una llamada deja una causa: ninguna llamada perdida o fallida queda sin ella.
 - El SDP no aparece en logs, en `events`, en `last_error` ni queda en el inbox tras procesar.
 - Adaptador de Meta con el doble de transporte que ya usa `test_meta_client.py`.
 
@@ -454,7 +515,7 @@ Cada fase termina cuando pasan sus pruebas **y** sus criterios de usabilidad. En
 - `useCallSession` con `RTCPeerConnection` y `getUserMedia` falsos (en `test/setup.ts`): atender, micrófono denegado, fallo de conexión, colgar, silenciar.
 - `IncomingCall` y `ActiveCall` en cada estado; "la atendió otra persona"; segunda llamada estando en una.
 - Handlers de tiempo real, relectura al reconectar y la consulta periódica (suena aunque no llegue el evento).
-- `CallCard` y la notificación `missed_call`.
+- `CallCard` (incluida la fallida con su causa) y la notificación `missed_call`.
 
 *e2e (Playwright, backend y WebSocket simulados, escritorio y celular).*
 - Suena, se atiende, se cuelga y aparece la tarjeta (con `RTCPeerConnection` sustituido y audio falso del navegador).
@@ -518,18 +579,52 @@ Cada fase termina cuando pasan sus pruebas **y** sus criterios de usabilidad. En
 
 **PRs.** (1) contrato + renderer del permiso; (2) llamada saliente en backend; (3) `CallButton` y flujo saliente; (4) "Llámanos" en mensajes y plantillas.
 
-### Fase 4 · Medición
+### Fase 4 · Medición: actividad, fallos y causas
 
-**Objetivo.** La dueña ve si las llamadas se atienden y cuánto cuestan.
+**Objetivo.** La dueña ve si las llamadas se atienden, cuánto cuestan y, **si algo falló, qué fue, cuántas veces y quién puede arreglarlo**.
 
-**Trabajo.**
-- `GET /api/calls/metrics`: atendidas, perdidas, tasa de atención, tiempo hasta devolver una perdida, duración media, por persona y por franja horaria. Es una ruta propia y no un bloque más de las consultas del dashboard de `leads`, que tendrían que leer una tabla ajena.
-- Bloque en el dashboard que la consume; llamadas en el panel de costos de Meta (`meta_costs`).
+**Backend.**
+- Los números salen por el dashboard, no por `/api/calls`: el rol analista existe para mirar el dashboard y solo puede pedir `/api/dashboard` (`auth/role_policy.py`). Una ruta bajo `/api/calls` le daría 403.
+- `conversations` publica un contrato de lectura (`ports/call_metrics.py`) y el dashboard de `leads` lo llama y suma el bloque a su respuesta, con los mismos filtros de período y de alcance (todo el negocio o una persona) que ya tiene. Las consultas del dashboard no leen la tabla de llamadas.
+- Bloques: actividad (atendidas, perdidas, tasa de atención, duración media, tiempo hasta devolver una perdida, por persona y por franja horaria), perdidas por causa, fallidas por causa y por persona, y costo de las salientes en el panel de costos de Meta (`meta_costs`).
+- Las llamadas entran a la exportación a Excel del dashboard, con su causa.
 - Aviso a la admin cuando la tasa de atención baja de un umbral, antes de que Meta oculte el botón.
 
-**Diseño y usabilidad.** Tres números arriba (atendidas, perdidas, tasa de atención) y la distribución por hora debajo, que es la que sirve para ajustar el horario. Las perdidas sin devolver son una lista accionable, no un número. Definiciones de cada métrica a un toque. Se revisa con el panel de debate (`debate-expertos`) antes de construirlo, como se hizo con el dashboard.
+**Frontend.** Pestaña "Llamadas" en el dashboard, visible solo si el negocio tiene las llamadas activas o tuvo alguna en el período. Tarjeta resumida en la pestaña Resumen.
 
-**Pruebas.** Métricas con datos sembrados en Postgres real (ventanas, zona horaria del negocio, llamadas que cruzan medianoche); componentes del bloque; e2e del dashboard con y sin llamadas.
+**Diseño.**
+
+*Arriba: lo que requiere acción hoy.* Si hay una causa vigente del grupo "Cuenta de WhatsApp" (Meta pausó las llamadas, se alcanzó un límite), va como aviso al tope de la pestaña con qué hacer. No se deja enterrada en un gráfico.
+
+*Actividad.* Tres números (atendidas, perdidas, tasa de atención) y la distribución por hora debajo, con el componente de horas que el dashboard ya tiene. Es la que sirve para ajustar el horario.
+
+*Llamadas perdidas: por qué.* Barras por causa del grupo "Equipo". Las que el cliente colgó enseguida se muestran aparte y no cuentan contra la tasa de atención. Debajo, la lista de las que siguen sin devolver, con enlace al chat.
+
+*Llamadas con fallo: causas.* Sigue el panel "Fallos" que ya existe en la pestaña de flujos, para que se lea igual:
+
+- Si no hubo ninguna: "Ninguna llamada falló". No se muestra un gráfico vacío ni se oculta el panel: que no haya fallos es información.
+- Si hubo: una barra por causa, con su nombre del catálogo, la cantidad, y una etiqueta de quién lo resuelve (Dispositivo o red, Cliente, Cuenta de WhatsApp, Sistema).
+- Al tocar una causa: qué significa y qué hacer, en una frase cada cosa, y las llamadas afectadas (lead, hora, quién atendía) con enlace al chat.
+- **Concentración por persona.** Cuando los fallos de audio se juntan en alguien, se dice: "9 de 11 fallos de audio fueron de Ana". Casi siempre es su equipo o su red, y es el dato que convierte un gráfico en algo que se puede arreglar.
+- Comparación con el período anterior, como el resto del dashboard.
+
+**Usabilidad (se da por buena si).**
+- Una dueña puede responder, mirando la pestaña y sin ayuda: ¿falló algo?, ¿qué?, ¿lo arreglo yo, mi equipo o hay que avisar a soporte?
+- **Cada causa dice qué hacer o a quién avisar.** Ninguna termina en un código.
+- Perdidas y fallidas nunca se suman en un mismo número: una mezcla "23 llamadas con problemas" no dice si falta gente o falla la red.
+- Los fallos se muestran con su total ("3 de 42 llamadas"). Con menos de 10 llamadas en el período no se muestran porcentajes: con tan pocas, un fallo parece una crisis.
+- La causa "Otro" muestra el código a la admin y nada más; el resto de los roles ve "Otro".
+- Para el analista, que no puede abrir chats, las llamadas afectadas se listan sin enlace.
+- Las etiquetas de grupo no dependen del color; definición de cada métrica a un toque.
+- Se revisa con el panel de debate (`debate-expertos`) antes de construirlo, como se hizo con el dashboard.
+
+**Pruebas.**
+- Backend (Postgres real, datos sembrados): cada métrica por ventana, zona horaria del negocio y llamadas que cruzan medianoche; perdidas y fallidas no se cruzan; los colgados enseguida quedan fuera de la tasa de atención; el alcance por persona; un período sin llamadas y uno sin fallos devuelven ceros, no error.
+- Backend (dobles): el analista recibe el bloque por el dashboard y sigue sin poder pedir `/api/calls`; la exportación incluye la causa.
+- Frontend (vitest): la pestaña sin llamadas, con llamadas y sin fallos ("Ninguna llamada falló"), con fallos de varios grupos, con una causa vigente de la cuenta (aviso arriba), con concentración en una persona, con menos de 10 llamadas (sin porcentajes), como admin (ve el código de "Otro") y como analista (sin enlaces).
+- e2e: el dashboard con y sin llamadas, en escritorio y celular; tocar una causa y llegar al chat de una llamada afectada.
+
+**PRs.** (1) contrato de métricas en `conversations` y bloque en el dashboard, con `schema.d.ts`; (2) pestaña Llamadas; (3) exportación y aviso de tasa de atención.
 
 ### Fuera de alcance
 
@@ -551,6 +646,7 @@ Tomadas el 2026-11-19:
 | Dispositivo | Computadora y celular, cualquier usuario con permiso; diseño responsive | §3, fase 2 |
 | Botón de llamar del cliente | Visible para todos los clientes | §4.7 |
 | Notificaciones | También cuando la llamada se perdió | §4.5 |
+| Errores | Se muestran en el dashboard, si los hay, con su causa | §4.9, fase 4 |
 
 Supuestos que conviene confirmar:
 
@@ -575,6 +671,7 @@ Pendiente, y es la decisión de fondo: **si DermicaPro muda el número.** Hoy su
 | El rol DTLS o un detalle del SDP no coincide con la doc | Fase 0 antes de diseñar pantallas |
 | Dos personas atienden a la vez / varias pestañas | Reclamo atómico e índices únicos en la base |
 | `conversations` crece demasiado | Archivos propios para llamadas; si algún día pesa, se extrae con sus puertos ya conociendo las costuras reales |
+| Meta agrega o cambia códigos de error | Catálogo con "Otro" y métrica; el código literal siempre se guarda |
 | Tarifa de Perú sin verificar | Fase 0 (g) |
 | La doc de Meta tiene partes viejas (dice 5 llamadas/día en ejemplos; son 100) | Tratar los límites como dato que devuelve la API (`call_permissions`), no como constante |
 
