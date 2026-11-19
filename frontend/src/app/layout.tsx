@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { AnimatePresence, m } from "motion/react";
-import { Bug, LogOut, MessageSquareLock, Settings as SettingsIcon, Moon, Sun, X } from "lucide-react";
+import { MessageSquareLock, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useBrand } from "../shared/branding";
+import { Avatar } from "../shared/ui/Avatar";
 import { BrandLogo } from "../shared/ui/BrandLogo";
 import { PageLoader } from "../shared/ui/PageLoader";
 import { type IntegrationAnchor, type LayoutContext, type SettingsTab } from '../features/chats/public/layoutContext';
@@ -26,7 +27,6 @@ import { useTheme } from "../shared/hooks/useTheme";
 import { readGoogleCalendarReturn } from '../features/platform/public/googleCalendarReturn';
 import { readEmailConnectReturn } from '../features/platform/public/emailConnectReturn';
 import { OnboardingChecklist, OnboardingReopenButton } from '../features/platform/public/OnboardingChecklist';
-import { Tooltip } from "../shared/ui/Tooltip";
 
 const SettingsDialog = lazy(() =>
   import("../features/platform/public/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
@@ -144,125 +144,55 @@ export function MainLayout() {
     return () => window.clearTimeout(timeout);
   }, [internalMention]);
 
-  // La barra global usa la superficie más profunda; los encabezados de cada
-  // columna usan wa-head-dark para que ambos niveles se distingan sin chocar.
-
   const headerIconButtonClass =
-    "flex h-9 w-9 items-center justify-center rounded-xl text-wa-muted outline-none transition-colors hover:bg-wa-hover hover:text-wa-text focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:text-wa-muted-dark dark:hover:bg-wa-head-dark dark:hover:text-wa-text-dark";
+    "flex h-10 w-10 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring";
+
+  const notificationCenter = (placement: "header" | "rail", expanded = false) =>
+    isAnalyst ? null : (
+      <NotificationCenter
+        placement={placement}
+        expanded={expanded}
+        browserPermission={notificationPermission}
+        onRequestBrowserPermission={requestNotificationPermission}
+        onNewNotification={showInternalMention}
+      />
+    );
 
   return (
     <div
       data-issue-capture-root
-      className="flex h-full w-full min-w-0 max-w-full flex-col overflow-hidden bg-wa-app dark:bg-wa-app-dark"
+      className="flex h-full w-full min-w-0 max-w-full flex-col overflow-hidden bg-canvas"
     >
-      {/* Barra superior — nivel global, más profundo que los headers locales. */}
-      {/* min-h-12 y no h-12: con pt-safe la barra crece lo que mida el notch
-          para que su verde llegue hasta el borde de la pantalla. */}
-      {/* En el celular, dentro de una conversación, se oculta: el hilo tiene
-          su propia barra con la flecha para volver, y la global le quitaba
-          56 px al chat y al composer. */}
-      <div className={`${isMobile && chatId ? "hidden" : "flex"} min-h-14 w-full min-w-0 shrink-0 items-center gap-2 border-b border-wa-border bg-white px-3 pt-safe shadow-[0_1px_0_rgba(17,27,33,0.03)] sm:px-5 dark:border-wa-border-dark dark:bg-wa-panel-dark`}>
-        <BrandLogo sizeClass="h-8 w-8" iconClass="h-4 w-4" />
-        <span className="min-w-0 truncate text-sm font-bold tracking-[-0.02em] text-wa-text dark:text-white">
-          {brand.name}
-        </span>
-        <span className="ml-1 hidden rounded-full bg-wa-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-wa-primary-strong sm:inline dark:bg-wa-primary/15 dark:text-wa-primary">
-          CRM
-        </span>
-        <PwaUpdateChip />
-        <span className="flex-1" />
-        {me && (
-          <button
-            type="button"
-            onClick={() => setIsAccountSecurityOpen(true)}
-            className="mr-1 flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 text-left transition-colors hover:border-wa-border hover:bg-wa-hover dark:hover:border-wa-border-dark dark:hover:bg-wa-head-dark"
-            aria-label="Abrir acceso y seguridad"
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-wa-primary/12 text-[11px] font-bold uppercase text-wa-primary-strong dark:bg-wa-primary/15 dark:text-wa-primary">
-              {me.name.trim().charAt(0) || "U"}
-            </span>
-            <span className="hidden lg:block">
-              <span className="block max-w-36 truncate text-xs font-semibold leading-tight text-wa-text dark:text-wa-text-dark">
-                {me.name}
-              </span>
-              <span className="block text-[9px] font-medium capitalize text-wa-muted dark:text-wa-muted-dark">
-                {roleLabel(me.role)}
-              </span>
-            </span>
-          </button>
-        )}
-        <OnboardingReopenButton
-          enabled={isAdmin}
-          className={headerIconButtonClass}
-        />
-        {/* En el celular, configuración, reportar, tema y cerrar sesión viven
-            en "Más" (MobileNavBar). */}
-        {isAdmin && !isMobile && (
-          <Tooltip content="Configuración">
+      {/* Barra superior: solo en el celular. En tablet y escritorio el riel
+          lateral lleva el logo, las notificaciones y la cuenta, y le devuelve
+          56 px de alto al chat (doc 18 §5.1). Dentro de una conversación
+          también se oculta en el celular: el hilo tiene su propia barra con la
+          flecha para volver. min-h-14 y no h-14: con pt-safe crece lo que mida
+          el notch. */}
+      {isMobile && !chatId && (
+        <div className="flex min-h-14 w-full min-w-0 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 pt-safe">
+          <BrandLogo sizeClass="h-8 w-8" iconClass="h-4 w-4" />
+          <span className="min-w-0 truncate text-base font-semibold text-fg">
+            {brand.name}
+          </span>
+          <PwaUpdateChip />
+          <span className="flex-1" />
+          {me && (
             <button
               type="button"
-              onClick={() => openSettings("general")}
-              aria-label="Configuración"
-              className={headerIconButtonClass}
+              onClick={() => setIsAccountSecurityOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Abrir acceso y seguridad"
             >
-              <SettingsIcon className="w-4 h-4" />
+              <Avatar name={me.name} size="sm" />
             </button>
-          </Tooltip>
-        )}
-        {!isAnalyst && !isMobile && (
-          <Tooltip content="Reportar un problema">
-            <button
-              type="button"
-              onClick={() => setIsIssueReportOpen(true)}
-              aria-label="Reportar un problema"
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-wa-muted outline-none transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-300/70 dark:text-wa-muted-dark dark:hover:bg-red-950/35 dark:hover:text-red-400"
-            >
-              <Bug className="h-4 w-4" />
-            </button>
-          </Tooltip>
-        )}
-        {!isAnalyst && (
-          <NotificationCenter
-            browserPermission={notificationPermission}
-            onRequestBrowserPermission={requestNotificationPermission}
-            onNewNotification={showInternalMention}
-          />
-        )}
-        {!isMobile && (
-          <Tooltip
-            content={
-              theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"
-            }
-          >
-            <button
-              type="button"
-              onClick={toggleTheme}
-              aria-label={
-                theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"
-              }
-              className={headerIconButtonClass}
-            >
-              {theme === "dark" ? (
-                <Sun className="w-4 h-4" />
-              ) : (
-                <Moon className="w-4 h-4" />
-              )}
-            </button>
-          </Tooltip>
-        )}
-        {!isMobile && (
-          <Tooltip content="Cerrar sesión">
-            <button
-              type="button"
-              onClick={signOut}
-              aria-label="Cerrar sesión"
-              className={headerIconButtonClass}
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        )}
-      </div>
+          )}
+          <OnboardingReopenButton enabled={isAdmin} className={headerIconButtonClass} />
+          {/* Configuración, reportar, tema y cerrar sesión viven en "Más"
+              (MobileNavBar). */}
+          {notificationCenter("header")}
+        </div>
+      )}
 
       {/* Primeros pasos del negocio: solo admins y, en móvil, fuera de un
           chat, donde el espacio vertical es del composer. */}
@@ -346,9 +276,26 @@ export function MainLayout() {
           cambiar de pantalla no corte una llamada en curso. */}
       <CallCenterProvider>
       <CallDock />
-      <div className="flex min-h-0 min-w-0 flex-1 bg-[#edf2f0] dark:bg-[#081216]">
+      <div className="flex min-h-0 min-w-0 flex-1 bg-canvas">
         {!isMobile && (
-          <Sidebar role={me?.role} unreadCount={unreadCount} />
+          <Sidebar
+            role={me?.role}
+            unreadCount={unreadCount}
+            brandName={brand.name}
+            account={me ? { name: me.name, role: roleLabel(me.role), onOpenSecurity: () => setIsAccountSecurityOpen(true) } : null}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onLogout={signOut}
+            onOpenSettings={isAdmin ? () => openSettings("general") : undefined}
+            onOpenIssueReport={isAnalyst ? undefined : () => setIsIssueReportOpen(true)}
+            renderNotifications={(expanded) => notificationCenter("rail", expanded)}
+            extras={
+              <>
+                <PwaUpdateChip />
+                <OnboardingReopenButton enabled={isAdmin} className={headerIconButtonClass} />
+              </>
+            }
+          />
         )}
         <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
           <Suspense fallback={<PageLoader />}>

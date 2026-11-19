@@ -152,7 +152,8 @@ describe('sesión', () => {
 
     await screen.findByRole('button', { name: 'Cerrar sesión' })
     await waitFor(() => expect(window.location.pathname).toBe('/'))
-    expect(screen.queryByRole('button', { name: 'Dashboard' })).not.toBeInTheDocument()
+    // El riel usa enlaces: buscar un botón haría pasar la aserción siempre.
+    expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
     expect(api.current.calls('get', '/api/dashboard')).toEqual([])
   })
 
@@ -239,7 +240,7 @@ describe('analista', () => {
       await screen.findByRole('button', { name: 'Cerrar sesión' })
       await waitFor(() => expect(window.location.pathname).toBe('/dashboard'))
       const nav = screen.getByRole('navigation', { name: 'Vista principal' })
-      expect(within(nav).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Dashboard'])
+      expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['Dashboard'])
     },
   )
 

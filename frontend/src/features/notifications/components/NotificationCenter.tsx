@@ -13,6 +13,10 @@ import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHi
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { usePushSubscription } from '../hooks/usePushSubscription'
 interface Props {
+  /** `rail`: ítem del riel lateral de escritorio, con el panel abriendo al costado. */
+  placement?: 'header' | 'rail'
+  /** Solo en el riel: muestra la etiqueta y el contador al lado. */
+  expanded?: boolean
   browserPermission: NotificationPermissionState
   onRequestBrowserPermission: () => void
   onNewNotification: (notification: {
@@ -88,7 +92,7 @@ function notificationTime(value: string) {
   return date.toLocaleDateString()
 }
 
-export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification }: Props) {
+export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification, placement = 'header', expanded = false }: Props) {
   const navigate = useNavigate()
   const { data: me } = useMe()
   const isAdmin = me?.role === 'admin'
@@ -101,6 +105,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   const rootRef = useRef<HTMLDivElement>(null)
   const lastSurfacedIdRef = useRef(0)
   const unreadCount = data?.pages[0]?.unread_count ?? 0
+  const inRail = placement === 'rail'
   const notifications = data?.pages.flatMap(page => page.items) ?? []
   const latestUnread = notifications.find(notification => !notification.read_at)
 
@@ -158,24 +163,41 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
 
   return (
     <div ref={rootRef} className="relative">
-      <Tooltip content="Notificaciones">
+      {/* En el riel es un ítem más (etiqueta visible si está expandido); en
+          la barra superior del celular, un ícono. */}
+      <Tooltip content="Notificaciones" side={inRail ? 'right' : 'bottom'}>
       <button
         type="button"
         onClick={() => setOpen(current => !current)}
         aria-label="Centro de notificaciones"
-        className={`relative flex h-9 w-9 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${open ? 'bg-wa-primary/10 text-wa-primary-strong dark:bg-white/10 dark:text-wa-text-dark' : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'}`}
+        aria-expanded={open}
+        className={inRail
+          ? `relative flex h-10 w-full items-center rounded-lg text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${expanded ? 'gap-3 px-3' : 'justify-center'} ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`
+          : `relative flex h-10 w-10 items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`}
       >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white dark:ring-wa-panel-dark">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
+        <span className="relative flex shrink-0">
+          <Bell className={inRail ? 'h-5 w-5' : 'h-4.5 w-4.5'} strokeWidth={1.75} aria-hidden="true" />
+          {unreadCount > 0 && !(inRail && expanded) && (
+            <span className="absolute -right-2.5 -top-2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent-fill px-1 text-[11px] font-semibold leading-none tabular-nums text-on-accent ring-2 ring-surface">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </span>
+        {inRail && expanded && (
+          <>
+            <span aria-hidden="true" className="min-w-0 flex-1 truncate text-left">Notificaciones</span>
+            {unreadCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fill px-1.5 text-xs font-semibold tabular-nums text-on-accent">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </>
         )}
       </button>
       </Tooltip>
 
       {open && (
-        <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark sm:absolute sm:inset-x-auto sm:right-0 sm:top-9 sm:w-96 sm:max-w-[calc(100vw-2rem)]">
+        <div className={`fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface-raised shadow-overlay sm:absolute sm:inset-x-auto sm:w-96 sm:max-w-[calc(100vw-2rem)] ${inRail ? 'sm:bottom-0 sm:left-full sm:top-auto sm:ml-2' : 'sm:right-0 sm:top-11'}`}>
           <header className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div>
               <h2 className="text-sm font-semibold text-wa-text dark:text-white">Notificaciones</h2>

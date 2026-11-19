@@ -12,7 +12,7 @@ describe('CommandPalette', () => {
     expect(screen.queryByRole('combobox')).toBeNull()
     await user.keyboard('{Control>}k{/Control}')
     const input = await screen.findByRole('combobox')
-    expect(screen.getByRole('option', { name: /Kanban/ })).toBeTruthy()
+    expect(screen.getByRole('option', { name: /Embudo/ })).toBeTruthy()
     // Pantallas de admin no aparecen para un vendedor.
     expect(screen.queryByRole('option', { name: /Plantillas/ })).toBeNull()
 

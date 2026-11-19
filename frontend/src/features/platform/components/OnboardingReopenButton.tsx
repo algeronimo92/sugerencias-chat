@@ -27,10 +27,10 @@ export function OnboardingReopenButton({ enabled, className }: Props) {
         aria-label={`Mostrar los primeros pasos (${data.completed} de ${data.total} listos)`}
         className={`relative ${className}`}
       >
-        <ListChecks className="h-4 w-4" />
+        <ListChecks className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
         <span
           aria-hidden
-          className="absolute right-1 top-1 h-2 w-2 rounded-full bg-wa-primary ring-2 ring-white dark:ring-wa-panel-dark"
+          className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent ring-2 ring-surface"
         />
       </button>
     </Tooltip>
