@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useCallCenter } from '../callCenterContext'
+import { isDevicePrepared, prepareDevice } from '../devicePreparation'
 import { endMessage, formatDuration } from '../domain/callSession'
 import type { Call } from '../types'
 
@@ -103,15 +104,40 @@ function CurrentCall() {
   )
 }
 
+function PrepareDevice() {
+  const [state, setState] = useState<'pending' | 'working' | 'blocked' | 'done'>(() => (isDevicePrepared() ? 'done' : 'pending'))
+  if (state === 'done') return null
+  async function prepare() {
+    setState('working')
+    setState(await prepareDevice() === 'ready' ? 'done' : 'blocked')
+  }
+  return (
+    <div role="region" aria-label="Preparar este dispositivo para llamadas" className={card}>
+      <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Prepara este dispositivo para llamadas</p>
+      <p className="mt-1 text-xs text-wa-muted dark:text-wa-muted-dark">
+        {state === 'blocked'
+          ? 'El navegador no tiene permiso para usar el micrófono. Habilítalo en el candado de la barra de direcciones y vuelve a intentar.'
+          : 'Te pedirá permiso para el micrófono y las notificaciones. Hazlo ahora para no perder la primera llamada.'}
+      </p>
+      <div className="mt-3 flex justify-end">
+        <button type="button" onClick={prepare} disabled={state === 'working'} className="rounded-lg bg-wa-primary-strong px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
+          {state === 'blocked' ? 'Reintentar' : 'Preparar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** Las llamadas de WhatsApp a la vista en toda la app: la que suena y la que
  *  está en curso. En el celular ocupa el ancho, abajo, al alcance del pulgar;
  *  en la computadora, arriba a la derecha, sin tapar el chat. */
 export function CallDock() {
   const { enabled, ringing, session, answer, dismiss } = useCallCenter()
-  if (!enabled || (ringing.length === 0 && session.phase === 'idle')) return null
+  if (!enabled) return null
   const busy = session.phase === 'connecting' || session.phase === 'active'
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] flex flex-col gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-16 sm:p-0">
+      <PrepareDevice />
       <CurrentCall />
       {ringing.map(call => (
         <IncomingCall key={call.id} call={call} busy={busy} onAnswer={() => answer(call)} onDismiss={() => dismiss(call)} />

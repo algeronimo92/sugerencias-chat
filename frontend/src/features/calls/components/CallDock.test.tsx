@@ -6,6 +6,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { CallCenterContext, type CallCenter } from '../callCenterContext'
 import type { Call } from '../types'
 import { CallCard } from './CallCard'
+
+const preparation = vi.hoisted(() => ({ prepared: true, prepare: vi.fn(async () => 'ready' as const) }))
+vi.mock('../devicePreparation', () => ({ isDevicePrepared: () => preparation.prepared, prepareDevice: preparation.prepare }))
 import { CallDock } from './CallDock'
 
 const call = (overrides: Partial<Call> = {}): Call => ({
@@ -84,6 +87,31 @@ describe('CallDock', () => {
 
     expect(screen.getByText('No se pudo conectar el audio. Puede ser la red')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Abrir chat' })).toBeInTheDocument()
+  })
+})
+
+describe('preparar el dispositivo', () => {
+  it('se ofrece una vez a quien atiende llamadas y desaparece al prepararlo', async () => {
+    const user = userEvent.setup()
+    preparation.prepared = false
+    renderDock(center())
+
+    await user.click(screen.getByRole('button', { name: 'Preparar' }))
+    expect(preparation.prepare).toHaveBeenCalled()
+    expect(screen.queryByRole('region', { name: 'Preparar este dispositivo para llamadas' })).not.toBeInTheDocument()
+    preparation.prepared = true
+  })
+
+  it('con el micrófono bloqueado dice cómo habilitarlo', async () => {
+    const user = userEvent.setup()
+    preparation.prepared = false
+    preparation.prepare.mockResolvedValueOnce('microphone_blocked' as never)
+    renderDock(center())
+
+    await user.click(screen.getByRole('button', { name: 'Preparar' }))
+    expect(screen.getByText(/candado de la barra de direcciones/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+    preparation.prepared = true
   })
 })
 

@@ -35,7 +35,7 @@ from app.modules.conversations.ports.inbound import (
 from app.modules.conversations.ports.message_queries import chat_id_for_wa_message, chat_wa_message_ids
 from app.integrations.meta.calls import parse_call, without_sdp
 from app.integrations.meta.wamid import message_key
-from app.modules.conversations.ports.calls_inbound import receive_call, record_call_end
+from app.modules.conversations.ports.calls_inbound import is_known_meta_code, receive_call, record_call_end
 from app.modules.media.ports.media_upload import (save_decoded_media)
 from app.integrations.meta.contract import contract, is_known_inbound, message_subtype
 from app.integrations.meta_webhook import metrics
@@ -377,9 +377,16 @@ async def _calls_change(change: dict, _webhook_event_id: str, *, received_at: da
         call = parse_call(raw, value.get("errors")) if isinstance(raw, dict) else None
         if call is None or not call.user_initiated:
             continue
+        metrics.call_events.labels(event=call.event).inc()
+        if call.error_code and not is_known_meta_code(call.error_code):
+            metrics.call_unknown_error_codes.labels(code=call.error_code).inc()
         identity = identity_from_inbound(phone_number_id, raw, contacts)
         resolved = await resolve_whatsapp_identity(identity)
         if call.event == "connect":
+            if received_at is not None:
+                metrics.call_notice_delay_seconds.observe(
+                    max(0.0, (datetime.now(timezone.utc) - received_at).total_seconds())
+                )
             await receive_call(
                 chat_id=resolved.chat_id, wa_call_id=call.wa_call_id, phone_number_id=phone_number_id,
                 sdp=call.sdp, occurred_at=call.occurred_at, received_at=received_at, event=raw,

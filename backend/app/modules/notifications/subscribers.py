@@ -140,7 +140,9 @@ _ring_pushes: set[asyncio.Task] = set()
 async def _push_ring(user_ids: list[int], body: str, chat_id: str, call_id: int) -> None:
     for user_id in user_ids:
         try:
-            await send_push_to_user(user_id, "Llamada entrante", body, f"/chat/{chat_id}", tag=f"call-{call_id}")
+            await send_push_to_user(
+                user_id, "Llamada entrante", body, f"/chat/{chat_id}", tag=f"call-{call_id}", kind="incoming_call",
+            )
         except Exception:
             logger.exception("No se pudo enviar el push de llamada entrante a user %s", user_id)
 

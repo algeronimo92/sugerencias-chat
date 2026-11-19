@@ -50,6 +50,7 @@ async def send_push_to_user(
     body: str,
     url: str,
     tag: str | None = None,
+    kind: str | None = None,
 ) -> None:
     """Envía una notificación push a todas las suscripciones activas del user.
 
@@ -66,7 +67,9 @@ async def send_push_to_user(
     if not subscriptions:
         return
 
-    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
+    # ``kind`` le dice al service worker cómo mostrarlo: una llamada entrante
+    # se queda en pantalla y vibra; el resto es un aviso común.
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag, "kind": kind})
     for subscription in subscriptions:
         try:
             await asyncio.to_thread(_send_one, subscription, payload)

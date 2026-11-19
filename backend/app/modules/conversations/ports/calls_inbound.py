@@ -5,5 +5,8 @@ from app.modules.conversations.application.calls import (
     receive_call,
     record_call_end,
 )
+from app.modules.conversations.domain.calls import (
+    is_known_meta_code,
+)
 
-__all__ = ['reap_calls', 'receive_call', 'record_call_end']
+__all__ = ['is_known_meta_code', 'reap_calls', 'receive_call', 'record_call_end']
