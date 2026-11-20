@@ -69,7 +69,7 @@ test('una llamada entrante suena, se atiende, se silencia y se cuelga', async ({
 
 test('sin el permiso de llamadas no suena ni se consulta', async ({ page, api }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Conversaciones' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Conversaciones', level: 1 })).toBeVisible()
 
   await expect(page.getByRole('alertdialog')).toHaveCount(0)
   expect(api.calls('get', '/api/calls/ringing')).toEqual([])

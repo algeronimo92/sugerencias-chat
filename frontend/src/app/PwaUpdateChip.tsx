@@ -16,7 +16,7 @@ export function PwaUpdateChip() {
       type="button"
       onClick={applyPwaUpdate}
       title="Hay una versión nueva. Actualiza para aplicar los cambios."
-      className="ml-1 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-wa-primary/30 bg-wa-primary/10 px-2.5 text-[11px] font-semibold text-wa-primary-strong outline-none transition-colors hover:bg-wa-primary/20 focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary dark:hover:bg-wa-primary/25"
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-3 text-xs font-semibold text-accent-deep outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--accent-soft),var(--accent)_12%)] focus-visible:ring-2 focus-visible:ring-ring"
     >
       <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
       <span>Versión nueva</span>

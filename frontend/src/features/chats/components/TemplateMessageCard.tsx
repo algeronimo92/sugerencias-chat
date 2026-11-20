@@ -13,7 +13,7 @@ export function TemplateMessagePreview({ template }: { template: TemplateMessage
         <img src={headerImageSrc} alt="" loading="lazy" className="mb-1.5 max-h-48 w-full rounded-lg object-cover" />
       )}
       {template.title && (
-        <p className="text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">{template.title}</p>
+        <p className="text-[13px] font-semibold text-fg">{template.title}</p>
       )}
     </>
   )
@@ -33,7 +33,7 @@ export function TemplateMessageButtons({
   isVendedor: boolean
 }) {
   if (!template.buttons.length) return null
-  const surface = isVendedor ? 'bg-wa-out dark:bg-wa-out-dark' : 'bg-white dark:bg-wa-in-dark'
+  const surface = isVendedor ? 'bg-bubble-out' : 'bg-bubble-in'
   const base = `flex items-center justify-center gap-2 rounded-bubble px-3 py-2.5 text-[13px] font-medium shadow-sm ${surface}`
 
   return (

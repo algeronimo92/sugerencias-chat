@@ -57,7 +57,7 @@ export function StageChangeCard({ activity }: { activity: LeadActivity }) {
         <div className="flex flex-wrap items-center justify-center gap-1.5">
           <GitCommitHorizontal className="h-3.5 w-3.5 text-wa-muted dark:text-wa-muted-dark" />
           {oldStage && <StageBadge stage={oldStage} />}
-          {oldStage && <ArrowRight className="h-3 w-3 text-wa-faint dark:text-wa-muted-dark" />}
+          {oldStage && <ArrowRight className="h-3 w-3 text-bubble-faint" />}
           <StageBadge stage={newStage} />
         </div>
         <p className="mt-1 text-[11px] text-wa-muted dark:text-wa-muted-dark">

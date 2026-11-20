@@ -7,29 +7,44 @@ export type NavItem = {
   icon: LucideIcon
   adminOnly: boolean
   /**
-   * En móvil solo las principales entran en la barra inferior; el resto vive
-   * detrás del botón "Más". Con cinco pestañas o más los objetivos táctiles
-   * quedan por debajo del mínimo cómodo para el pulgar.
+   * Dónde va en el riel de escritorio (doc 18 §7.1): de 14 entradas planas a
+   * grupos. `footer` queda fijo abajo con la cuenta. Las rutas no cambian;
+   * solo dónde se muestran.
    */
-  primary: boolean
+  group: NavGroup
+}
+
+export type NavGroup = 'main' | 'tools' | 'settings' | 'footer'
+
+export const NAV_GROUP_LABELS: Record<Exclude<NavGroup, 'main' | 'footer'>, string> = {
+  tools: 'Herramientas',
+  settings: 'Configuración',
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { path: '/', label: 'Chats', icon: MessagesSquare, adminOnly: false, primary: true },
-  { path: '/kanban', label: 'Kanban', icon: Columns3, adminOnly: false, primary: false },
-  { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, primary: true },
-  { path: '/contacts', label: 'Contactos', icon: Users, adminOnly: false, primary: false },
-  { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, adminOnly: false, primary: false },
-  { path: '/reports', label: 'Reportes', icon: Bug, adminOnly: false, primary: true },
-  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, adminOnly: false, primary: false },
-  { path: '/dashboard', label: 'Dashboard', icon: BarChart3, adminOnly: false, primary: false },
-  { path: '/automations', label: 'Automatizaciones', icon: Workflow, adminOnly: true, primary: false },
-  { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, primary: false },
-  { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, primary: false },
-  { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, primary: false },
-  { path: '/integraciones', label: 'Integraciones', icon: Plug, adminOnly: true, primary: false },
-  { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, adminOnly: true, primary: false },
+  { path: '/', label: 'Chats', icon: MessagesSquare, adminOnly: false, group: 'main' },
+  { path: '/kanban', label: 'Embudo', icon: Columns3, adminOnly: false, group: 'main' },
+  { path: '/contacts', label: 'Contactos', icon: Users, adminOnly: false, group: 'main' },
+  { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, group: 'main' },
+  { path: '/dashboard', label: 'Dashboard', icon: BarChart3, adminOnly: false, group: 'main' },
+  { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, adminOnly: false, group: 'main' },
+  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, adminOnly: false, group: 'tools' },
+  { path: '/automations', label: 'Automatizaciones', icon: Workflow, adminOnly: true, group: 'tools' },
+  { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, group: 'tools' },
+  { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, group: 'settings' },
+  { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, group: 'settings' },
+  { path: '/integraciones', label: 'Integraciones', icon: Plug, adminOnly: true, group: 'settings' },
+  { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, adminOnly: true, group: 'settings' },
+  { path: '/reports', label: 'Reportes', icon: Bug, adminOnly: false, group: 'footer' },
 ]
+
+/**
+ * Pestañas de la barra inferior del celular, en este orden; el resto vive
+ * detrás de "Más". Con cinco pestañas o más los objetivos táctiles quedan por
+ * debajo del mínimo cómodo para el pulgar. Son las vistas de trabajo diario:
+ * Reportes y Embudo pasan a "Más" (decisión 7 del doc 18).
+ */
+export const MOBILE_TAB_PATHS: readonly string[] = ['/', '/tasks', '/contacts']
 
 /** Los chats tienen su propia ruta de detalle, así que no basta con comparar. */
 export function isNavItemActive(item: NavItem, pathname: string): boolean {

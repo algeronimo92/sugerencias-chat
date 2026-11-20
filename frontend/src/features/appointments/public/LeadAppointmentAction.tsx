@@ -7,11 +7,12 @@ import type { LeadSnapshot } from '../domain/leadPrefill'
 
 /**
  * "Separar cita": abre el formulario prellenado con el lead. Separar la cita
- * con su adelanto es la venta del negocio, así que la acción vive en dos
- * lugares: en la cabecera del chat (`variant="header"`, un toque desde la
- * conversación) y como primer bloque de la ficha del lead.
+ * con su adelanto es la venta del negocio: vive en la cabecera del chat, a un
+ * toque desde la conversación en cualquier ancho. Hasta el rediseño también
+ * abría la ficha del lead como un botón verde grande; eran dos botones para lo
+ * mismo, uno al lado del otro en escritorio.
  */
-export function LeadAppointmentAction({ chat, variant = 'card' }: { chat: Chat; variant?: 'card' | 'header' }) {
+export function LeadAppointmentAction({ chat }: { chat: Chat }) {
   const [open, setOpen] = useState(false)
   const values = useLeadCustomFieldValues(open ? chat.chat_id : '')
   const lead = useMemo<LeadSnapshot>(() => ({
@@ -25,30 +26,18 @@ export function LeadAppointmentAction({ chat, variant = 'card' }: { chat: Chat; 
 
   return (
     <>
-      {variant === 'header' ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Separar cita para este lead"
-          title="Separar cita"
-          // Con texto desde tablet: es la acción que genera la venta y tiene
-          // que leerse, no adivinarse por el ícono. En móvil la cabecera no da
-          // para más y queda el ícono, con su nombre accesible.
-          className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold text-wa-primary-strong transition-colors hover:bg-green-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong dark:text-wa-primary dark:hover:bg-green-950/30 max-sm:w-11 max-sm:px-0"
-        >
-          <CalendarPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
-          <span className="hidden sm:inline">Separar cita</span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-wa-primary-strong px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-wa-primary-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wa-primary-strong focus-visible:ring-offset-2 dark:focus-visible:ring-offset-wa-panel-dark"
-        >
-          <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Separar cita
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Separar cita para este lead"
+        // Con texto desde tablet: es la acción que genera la venta y tiene
+        // que leerse, no adivinarse por el ícono. En móvil la cabecera no da
+        // para más y queda el ícono, con su nombre accesible.
+        className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold text-accent-strong outline-none transition-colors hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-ring max-sm:w-10 max-sm:px-0"
+      >
+        <CalendarPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
+        <span className="hidden sm:inline">Separar cita</span>
+      </button>
       {/* Si los campos del lead no cargan, se agenda igual sin prellenarlos. */}
       {open && <LeadAppointmentPanel lead={lead} leadReady={!values.isLoading} onClose={() => setOpen(false)} />}
     </>

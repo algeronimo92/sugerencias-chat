@@ -106,10 +106,10 @@ export function AlbumBubble({
       {isVendedor && actions}
       <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
         <div
-          className={`relative w-60 rounded-bubble p-1.5 text-sm shadow-sm text-wa-text dark:text-wa-text-dark ${
+          className={`relative w-60 rounded-bubble p-1.5 text-sm shadow-sm text-fg ${
             isVendedor
-              ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
-              : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
+              ? `bg-bubble-out ${isFirstOfGroup ? 'rounded-tr-none bubble-tail-out' : ''}`
+              : `bg-bubble-in ${isFirstOfGroup ? 'rounded-tl-none bubble-tail-in' : ''}`
           }`}
         >
           {selectionMode && <span aria-hidden="true" className="absolute inset-0 z-20 rounded-bubble" />}

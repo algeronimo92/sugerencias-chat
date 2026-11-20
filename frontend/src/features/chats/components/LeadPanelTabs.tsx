@@ -26,7 +26,7 @@ export function LeadPanelTabs({ tab, onChange, canRegenerate, isGenerating, onRe
     document.getElementById(`tab-lead-${next}`)?.focus()
   }
   return (
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-wa-border px-2 dark:border-wa-border-dark">
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-2">
       <div role="tablist" aria-label="Panel del lead" className="flex h-full items-end gap-1">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -39,13 +39,13 @@ export function LeadPanelTabs({ tab, onChange, canRegenerate, isGenerating, onRe
             tabIndex={tab === id ? 0 : -1}
             onClick={() => onChange(id)}
             onKeyDown={onKeyDown}
-            className={`flex h-11 items-center gap-1.5 border-b-2 px-2.5 text-xs font-semibold transition-colors ${
+            className={`-mb-px flex h-11 items-center gap-1.5 border-b-2 px-2.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
               tab === id
-                ? 'border-wa-primary text-wa-text dark:text-white'
-                : 'border-transparent text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
+                ? 'border-accent-fill text-fg'
+                : 'border-transparent text-fg-muted hover:text-fg'
             }`}
           >
-            <Icon className={`h-3.5 w-3.5 ${id === 'copiloto' ? 'text-violet-600 dark:text-violet-300' : ''}`} aria-hidden="true" />
+            <Icon className="h-4 w-4" aria-hidden="true" />
             {label}
           </button>
         ))}
@@ -53,7 +53,7 @@ export function LeadPanelTabs({ tab, onChange, canRegenerate, isGenerating, onRe
       {/* "Otras" solo tiene sentido con sugerencias ya generadas. */}
       {canRegenerate && (
         <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isGenerating} title="Generar un juego nuevo de sugerencias" className="ml-auto">
-          <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse text-wa-primary' : ''}`} aria-hidden="true" />
+          <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse text-accent-strong' : ''}`} aria-hidden="true" />
           Genera otras
         </Button>
       )}

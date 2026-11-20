@@ -12,7 +12,7 @@ export function Skeleton({ className = '', as: Component = 'div' }: Props) {
   return (
     <Component
       aria-hidden="true"
-      className={cn('animate-pulse rounded-md bg-wa-field dark:bg-wa-field-dark', className)}
+      className={cn('animate-pulse rounded-md bg-selected', className)}
     />
   )
 }

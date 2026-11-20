@@ -229,3 +229,24 @@ describe('ChatItem preview del último mensaje', () => {
     expect(screen.getByText('Formulario')).toBeInTheDocument()
   })
 })
+
+describe('ChatItem línea de etapa, vendedora y etiquetas', () => {
+  it('muestra la etapa y la vendedora sin abrir el chat', () => {
+    renderItem(vi.fn(), vi.fn(), vi.fn(), { ...CHAT, stage: 'nuevo', vendedor: 'Grecia', tags: [{ id: 1, name: 'Botox', color: '#8b5cf6' }] } as unknown as Chat)
+
+    const row = screen.getByRole('button', { name: /Ana Torres/ })
+    expect(row).toHaveTextContent('Nuevo')
+    expect(row).toHaveTextContent('Grecia')
+    expect(row).toHaveTextContent('Botox')
+  })
+
+  it('dice "Sin asignar" cuando nadie lo atiende y resume las etiquetas de más', () => {
+    const tags = ['Botox', 'Facial', 'VIP'].map((name, id) => ({ id, name, color: '#000000' }))
+    renderItem(vi.fn(), vi.fn(), vi.fn(), { ...CHAT, stage: 'nuevo', vendedor: null, tags } as unknown as Chat)
+
+    const row = screen.getByRole('button', { name: /Ana Torres/ })
+    expect(row).toHaveTextContent('Sin asignar')
+    expect(row).toHaveTextContent('+1')
+    expect(row).not.toHaveTextContent('VIP')
+  })
+})

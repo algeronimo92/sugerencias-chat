@@ -1,4 +1,5 @@
-import { CalendarX, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2, ZapOff } from 'lucide-react'
+import { CalendarX, Clock, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2, ZapOff } from 'lucide-react'
+import { Avatar } from '../../../shared/ui/Avatar'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -9,10 +10,11 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import { useDeleteLead, useMarkNoShow } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
-import { avatarInitial, displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../../leads/public/chat'
+import { displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitingTier } from '../../leads/public/chat'
 import { parseContent, searchSnippet, splitOnMatch } from '../../whatsapp/public/message'
 import { useChatDraft } from '../draftStore'
 import { contactMatchReason } from '../searchMatch'
+import { ChatItemMeta } from './ChatItemMeta'
 import { Highlighted } from './MessageSearchRow'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
@@ -32,6 +34,8 @@ interface Props {
   onPreview: () => void
   onMarkUnread: () => void
   isMarkingUnread?: boolean
+  /** Sin el aviso de vista rápida (en modo selección tocar la fila la marca). */
+  hideHint?: boolean
 }
 
 const LONG_PRESS_MS = 450
@@ -43,16 +47,12 @@ function formatTime(timestamp: string | null): string {
   return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// La espera va con icono de reloj además del color (doc 18 §5.3): el color
+// solo no lo distingue quien no ve bien el rojo o el ámbar.
 const TIER_TEXT_CLASS: Record<string, string> = {
-  fresh: 'text-wa-primary-strong dark:text-wa-primary',
-  warning: 'text-amber-700 dark:text-amber-400',
-  urgent: 'text-red-700 dark:text-red-400',
-}
-
-const TIER_DOT_CLASS: Record<string, string> = {
-  fresh: 'bg-wa-primary',
-  warning: 'bg-amber-500',
-  urgent: 'bg-red-500 animate-pulse',
+  fresh: 'text-accent-strong',
+  warning: 'text-warning-fg',
+  urgent: 'text-danger-fg',
 }
 
 const TIER_TITLE: Record<string, string> = {
@@ -61,7 +61,7 @@ const TIER_TITLE: Record<string, string> = {
   urgent: 'Esperando respuesta hace bastante — se puede estar enfriando',
 }
 
-export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMatchReason = false, onClick, onPreview, onMarkUnread, isMarkingUnread = false }: Props) {
+export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMatchReason = false, onClick, onPreview, onMarkUnread, isMarkingUnread = false, hideHint = false }: Props) {
   const longPressTimerRef = useRef<number | null>(null)
   const suppressClickTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef({ x: 0, y: 0 })
@@ -216,7 +216,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMat
 
   return (
     <>
-    <Tooltip content="Mantén pulsado o usa clic derecho para vista rápida" side="bottom">
+    <Tooltip content={hideHint ? null : "Mantén pulsado o usa clic derecho para vista rápida"} side="bottom">
     <button type="button"
       onClick={(event) => {
         if (suppressClickRef.current) {
@@ -238,113 +238,89 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMat
           onPreview()
         }
       }}
-      className={`mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wa-primary/60 ${
+      className={`mx-2 my-0.5 flex w-[calc(100%-1rem)] items-start gap-3 rounded-lg px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isSelected
-          ? 'bg-wa-primary/10 shadow-sm ring-1 ring-inset ring-wa-primary/15 dark:bg-wa-primary/15 dark:ring-wa-primary/20'
+          ? 'bg-selected'
           : isHighlighted
-            ? 'bg-amber-50 dark:bg-amber-900/40 ring-1 ring-inset ring-amber-400 dark:ring-amber-500'
-            : 'hover:bg-wa-hover dark:hover:bg-wa-hover-dark'
+            ? 'bg-warning-soft ring-1 ring-inset ring-warning'
+            : 'hover:bg-subtle'
       }`}
     >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-wa-primary to-wa-primary-strong text-sm font-bold text-white shadow-sm">
-        {avatarInitial(chat)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-baseline">
-          <span
-            className={`text-sm truncate text-wa-text dark:text-wa-text-dark ${
-              chat.unread_count > 0 ? 'font-semibold' : 'font-medium'
-            }`}
-          >
+      {/* Tono estable por lead (no por nombre): no cambia al renombrarlo. */}
+      <Avatar name={displayName(chat)} seed={chat.chat_id} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={`truncate text-md text-fg ${chat.unread_count > 0 ? 'font-semibold' : 'font-medium'}`}>
             {showMatchReason ? <Highlighted text={displayName(chat)} search={search} /> : displayName(chat)}
           </span>
           {awaitingReply ? (
             <Tooltip content={`${TIER_TITLE[tier]}: ${formatElapsedShort(elapsedMs)}`} side="top">
-            <span
-              className={`flex items-center gap-1 text-[11px] font-medium ml-2 shrink-0 ${TIER_TEXT_CLASS[tier]}`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${TIER_DOT_CLASS[tier]}`} />
+            <span className={`flex shrink-0 items-center gap-1 text-xs font-semibold tabular-nums ${TIER_TEXT_CLASS[tier]}`}>
+              <Clock className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
               {formatElapsedShort(elapsedMs)}
             </span>
             </Tooltip>
           ) : (
-            <span
-              className={`text-[11px] ml-2 shrink-0 ${
-                chat.unread_count > 0
-                  ? 'font-medium text-wa-primary'
-                  : 'text-wa-muted dark:text-wa-muted-dark'
-              }`}
-            >
+            <span className={`shrink-0 text-xs tabular-nums ${chat.unread_count > 0 ? 'font-semibold text-accent-strong' : 'text-fg-muted'}`}>
               {formatTime(chat.timestamp)}
             </span>
           )}
         </div>
-        <div className="flex items-baseline justify-between gap-2 mt-0.5">
-          <p className="text-[13px] text-wa-muted dark:text-wa-muted-dark truncate flex items-center gap-1 min-w-0">
-            {!draftPreview && Icon && <Icon className="w-3.5 h-3.5 text-wa-muted dark:text-wa-muted-dark shrink-0" />}
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <p className="flex min-w-0 items-center gap-1 truncate text-sm text-fg-muted">
+            {!draftPreview && Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-fg-muted" />}
             {draftPreview ? (
               <span className="truncate">
-                <span className="font-medium text-wa-primary">Borrador: </span>
+                <span className="font-medium text-accent-strong">Borrador: </span>
                 {draftPreview}
               </span>
             ) : matchParts ? (
               <span className="truncate">
                 {matchParts[0]}
-                <strong className="font-semibold text-wa-text dark:text-wa-text-dark">{matchParts[1]}</strong>
+                <strong className="font-semibold text-fg">{matchParts[1]}</strong>
                 {matchParts[2]}
               </span>
             ) : (
               <span className="truncate">{previewText}</span>
             )}
           </p>
-          {chat.automatizacion_pausada && (
-            <Tooltip content="Sin automatizaciones nuevas para este cliente" side="top">
-            <span aria-label="Automatizaciones pausadas" className="shrink-0 text-amber-700 dark:text-amber-400">
-              <ZapOff className="h-3.5 w-3.5" />
-            </span>
-            </Tooltip>
-          )}
-          {!isCustomerWindowOpen && (
-            <Tooltip content="Ventana de 24 horas cerrada" side="top">
-            <span aria-label="Ventana de 24 horas cerrada" className="shrink-0 text-red-500 dark:text-red-400">
-              <LockKeyhole className="h-3.5 w-3.5" />
-            </span>
-            </Tooltip>
-          )}
-          {chat.unread_count > 0 && (
-            <Tooltip content={botAttended ? 'Pendiente de lectura; un bot ya respondió' : 'Chat no leído'} side="top">
-            <span
-              aria-label={`${chat.unread_count} mensaje${chat.unread_count === 1 ? '' : 's'} sin leer`}
-              className={`shrink-0 min-w-5 h-5 px-1.5 rounded-full text-white text-[11px] font-semibold flex items-center justify-center ${
-                botAttended ? 'bg-amber-500 dark:bg-amber-600' : 'bg-wa-primary'
-              }`}
-            >
-              {chat.unread_count > 99 ? '99+' : chat.unread_count}
-            </span>
-            </Tooltip>
-          )}
+          <span className="flex shrink-0 items-center gap-1.5">
+            {chat.automatizacion_pausada && (
+              <Tooltip content="Sin automatizaciones nuevas para este cliente" side="top">
+              <span aria-label="Automatizaciones pausadas" className="text-warning-fg">
+                <ZapOff className="h-3.5 w-3.5" />
+              </span>
+              </Tooltip>
+            )}
+            {!isCustomerWindowOpen && (
+              <Tooltip content="Ventana de 24 horas cerrada" side="top">
+              <span aria-label="Ventana de 24 horas cerrada" className="text-danger-fg">
+                <LockKeyhole className="h-3.5 w-3.5" />
+              </span>
+              </Tooltip>
+            )}
+            {chat.unread_count > 0 && (
+              <Tooltip content={botAttended ? 'Pendiente de lectura; un bot ya respondió' : 'Chat no leído'} side="top">
+              {/* Punto + número, como WhatsApp (decisión 3 del doc 18). Si un
+                  bot ya contestó, el número va en ámbar: no urge igual. */}
+              <span
+                aria-label={`${chat.unread_count} mensaje${chat.unread_count === 1 ? '' : 's'} sin leer`}
+                className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums ${
+                  botAttended ? 'bg-warning-soft text-warning-fg' : 'bg-accent-fill text-on-accent'
+                }`}
+              >
+                {chat.unread_count > 99 ? '99+' : chat.unread_count}
+              </span>
+              </Tooltip>
+            )}
+          </span>
         </div>
         {matchReason && (
-          <p className="mt-0.5 truncate text-[11px] text-wa-muted dark:text-wa-muted-dark">
+          <p className="mt-0.5 truncate text-xs text-fg-muted">
             {matchReason.label}: <Highlighted text={matchReason.value} search={search} />
           </p>
         )}
-        {chat.tags.length > 0 && (
-          <div className="mt-1 flex gap-1 overflow-hidden">
-            {chat.tags.slice(0, 2).map((tag) => (
-              <span
-                key={tag.id}
-                className="max-w-24 truncate rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white"
-                style={{ backgroundColor: tag.color }}
-              >
-                {tag.name}
-              </span>
-            ))}
-            {chat.tags.length > 2 && (
-              <span className="text-[10px] text-wa-muted dark:text-wa-muted-dark">+{chat.tags.length - 2}</span>
-            )}
-          </div>
-        )}
+        <ChatItemMeta chat={chat} />
       </div>
     </button>
     </Tooltip>

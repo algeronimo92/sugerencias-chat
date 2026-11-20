@@ -11,7 +11,7 @@ import { readEditField } from "../../../shared/navigation/editFieldLink";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
 import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
-import { useLayout } from "../../../shared/hooks/useBreakpoint";
+import { useLayout, useMediaQuery } from "../../../shared/hooks/useBreakpoint";
 import { Button } from "../../../shared/ui/Button";
 import { PageLoader } from "../../../shared/ui/PageLoader";
 import { Spinner } from "../../../shared/ui/Spinner";
@@ -24,7 +24,7 @@ useGenerateSuggestions,
 useSuggestionStatus,
 } from "../../ai/public/useSuggestions";
 import { useWhatsappStatus } from "../../platform/public/useWhatsapp";
-import { useLayoutContext } from "../layoutContext";
+import { useLayoutContext, type ChatQuickFilter } from "../layoutContext";
 import { useMarkChatRead, useMarkChatUnread } from "../queries";
 import { useUnreadCount } from '../../leads/public/queries'
 import { useChat, useInfiniteChats } from '../../leads/public/queries'
@@ -32,6 +32,11 @@ import type { Chat } from '../../leads/types'
 import { useOpenChat } from "../useOpenChat";
 import { useChatNavigationShortcuts } from "../hooks/useChatNavigationShortcuts";
 import { ChatList } from "./ChatList";
+import { InboxPanel } from "./inbox/InboxPanel";
+import { InboxSheet } from "./inbox/InboxSheet";
+import { ChatListToolbar } from "./inbox/ChatListToolbar";
+import { BulkActionsFooter, BulkSelectionHeader } from "./inbox/BulkActionsBar";
+import { useStoredToggle } from "../hooks/useStoredToggle";
 import { ChatThread } from "./ChatThread";
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
@@ -42,6 +47,13 @@ const SuggestionPanel = lazy(() =>
     default: module.SuggestionPanel,
   })),
 );
+
+const INBOX_LABELS: Record<ChatQuickFilter, string> = {
+  all: "Todas",
+  mine: "Mías",
+  unassigned: "Sin asignar",
+  unread: "No leídos",
+};
 
 function ConversationEmptyState() {
   return (
@@ -145,6 +157,12 @@ export function ChatWorkspace() {
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const showInboxes = useMediaQuery("(min-width: 1440px)") && !isMobile;
+  const [inboxesCollapsed, toggleInboxes] = useStoredToggle("inbox-panel-collapsed");
+  // Modo selección de la lista: null = apagado; un Set (aunque vacío) = activo.
+  const [selection, setSelection] = useState<Set<string> | null>(null);
+  // En el celular las bandejas van en una hoja inferior (doc 18 §6.5).
+  const [inboxSheetOpen, setInboxSheetOpen] = useState(false);
   // Se llegó a cambiar un dato del lead (?editar=…, p. ej. desde Catálogos):
   // fuera de escritorio la ficha vive en el panel deslizable, que arranca
   // cerrado; queda abierto mientras dure ese pedido.
@@ -164,7 +182,7 @@ export function ChatWorkspace() {
     isFetchNextPageError,
     // Con una búsqueda, la lista trae solo los contactos: los mensajes los
     // pide el propio resultado, uno por fila.
-  } = useInfiniteChats(debouncedSearch, effectiveFilters, { contactsOnly: true });
+  } = useInfiniteChats(debouncedSearch, effectiveFilters, { contactsOnly: true, order: chatFilters.order });
   const chats = data?.pages.flatMap((page) => page.items) ?? [];
   const contactsTotal = data?.pages[0]?.total ?? null;
 
@@ -330,10 +348,46 @@ export function ChatWorkspace() {
           visibility:hidden conserva el layout y con él la posición de
           scroll: absolute lo saca del flujo para que el chat pueda
           ocupar el ancho completo. */}
+        {/* Bandejas: desde 1440 px, plegables (decisión 4 del doc 18). */}
+        {/* Plegado no deja columna: se vuelve a mostrar desde la cabecera
+            de la lista. */}
+        {showInboxes && !inboxesCollapsed && (
+          <div className="h-full shrink-0 overflow-hidden rounded-xl">
+            <InboxPanel role={me?.role} filters={chatFilters} onCollapse={toggleInboxes} />
+          </div>
+        )}
+        {isMobile && (
+          <InboxSheet role={me?.role} filters={chatFilters} open={inboxSheetOpen} onOpenChange={setInboxSheetOpen} />
+        )}
         <div
-          className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-80 shrink-0 2xl:w-[360px]"}`}
+          className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-72 shrink-0 2xl:w-[324px]"}`}
         >
           <ChatList
+            // En el celular la hoja de bandejas ya trae estos filtros: con
+            // ellos arriba quedaban cuatro filas de controles sobre los leads.
+            inboxPanelVisible={(showInboxes && !inboxesCollapsed) || isMobile}
+            inboxLabel={isMobile ? INBOX_LABELS[chatFilter] : undefined}
+            onShowInboxes={isMobile ? () => setInboxSheetOpen(true) : showInboxes && inboxesCollapsed ? toggleInboxes : undefined}
+            toolbar={selection ? (
+              <BulkSelectionHeader
+                selected={selection}
+                visibleIds={chats.map((chat) => chat.chat_id)}
+                onSelectionChange={setSelection}
+                onCancel={() => setSelection(null)}
+              />
+            ) : (
+              <ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} onStartSelection={() => setSelection(new Set())} />
+            )}
+            footer={selection && (
+              <BulkActionsFooter selected={selection} onSelectionChange={setSelection} isAdmin={me?.role === "admin"} />
+            )}
+            selection={selection}
+            onToggleSelected={(chatId) => setSelection((current) => {
+              const next = new Set(current ?? [])
+              if (next.has(chatId)) next.delete(chatId)
+              else next.add(chatId)
+              return next
+            })}
             chats={chats}
             isLoading={isLoading}
             error={!!error}
@@ -421,7 +475,7 @@ export function ChatWorkspace() {
           1280px las tres columnas dejarían la conversación inusable, así
           que las sugerencias pasan a un panel deslizable. */}
         {isDesktop && (
-          <div className="h-full w-[380px] shrink-0 overflow-hidden rounded-2xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark 2xl:w-[400px]">
+          <div className="h-full w-80 shrink-0 overflow-hidden rounded-2xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark 2xl:w-[340px]">
             {selectedChat ? (
               // Suspense propio: sin él, la primera carga del chunk suspende
               // hasta el boundary de MainLayout y tapa lista y conversación.

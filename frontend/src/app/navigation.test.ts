@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { canSeeDashboard, homePathFor, roleLabel, visibleNavItems } from './navigation'
+import { canSeeDashboard, homePathFor, MOBILE_TAB_PATHS, roleLabel, visibleNavItems } from './navigation'
 
 describe('navegación por rol', () => {
   it('el vendedor ve las vistas de operación y ninguna de administración', () => {
@@ -26,6 +26,16 @@ describe('navegación por rol', () => {
     expect(homePathFor('analista')).toBe('/dashboard')
     expect(homePathFor('vendedor')).toBe('/')
     expect(homePathFor(undefined)).toBe('/')
+  })
+
+  it('la barra inferior del celular lleva Chats, Tareas y Contactos, y todo vendedor las ve', () => {
+    const visible = visibleNavItems('vendedor').map((item) => item.path)
+    const tabs = MOBILE_TAB_PATHS.map((path) => visibleNavItems('vendedor').find((item) => item.path === path)?.label)
+
+    expect(tabs).toEqual(['Chats', 'Tareas', 'Contactos'])
+    // Reportes y Embudo siguen accesibles desde "Más".
+    expect(visible).toContain('/reports')
+    expect(visible).toContain('/kanban')
   })
 
   it('cada rol tiene su nombre en la barra', () => {

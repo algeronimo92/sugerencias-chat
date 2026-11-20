@@ -15,7 +15,7 @@ export const meta = {
 
 const ALL = [
   { key: 'ux', agentType: 'investigador-ux', name: 'Investigador UX' },
-  { key: 'ui', agentType: 'disenador-ui', name: 'Diseñador UI' },
+  { key: 'ui', agentType: 'ui-ux-expert', name: 'Diseñador UI' },
   { key: 'usabilidad', agentType: 'experto-usabilidad', name: 'Experto en usabilidad' },
   { key: 'negocio', agentType: 'experto-negocio-clinicas', name: 'Experto en el negocio de clínicas' },
   { key: 'anuncios', agentType: 'experto-anuncios-meta', name: 'Experto en anuncios de Meta' },

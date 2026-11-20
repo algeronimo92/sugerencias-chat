@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
-import { createLead, deleteLead, fetchChat, fetchChatsPage, fetchLeadByPhone, fetchMessageSearchPage, fetchPhoneConfig, fetchUnreadCount, markNoShow, mergeLead, updateLead } from './api'
-import type { ChatFilters, LeadUpdateInput, MessagePageParam, PageParam } from './types'
+import { createLead, deleteLead, fetchChat, fetchChatsPage, fetchInboxCounts, fetchLeadByPhone, fetchMessageSearchPage, fetchPhoneConfig, fetchUnreadCount, markNoShow, mergeLead, updateLead } from './api'
+import type { ChatFilters, ChatOrder, LeadUpdateInput, MessagePageParam, PageParam } from './types'
 import { kanbanKeys, leadKeys } from './keys'
 
 
@@ -25,12 +25,15 @@ export function useChat(chatId: string | null) {
  * mensaje salen de `useMessageSearch`. Sin él, la lista mezclada de siempre,
  * que usan los diálogos donde se elige un lead.
  */
-export function useInfiniteChats(search: string = '', filters: ChatFilters, { contactsOnly = false } = {}) {
+export function useInfiniteChats(search: string = '', filters: ChatFilters, { contactsOnly = false, order = 'recent' as ChatOrder } = {}) {
   const connected = useChatSocketConnected()
   const contactSearch = contactsOnly && !!search
+  // El cursor (timestamp + id de la última fila) sirve para los dos órdenes:
+  // el backend sabe en qué sentido seguir.
+  const effectiveOrder: ChatOrder = search ? 'recent' : order
   return useInfiniteQuery({
-    queryKey: contactSearch ? leadKeys.contactSearch(search, filters) : leadKeys.list(search, filters),
-    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters, contactSearch),
+    queryKey: contactSearch ? leadKeys.contactSearch(search, filters) : leadKeys.list(search, filters, effectiveOrder),
+    queryFn: ({ pageParam }) => fetchChatsPage(search, pageParam as PageParam, filters, contactSearch, effectiveOrder),
     initialPageParam: null as PageParam,
     getNextPageParam: (lastPage) => {
       if (!lastPage.has_more || lastPage.items.length === 0) return undefined
@@ -176,6 +179,20 @@ export function useUnreadCount(enabled = true) {
     refetchInterval: connected ? false : 60_000,
     // Un rol sin chats (el analista) no tiene nada que contar y el backend
     // le negaría el pedido.
+    enabled,
+  })
+}
+
+/** Números del panel de bandejas. Se refrescan con el tiempo real de la lista
+ *  (cuelgan de `leadKeys.all`); sin socket, cada minuto como el resto. */
+export function useInboxCounts(filters: ChatFilters, enabled = true) {
+  const connected = useChatSocketConnected()
+  return useQuery({
+    queryKey: leadKeys.inboxCounts(filters),
+    queryFn: () => fetchInboxCounts(filters),
+    staleTime: 10_000,
+    refetchInterval: connected ? false : 60_000,
+    placeholderData: (previous) => previous,
     enabled,
   })
 }

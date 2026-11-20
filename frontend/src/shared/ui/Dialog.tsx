@@ -3,7 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 export { DialogPrimitive }
 
 export const dialogOverlayClass =
-  'fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out'
+  'fixed inset-0 z-50 bg-scrim data-[state=open]:animate-in data-[state=closed]:animate-out'
 
 export const dialogContentPositionClass =
   'fixed left-1/2 top-1/2 z-[51] -translate-x-1/2 -translate-y-1/2 outline-none'
@@ -12,7 +12,7 @@ export const dialogContentPositionClass =
 // vista de pantalla completa, no un modal) — sin esto quedan dibujados por
 // detrás y parecen no responder al click.
 export const dialogOverlayClassElevated =
-  'fixed inset-0 z-[75] bg-black/50 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out'
+  'fixed inset-0 z-[75] bg-scrim data-[state=open]:animate-in data-[state=closed]:animate-out'
 
 export const dialogContentPositionClassElevated =
   'fixed left-1/2 top-1/2 z-[76] -translate-x-1/2 -translate-y-1/2 outline-none'
@@ -23,7 +23,7 @@ export const dialogContentPositionClassElevated =
 // tapado a la mitad, sin el botón para confirmar, y antes le pasó lo mismo a
 // "Editar lead". Todo diálogo que se abra desde la ficha del lead usa esta.
 export const dialogOverlayClassOverPanel =
-  'fixed inset-0 z-[87] bg-black/50 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out'
+  'fixed inset-0 z-[87] bg-scrim data-[state=open]:animate-in data-[state=closed]:animate-out'
 
 export const dialogContentPositionClassOverPanel =
   'fixed left-1/2 top-1/2 z-[88] -translate-x-1/2 -translate-y-1/2 outline-none'

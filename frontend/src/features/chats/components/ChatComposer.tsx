@@ -16,6 +16,7 @@ import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../../templates/types'
 import { displayName } from '../../leads/public/chat'
 import { renderTemplate } from '../../templates/public/templates'
+import { FlowPicker } from '../../automations/public/FlowPicker'
 import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { NativeInteractiveDialog } from './NativeInteractiveDialog'
@@ -534,50 +535,19 @@ export function ChatComposer({
             </button>
           </div>
         )}
-        {/* gap-1 en el celular: con gap-2 los cuatro botones dejaban al
-            cuadro de texto en ~170 px y "Escribe un mensaje..." se partía. */}
-        <div className="flex items-end gap-1 sm:gap-2">
+        {/* Como WhatsApp: una sola píldora con el emoji a la izquierda y las
+            herramientas a la derecha, y enviar o grabar en un círculo afuera.
+            Antes eran cinco botones sueltos al lado de un cuadro que quedaba
+            en ~170 px en el celular. Los botones se alinean abajo: si el texto
+            crece a varias líneas, quedan a la altura de la última, como allá. */}
+        <div className="flex items-end gap-2">
           <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
 
           {!isRecordingAudio && (
-            <EmojiStickerPanel
-              onInsertEmoji={insertEmoji}
-              onSelectSticker={(asset) => {
-                setStickerError(null)
-                send(
-                  { kind: 'sticker', assetId: asset.id, mediaUrl: asset.media_url },
-                  { onError: (err) => setStickerError(extractErrorMessage(err)) },
-                )
-              }}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <AttachMenu
-              disabled={isLocating}
-              isSending={isLocating}
-              onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
-              onSelectCamera={handleOpenCamera}
-              onSelectMedia={() => openFilePicker(MEDIA_ACCEPT, true)}
-              onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
-              onSelectContact={() => setIsContactDialogOpen(true)}
-              onSelectLocation={handleSendLocation}
-              onSelectInteractive={canSendNativeInteractive ? () => setIsInteractiveDialogOpen(true) : undefined}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <TemplatePicker
-              chat={chat}
-              sentMessages={sentMessageHistory}
-              onSaveHistory={onSaveTemplate}
-              onSendMultimedia={onSendMultimediaTemplate}
-              onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
-            />
-          )}
-
-          {!isRecordingAudio && (
-            <div ref={slashPopoverRef} className="relative flex-1">
+            <div
+              ref={slashPopoverRef}
+              className="relative flex min-w-0 flex-1 items-end rounded-3xl border border-line bg-surface px-1 transition-shadow focus-within:border-line-control focus-within:ring-2 focus-within:ring-ring/25"
+            >
               {slashSuggestions.length > 0 && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[90vw] rounded-xl border border-wa-border bg-white p-1 shadow-xl dark:border-wa-border-dark dark:bg-wa-head-dark">
                   {slashSuggestions.map((template, i) => (
@@ -600,6 +570,18 @@ export function ChatComposer({
                   </p>
                 </div>
               )}
+              <div className="flex h-10 shrink-0 items-center">
+                <EmojiStickerPanel
+                  onInsertEmoji={insertEmoji}
+                  onSelectSticker={(asset) => {
+                    setStickerError(null)
+                    send(
+                      { kind: 'sticker', assetId: asset.id, mediaUrl: asset.media_url },
+                      { onError: (err) => setStickerError(extractErrorMessage(err)) },
+                    )
+                  }}
+                />
+              </div>
               <textarea
                 ref={textareaRef}
                 value={draft}
@@ -617,8 +599,40 @@ export function ChatComposer({
                 // de ayuda cambia según el ancho y no es una etiqueta.
                 aria-label="Escribe un mensaje"
                 rows={1}
-                className="w-full max-h-32 resize-none overflow-y-hidden text-sm bg-white dark:bg-wa-field-dark text-wa-text dark:text-wa-text-dark border border-transparent rounded-lg px-3.5 py-2 outline-none focus:ring-2 focus:ring-wa-primary/60 focus:border-transparent placeholder:text-wa-muted dark:placeholder:text-wa-muted-dark transition-shadow"
+                className="min-w-0 flex-1 max-h-32 resize-none overflow-y-hidden bg-transparent px-1.5 py-2.5 text-sm leading-5 text-fg outline-none placeholder:text-fg-muted"
               />
+              <div className="flex h-10 shrink-0 items-center gap-0.5">
+                <AttachMenu
+                  disabled={isLocating}
+                  isSending={isLocating}
+                  onSelectDocument={() => openFilePicker(DOCUMENT_ACCEPT)}
+                  onSelectCamera={handleOpenCamera}
+                  onSelectMedia={() => openFilePicker(MEDIA_ACCEPT, true)}
+                  onSelectAudio={() => openFilePicker(AUDIO_ACCEPT)}
+                  onSelectContact={() => setIsContactDialogOpen(true)}
+                  onSelectLocation={handleSendLocation}
+                  onSelectInteractive={canSendNativeInteractive ? () => setIsInteractiveDialogOpen(true) : undefined}
+                />
+                {/* En el celular, mientras se escribe, plantillas y flujo se
+                    esconden para darle ancho al texto (como WhatsApp esconde
+                    la cámara); "/" sigue abriendo las respuestas rápidas. */}
+                {!(isMobile && draft.trim()) && (
+                  <>
+                    <TemplatePicker
+                      chat={chat}
+                      sentMessages={sentMessageHistory}
+                      onSaveHistory={onSaveTemplate}
+                      onSendMultimedia={onSendMultimediaTemplate}
+                      onSelect={(text) => setDraft((current) => current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text)}
+                    />
+                    {/* Iniciar flujo, separado de Plantillas por una línea y
+                        con su propio color: ya hubo quien lanzó un flujo
+                        creyendo que mandaba una plantilla (ver FlowPicker). */}
+                    <span className="mx-0.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />
+                    <FlowPicker chatId={chat.chat_id} />
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -626,9 +640,9 @@ export function ChatComposer({
             <button
               type="submit"
               aria-label="Enviar mensaje"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-wa-primary text-white hover:bg-wa-primary-strong active:bg-wa-primary-deep transition-colors shadow-sm"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-fill text-on-accent outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--accent-fill),#000_8%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
             >
-              <Send className="w-4 h-4" />
+              <Send className="h-4.5 w-4.5" />
             </button>
           ) : (
             <VoiceRecorder

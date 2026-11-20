@@ -870,6 +870,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chats/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inbox Counts
+         * @description Chats en cada bandeja (todas, no leídos, mías, sin asignar, abiertas,
+         *     cerradas, esperando respuesta y por etapa), con los filtros de la lista.
+         */
+        get: operations["get_inbox_counts_api_chats_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats/kanban/counts": {
         parameters: {
             query?: never;
@@ -6786,6 +6807,30 @@ export interface components {
             /** Recent */
             recent: components["schemas"]["RecentWindowCount"][];
         };
+        /**
+         * InboxCounts
+         * @description Chats en cada bandeja del panel lateral, con los filtros de la lista.
+         */
+        InboxCounts: {
+            /** All */
+            all: number;
+            /** Unread */
+            unread: number;
+            /** Mine */
+            mine: number;
+            /** Unassigned */
+            unassigned: number;
+            /** Open */
+            open: number;
+            /** Closed */
+            closed: number;
+            /** Waiting */
+            waiting: number;
+            /** Stages */
+            stages: {
+                [key: string]: number;
+            };
+        };
         /** InteractiveLimits */
         InteractiveLimits: {
             /** Text */
@@ -11219,6 +11264,7 @@ export interface operations {
                 limit?: number;
                 cursor_rank?: number | null;
                 search_in?: string;
+                order?: string;
                 unread_only?: boolean;
                 stages?: string | null;
                 tag_ids?: string | null;
@@ -11230,6 +11276,8 @@ export interface operations {
                 inactive_days?: number | null;
                 waiting_time?: string | null;
                 automation_paused?: boolean;
+                unassigned?: boolean;
+                conversation?: string | null;
             };
             header?: never;
             path?: never;
@@ -11308,6 +11356,8 @@ export interface operations {
                 inactive_days?: number | null;
                 waiting_time?: string | null;
                 automation_paused?: boolean;
+                unassigned?: boolean;
+                conversation?: string | null;
             };
             header?: never;
             path?: never;
@@ -11351,6 +11401,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnreadCount"];
+                };
+            };
+        };
+    };
+    get_inbox_counts_api_chats_counts_get: {
+        parameters: {
+            query?: {
+                unread_only?: boolean;
+                stages?: string | null;
+                tag_ids?: string | null;
+                tag_mode?: string;
+                service?: string | null;
+                seller_id?: number | null;
+                origin?: string | null;
+                last_sender?: string | null;
+                inactive_days?: number | null;
+                waiting_time?: string | null;
+                automation_paused?: boolean;
+                unassigned?: boolean;
+                conversation?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

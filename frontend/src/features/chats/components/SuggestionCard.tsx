@@ -86,7 +86,7 @@ export function SuggestionCard({ sugerencia, index, chatId, onUse }: Props) {
 
         {/* Texto sugerido — previsualizado como la burbuja saliente que sería */}
         {sugerencia.texto && (
-          <p className="text-sm text-wa-text dark:text-wa-text-dark leading-relaxed bg-wa-out dark:bg-wa-out-dark rounded-bubble rounded-tr-none p-3 shadow-sm whitespace-pre-wrap">
+          <p className="text-sm text-fg leading-relaxed bg-bubble-out rounded-bubble rounded-tr-none p-3 shadow-sm whitespace-pre-wrap">
             {sugerencia.texto}
           </p>
         )}

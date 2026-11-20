@@ -57,13 +57,13 @@ export function AttachMenu({
         onClick={() => setIsOpen((v) => !v)}
         disabled={disabled}
         aria-label="Adjuntar archivo"
-        className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-wa-field dark:bg-wa-head-dark text-gray-600 dark:text-gray-300 hover:bg-wa-border dark:hover:bg-wa-active-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-52 bg-white dark:bg-wa-head-dark rounded-xl shadow-lg border border-wa-border dark:border-wa-border-dark py-1.5 z-10">
+        <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-wa-head-dark rounded-xl shadow-lg border border-wa-border dark:border-wa-border-dark py-1.5 z-10">
           {ITEMS.filter(({ key }) => key !== 'interactive' || onSelectInteractive).map(({ key, label, icon: Icon, color }) => (
             <button
               key={key}

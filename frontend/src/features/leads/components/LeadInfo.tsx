@@ -1,33 +1,28 @@
-import { AtSign, CalendarClock, CalendarDays, CalendarX, CircleDot, Contact, FileText, MapPin, MessageCircle, MessageCircleOff, Pencil, Phone, Repeat, Tag, User, UserRound, XCircle, type LucideIcon } from 'lucide-react'
-import { useState, type CSSProperties } from 'react'
+import { CalendarX, Pencil } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { readEditField, withoutEditField } from '../../../shared/navigation/editFieldLink'
 import { Button } from '../../../shared/ui/Button'
+import { PanelSection, PanelSectionAction } from '../../../shared/ui/PanelSection'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { displayPhone, displayUsername } from '../utils/chat'
 import { useMarkNoShow, useUpdateLead } from '../queries'
 import type { Chat, LeadUpdateInput } from '../types'
-import { STAGE_ACCENT_CLASS, STAGE_BADGE_CLASS, stageColorStyle } from '../domain/leadStageMeta'
-import { useCustomFields } from '../../catalogs/public/useCustomFields'
-import { useLeadCustomFieldValues, useUpdateLeadCustomFieldValues } from '../hooks/useLeadCustomFieldValues'
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
-import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
+import { LeadCustomFields } from './LeadCustomFields'
 import { LeadFormDialog } from './LeadFormDialog'
 import { useMoveLeadStage } from '../kanban-queries'
 
 interface Props {
   chat: Chat
+  /** Acciones de otras features al pie de los datos ("Analizar con IA"). */
+  footer?: ReactNode
 }
 
 interface LeadInfoField {
   label: string
   value: string | null
-  icon: LucideIcon
-  iconClassName?: string
-  valueClassName?: string
-  /** Variables CSS de la fila (el color de la etapa, ver stageColorStyle). */
-  style?: CSSProperties
 }
 
 /** fecha_recontacto es un DATE puro: `new Date('2026-08-01')` lo interpreta
@@ -52,22 +47,16 @@ function formatDateTime(value: string | null): string | null {
   })
 }
 
-export function LeadInfo({ chat }: Props) {
+export function LeadInfo({ chat, footer }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [noShowError, setNoShowError] = useState<string | null>(null)
-  const [editingCustomFields, setEditingCustomFields] = useState(false)
-  const [customDraft, setCustomDraft] = useState<Record<string, unknown>>({})
   const navigate = useNavigate()
   const updateLead = useUpdateLead(chat.chat_id)
   const moveLeadStage = useMoveLeadStage()
   const isSaving = updateLead.isPending || moveLeadStage.isPending
   const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
   const stageCatalog = useLeadStageCatalog()
-  const stage = stageCatalog.get(chat.stage)
-  const { data: customDefinitions = [] } = useCustomFields('lead')
-  const { data: customValues = {} } = useLeadCustomFieldValues(chat.chat_id)
-  const updateCustomValues = useUpdateLeadCustomFieldValues(chat.chat_id)
 
   function handleMarkNoShow() {
     if (isMarkingNoShow) return
@@ -78,37 +67,30 @@ export function LeadInfo({ chat }: Props) {
   // Ojo con el .filter(f => f.value) de abajo: descarta cualquier valor falsy,
   // así que los números se formatean a string acá (un 0 tiene que verse) y los
   // booleanos se resuelven a null cuando no hay nada que contar.
+  // Nombre, etapa y vendedora no van: están en la cabecera del chat, a la
+  // vista y editables. Repetirlos acá alargaba la ficha sin decir nada nuevo.
+  const openedOrClosedAt = formatDateTime(chat.conversacion_abierta ? chat.conversacion_abierta_at : chat.conversacion_cerrada_at)
   const fields: LeadInfoField[] = [
-    { label: 'Username', value: displayUsername(chat), icon: AtSign },
-    { label: 'Nombre', value: chat.name, icon: Contact },
-    { label: 'Teléfono', value: displayPhone(chat), icon: Phone },
-    { label: 'Teléfono secundario', value: chat.secondary_phone, icon: Phone },
-    { label: 'Estado', value: stage.name, icon: CircleDot, iconClassName: STAGE_ACCENT_CLASS, valueClassName: STAGE_BADGE_CLASS, style: stageColorStyle(stage.color) },
+    { label: 'Username', value: displayUsername(chat) },
+    { label: 'Teléfono', value: displayPhone(chat) },
+    { label: 'Teléfono secundario', value: chat.secondary_phone },
     {
       label: 'Conversación',
-      value: chat.conversacion_abierta ? 'Abierta' : 'Cerrada',
-      icon: chat.conversacion_abierta ? MessageCircle : MessageCircleOff,
-      iconClassName: chat.conversacion_abierta ? 'text-wa-primary' : 'text-red-500',
+      value: `${chat.conversacion_abierta ? 'Abierta' : 'Cerrada'}${openedOrClosedAt ? ` desde ${openedOrClosedAt}` : ''}`,
     },
-    {
-      label: chat.conversacion_abierta ? 'Abierta desde' : 'Cerrada desde',
-      value: formatDateTime(chat.conversacion_abierta ? chat.conversacion_abierta_at : chat.conversacion_cerrada_at),
-      icon: CalendarClock,
-    },
-    { label: 'Servicio', value: chat.servicio_interes, icon: Tag },
-    { label: 'Vendedor', value: chat.vendedor, icon: User },
-    { label: 'Origen', value: chat.origen, icon: MapPin },
-    { label: 'Notas', value: chat.notas, icon: FileText },
-    { label: 'Próxima cita', value: formatDateTime(chat.proxima_cita), icon: CalendarClock },
-    { label: 'Recontacto', value: formatDate(chat.fecha_recontacto), icon: CalendarDays },
-    { label: 'Razón de pérdida', value: chat.razon_perdido, icon: XCircle },
-    { label: 'Especialista', value: chat.con_especialista ? 'Derivado' : null, icon: UserRound },
+    { label: 'Servicio', value: chat.servicio_interes },
+    { label: 'Origen', value: chat.origen },
+    { label: 'Notas', value: chat.notas },
+    { label: 'Próxima cita', value: formatDateTime(chat.proxima_cita) },
+    { label: 'Recontacto', value: formatDate(chat.fecha_recontacto) },
+    { label: 'Razón de pérdida', value: chat.razon_perdido },
+    { label: 'Especialista', value: chat.con_especialista ? 'Derivado' : null },
     // No-shows y toques de seguimiento los lleva el sistema (el primero se
     // confirma a mano abajo, el segundo lo incrementan los recordatorios
     // automáticos de citas); último toque también es automático.
-    { label: 'No-shows', value: chat.contador_noshow != null ? String(chat.contador_noshow) : null, icon: CalendarX },
-    { label: 'Toques de seguimiento', value: chat.toques_seguimiento != null ? String(chat.toques_seguimiento) : null, icon: Repeat },
-    { label: 'Último toque', value: formatDateTime(chat.fecha_ultimo_toque), icon: CalendarClock },
+    { label: 'No-shows', value: chat.contador_noshow != null ? String(chat.contador_noshow) : null },
+    { label: 'Toques de seguimiento', value: chat.toques_seguimiento != null ? String(chat.toques_seguimiento) : null },
+    { label: 'Último toque', value: formatDateTime(chat.fecha_ultimo_toque) },
   ].filter((f) => f.value)
 
   // Desde otra pantalla (Catálogos, al eliminar un servicio) se llega con
@@ -151,62 +133,42 @@ export function LeadInfo({ chat }: Props) {
   }
 
   return (
-    <div className="bg-white dark:bg-wa-head-dark rounded-xl border border-wa-border dark:border-wa-border-dark p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-wa-muted dark:text-wa-muted-dark uppercase tracking-wide">
-          Datos del lead
-        </h3>
-        <button type="button"
-          onClick={() => {
-            setEditError(null)
-            setIsEditing(true)
-          }}
-          aria-label="Editar lead"
-          className="text-wa-muted dark:text-wa-muted-dark hover:text-wa-primary-strong dark:hover:text-wa-primary transition-colors"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
+    <>
+    <PanelSection
+      title="Datos"
+      storageKey="ficha-seccion-datos"
+      action={
+        <PanelSectionAction label="Editar lead" onClick={() => { setEditError(null); setIsEditing(true) }}>
+          <Pencil />
+        </PanelSectionAction>
+      }
+    >
       {fields.length > 0 && (
-        <dl className="space-y-2.5">
-          {fields.map(({ label, value, icon: Icon, iconClassName, valueClassName, style }) => (
-            <div key={label} style={style} className="flex items-start gap-2.5 text-sm">
-              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconClassName ?? 'text-wa-muted dark:text-wa-muted-dark'}`} />
-              <div className="min-w-0">
-                <dt className="text-[11px] font-medium text-wa-muted dark:text-wa-muted-dark leading-none mb-0.5">{label}</dt>
-                <dd className={valueClassName ? `inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${valueClassName}` : 'text-gray-700 dark:text-gray-300 leading-snug'}>
-                  {value}
-                </dd>
-              </div>
+        <dl className="space-y-2">
+          {fields.map(({ label, value }) => (
+            <div key={label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 text-sm">
+              <dt className="pt-px text-xs text-fg-muted">{label}</dt>
+              <dd className="whitespace-pre-line break-words leading-snug text-fg">{value}</dd>
             </div>
           ))}
         </dl>
       )}
 
-      {customDefinitions.length > 0 && (
-        <div className="mt-4 border-t border-wa-border pt-3 dark:border-wa-border-dark">
-          <div className="mb-2 flex items-center justify-between"><h4 className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted">Campos del negocio</h4><button type="button" className="text-xs font-semibold text-wa-primary-strong" onClick={() => { if (!editingCustomFields) setCustomDraft(customValues); setEditingCustomFields(value => !value) }}>{editingCustomFields ? 'Cancelar' : 'Editar'}</button></div>
-          {editingCustomFields ? <div className="space-y-3">{customDefinitions.map(field => <label key={field.id} className="block text-xs font-medium text-wa-muted">{field.label}{field.required ? ' *' : ''}<CustomFieldInput field={field} value={customDraft[field.key]} onChange={value => setCustomDraft(current => ({ ...current, [field.key]: value }))} className="mt-1" /></label>)}<Button size="sm" disabled={updateCustomValues.isPending} onClick={() => updateCustomValues.mutate(customDraft, { onSuccess: () => setEditingCustomFields(false), onError: err => setEditError(extractErrorMessage(err)) })}>Guardar campos</Button></div> : <dl className="space-y-2">{customDefinitions.map(field => customValues[field.key] == null || customValues[field.key] === '' ? null : <div key={field.id}><dt className="text-[11px] text-wa-muted">{field.label}</dt><dd className="text-sm text-gray-700 dark:text-gray-300">{typeof customValues[field.key] === 'boolean' ? customValues[field.key] ? 'Sí' : 'No' : String(customValues[field.key])}</dd></div>)}</dl>}
-        </div>
-      )}
+      <LeadCustomFields chatId={chat.chat_id} />
 
-
-      {chat.proxima_cita && (
-        <div className="mt-3 pt-3 border-t border-wa-border dark:border-wa-border-dark">
-          <button type="button"
-            onClick={handleMarkNoShow}
-            disabled={isMarkingNoShow}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50 transition-colors"
-          >
-            <CalendarX className="w-3.5 h-3.5" />
-            {isMarkingNoShow ? 'Registrando…' : 'Marcar no-show'}
-          </button>
-          {noShowError && (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{noShowError}</p>
+      {(chat.proxima_cita || footer) && (
+        <div className="mt-4 flex flex-wrap items-start gap-2">
+          {footer}
+          {chat.proxima_cita && (
+            <Button variant="dangerGhost" size="sm" onClick={handleMarkNoShow} disabled={isMarkingNoShow}>
+              <CalendarX className="h-3.5 w-3.5" aria-hidden="true" />
+              {isMarkingNoShow ? 'Registrando…' : 'Marcar no-show'}
+            </Button>
           )}
         </div>
       )}
+      {noShowError && <p role="alert" className="mt-1 text-xs text-danger-fg">{noShowError}</p>}
+    </PanelSection>
 
       {showEditor && (
         <LeadFormDialog
@@ -240,6 +202,6 @@ export function LeadInfo({ chat }: Props) {
           highlightService={serviceRequest ? { reason: serviceRequest.reason } : undefined}
         />
       )}
-    </div>
+    </>
   )
 }

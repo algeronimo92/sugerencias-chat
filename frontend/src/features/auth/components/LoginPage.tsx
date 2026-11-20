@@ -420,7 +420,7 @@ export function LoginPage() {
                       <Button
                         type="submit"
                         disabled={isPinPending || pin.length !== PIN_LENGTH}
-                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_var(--color-wa-primary)]"
+                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_var(--accent)]"
                       >
                         {isPinPending ? (
                           <Loader2
@@ -616,7 +616,7 @@ export function LoginPage() {
                       <Button
                         type="submit"
                         disabled={isPending}
-                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_var(--color-wa-primary)]"
+                        className="h-12 w-full rounded-xl text-sm shadow-[0_10px_24px_-10px_var(--accent)]"
                       >
                         {isPending && (
                           <Loader2

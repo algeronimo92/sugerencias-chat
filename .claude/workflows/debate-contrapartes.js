@@ -16,7 +16,7 @@ export const meta = {
 // especialista: lo que cambia entre ellas es a quién revisan, no las reglas.
 
 const ALL = [
-  { key: 'ui', agentType: 'disenador-ui', name: 'Especialista UI/UX', foco: 'jerarquía visual, densidad, consistencia con el panel actual, móvil, modo oscuro y estados vacío/carga/error' },
+  { key: 'ui', agentType: 'ui-ux-expert', name: 'Especialista UI/UX', foco: 'jerarquía visual, densidad, consistencia con el panel actual, móvil, modo oscuro y estados vacío/carga/error' },
   { key: 'ux', agentType: 'investigador-ux', name: 'Investigador UX', foco: 'tareas reales por rol, frecuencia de uso, recorridos y descubribilidad' },
   { key: 'usabilidad', agentType: 'experto-usabilidad', name: 'Especialista en usabilidad', foco: 'heurísticas de Nielsen, carga cognitiva, vocabulario, accesibilidad y errores de interpretación probables' },
   { key: 'datos', agentType: 'analista-datos', name: 'Especialista en análisis de datos', foco: 'si la métrica está bien definida y no engaña, qué gráfico la cuenta mejor y qué hay que empezar a guardar' },

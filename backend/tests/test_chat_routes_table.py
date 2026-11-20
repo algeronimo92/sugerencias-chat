@@ -17,6 +17,7 @@ EXPECTED_ROUTES = [
     ("GET", "/api/chats", "get_chats"),
     ("GET", "/api/chats/message-search", "get_message_search"),
     ("GET", "/api/chats/unread-count", "get_unread_count"),
+    ("GET", "/api/chats/counts", "get_inbox_counts"),
     ("GET", "/api/chats/kanban/counts", "get_kanban_counts"),
     ("GET", "/api/chats/kanban/snapshot", "get_kanban_snapshot"),
     ("GET", "/api/chats/kanban/{stage}", "get_kanban_stage"),
@@ -58,6 +59,7 @@ LITERALS_THAT_LOOK_LIKE_A_CHAT_ID = [
     "/api/chats/sellers",
     "/api/chats/phone-config",
     "/api/chats/unread-count",
+    "/api/chats/counts",
     "/api/chats/message-search",
 ]
 

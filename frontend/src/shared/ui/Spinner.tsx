@@ -10,7 +10,7 @@ export function Spinner({ label, className = '' }: Props) {
   return (
     <div
       role="status"
-      className={`flex items-center justify-center gap-2 text-sm text-wa-muted dark:text-wa-muted-dark ${className}`}
+      className={`flex items-center justify-center gap-2 text-sm text-fg-muted ${className}`}
     >
       <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
       {label && <span>{label}</span>}

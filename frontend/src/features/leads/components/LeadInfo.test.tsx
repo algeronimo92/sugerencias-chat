@@ -65,7 +65,9 @@ describe('LeadInfo', () => {
 
     expect(screen.getByText('Username')).toBeInTheDocument()
     expect(screen.getByText('@gporta.21')).toBeInTheDocument()
-    expect(screen.getByText('Nuevo')).toBeInTheDocument()
+    // Nombre y etapa están en la cabecera del chat: la ficha no los repite.
+    expect(screen.queryByText('Nuevo')).not.toBeInTheDocument()
+    expect(screen.queryByText('Gerson Portal')).not.toBeInTheDocument()
   })
 
   it('abre el editor con el servicio resaltado si se llega con ?editar=servicio_interes, y lo quita al cerrar', async () => {

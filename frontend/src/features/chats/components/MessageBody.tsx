@@ -252,7 +252,7 @@ function DocumentBody(ctx: MessageBodyContext) {
             <FileText className="h-4 w-4" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium not-italic text-wa-text dark:text-wa-text-dark">{name}</p>
+            <p className="truncate text-sm font-medium not-italic text-fg">{name}</p>
             <p className="text-[11px] not-italic text-wa-muted dark:text-wa-text-dark/60">{documentExtension(name)}</p>
           </div>
         </a>
@@ -304,7 +304,7 @@ function ReplyBody({ parsed }: MessageBodyContext) {
           <p className="text-xs text-wa-muted dark:text-wa-text-dark/70">{reply.description}</p>
         )}
         {reply.id && reply.id !== reply.title && (
-          <p className="truncate text-[10px] text-wa-faint dark:text-wa-text-dark/50" title="Id que recibe la automatización">
+          <p className="truncate text-[10px] text-bubble-faint" title="Id que recibe la automatización">
             {parsed.kind === 'button' ? 'Payload' : 'Id'}: {reply.id}
           </p>
         )}
@@ -348,7 +348,7 @@ function ProductReferences({ parsed, title }: { parsed: ParsedContent; title: st
           ))}
         </ul>
         {products[0].catalogId && (
-          <p className="text-[10px] text-wa-faint dark:text-wa-text-dark/50">Catálogo {products[0].catalogId}</p>
+          <p className="text-[10px] text-bubble-faint">Catálogo {products[0].catalogId}</p>
         )}
       </Card>
     </div>
@@ -385,7 +385,7 @@ function InteractiveText({ parsed, withTitle = true }: { parsed: ParsedContent; 
   return (
     <>
       {withTitle && template?.title && (
-        <p className="text-[13px] font-semibold text-wa-text dark:text-wa-text-dark">{template.title}</p>
+        <p className="text-[13px] font-semibold text-fg">{template.title}</p>
       )}
       <Caption parsed={parsed} />
       {template?.footer && (

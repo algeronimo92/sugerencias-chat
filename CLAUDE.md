@@ -124,8 +124,10 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
 ## Agentes
 
 - `.claude/agents/app-expert.md`: reglas de negocio y dónde vive cada funcionalidad.
-- `.claude/agents/ui-ux-expert.md`: diseño, tokens (`frontend/src/index.css`), accesibilidad.
-- Panel de debate (solo lectura): `investigador-ux`, `disenador-ui`, `experto-usabilidad`,
+- `.claude/agents/ui-ux-expert.md`: diseño, tokens (`frontend/src/index.css`), accesibilidad. Su sección 12 es la
+  fuente de las reglas visuales vigentes y de las decisiones del usuario: se actualiza en el mismo cambio que las modifica.
+  Es el único agente de UI: también ocupa ese lugar en los debates.
+- Panel de debate (solo lectura): `investigador-ux`, `ui-ux-expert`, `experto-usabilidad`,
   `experto-negocio-clinicas`, `experto-anuncios-meta`, `analista-datos` y `moderador-producto`, que sintetiza.
   Se corren juntos con `Workflow({ name: 'debate-expertos', args: { tema, contexto } })`
   (`.claude/workflows/debate-expertos.js`). Ejemplo de resultado: `docs/analisis/16-debate-dashboard-analitica.md`.

@@ -45,6 +45,8 @@ export function filtersEqual(a: ChatFilters, b: ChatFilters): boolean {
     && a.inactiveDays === b.inactiveDays
     && a.waitingTime === b.waitingTime
     && a.automationPaused === b.automationPaused
+    && a.unassigned === b.unassigned
+    && a.conversation === b.conversation
   )
 }
 

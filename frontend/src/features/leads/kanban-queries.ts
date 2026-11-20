@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchKanbanSnapshot, fetchKanbanStage, moveLeadStage, bulkAssignTag, bulkMoveStage } from './api'
+import { fetchKanbanSnapshot, fetchKanbanStage, moveLeadStage, bulkAssignSeller, bulkAssignTag, bulkMoveStage } from './api'
 import type { LeadStage } from './types'
 import { kanbanKeys, leadKeys } from './keys'
 
@@ -66,6 +66,20 @@ export function useBulkAssignTag() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: bulkAssignTag,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: leadKeys.all })
+      queryClient.invalidateQueries({ queryKey: kanbanKeys.all })
+      queryClient.invalidateQueries({ queryKey: leadKeys.activityAll })
+    },
+  })
+}
+
+/** Asigna (o quita) la vendedora de varios chats. Lo que no se pudo vuelve en
+ *  `failed`; el backend solo deja hacerlo a un admin. */
+export function useBulkAssignSeller() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkAssignSeller,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.all })
       queryClient.invalidateQueries({ queryKey: kanbanKeys.all })

@@ -1,7 +1,10 @@
-import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react'
+import { Loader2, Plus, X } from 'lucide-react'
+import { TagChip } from '../../../shared/ui/TagChip'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { Button } from '../../../shared/ui/Button'
 import { Select } from '../../../shared/ui/Input'
+import { PanelSection } from '../../../shared/ui/PanelSection'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import type { Chat } from '../types'
@@ -47,16 +50,12 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
   }
 
   return (
-    <div className="rounded-xl border border-wa-border bg-white p-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-head-dark">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-        <TagIcon className="h-3.5 w-3.5" /> Etiquetas
-      </div>
+    <PanelSection title="Etiquetas" count={chat.tags.length} storageKey="ficha-seccion-etiquetas">
       <div className="flex flex-wrap gap-1.5">
         {chat.tags.map((tag) => {
           const isRemoving = removeTag.isPending && removeTag.variables === tag.id
           return (
-          <span key={tag.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-white" style={{ backgroundColor: tag.color }}>
-            {tag.name}
+          <TagChip key={tag.id} name={tag.name} color={tag.color} size="md">
             <button
               type="button"
               onClick={() => removeTag.mutate(tag.id, {
@@ -69,14 +68,14 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
               disabled={removeTag.isPending}
               aria-label={isRemoving ? `Quitando ${tag.name}` : `Quitar ${tag.name}`}
               aria-busy={isRemoving}
-              className="rounded-full hover:bg-black/20 disabled:cursor-wait disabled:opacity-60"
+              className="-mr-1 flex h-5 w-5 items-center justify-center rounded-full text-fg-muted outline-none hover:bg-selected hover:text-fg focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
             >
               {isRemoving ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
             </button>
-          </span>
+          </TagChip>
           )
         })}
-        {chat.tags.length === 0 && <span className="text-xs text-wa-muted">Sin etiquetas</span>}
+        {chat.tags.length === 0 && <span className="text-sm text-fg-muted">Sin etiquetas</span>}
       </div>
 
       {available.length > 0 && (
@@ -84,19 +83,20 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
           <Select
             value={selectedTagId}
             onChange={(event) => setSelectedTagId(event.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-gray-600 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-gray-300"
+            aria-label="Agregar etiqueta"
+            className="min-w-0 flex-1"
           >
             <option value="">Agregar etiqueta…</option>
             {available.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
           </Select>
-          <button type="button" onClick={handleAssign} disabled={!selectedTagId || isAssigning} className="rounded-md bg-wa-primary px-2 text-white hover:bg-wa-primary-strong disabled:opacity-40">
-            {isAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          </button>
+          <Button size="icon" onClick={handleAssign} disabled={!selectedTagId} loading={isAssigning} aria-label="Asignar etiqueta">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </Button>
         </div>
       )}
 
       {me?.role === 'admin' && (
-        <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5 border-t border-wa-border pt-2 dark:border-wa-border-dark">
+        <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5">
           <input
             type="color"
             value={newColor}
@@ -108,13 +108,11 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
             className="h-7 w-8 cursor-pointer rounded-lg border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:rounded-lg [&::-webkit-color-swatch-wrapper]:p-0"
             aria-label="Color"
           />
-          <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nueva etiqueta" className="min-w-0 flex-1 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-wa-text-dark" />
-          <button type="submit" disabled={!newName.trim() || isCreating} className="rounded-md border border-wa-border px-2 py-1.5 text-xs text-wa-muted hover:text-wa-primary-strong disabled:opacity-40 dark:border-wa-border-dark">
-            {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Crear'}
-          </button>
+          <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nueva etiqueta" aria-label="Nombre de la nueva etiqueta" className="min-w-0 flex-1 rounded-lg border border-line-control bg-surface px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          <Button type="submit" variant="secondary" size="sm" disabled={!newName.trim()} loading={isCreating}>Crear</Button>
         </form>
       )}
-      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
-    </div>
+      {error && <p role="alert" className="mt-2 text-xs text-danger-fg">{error}</p>}
+    </PanelSection>
   )
 }

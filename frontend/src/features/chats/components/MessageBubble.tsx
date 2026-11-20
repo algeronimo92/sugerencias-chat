@@ -58,7 +58,7 @@ export function MessageStatusTicks({
     const label = outboxStatus === "retryable_failed" ? "Reintentando" : "Enviando";
     return (
       <span
-        className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60"
+        className="inline-flex items-center gap-1 text-bubble-faint"
         aria-label={label}
         title={outboxStatus === "retryable_failed" && errorDetail ? errorDetail : label}
       >
@@ -86,14 +86,14 @@ export function MessageStatusTicks({
         </button>
         <span
           aria-hidden="true"
-          className="text-wa-faint dark:text-wa-text-dark/60"
+          className="text-bubble-faint"
         >
           ·
         </span>
         <button
           type="button"
           onClick={onDiscard}
-          className="text-wa-faint hover:text-wa-muted dark:text-wa-text-dark/60 dark:hover:text-wa-text-dark"
+          className="text-bubble-faint hover:text-fg"
           aria-label="Descartar el envío fallido"
           title="Descartar: no reintentar este mensaje"
         >
@@ -106,7 +106,7 @@ export function MessageStatusTicks({
   if (outboxStatus === "discarded") {
     return (
       <span
-        className="inline-flex items-center gap-1 text-wa-faint dark:text-wa-text-dark/60"
+        className="inline-flex items-center gap-1 text-bubble-faint"
         aria-label="No enviado, descartado"
         title="No se envió y se descartó: no se va a reintentar"
       >
@@ -144,7 +144,7 @@ export function MessageStatusTicks({
       <span aria-label="Entregado" title="Entregado">
         <CheckCheck
           aria-hidden="true"
-          className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0"
+          className="w-3.5 h-3.5 text-bubble-faint shrink-0"
         />
       </span>
     );
@@ -156,7 +156,7 @@ export function MessageStatusTicks({
     <span aria-label="Enviado" title="Enviado">
       <Check
         aria-hidden="true"
-        className="w-3.5 h-3.5 text-wa-faint dark:text-wa-text-dark/60 shrink-0"
+        className="w-3.5 h-3.5 text-bubble-faint shrink-0"
       />
     </span>
   );
@@ -476,10 +476,10 @@ export function MessageBubble({
           360px los mensajes se parten en demasiadas líneas. */}
         <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
           <div
-            className={`relative rounded-bubble text-sm shadow-sm transition-all duration-700 text-wa-text dark:text-wa-text-dark ${isVisualMedia ? "p-1.5" : "px-3.5 py-2"} ${
+            className={`relative rounded-bubble text-sm shadow-sm transition-all duration-700 text-fg ${isVisualMedia ? "p-1.5" : "px-3.5 py-2"} ${
               isVendedor
-                ? `bg-wa-out dark:bg-wa-out-dark ${isFirstOfGroup ? "rounded-tr-none bubble-tail-out" : ""}`
-                : `bg-white dark:bg-wa-in-dark ${isFirstOfGroup ? "rounded-tl-none bubble-tail-in" : ""}`
+                ? `bg-bubble-out ${isFirstOfGroup ? "rounded-tr-none bubble-tail-out" : ""}`
+                : `bg-bubble-in ${isFirstOfGroup ? "rounded-tl-none bubble-tail-in" : ""}`
             } ${isFlashing ? "ring-2 ring-amber-400 dark:ring-amber-500" : "ring-0 ring-transparent"}`}
           >
             {/* En modo selección la burbuja entera deja de ser interactiva: esta

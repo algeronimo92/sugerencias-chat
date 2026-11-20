@@ -1,8 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Tooltip } from "../../../shared/ui/Tooltip";
+import { TagChip } from "../../../shared/ui/TagChip";
+import { displayName } from "../../leads/public/chat";
+import type { ReactNode } from "react";
 import {
 AlertCircle,
 Loader2,
 MessagesSquare,
+PanelLeftOpen,
 RefreshCw,
 Search,
 SlidersHorizontal,
@@ -31,6 +36,7 @@ import type { LeadStage } from '../../leads/types';
 import { useSellers } from "../../platform/public/useUsers";
 import { useCreateLead } from '../../leads/public/queries'
 import type { Chat, ChatFilters, LeadUpdateInput, MessageSearchHit } from '../../leads/types'
+import type { ChatQuickFilter } from '../layoutContext'
 import { ChatItem } from "./ChatItem";
 import { ChatSearchResults } from "./ChatSearchResults";
 import { ChatViewChips } from "./ChatViewChips";
@@ -51,6 +57,20 @@ const segmentClass = (active: boolean) =>
   }`;
 
 interface Props {
+  /** El panel de bandejas está a la vista: la lista no repite sus filtros. */
+  inboxPanelVisible?: boolean;
+  /** Hay panel de bandejas pero está plegado: botón para mostrarlo. */
+  onShowInboxes?: () => void;
+  /** En el celular: nombre de la bandeja actual, visible en ese botón. */
+  inboxLabel?: string;
+  /** Estado de la conversación y orden, debajo del buscador. */
+  toolbar?: ReactNode;
+  /** Barra fija al pie de la lista (acciones del modo selección). */
+  footer?: ReactNode;
+  /** Modo selección: los chats marcados (null = apagado). Tocar una fila la
+   *  marca en vez de abrir el chat. */
+  selection?: ReadonlySet<string> | null;
+  onToggleSelected?: (chatId: string) => void;
   chats: Chat[];
   isLoading: boolean;
   error: boolean;
@@ -63,8 +83,8 @@ interface Props {
   searchFilters: ChatFilters;
   contactsTotal: number | null;
   onOpenMessage: (hit: MessageSearchHit) => void;
-  filter: "all" | "unread" | "mine";
-  onFilterChange: (value: "all" | "unread" | "mine") => void;
+  filter: ChatQuickFilter;
+  onFilterChange: (value: ChatQuickFilter) => void;
   unreadCount: number;
   advancedFilters: ChatFilters;
   onAdvancedFiltersChange: (value: ChatFilters) => void;
@@ -84,7 +104,7 @@ interface Props {
   onConnectWhatsapp?: () => void;
 }
 
-const ROW_ESTIMATE_PX = 72;
+const ROW_ESTIMATE_PX = 88;
 const HIGHLIGHT_DURATION_MS = 2000;
 // Margen antes de mostrar el aviso de conexión degradada: cubre el parpadeo
 // del socket durante el arranque y las reconexiones automáticas (3s de retry).
@@ -125,6 +145,13 @@ function LoadMoreRow({
 }
 
 export function ChatList({
+  inboxPanelVisible = false,
+  onShowInboxes,
+  inboxLabel,
+  toolbar,
+  footer,
+  selection = null,
+  onToggleSelected,
   chats,
   isLoading,
   error,
@@ -163,6 +190,7 @@ export function ChatList({
   const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead();
   // Solo los usa el panel de filtros: no se piden al cargar la lista.
   const { data: tags = [] } = useTags(false, { enabled: showFilters });
+  const selectedTagIds = new Set(advancedFilters.tagIds);
   const stageCatalog = useLeadStageCatalog();
   // Todas las etapas, también las desactivadas (sus leads siguen ahí), y las
   // de un filtro ya aplicado aunque el negocio las haya borrado.
@@ -207,6 +235,8 @@ export function ChatList({
       tagMode: "any",
       service: "",
       sellerId: null,
+      unassigned: false,
+      conversation: "",
       origin: "",
       lastSender: "",
       inactiveDays: null,
@@ -416,6 +446,18 @@ export function ChatList({
         {/* Cabecera compacta: la lista es lo que importa, no el encabezado. */}
         <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
+            {onShowInboxes && !inboxLabel && (
+              <Tooltip content="Mostrar bandejas">
+                <button
+                  type="button"
+                  onClick={onShowInboxes}
+                  aria-label="Mostrar bandejas"
+                  className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <PanelLeftOpen className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
             <h1 className="truncate text-base font-bold tracking-[-0.02em] text-wa-text dark:text-white">
               Conversaciones
             </h1>
@@ -473,6 +515,23 @@ export function ChatList({
             </button>
           )}
         </div>
+        {onShowInboxes && inboxLabel && (
+          // Celular: las bandejas se abren desde un icono junto al buscador.
+          <Tooltip content={`Bandeja: ${inboxLabel}`}>
+            <button
+              type="button"
+              onClick={onShowInboxes}
+              aria-label={`Bandeja: ${inboxLabel}. Cambiar de bandeja`}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-control text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PanelLeftOpen className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        )}
+        {/* Filtros avanzados: ocultos en el celular por ahora, a pedido
+            (2026-11-19); su lugar lo toma el icono de bandejas. El código y
+            el panel siguen: solo no se muestra el botón. */}
+        {!inboxLabel && (
         <button
           type="button"
           onClick={() => setShowFilters((value) => !value)}
@@ -492,7 +551,11 @@ export function ChatList({
             </span>
           )}
         </button>
+        )}
         </div>
+        {/* Con el panel de bandejas a la vista, estos filtros y las vistas
+            rápidas lo repetían: viven en el panel (doc 18 §6.3). */}
+        {!inboxPanelVisible && (<>
         <div
           className="mt-2 flex rounded-lg bg-wa-field p-0.5 dark:bg-wa-field-dark"
           role="group"
@@ -533,6 +596,8 @@ export function ChatList({
           onChange={onAdvancedFiltersChange}
           canSave={activeAdvancedFilterCount > 0}
         />
+        </>)}
+        {toolbar}
         {showFilters && (
           <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
             <div className="flex items-center justify-between">
@@ -589,28 +654,26 @@ export function ChatList({
                   </Select>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => toggleTag(tag.id)}
-                      className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
-                        advancedFilters.tagIds.includes(tag.id)
-                          ? "text-white"
-                          : "border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-                      }`}
-                      style={
-                        advancedFilters.tagIds.includes(tag.id)
-                          ? {
-                              backgroundColor: tag.color,
-                              borderColor: tag.color,
-                            }
-                          : undefined
-                      }
-                    >
-                      {tag.name}
-                    </button>
-                  ))}
+                  {tags.map((tag) => {
+                    const selected = selectedTagIds.has(tag.id)
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        aria-pressed={selected}
+                        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <TagChip
+                          name={tag.name}
+                          color={tag.color}
+                          size="md"
+                          selected={selected}
+                          className={selected ? "ring-1 ring-line-control" : "hover:bg-selected"}
+                        />
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -838,6 +901,30 @@ export function ChatList({
                   }}
                 >
                   {chat ? (
+                    selection && onToggleSelected ? (
+                      <div className="flex items-center">
+                        <span className="flex shrink-0 pl-3">
+                          <Checkbox
+                            aria-label={`Seleccionar ${displayName(chat)}`}
+                            checked={selection.has(chat.chat_id)}
+                            onCheckedChange={() => onToggleSelected(chat.chat_id)}
+                          />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <ChatItem
+                            hideHint
+                            chat={chat}
+                            isSelected={selection.has(chat.chat_id)}
+                            isHighlighted={false}
+                            search={search}
+                            onClick={() => onToggleSelected(chat.chat_id)}
+                            onPreview={() => onPreview(chat)}
+                            onMarkUnread={() => onMarkUnread(chat)}
+                            isMarkingUnread={markingUnreadId === chat.chat_id}
+                          />
+                        </div>
+                      </div>
+                    ) : (
                     <ChatItem
                       chat={chat}
                       isSelected={chat.chat_id === selectedId}
@@ -848,6 +935,7 @@ export function ChatList({
                       onMarkUnread={() => onMarkUnread(chat)}
                       isMarkingUnread={markingUnreadId === chat.chat_id}
                     />
+                    )
                   ) : (
                     <LoadMoreRow
                       isFetchingNextPage={isFetchingNextPage}
@@ -861,6 +949,7 @@ export function ChatList({
           </div>
         )}
       </div>
+      {footer}
 
       <Suspense fallback={null}>
         {isCreating && (

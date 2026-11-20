@@ -101,7 +101,7 @@ function AttachmentBubble({
   const isAudio = attachment.content_type.startsWith("audio/");
 
   return (
-    <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-wa-out p-1.5 text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
+    <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-bubble-out p-1.5 text-wa-text shadow-sm dark:text-wa-text-dark">
       {isImage && (
         <button
           type="button"
@@ -600,7 +600,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
               )}
             </section>
 
-            <section className="flex min-h-105 flex-col border-t border-wa-border bg-wa-chat dark:border-wa-border-dark dark:bg-wa-chat-dark lg:min-h-0 lg:border-l lg:border-t-0">
+            <section className="flex min-h-105 flex-col border-t border-wa-border bg-thread dark:border-wa-border-dark lg:min-h-0 lg:border-l lg:border-t-0">
               <div className="flex items-center gap-2 bg-wa-head px-4 py-3 dark:bg-wa-head-dark">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-wa-primary text-xs font-semibold text-white">
                   {avatarInitial(chat)}
@@ -617,7 +617,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
               <div className="flex-1 space-y-2 overflow-y-auto p-4">
                 {isInteractive ? (
                   <>
-                    <div className="ml-auto w-full max-w-[88%] overflow-hidden rounded-xl rounded-tr-sm bg-wa-out text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
+                    <div className="ml-auto w-full max-w-[88%] overflow-hidden rounded-xl rounded-tr-sm bg-bubble-out text-sm text-wa-text shadow-sm dark:text-wa-text-dark">
                       <div className="px-3 py-2">
                         {interactiveTitle && (
                           <p className="font-semibold">{interactiveTitle}</p>
@@ -681,7 +681,7 @@ export function TemplateSendDialog({ chat, template, onClose }: Props) {
                 ) : (
                   captionAttachmentIndex < 0 &&
                   text.trim() && (
-                    <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-wa-out px-3 py-2 text-sm text-wa-text shadow-sm dark:bg-wa-out-dark dark:text-wa-text-dark">
+                    <div className="ml-auto w-fit max-w-[88%] rounded-xl rounded-tr-sm bg-bubble-out px-3 py-2 text-sm text-wa-text shadow-sm dark:text-wa-text-dark">
                       {isOfficial &&
                         template.official_header_type === "text" &&
                         template.official_header_text && (

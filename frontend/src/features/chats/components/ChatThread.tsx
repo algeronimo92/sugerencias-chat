@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Copy, Download, Forward, Loader2, MessageCircle, MessageCircleOff, PanelRight, X, Zap, ZapOff } from 'lucide-react'
+import { ChevronDown, Copy, Download, Forward, Loader2, X } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useActivityHold } from '../../../shared/activity'
@@ -6,8 +6,6 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { triggerMediaDownload } from '../../../shared/utils/media'
 import { useMe } from '../../auth/public/queries'
 import { LeadAutomationPanel } from '../../automations/public/LeadAutomationPanel'
-import { FlowPicker } from '../../automations/public/FlowPicker'
-import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { useChatTimeline } from '../hooks/useChatTimeline'
 import { useCustomerServiceWindow } from '../hooks/useCustomerServiceWindow'
 import {
@@ -20,19 +18,19 @@ import { useUpdateLead } from '../../leads/public/queries'
 import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../../templates/types'
 import type { Message } from '../../whatsapp/types'
-import { avatarInitial, displayName } from '../../leads/public/chat'
+import { displayName } from '../../leads/public/chat'
 import { albumMemberIds, groupAlbumMessages } from '../utils/mediaGroups'
 import { formatDayLabel, formatMessageTime, parseContent } from '../../whatsapp/public/message'
 import { messageMediaFilename } from '../utils/messageMedia'
 import { AlbumBubble } from './AlbumBubble'
 import { ChatComposer } from './ChatComposer'
-import { ChatHeaderMoreMenu } from './ChatHeaderMoreMenu'
-import { CustomerServiceWindowBadge, CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
+import { ChatThreadHeader } from './ChatThreadHeader'
+import { CustomerServiceWindowNotice } from './CustomerServiceWindowStatus'
 import { InternalNoteCard } from './InternalNoteCard'
 import { InternalNoteComposer } from './InternalNoteComposer'
 import { MessageBubble, type OpenMedia } from './MessageBubble'
 import { PinnedMessagesBar } from './PinnedMessagesBar'
-import { CallButton, CallCard } from '../../calls/public/CallCard'
+import { CallCard } from '../../calls/public/CallCard'
 import { FlowEventCard } from './FlowEventCard'
 import { StageChangeCard } from './StageChangeCard'
 import { originGroupKey, originLabel } from '../domain/messageOrigin'
@@ -307,7 +305,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-wa-chat dark:bg-wa-chat-dark">
+    <div className="relative flex flex-col h-full bg-thread">
       {/* Barra de selección: reemplaza al header mientras hay mensajes
           tildados, igual que WhatsApp. */}
       {isSelecting ? (
@@ -321,7 +319,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
             >
               <X className="h-5 w-5" />
             </button>
-            <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">
+            <p className="truncate text-sm font-semibold text-fg">
               {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
             </p>
           </div>
@@ -357,103 +355,17 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
           </div>
         </div>
       ) : (
-      /* Header — gris claro / #202C33, como el header de conversación de WhatsApp */
-      <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-wa-border bg-wa-head px-2 py-2.5 sm:px-4 dark:border-wa-border-dark dark:bg-wa-head-dark">
-        <div className="flex min-w-0 items-center gap-1 sm:gap-3">
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label="Volver a la lista de chats"
-              className="-ml-1 flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-          )}
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wa-primary to-wa-primary-strong flex items-center justify-center text-white font-semibold text-xs shrink-0">
-            {avatarInitial(chat)}
-          </div>
-          {/* overflow-hidden: el aviso de las 24 h no puede dibujarse encima de
-              los botones cuando el nombre queda angosto en el celular. */}
-          <div className="min-w-0 overflow-hidden">
-            <p className="truncate text-sm font-semibold text-wa-text dark:text-wa-text-dark">{displayName(chat)}</p>
-            <CustomerServiceWindowBadge data={customerWindow} isLoading={isLoadingCustomerWindow} />
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={toggleConversation}
-            disabled={isUpdatingLead}
-            aria-label={chat.conversacion_abierta ? 'Cerrar conversación' : 'Abrir conversación'}
-            title={chat.conversacion_abierta ? 'Conversación abierta — toca para cerrarla' : 'Conversación cerrada — toca para abrirla'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 max-sm:hidden ${
-              chat.conversacion_abierta
-                ? 'text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/30'
-                : 'text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30'
-            }`}
-          >
-            {chat.conversacion_abierta ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
-          </button>
-          {/* "Iniciar flujo" va junto al interruptor de automatizaciones y no
-              en la fila de composición: ver FlowPicker. */}
-          <FlowPicker chatId={chat.chat_id} />
-          <button
-            type="button"
-            onClick={toggleAutomation}
-            disabled={isUpdatingLead}
-            // Es un interruptor del cliente, no una pausa: solo impide que
-            // arranquen automatizaciones nuevas. Por eso no habla de "pausar"
-            // (ese verbo es de las tarjetas del panel) ni de "bot" (el icono
-            // de robot hacía pensar que apagaba las automatizaciones en
-            // curso). Apagado va en ámbar de alerta, igual que en la lista y
-            // en el panel: es un estado fuera de lo normal que hay que ver
-            // de un vistazo. amber-700 y no amber-500, que sobre wa-head
-            // daba 1,9:1 de contraste.
-            aria-label={chat.automatizacion_pausada
-              ? 'Volver a iniciar automatizaciones nuevas con este cliente'
-              : 'No iniciar automatizaciones nuevas con este cliente'}
-            title={chat.automatizacion_pausada
-              ? 'Sin automatizaciones nuevas para este cliente. Toca para reactivarlas'
-              : 'Automatizaciones nuevas activas. Toca para que no se inicien más'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 max-sm:hidden ${
-              chat.automatizacion_pausada
-                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200/70 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
-                : 'text-wa-muted hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5'
-            }`}
-          >
-            {chat.automatizacion_pausada ? <ZapOff className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
-          </button>
-          {/* Separar la cita es la venta: se llega en un toque desde la
-              conversación, sin pasar por la ficha. */}
-          <CallButton chatId={chat.chat_id} name={displayName(chat)} />
-          <LeadAppointmentAction chat={chat} variant="header" />
-          <div className="sm:hidden">
-            <ChatHeaderMoreMenu
-              conversationOpen={chat.conversacion_abierta}
-              automationPaused={chat.automatizacion_pausada}
-              disabled={isUpdatingLead}
-              onToggleConversation={toggleConversation}
-              onToggleAutomation={toggleAutomation}
-            />
-          </div>
-          {onOpenSuggestions && (
-            <button
-              type="button"
-              onClick={onOpenSuggestions}
-              // Abre la ficha del lead, que además trae el copiloto. Antes era
-              // un ícono de estrellas: prometía IA y abría sobre todo la ficha,
-              // así que nadie lo buscaba para agendar. Las estrellas quedan
-              // para la IA, dentro del panel.
-              aria-label="Abrir ficha del lead"
-              title="Ficha del lead"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-wa-muted transition-colors hover:bg-black/5 dark:text-wa-muted-dark dark:hover:bg-white/5"
-            >
-              <PanelRight className="h-5 w-5" aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      </div>
+      <ChatThreadHeader
+        chat={chat}
+        isAdmin={me?.role === 'admin'}
+        customerWindow={customerWindow}
+        isLoadingCustomerWindow={isLoadingCustomerWindow}
+        isUpdatingLead={isUpdatingLead}
+        onToggleConversation={toggleConversation}
+        onToggleAutomation={toggleAutomation}
+        onBack={onBack}
+        onOpenSuggestions={onOpenSuggestions}
+      />
       )}
 
       {!isNoteMode && pinnedMessages.length > 0 && (

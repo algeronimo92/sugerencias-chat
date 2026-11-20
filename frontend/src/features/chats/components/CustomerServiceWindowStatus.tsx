@@ -1,5 +1,6 @@
 import { AlertTriangle, BadgePercent, Clock3, LockKeyhole, Megaphone, MessageCircle } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
+import { Tooltip } from '../../../shared/ui/Tooltip'
 import type { CustomerServiceWindow } from '../types'
 
 function useRemainingSeconds(expiresAt: string | null | undefined) {
@@ -34,15 +35,31 @@ function formatExpiry(expiresAt: string) {
   })
 }
 
-/** En el celular la cabecera del chat no da para la frase entera: se ve la
- *  versión corta y la larga queda para el lector de pantalla. Desde sm se ve
- *  la larga. */
-function Compact({ short, full }: { short: ReactNode; full: ReactNode }) {
+/**
+ * Aviso de la ventana de 24 h en la cabecera del chat: solo el icono y el
+ * tiempo (o una palabra), en el color del estado y sin pastilla. La frase
+ * entera va en el Tooltip de la app y, para el lector de pantalla, oculta.
+ * Antes era una pastilla verde con "Quedan 18h 57m para responder" que
+ * ocupaba media cabecera y usaba el globo nativo del navegador.
+ */
+function WindowStatus({ icon, short, full, hint, tone }: {
+  icon: ReactNode
+  short: ReactNode
+  full: string
+  hint: string
+  tone: string
+}) {
   return (
-    <>
-      <span className="sm:hidden" aria-hidden="true">{short}</span>
-      <span className="max-sm:sr-only">{full}</span>
-    </>
+    <Tooltip content={hint}>
+      <span
+        tabIndex={0}
+        className={`inline-flex items-center gap-1 whitespace-nowrap rounded text-xs font-medium tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring ${tone}`}
+      >
+        <span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5" aria-hidden="true">{icon}</span>
+        <span aria-hidden="true">{short}</span>
+        <span className="sr-only">{full}</span>
+      </span>
+    </Tooltip>
   )
 }
 
@@ -50,11 +67,10 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const remaining = useRemainingSeconds(data?.expires_at)
   const freeEntryRemaining = useRemainingSeconds(data?.free_entry_point_expires_at)
   if (isLoading && !data) {
-    // Corto y en una línea en el celular, como los demás estados: el texto
-    // largo se partía en tres líneas y se montaba sobre el nombre del lead.
     return (
-      <span className="whitespace-nowrap text-[10px] text-wa-muted dark:text-wa-muted-dark">
-        <Compact short="Comprobando…" full="Comprobando plazo de respuesta…" />
+      <span className="whitespace-nowrap text-xs text-fg-muted">
+        <span aria-hidden="true">Comprobando…</span>
+        <span className="sr-only">Comprobando plazo de respuesta…</span>
       </span>
     )
   }
@@ -63,51 +79,49 @@ export function CustomerServiceWindowBadge({ data, isLoading }: { data?: Custome
   const neverWrote = !!data && data.last_customer_message_at == null
   if (neverWrote) {
     return (
-      <span
-        title="Este lead todavía no escribió por WhatsApp. La ventana de 24 h arranca con su primer mensaje."
-        className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-wa-field px-2 py-1 text-[10px] font-medium text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark"
-      >
-        <MessageCircle className="h-3 w-3 shrink-0" /> <Compact short="Sin mensajes" full="Todavía no te escribió" />
-      </span>
+      <WindowStatus
+        icon={<MessageCircle />}
+        short="Sin mensajes"
+        full="Todavía no te escribió"
+        hint="Este lead todavía no escribió por WhatsApp. La ventana de 24 h arranca con su primer mensaje."
+        tone="text-fg-muted"
+      />
     )
   }
   if (!isOpen && freeEntryRemaining > 0) {
+    const time = formatRemaining(freeEntryRemaining)
     return (
-      <span
-        title={`Venció la ventana de 24 h: para escribirle usa una plantilla aprobada. Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data?.free_entry_point_expires_at as string)}, ni siquiera los de marketing.`}
-        className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
-      >
-        <BadgePercent className="h-3 w-3 shrink-0" />
-        <Compact
-          short={<span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span>}
-          full={<>Plantillas gratis · <span className="font-semibold tabular-nums">{formatRemaining(freeEntryRemaining)}</span></>}
-        />
-      </span>
+      <WindowStatus
+        icon={<BadgePercent />}
+        short={time}
+        full={`Plantillas gratis · ${time}`}
+        hint={`Venció la ventana de 24 h: para escribirle usa una plantilla aprobada. Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data?.free_entry_point_expires_at as string)}, ni siquiera los de marketing.`}
+        tone="text-info-fg"
+      />
     )
   }
   if (!isOpen) {
     return (
-      <span
-        title="Pasaron más de 24 h desde el último mensaje del cliente. Para escribirle, usa una plantilla aprobada de WhatsApp."
-        className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400"
-      >
-        <LockKeyhole className="h-3 w-3 shrink-0" /> <Compact short="Vencido" full="Venció el plazo para responder" />
-      </span>
+      <WindowStatus
+        icon={<LockKeyhole />}
+        short="Vencido"
+        full="Venció el plazo para responder"
+        hint="Pasaron más de 24 h desde el último mensaje del cliente. Para escribirle, usa una plantilla aprobada de WhatsApp."
+        tone="font-semibold text-danger-fg"
+      />
     )
   }
   const urgent = remaining <= 2 * 3600
   const warning = remaining <= 6 * 3600
+  const time = formatRemaining(remaining)
   return (
-    <span
-      title={`Ventana de 24 h de WhatsApp: puedes responder con mensajes libres hasta el ${formatExpiry(data.expires_at as string)}. Después, solo con plantillas aprobadas.${freeEntryRemaining > 0 ? ` Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data.free_entry_point_expires_at as string)}.` : ''}`}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-medium ${urgent ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400' : warning ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-green-50 text-wa-primary-strong dark:bg-green-950/40 dark:text-wa-primary'}`}
-    >
-      {urgent ? <AlertTriangle className="h-3 w-3 shrink-0" /> : <Clock3 className="h-3 w-3 shrink-0" />}
-      <Compact
-        short={<span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span>}
-        full={<>Quedan <span className="font-semibold tabular-nums">{formatRemaining(remaining)}</span> para responder</>}
-      />
-    </span>
+    <WindowStatus
+      icon={urgent ? <AlertTriangle /> : <Clock3 />}
+      short={time}
+      full={`Quedan ${time} para responder`}
+      hint={`Ventana de 24 h de WhatsApp: puedes responder con mensajes libres hasta el ${formatExpiry(data.expires_at as string)}. Después, solo con plantillas aprobadas.${freeEntryRemaining > 0 ? ` Como llegó por un anuncio, Meta no cobra ningún mensaje a este cliente hasta el ${formatExpiry(data.free_entry_point_expires_at as string)}.` : ''}`}
+      tone={urgent ? 'font-semibold text-danger-fg' : warning ? 'text-warning-fg' : 'text-fg-muted'}
+    />
   )
 }
 

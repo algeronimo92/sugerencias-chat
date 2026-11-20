@@ -20,13 +20,13 @@ interface Props {
  * Es uno solo para las cuatro burbujas (texto/media, video, álbum y vista
  * rápida) porque antes cada una tenía el suyo a 10 px y con `wa-faint` sobre
  * el verde del mensaje saliente, que da 2,75:1 de contraste: ilegible para
- * mucha gente y por debajo de WCAG AA. A 12 px y con `wa-faint-strong`
+ * mucha gente y por debajo de WCAG AA. A 12 px y con `bubble-meta`
  * (5,06:1 en claro; en oscuro basta `wa-muted-dark`, 6,10:1) se lee. El botón
  * de guardar mide 24 px porque a 16 no se acertaba en táctil, y la hora de la
  * edición se expone como texto para lectores de pantalla y no solo en `title`.
  */
 export function MessageFooter({ sentAt, editedAt, onSaveTemplate, overlay = false, className = '', children }: Props) {
-  const tone = overlay ? '' : 'text-wa-faint-strong dark:text-wa-muted-dark'
+  const tone = overlay ? '' : 'text-bubble-meta'
   return (
     <span className={`flex items-center justify-end gap-1 text-xs leading-4 ${tone} ${className}`.trim()}>
       {onSaveTemplate && (

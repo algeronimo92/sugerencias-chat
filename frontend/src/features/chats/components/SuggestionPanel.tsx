@@ -12,7 +12,6 @@ import { LeadInfo } from '../../leads/public/LeadInfo'
 import { LeadTagsPanel } from '../../leads/public/LeadTagsPanel'
 import { LeadTaskCard } from '../../tasks/public/LeadTaskCard'
 import { LeadAnalysisAction } from '../../ai/public/LeadAnalysisAction'
-import { LeadAppointmentAction } from '../../appointments/public/LeadAppointmentAction'
 import { useLeadPanelTab } from '../hooks/useLeadPanelTab'
 import { LeadPanelTabs } from './LeadPanelTabs'
 import { SuggestionCard } from './SuggestionCard'
@@ -51,10 +50,11 @@ interface Props {
 }
 
 /**
- * Ficha del lead y copiloto IA en dos pestañas. Antes eran un solo scroll con
- * el copiloto arriba: "Agendar cita" quedaba cuarto y había que buscarlo, y el
- * botón que abría el panel era un ícono de IA. La ficha abre con "Separar
- * cita", que es la venta del negocio.
+ * Ficha del lead y copiloto IA en dos pestañas. La ficha son secciones
+ * plegables separadas por una línea (Datos, Seguimiento, Mensajes
+ * programados, Etiquetas, Historial), como el panel de contacto de Manychat.
+ * "Separar cita" ya no abre la ficha: vive en la cabecera del chat, en todos
+ * los anchos, y repetirlo acá era un segundo botón verde para lo mismo.
  */
 export function SuggestionPanel(props: Props) {
   const { chat } = props
@@ -74,7 +74,7 @@ export function SuggestionPanel(props: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-wa-panel-dark">
+    <div className="flex h-full flex-col bg-surface">
       <LeadPanelTabs
         tab={tab}
         onChange={setTab}
@@ -87,17 +87,15 @@ export function SuggestionPanel(props: Props) {
         role="tabpanel"
         id={`panel-lead-${tab}`}
         aria-labelledby={`tab-lead-${tab}`}
-        className="flex-1 space-y-3 overflow-y-auto p-3"
+        className={`flex-1 overflow-y-auto ${tab === 'copiloto' ? 'space-y-3 p-3' : 'bg-canvas p-2'}`}
       >
         {tab === 'copiloto' ? (
           <section id="copiloto-ia" aria-label="Sugerencias con IA" className="space-y-3">
             <CopilotBody {...props} instruction={instruction} onInstructionChange={setInstruction} onGenerate={generate} windowClosed={windowClosed} />
           </section>
         ) : (
-          <div className="space-y-3">
-            <LeadAppointmentAction chat={chat} />
-            <LeadInfo chat={chat} />
-            <LeadAnalysisAction chatId={chat.chat_id} />
+          <div className="space-y-2">
+            <LeadInfo chat={chat} footer={<LeadAnalysisAction chatId={chat.chat_id} />} />
             <LeadTaskCard chat={chat} />
             <ScheduledMessageCard chat={chat} />
             <LeadTagsPanel chat={chat} />

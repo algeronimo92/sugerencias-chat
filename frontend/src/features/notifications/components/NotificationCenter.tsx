@@ -13,6 +13,12 @@ import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHi
 import type { NotificationPermissionState } from '../hooks/useNotifications'
 import { usePushSubscription } from '../hooks/usePushSubscription'
 interface Props {
+  /**
+   * `header`: icono de la barra superior del celular (el panel abre abajo).
+   * `rail`: ítem del riel compacto (abre al costado).
+   * `toolbar`: icono de la fila de herramientas del riel expandido (abre arriba).
+   */
+  placement?: 'header' | 'rail' | 'toolbar'
   browserPermission: NotificationPermissionState
   onRequestBrowserPermission: () => void
   onNewNotification: (notification: {
@@ -88,7 +94,7 @@ function notificationTime(value: string) {
   return date.toLocaleDateString()
 }
 
-export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification }: Props) {
+export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification, placement = 'header' }: Props) {
   const navigate = useNavigate()
   const { data: me } = useMe()
   const isAdmin = me?.role === 'admin'
@@ -101,6 +107,8 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   const rootRef = useRef<HTMLDivElement>(null)
   const lastSurfacedIdRef = useRef(0)
   const unreadCount = data?.pages[0]?.unread_count ?? 0
+  const inRail = placement === 'rail'
+  const PANEL_POSITION = { header: 'sm:right-0 sm:top-11', rail: 'sm:bottom-0 sm:left-full sm:top-auto sm:ml-2', toolbar: 'sm:bottom-full sm:left-0 sm:top-auto sm:mb-2' }
   const notifications = data?.pages.flatMap(page => page.items) ?? []
   const latestUnread = notifications.find(notification => !notification.read_at)
 
@@ -158,24 +166,29 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
 
   return (
     <div ref={rootRef} className="relative">
-      <Tooltip content="Notificaciones">
+      <Tooltip content="Notificaciones" side={inRail ? 'right' : placement === 'toolbar' ? 'top' : 'bottom'}>
       <button
         type="button"
         onClick={() => setOpen(current => !current)}
         aria-label="Centro de notificaciones"
-        className={`relative flex h-9 w-9 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/60 ${open ? 'bg-wa-primary/10 text-wa-primary-strong dark:bg-white/10 dark:text-wa-text-dark' : 'text-wa-muted hover:bg-wa-hover hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/5 dark:hover:text-wa-text-dark'}`}
+        aria-expanded={open}
+        className={inRail
+          ? `relative flex h-10 w-full items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`
+          : `relative flex items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${placement === 'toolbar' ? 'h-9 w-9' : 'h-10 w-10'} ${open ? 'bg-selected text-fg' : 'text-fg-muted hover:bg-subtle hover:text-fg'}`}
       >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white dark:ring-wa-panel-dark">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
+        <span className="relative flex shrink-0">
+          <Bell className={placement === 'header' ? 'h-4.5 w-4.5' : 'h-5 w-5'} strokeWidth={1.75} aria-hidden="true" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-2.5 -top-2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent-fill px-1 text-[11px] font-semibold leading-none tabular-nums text-on-accent ring-2 ring-surface">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </span>
       </button>
       </Tooltip>
 
       {open && (
-        <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark sm:absolute sm:inset-x-auto sm:right-0 sm:top-9 sm:w-96 sm:max-w-[calc(100vw-2rem)]">
+        <div className={`fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface-raised shadow-overlay sm:absolute sm:inset-x-auto sm:w-96 sm:max-w-[calc(100vw-2rem)] ${PANEL_POSITION[placement]}`}>
           <header className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div>
               <h2 className="text-sm font-semibold text-wa-text dark:text-white">Notificaciones</h2>
@@ -192,8 +205,8 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
           </header>
 
           <div className="flex gap-1 border-b border-wa-border px-3 py-2 dark:border-wa-border-dark">
-            <button type="button" onClick={() => setUnreadOnly(false)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${!unreadOnly ? 'bg-wa-panel-dark text-white dark:bg-wa-field dark:text-wa-text' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>Todas</button>
-            <button type="button" onClick={() => setUnreadOnly(true)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${unreadOnly ? 'bg-wa-panel-dark text-white dark:bg-wa-field dark:text-wa-text' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>No leídas</button>
+            <button type="button" onClick={() => setUnreadOnly(false)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${!unreadOnly ? 'bg-fg text-surface' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>Todas</button>
+            <button type="button" onClick={() => setUnreadOnly(true)} className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${unreadOnly ? 'bg-fg text-surface' : 'text-wa-muted hover:bg-wa-field dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>No leídas</button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">

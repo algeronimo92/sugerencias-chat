@@ -381,8 +381,8 @@ export function VoiceRecorder({ disabled, onRecorded, onError, onRecordingChange
   }
 
   return (
-    <button type="button" onClick={startRecording} disabled={disabled} aria-label="Grabar audio" title="Grabar audio" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-wa-field text-gray-600 transition-colors hover:bg-wa-border disabled:cursor-not-allowed disabled:opacity-50 dark:bg-wa-head-dark dark:text-gray-300 dark:hover:bg-wa-active-dark">
-      <Mic className="h-4 w-4" />
+    <button type="button" onClick={startRecording} disabled={disabled} aria-label="Grabar audio" title="Grabar audio" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-fill text-on-accent outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--accent-fill),#000_8%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50">
+      <Mic className="h-4.5 w-4.5" />
     </button>
   )
 }

@@ -10,11 +10,10 @@ import { SuggestionPanel } from './SuggestionPanel'
 // La ficha del lead no es parte de lo que se prueba acá.
 vi.mock('./ScheduledMessageCard', () => ({ ScheduledMessageCard: () => null }))
 vi.mock('../../leads/public/LeadActivityPanel', () => ({ LeadActivityPanel: () => null }))
-vi.mock('../../leads/public/LeadInfo', () => ({ LeadInfo: () => null }))
+vi.mock('../../leads/public/LeadInfo', () => ({ LeadInfo: () => <section aria-label="Datos" /> }))
 vi.mock('../../leads/public/LeadTagsPanel', () => ({ LeadTagsPanel: () => null }))
 vi.mock('../../tasks/public/LeadTaskCard', () => ({ LeadTaskCard: () => null }))
 vi.mock('../../ai/public/LeadAnalysisAction', () => ({ LeadAnalysisAction: () => null }))
-vi.mock('../../appointments/public/LeadAppointmentAction', () => ({ LeadAppointmentAction: () => <button type="button">Separar cita</button> }))
 // La ventana de 24 h la lee el panel para no ofrecer texto libre cuando no se puede enviar.
 let serviceWindow: { is_open: boolean; last_customer_message_at: string | null } | undefined
 vi.mock('../hooks/useCustomerServiceWindow', () => ({ useCustomerServiceWindow: () => ({ data: serviceWindow, isLoading: false }) }))
@@ -120,11 +119,12 @@ describe('SuggestionPanel pestañas', () => {
 
     // Sin preferencia guardada abre en el copiloto, como antes.
     expect(screen.getByRole('tab', { name: /Copiloto IA/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.queryByRole('button', { name: 'Separar cita' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Datos' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: /Ficha/ }))
-    // La ficha abre con la acción que genera la venta.
-    expect(screen.getByRole('button', { name: 'Separar cita' })).toBeInTheDocument()
+    // "Separar cita" vive solo en la cabecera del chat; la ficha abre con los datos.
+    expect(screen.getByRole('region', { name: 'Datos' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Separar cita/ })).not.toBeInTheDocument()
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'tab-lead-ficha')
     expect(localStorage.getItem('ficha-lead-pestana')).toBe('ficha')
     unmount()

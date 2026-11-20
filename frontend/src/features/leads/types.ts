@@ -49,6 +49,11 @@ export interface BulkMoveStageInput {
   razonPerdido?: string | null
 }
 
+export interface BulkAssignSellerInput {
+  chatIds: string[]
+  sellerId: number | null
+}
+
 export interface BulkAssignTagInput {
   chatIds: string[]
   tagId: number
@@ -66,7 +71,18 @@ export interface ChatFilters {
   inactiveDays: number | null
   waitingTime: '' | 'any' | 'fresh' | 'warning' | 'urgent'
   automationPaused: boolean
+  /** Bandeja "Sin asignar": `sellerId: null` significa "cualquiera". */
+  unassigned: boolean
+  /** Estado de la conversación; vacío, las dos. */
+  conversation: '' | 'open' | 'closed'
 }
+
+/** Orden de la lista: por último mensaje, o la cola de quienes esperan
+ *  respuesta, del que más espera al que menos. */
+export type ChatOrder = 'recent' | 'waiting'
+
+/** Chats en cada bandeja del panel lateral (GET /api/chats/counts). */
+export type InboxCounts = ApiSchemas['InboxCounts']
 
 /** Filtros avanzados en cero: el estado inicial de la lista y el que usan las
  * vistas que listan leads sin ofrecer filtros (ej. el selector de reenvío). */
@@ -82,6 +98,8 @@ export const EMPTY_CHAT_FILTERS: ChatFilters = {
   inactiveDays: null,
   waitingTime: '',
   automationPaused: false,
+  unassigned: false,
+  conversation: '',
 }
 
 export interface LeadActivity {
