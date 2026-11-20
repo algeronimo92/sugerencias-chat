@@ -303,3 +303,13 @@ describe('rutas fuera del CRM', () => {
     expect(await screen.findByText('Hola, Luis')).toBeInTheDocument()
   })
 })
+
+
+it('al entrar como vendedor pide todas las conversaciones permitidas sin imponer su id', async () => {
+  api.current.on('get', '/api/auth/me', { data: SELLER })
+  at('/')
+  render(<App />)
+  await screen.findByRole('button', { name: 'Menú de la cuenta' })
+  await waitFor(() => expect(api.current.calls('get', '/api/chats').length).toBeGreaterThan(0))
+  expect(api.current.calls('get', '/api/chats').every(request => request.params.seller_id == null)).toBe(true)
+})

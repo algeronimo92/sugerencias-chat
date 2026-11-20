@@ -5,7 +5,6 @@ import type { ChatFiltersState } from '../../layoutContext'
 import { InboxSections } from './InboxSections'
 
 interface Props {
-  role: string | undefined
   filters: ChatFiltersState
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -20,7 +19,7 @@ interface Props {
  * Capa z-[87]/z-[88], la de lo que se abre encima de la barra inferior
  * (z-86): con la capa común la hoja quedaba detrás de la barra.
  */
-export function InboxSheet({ role, filters, open, onOpenChange }: Props) {
+export function InboxSheet({ filters, open, onOpenChange }: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -40,7 +39,7 @@ export function InboxSheet({ role, filters, open, onOpenChange }: Props) {
             </Dialog.Close>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <InboxSections role={role} filters={filters} />
+            <InboxSections filters={filters} />
           </div>
           <div className="shrink-0 border-t border-line px-4 py-3">
             <Button size="lg" className="w-full" onClick={() => onOpenChange(false)}>

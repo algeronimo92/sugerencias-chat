@@ -80,7 +80,7 @@ export function MainLayout() {
     useState<SettingsTab>("general");
 
   const layoutContext: LayoutContext = {
-    chatFilters: useChatFiltersState(me?.id ?? null, me?.role),
+    chatFilters: useChatFiltersState(me?.id ?? null),
     openSettings,
     openIntegrations,
     openIssueReport: () => setIsIssueReportOpen(true),

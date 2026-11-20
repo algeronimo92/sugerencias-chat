@@ -165,7 +165,7 @@ El detalle y el porqué están en `docs/analisis/18-rediseno-ui-sistema-visual.m
 
 ### Decisiones del usuario (2026-11-19)
 
-1. La vendedora ve sus chats y los sin asignar: no se le ofrece "Todas" y su lista arranca en "Mías" (por ahora solo en pantalla; el backend no lo restringe).
+1. La lista arranca en "Todas" y también se ofrece esa bandeja a los vendedores. El ajuste por negocio "Cada vendedor ve solo los leads asignados a él" decide el alcance en el backend: apagado ven todos; encendido solo sus asignados (ni ajenos ni sin asignar). "Mías" es un filtro opcional que no se impone por rol. Los administradores siempre ven todos.
 2. Barra del sistema del celular blanca, igual que la cabecera; en escritorio no hay barra superior: el menú lateral lleva logo, notificaciones y cuenta.
 3. No leídos: punto + número, como WhatsApp.
 4. Entre 1280 y 1599 px se pliegan las bandejas y la ficha queda fija; las bandejas se ven desde 1440 px.

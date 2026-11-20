@@ -5,23 +5,16 @@ import { EMPTY_CHAT_FILTERS } from '../../leads/types'
 
 const SEARCH_DEBOUNCE_MS = 300
 
-export function useChatFiltersState(currentUserId: number | null, role?: string): ChatFiltersState {
+export function useChatFiltersState(currentUserId: number | null): ChatFiltersState {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  // "Todas" muestra lo que permite el negocio. El backend limita el alcance
+  // cuando está activa la opción de ver solo asignados; el rol no añade un
+  // filtro "Mías" que siga escondiendo leads al desactivar esa opción.
   const [chatFilter, setChatFilter] = useState<ChatQuickFilter>('all')
   const [advancedFilters, setAdvancedFilters] = useState<ChatFilters>(EMPTY_CHAT_FILTERS)
   const [conversation, setConversation] = useState<ChatFilters['conversation']>('')
   const [order, setOrder] = useState<ChatOrder>('recent')
-
-  // La vendedora arranca en sus chats (decisión 1 del doc 18). El rol llega
-  // con la sesión, después del primer render: se aplica una sola vez, para no
-  // pisar la bandeja que ella elija después. Se ajusta durante el render (no
-  // en un efecto) para no pintar antes "Todas" y recién después "Mías".
-  const [roleDefaultApplied, setRoleDefaultApplied] = useState(false)
-  if (role && !roleDefaultApplied) {
-    setRoleDefaultApplied(true)
-    if (role === 'vendedor') setChatFilter('mine')
-  }
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS)

@@ -12,7 +12,6 @@ import { CustomViewsSection } from './CustomViewsSection'
 const VIEW_ICONS: Record<string, LucideIcon> = { waiting: Clock, urgent: AlarmClock, cold: Moon, paused: ZapOff }
 
 interface Props {
-  role: string | undefined
   filters: ChatFiltersState
 }
 
@@ -21,18 +20,18 @@ interface Props {
  * con cuántos chats hay en cada una (doc 18 §5.2). Las comparten la columna
  * de escritorio (InboxPanel) y la hoja inferior del celular (InboxSheet).
  */
-export function InboxSections({ role, filters }: Props) {
+export function InboxSections({ filters }: Props) {
   const { chatFilter, setChatFilter, advancedFilters, setAdvancedFilters } = filters
   const countFilters = useMemo(() => inboxCountFilters(advancedFilters), [advancedFilters])
   const { data: counts } = useInboxCounts(countFilters)
   const { active: stages } = useLeadStageCatalog()
 
-  // La vendedora ve sus chats y los sin asignar; "Todas" es del admin
-  // (decisión 1 del doc 18).
+  // El backend aplica el alcance configurado también a "Todas". Ocultarla
+  // por rol dejaría a los vendedores sin salida de "Mías" aun con el ajuste apagado.
   const inboxes: { id: ChatQuickFilter; label: string; icon: LucideIcon; count: number | null | undefined }[] = [
     { id: 'unassigned', label: 'Sin asignar', icon: Inbox, count: counts?.unassigned ?? null },
     { id: 'mine', label: 'Mías', icon: User, count: counts?.mine ?? null },
-    ...(role === 'vendedor' ? [] : [{ id: 'all' as const, label: 'Todas', icon: Users, count: counts?.all ?? null }]),
+    { id: 'all', label: 'Todas', icon: Users, count: counts?.all ?? null },
   ]
 
   function toggleView(viewId: string) {

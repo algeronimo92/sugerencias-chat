@@ -24,7 +24,7 @@ const STAGES = [
   { key: 'calificado', name: 'Calificado', color: '#06b6d4', position: 1, kind: 'open', is_active: true },
 ]
 
-function Harness({ role, advanced = EMPTY_CHAT_FILTERS, onAdvanced }: { role: string; advanced?: ChatFilters; onAdvanced?: (filters: ChatFilters) => void }) {
+function Harness({ advanced = EMPTY_CHAT_FILTERS, onAdvanced }: { advanced?: ChatFilters; onAdvanced?: (filters: ChatFilters) => void }) {
   const [chatFilter, setChatFilter] = useState<ChatQuickFilter>('all')
   const [advancedFilters, setAdvancedFilters] = useState<ChatFilters>(advanced)
   const filters = {
@@ -33,7 +33,7 @@ function Harness({ role, advanced = EMPTY_CHAT_FILTERS, onAdvanced }: { role: st
     advancedFilters,
     setAdvancedFilters: (value: ChatFilters) => { setAdvancedFilters(value); onAdvanced?.(value) },
   } as unknown as ChatFiltersState
-  return <InboxPanel role={role} filters={filters} onCollapse={() => {}} />
+  return <InboxPanel filters={filters} onCollapse={() => {}} />
 }
 
 function renderPanel(props: Parameters<typeof Harness>[0]) {
@@ -51,7 +51,7 @@ describe('panel de bandejas', () => {
   })
 
   it('muestra cuántos chats hay en cada bandeja, vista y etapa', async () => {
-    renderPanel({ role: 'admin' })
+    renderPanel({})
 
     expect(await screen.findByRole('button', { name: /Sin asignar\s*4/ }, SLOW)).toBeInTheDocument()
     expect(item(/Mías\s*12/)).toBeInTheDocument()
@@ -63,16 +63,19 @@ describe('panel de bandejas', () => {
     expect(item(/Más de 1 h sin responder/)).toHaveTextContent(/^Más de 1 h sin responder$/)
   })
 
-  it('a la vendedora no le ofrece "Todas"', async () => {
-    renderPanel({ role: 'vendedor' })
+  it('ofrece "Todas" y permite volver desde "Mías"', async () => {
+    renderPanel({})
 
     const section = (await screen.findByRole('button', { name: /Mías/ }, SLOW)).closest('section') as HTMLElement
-    expect(within(section).getAllByRole('button').map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual(['Sin asignar', 'Mías'])
+    expect(within(section).getAllByRole('button').map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual(['Sin asignar', 'Mías', 'Todas'])
+    await userEvent.click(item(/Mías/))
+    await userEvent.click(item(/Todas/))
+    expect(item(/Todas/)).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('tocar una bandeja la selecciona y una etapa filtra solo esa', async () => {
     const onAdvanced = vi.fn()
-    renderPanel({ role: 'admin', onAdvanced })
+    renderPanel({ onAdvanced })
 
     await userEvent.click(await screen.findByRole('button', { name: /Sin asignar/ }, SLOW))
     expect(item(/Sin asignar/)).toHaveAttribute('aria-pressed', 'true')
@@ -90,7 +93,7 @@ describe('panel de bandejas', () => {
   it('"Mis vistas" aplica, quita y guarda vistas propias en el panel', async () => {
     localStorage.setItem('chat-views:v1', JSON.stringify([{ id: 'custom-1', label: 'Botox calientes', filters: { service: 'botox' } }]))
     const onAdvanced = vi.fn()
-    renderPanel({ role: 'admin', onAdvanced })
+    renderPanel({ onAdvanced })
 
     await userEvent.click(await screen.findByRole('button', { name: 'Botox calientes' }, SLOW))
     expect(onAdvanced).toHaveBeenLastCalledWith(expect.objectContaining({ service: 'botox' }))
@@ -111,7 +114,7 @@ describe('panel de bandejas', () => {
   })
 
   it('los números no dependen de la bandeja elegida: solo de etiquetas, servicio y origen', async () => {
-    renderPanel({ role: 'admin', advanced: { ...EMPTY_CHAT_FILTERS, stages: ['nuevo'], tagIds: [3], service: 'botox' } })
+    renderPanel({ advanced: { ...EMPTY_CHAT_FILTERS, stages: ['nuevo'], tagIds: [3], service: 'botox' } })
 
     await screen.findByRole('button', { name: /Mías\s*12/ }, SLOW)
     const params = api.current.calls('get', '/api/chats/counts').at(-1)?.params
