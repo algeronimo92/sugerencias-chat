@@ -35,7 +35,8 @@ import { ChatList } from "./ChatList";
 import { InboxPanel } from "./inbox/InboxPanel";
 import { InboxSheet } from "./inbox/InboxSheet";
 import { ChatListToolbar } from "./inbox/ChatListToolbar";
-import { BulkActionsFooter, BulkSelectionHeader } from "./inbox/BulkActionsBar";
+import { BulkActionsFooter } from "../../leads/public/BulkActionsFooter";
+import { BulkSelectionHeader } from "./inbox/BulkSelectionHeader";
 import { useStoredToggle } from "../hooks/useStoredToggle";
 import { ChatThread } from "./ChatThread";
 
