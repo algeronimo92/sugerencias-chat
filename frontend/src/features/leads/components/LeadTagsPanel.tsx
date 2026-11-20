@@ -96,7 +96,7 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
       )}
 
       {me?.role === 'admin' && (
-        <form onSubmit={handleCreate} className="mt-3 flex items-center gap-1.5 border-t border-line pt-3">
+        <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5">
           <input
             type="color"
             value={newColor}

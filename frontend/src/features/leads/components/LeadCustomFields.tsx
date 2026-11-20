@@ -40,7 +40,7 @@ export function LeadCustomFields({ chatId }: { chatId: string }) {
   }
 
   return (
-    <div className="mt-4 border-t border-line pt-3">
+    <div className="mt-4">
       <div className="mb-2 flex items-center justify-between">
         <h4 className="text-xs font-semibold text-fg-muted">Campos del negocio</h4>
         <Button variant="link" size="sm" onClick={toggleEditing}>{editing ? 'Cancelar' : 'Editar'}</Button>

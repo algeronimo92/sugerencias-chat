@@ -14,10 +14,11 @@ function readStored(key: string | undefined, fallback: boolean): boolean {
 
 /**
  * Sección plegable de un panel lateral (la ficha del lead): título en tipo
- * oración, contador opcional y una acción a la derecha, separada de la
- * siguiente por una línea en vez de una tarjeta, como el panel de contacto de
- * Manychat. Antes cada bloque era una tarjeta con borde, sombra y título en
- * mayúsculas, y la ficha se leía como una pila de cajas.
+ * oración, contador opcional y una acción a la derecha. Cada sección es un
+ * bloque blanco con borde fino sobre el fondo gris del panel, sin sombra.
+ * Separadas solo por una línea quedaban demasiado planas y no se distinguía
+ * dónde terminaba una y empezaba la otra (lo dijo el usuario al probarla);
+ * antes del rediseño eran tarjetas con sombra y título en mayúsculas.
  *
  * Con `storageKey` el plegado se recuerda en este equipo; es comodidad, sin
  * almacenamiento vale para la sesión.
@@ -47,8 +48,8 @@ export function PanelSection({ title, count, action, defaultOpen = true, storage
   }
 
   return (
-    <section aria-label={title} className="border-b border-line last:border-b-0">
-      <div className="flex min-h-11 items-center gap-1 pr-1">
+    <section aria-label={title} className="rounded-xl border border-line bg-surface">
+      <div className="flex min-h-11 items-center gap-1 pl-1.5 pr-1.5">
         <button
           type="button"
           onClick={toggle}
@@ -62,7 +63,7 @@ export function PanelSection({ title, count, action, defaultOpen = true, storage
         </button>
         {action}
       </div>
-      <div id={contentId} hidden={!open} className="px-1 pb-4">
+      <div id={contentId} hidden={!open} className="px-3 pb-3">
         {children}
       </div>
     </section>

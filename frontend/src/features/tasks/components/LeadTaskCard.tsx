@@ -141,7 +141,7 @@ export function LeadTaskCard({ chat }: { chat: Chat }) {
       </div>
 
       {open && (
-        <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-line pt-3">
+        <form onSubmit={handleSubmit} className="mt-3 space-y-2 rounded-lg bg-subtle p-2.5">
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}

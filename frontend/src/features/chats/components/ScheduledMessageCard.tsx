@@ -139,7 +139,7 @@ export function ScheduledMessageCard({ chat }: { chat: Chat }) {
     >
 
       {open && (
-        <form onSubmit={handleSubmit} className="mb-3 space-y-2">
+        <form onSubmit={handleSubmit} className="mb-3 space-y-2 rounded-lg bg-subtle p-2.5">
           <label className="block text-xs font-medium text-fg-muted">
             Mensaje para el cliente
             <textarea

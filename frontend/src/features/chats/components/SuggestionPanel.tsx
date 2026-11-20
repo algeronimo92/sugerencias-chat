@@ -87,14 +87,14 @@ export function SuggestionPanel(props: Props) {
         role="tabpanel"
         id={`panel-lead-${tab}`}
         aria-labelledby={`tab-lead-${tab}`}
-        className={`flex-1 overflow-y-auto ${tab === 'copiloto' ? 'space-y-3 p-3' : 'px-3 py-1'}`}
+        className={`flex-1 overflow-y-auto ${tab === 'copiloto' ? 'space-y-3 p-3' : 'bg-canvas p-2'}`}
       >
         {tab === 'copiloto' ? (
           <section id="copiloto-ia" aria-label="Sugerencias con IA" className="space-y-3">
             <CopilotBody {...props} instruction={instruction} onInstructionChange={setInstruction} onGenerate={generate} windowClosed={windowClosed} />
           </section>
         ) : (
-          <div>
+          <div className="space-y-2">
             <LeadInfo chat={chat} footer={<LeadAnalysisAction chatId={chat.chat_id} />} />
             <LeadTaskCard chat={chat} />
             <ScheduledMessageCard chat={chat} />
