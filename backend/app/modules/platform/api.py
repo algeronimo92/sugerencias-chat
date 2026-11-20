@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from app.db.models.control import PlatformUser
-from app.modules.auth.public import cookie_is_secure, hash_password
+from app.modules.auth.public import cookie_is_secure, hash_password_async
 from app.modules.auth.public import LoginThrottledError, clear_account_attempts, reserve_login_attempt
 from app.modules.platform import branding as branding_service
 from app.modules.platform import knowledge_templates
@@ -187,7 +187,7 @@ async def create_organization(body: NewOrganizationBody) -> dict:
             hostname=body.hostname,
             initial_settings=body.settings or None,
             admin_email=body.admin_email,
-            admin_password_hash=hash_password(body.admin_password)
+            admin_password_hash=await hash_password_async(body.admin_password)
             if body.admin_password
             else None,
             starter_pack=apply_starter_pack if body.starter_pack else None,

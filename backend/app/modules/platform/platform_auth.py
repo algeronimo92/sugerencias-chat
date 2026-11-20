@@ -22,7 +22,7 @@ from sqlalchemy import select
 from app.core.errors import Unauthorized
 from app.db.models.control import PlatformSession, PlatformUser
 from app.db.session import control_session
-from app.modules.auth.public import hash_password, verify_password
+from app.modules.auth.public import hash_password, verify_password_async
 
 
 PLATFORM_COOKIE_NAME = "platform_session"
@@ -52,7 +52,7 @@ async def authenticate(email: str, password: str) -> str | None:
         ).scalars().first()
         password_hash = user.password_hash if user else _DUMMY_HASH
         try:
-            valid = verify_password(password, password_hash)
+            valid = await verify_password_async(password, password_hash)
         except ValueError:
             # Hash corrupto en la fila: se trata como credencial inválida en vez
             # de devolver un 500 que además delataría que el usuario existe.

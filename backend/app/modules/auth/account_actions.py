@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.db.models.auth import AuthActionToken, EmailNotificationLog, User
-from app.modules.auth.auth_service import hash_password, invalidate_user_cache
+from app.modules.auth.auth_service import hash_password_async, invalidate_user_cache
 from app.integrations.email_service import (
     EmailDeliveryError,
     EmailNotConfiguredError,
@@ -102,7 +102,7 @@ async def invite_user(*, email: str, name: str, role: str) -> dict:
                     email=normalized_email,
                     name=name.strip(),
                     # Nunca se entrega ni sirve como credencial conocida.
-                    password_hash=hash_password(_new_token()),
+                    password_hash=await hash_password_async(_new_token()),
                     role=role,
                     is_active=False,
                     created_at=now,
@@ -266,7 +266,7 @@ async def consume_action_token(*, token: str, purpose: str, password: str) -> No
         ):
             raise InvalidActionTokenError()
 
-        user.password_hash = hash_password(password)
+        user.password_hash = await hash_password_async(password)
         if purpose == INVITATION:
             user.is_active = True
             user.activated_at = now

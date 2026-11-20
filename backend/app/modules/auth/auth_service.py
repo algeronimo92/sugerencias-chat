@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import secrets
@@ -24,6 +25,19 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+
+
+# bcrypt cuesta ~250 ms de CPU a propósito. Llamado directo desde una ruta
+# async congela el event loop: 150 intentos de login (5 IPs al límite del
+# throttle, o el equipo entrando al abrir el turno) dejaban ~40 s sin API, sin
+# WebSockets y sin /health/ready, y Docker reiniciaba el contenedor. Las
+# versiones síncronas quedan para scripts y para el arranque.
+async def hash_password_async(password: str) -> str:
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password: str, password_hash: str) -> bool:
+    return await asyncio.to_thread(verify_password, password, password_hash)
 
 
 def invalidate_user_cache(user_id: int | None = None) -> None:

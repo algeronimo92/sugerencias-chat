@@ -11,8 +11,9 @@ from app.modules.auth.auth_service import (
     cookie_is_secure,
     get_current_user,
     hash_password,
+    hash_password_async,
     require_admin,
-    verify_password,
+    verify_password_async,
 )
 from app.modules.auth.login_throttle import (
     LoginThrottledError,

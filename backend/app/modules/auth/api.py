@@ -13,7 +13,7 @@ from app.modules.auth.auth_service import (
     get_current_user,
     set_device_cookie,
     set_session_cookie,
-    verify_password,
+    verify_password_async,
 )
 from app.modules.auth.users_service import get_user_by_email
 from app.modules.auth.admin_totp import (
@@ -89,7 +89,7 @@ async def login(body: LoginRequest, response: Response, request: Request):
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     user = await get_user_by_email(email)
-    if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+    if user is None or not user.is_active or not await verify_password_async(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
 
     mfa_enabled = user.role == "admin" and (await mfa_status(user.id))["enabled"]
@@ -184,7 +184,7 @@ async def setup_pin(
         raise HTTPException(
             status_code=400, detail=f"El PIN debe tener exactamente {PIN_LENGTH} dígitos"
         )
-    if not verify_password(body.current_password, user.password_hash):
+    if not await verify_password_async(body.current_password, user.password_hash):
         # 400, no 401: la sesión sigue siendo válida. El interceptor global
         # interpreta 401 como "sesión vencida" y mandaría al usuario al login.
         raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
@@ -220,7 +220,7 @@ async def start_mfa(body: MfaStartRequest, request: Request, user: User = Depend
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Solo para administradores")
     await _reserve_mfa_attempt(user, request, "mfa_setup")
-    if not verify_password(body.current_password, user.password_hash):
+    if not await verify_password_async(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
     try:
         result = await start_enrollment(user.id, user.email)
@@ -251,7 +251,7 @@ async def remove_mfa(body: MfaDisableRequest, request: Request, user: User = Dep
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Solo para administradores")
     await _reserve_mfa_attempt(user, request, "mfa_code")
-    if not verify_password(body.current_password, user.password_hash):
+    if not await verify_password_async(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Credenciales incorrectas")
     if not await disable_mfa(user.id, body.code):
         raise HTTPException(status_code=400, detail="Credenciales incorrectas")

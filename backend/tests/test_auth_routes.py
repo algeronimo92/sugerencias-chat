@@ -43,7 +43,7 @@ def test_password_login_creates_persistent_session_and_trusted_device(monkeypatc
     device_token = new_token()
     session_token = new_token()
     monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=_user()))
-    monkeypatch.setattr(auth, "verify_password", lambda password, password_hash: True)
+    monkeypatch.setattr(auth, "verify_password_async", AsyncMock(return_value=True))
     register = AsyncMock(return_value=TrustedDeviceResult("device-id", device_token, now + timedelta(days=90)))
     create = AsyncMock(return_value=CreatedSession(session_token, "session-id", now + timedelta(days=90), True))
     monkeypatch.setattr(auth, "register_trusted_device", register)
@@ -67,7 +67,7 @@ def test_password_login_creates_persistent_session_and_trusted_device(monkeypatc
 def test_password_login_without_remembering_uses_browser_session_only(monkeypatch) -> None:
     now = datetime.now(timezone.utc)
     monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=_user()))
-    monkeypatch.setattr(auth, "verify_password", lambda password, password_hash: True)
+    monkeypatch.setattr(auth, "verify_password_async", AsyncMock(return_value=True))
     register = AsyncMock()
     forget = AsyncMock(return_value=True)
     create = AsyncMock(return_value=CreatedSession(new_token(), "session-id", now + timedelta(hours=24), False))
@@ -129,7 +129,7 @@ def test_admin_login_requires_second_factor_before_creating_session(monkeypatch)
     admin = _user()
     admin.role = "admin"
     monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
-    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(auth, "verify_password_async", AsyncMock(return_value=True))
     auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
     create = AsyncMock()
     register = AsyncMock()
@@ -167,7 +167,7 @@ def test_admin_login_with_valid_code_creates_session_after_verification(monkeypa
     admin = _user()
     admin.role = "admin"
     monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
-    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(auth, "verify_password_async", AsyncMock(return_value=True))
     auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
     verify = AsyncMock(return_value=True)
     monkeypatch.setattr(auth, "verify_mfa", verify)
@@ -190,7 +190,7 @@ def test_admin_mfa_login_does_not_create_a_pin_trusted_device(monkeypatch) -> No
     admin = _user()
     admin.role = "admin"
     monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
-    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(auth, "verify_password_async", AsyncMock(return_value=True))
     auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
     monkeypatch.setattr(auth, "verify_mfa", AsyncMock(return_value=True))
     register = AsyncMock()

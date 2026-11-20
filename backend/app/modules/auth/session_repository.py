@@ -1,5 +1,6 @@
 """Atomic domain persistence. No HTTP, realtime, or service imports."""
 from __future__ import annotations
+import asyncio
 import secrets
 from datetime import timedelta
 from uuid import uuid4
@@ -246,7 +247,8 @@ async def configure_pin(
     device = await register_trusted_device(
         user_id, current_token=device_token, device_name=device_name
     )
-    pin_hash = bcrypt.hashpw(pin.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    # bcrypt fuera del event loop: ver auth_service.hash_password_async.
+    pin_hash = (await asyncio.to_thread(bcrypt.hashpw, pin.encode("utf-8"), bcrypt.gensalt())).decode("utf-8")
     async with session_scope() as db:
         await db.execute(
             update(TrustedDevice)
@@ -321,7 +323,7 @@ async def authenticate_pin(device_token: str | None, pin: str) -> tuple[User, Tr
             device.failed_pin_attempts = 0
             device.locked_until = None
 
-        if not bcrypt.checkpw(pin.encode("utf-8"), device.pin_hash.encode("utf-8")):
+        if not await asyncio.to_thread(bcrypt.checkpw, pin.encode("utf-8"), device.pin_hash.encode("utf-8")):
             attempts = device.failed_pin_attempts + 1
             device.failed_pin_attempts = attempts
             if attempts >= settings.pin_max_attempts:
