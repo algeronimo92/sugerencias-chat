@@ -137,3 +137,24 @@ def history_chunks(value: dict) -> list[HistoryChunk]:
             raw=entry,
         ))
     return chunks
+
+
+def without_history_threads(change: dict) -> dict:
+    """El ``change`` de ``history`` sin las conversaciones, para lo que queda
+    en ``public.webhook_inbox`` los días de retención. Ese inbox es compartido
+    por todos los negocios y sin cifrar, y un fragmento de historial trae
+    chats enteros de pacientes; lo que hace falta conservar ya quedó en el
+    schema del negocio. Se deja cuántas conversaciones traía, para depurar."""
+    value = _dict(change.get("value"))
+    history = value.get("history")
+    if not isinstance(history, list):
+        return change
+    entries = []
+    for entry in history:
+        if isinstance(entry, dict) and "threads" in entry:
+            entry = {
+                **{key: item for key, item in entry.items() if key != "threads"},
+                "threads_count": len(_list(entry["threads"])),
+            }
+        entries.append(entry)
+    return {**change, "value": {**value, "history": entries}}

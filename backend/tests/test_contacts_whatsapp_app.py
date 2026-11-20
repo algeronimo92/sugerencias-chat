@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.modules.contacts.whatsapp_app import contact_changes, history_chunks
+from app.modules.contacts.whatsapp_app import contact_changes, history_chunks, without_history_threads
 
 
 def _state(*items):
@@ -60,3 +60,24 @@ def test_history_declined_by_the_business_is_recognized():
 
     assert chunk.declined is True
     assert chunk.threads == []
+
+
+def test_processed_history_leaves_no_patient_chats_in_the_shared_inbox():
+    change = {"field": "history", "entry_id": "WABA", "value": {
+        "messaging_product": "whatsapp", "metadata": {"phone_number_id": "PN"},
+        "history": [{
+            "metadata": {"phase": 0, "chunk_order": 1, "progress": 40},
+            "threads": [{"id": "51987654321", "messages": [{"text": {"body": "mi tratamiento"}}]}],
+        }],
+    }}
+
+    cleaned = without_history_threads(change)
+
+    [entry] = cleaned["value"]["history"]
+    assert "threads" not in entry
+    assert entry["threads_count"] == 1
+    assert entry["metadata"] == {"phase": 0, "chunk_order": 1, "progress": 40}
+    assert cleaned["value"]["metadata"] == {"phone_number_id": "PN"}
+    assert "mi tratamiento" not in repr(cleaned)
+    # El original no se toca: es el que se acaba de procesar.
+    assert change["value"]["history"][0]["threads"]

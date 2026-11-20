@@ -48,7 +48,11 @@ from app.integrations.meta_webhook import metrics
 from app.integrations.meta_webhook.inbox import InboxEvent, replace_payload
 from app.integrations.meta_webhook.projection import project, quoted_wa_message_id
 from app.modules.catalogs.ports.template_service import (replace_official_template_from_meta)
-from app.modules.contacts.public import apply_whatsapp_app_contacts, apply_whatsapp_history
+from app.modules.contacts.public import (
+    apply_whatsapp_app_contacts,
+    apply_whatsapp_history,
+    without_history_threads,
+)
 from app.modules.platform.ports.settings_service import get_effective_many
 from app.integrations.whatsapp.identity import (
     WA_ID,
@@ -481,5 +485,9 @@ async def process_change(event: InboxEvent) -> None:
             await _calls_change(change, event.id, received_at=event.received_at)
             # Ya procesada: la oferta SDP no se queda en el inbox.
             await replace_payload(event.id, without_sdp(change))
+        elif change.get("field") == "history":
+            await _app_data_change(change, event.id)
+            # Ya procesado: los chats de pacientes no se quedan en el inbox.
+            await replace_payload(event.id, without_history_threads(change))
         else:
             await handler(change, event.id)
