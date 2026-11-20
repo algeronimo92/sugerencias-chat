@@ -15,6 +15,13 @@ from app.modules.leads.public import fetch_lead_raw
 CHAT_CALLS_LIMIT = 200
 
 
+async def call_chat_id(call_id: int) -> str:
+    row = await conversation_ports().calls.get(call_id)
+    if row is None:
+        raise rules.CallNotFound()
+    return row["chat_id"]
+
+
 async def _with_names(rows: list[dict], *, caller_names: bool) -> list[dict]:
     handlers = await user_names(row.get("handled_by_user_id") for row in rows)
     items = []

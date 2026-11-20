@@ -8,6 +8,7 @@ from app.integrations.meta import client as meta_service
 from app.integrations.meta.client import MetaApiError
 from app.modules.platform.email_settings import EMAIL_KEYS
 from app.modules.platform.platform_settings import platform_settings_many
+from app.modules.platform.subscribers import lead_visibility_changed
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
     list_business_timezones,
@@ -50,6 +51,8 @@ async def put_settings(body: UpdateSettingsRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    if "sellers_see_only_assigned_leads" in body.values:
+        await lead_visibility_changed()
     return await list_settings()
 
 

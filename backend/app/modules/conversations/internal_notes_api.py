@@ -13,8 +13,9 @@ from app.modules.conversations.internal_notes_service import (
     mark_notes_seen,
 )
 from app.modules.conversations.schemas import InternalNoteCreate, InternalNoteItem, InternalNoteUpdate
+from app.modules.leads.ports.visibility import require_visible_lead
 
-router = APIRouter(prefix="/api/chats/{chat_id}/notes", tags=["internal-notes"])
+router = APIRouter(prefix="/api/chats/{chat_id}/notes", tags=["internal-notes"], dependencies=[Depends(require_visible_lead)])
 
 
 def _author(user: User) -> NoteAuthor:

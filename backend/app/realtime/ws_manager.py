@@ -8,6 +8,7 @@ worker llega al navegador conectado a cualquier réplica de la API.
 
 import asyncio
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -30,6 +31,9 @@ class SocketOwner:
 
     user_id: int
     organization_id: UUID | None
+    # Un vendedor puede tener acotados los leads que ve: los avisos sobre un
+    # lead ajeno no le llegan (ver ``broadcast(sellers=...)``).
+    is_seller: bool = False
 
 
 def _active_organization_id() -> UUID | None:
@@ -47,12 +51,14 @@ class ConnectionManager:
         websocket: WebSocket,
         user_id: int,
         organization_id: UUID | None = None,
+        *,
+        is_seller: bool = False,
     ) -> None:
         await websocket.accept()
         if organization_id is None:
             organization_id = _active_organization_id()
         async with self._lock:
-            self._connections[websocket] = SocketOwner(user_id, organization_id)
+            self._connections[websocket] = SocketOwner(user_id, organization_id, is_seller)
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
@@ -63,20 +69,28 @@ class ConnectionManager:
         message: dict,
         *,
         organization_id: UUID | None = None,
+        sellers: Collection[int] | None = None,
     ) -> None:
+        """A todo el negocio. Con ``sellers``, de los vendedores solo lo
+        reciben esos (los demás roles, siempre): es como se acota un aviso
+        que lleva el texto de un mensaje cuando cada vendedor ve solo sus leads."""
         if organization_id is None:
             organization_id = _active_organization_id()
-        await self._broadcast_here(message, organization_id)
+        await self._broadcast_here(message, organization_id, sellers)
         await signals.ring_remote(REALTIME_SIGNAL, {
             "kind": "broadcast", "organization_id": _wire(organization_id), "message": message,
+            "sellers": sorted(sellers) if sellers is not None else None,
         })
 
-    async def _broadcast_here(self, message: dict, organization_id: UUID | None) -> None:
+    async def _broadcast_here(
+        self, message: dict, organization_id: UUID | None, sellers: Collection[int] | None = None,
+    ) -> None:
         async with self._lock:
             connections = [
                 websocket
                 for websocket, owner in self._connections.items()
                 if owner.organization_id == organization_id
+                and (sellers is None or not owner.is_seller or owner.user_id in sellers)
             ]
 
         async def deliver(websocket: WebSocket) -> WebSocket | None:
@@ -203,7 +217,10 @@ async def _from_other_process(payload: dict) -> None:
     organization_id = _unwire(payload.get("organization_id"))
     kind = payload.get("kind")
     if kind == "broadcast":
-        await manager._broadcast_here(payload["message"], organization_id)
+        sellers = payload.get("sellers")
+        await manager._broadcast_here(
+            payload["message"], organization_id, frozenset(sellers) if sellers is not None else None,
+        )
     elif kind == "user":
         await manager.send_to_user_here(payload["user_id"], payload["message"], organization_id=organization_id)
     elif kind == "disconnect":

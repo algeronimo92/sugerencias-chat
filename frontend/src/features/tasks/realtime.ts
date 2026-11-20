@@ -6,6 +6,9 @@ import { taskKeys } from './keys'
 export function createTasksRealtime(): RealtimeModule {
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: taskKeys.all })
+      },
       tasks_updated: (_event, { queryClient }) => invalidate(queryClient, taskKeys.all),
       task_reminder: ({ task }, { queryClient, navigate, notify }) => {
         invalidate(queryClient, taskKeys.all)

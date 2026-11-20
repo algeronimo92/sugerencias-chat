@@ -7,6 +7,9 @@ import { aiKeys } from './keys'
 export function createAiRealtime(): RealtimeModule {
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: aiKeys.suggestionsAll })
+      },
       chats_updated: (event, { queryClient }) => {
         const latest = event.latest_message
         if (latest?.sender === 'cliente') invalidate(queryClient, aiKeys.suggestions(latest.chat_id))

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import CustomFieldDefinitionCreate, CustomFieldDefinitionItem, CustomFieldDefinitionUpdate, CustomFieldEntity, CustomFieldValues
 from app.modules.auth.public import get_current_user, require_admin
+from app.modules.leads.ports.visibility import require_visible_lead
 from app.modules.catalogs.custom_fields import (
     CustomFieldAlreadyExistsError,
     CustomFieldError,
@@ -14,7 +15,7 @@ from app.modules.catalogs.custom_fields import (
 )
 
 
-router = APIRouter(prefix="/api/custom-fields", tags=["custom-fields"])
+router = APIRouter(prefix="/api/custom-fields", tags=["custom-fields"], dependencies=[Depends(require_visible_lead)])
 
 
 @router.get("", response_model=list[CustomFieldDefinitionItem])

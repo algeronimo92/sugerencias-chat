@@ -8,6 +8,7 @@
 
 
 export const messageKeys = {
+  pinnedAll: ['pinned-messages'] as const,
   all: ['messages'] as const,
   thread: (chatId: string | null) => ['messages', chatId] as const,
   /** Clave de mutación de los envíos de un chat: mientras haya uno en vuelo, el
@@ -22,6 +23,7 @@ export const messageKeys = {
 }
 
 export const noteKeys = {
+  all: ['internal-notes'] as const,
   chat: (chatId: string | null) => ['internal-notes', chatId] as const,
 }
 

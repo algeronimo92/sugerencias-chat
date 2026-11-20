@@ -14,6 +14,11 @@ from app.modules.conversations.domain.types import ScheduledMessageStatus
 from app.db.uow import session_scope
 
 
+async def scheduled_lead_id(scheduled_id: int) -> str | None:
+    async with session_scope() as session:
+        return await session.scalar(select(ScheduledMessage.lead_id).where(ScheduledMessage.id == scheduled_id))
+
+
 async def list_scheduled_messages(lead_id: str) -> list[dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=1)
     stmt = (

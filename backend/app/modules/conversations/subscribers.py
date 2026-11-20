@@ -8,7 +8,6 @@ el procesador del webhook emitían estos avisos a mano, cada uno a su manera.
 from __future__ import annotations
 
 from app.core.events import Phase, subscribe
-from app.modules.auth.ports.users import list_call_agents
 from app.modules.conversations.domain.events import (
     CallAnswered,
     CallClaimed,
@@ -34,6 +33,7 @@ from app.modules.conversations.domain.events import (
 )
 from app.modules.conversations.infrastructure.outbox_worker import notify_new_work
 from app.modules.conversations.message_queries import fetch_message_by_wa_id
+from app.modules.leads.ports.visibility import call_agents_for, lead_audience
 from app.realtime.ws_manager import manager
 
 
@@ -44,7 +44,7 @@ async def wake_the_outbox(_event: OutboundQueued) -> None:
 
 @subscribe(OutboundQueued, phase=Phase.AFTER_COMMIT)
 async def outbound_queued(event: OutboundQueued) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "outbound_queued"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "outbound_queued"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(MessageSent, phase=Phase.AFTER_COMMIT)
@@ -54,9 +54,9 @@ async def message_sent(event: MessageSent) -> None:
         "chat_id": event.chat_id,
         "reason": "outbound_message",
         "message_statuses": [{"id": event.message_id, "outbox_status": "sent"}],
-    })
+    }, sellers=await lead_audience(event.chat_id))
     if event.scheduled:
-        await manager.broadcast({"type": "scheduled_messages_updated", "chat_id": event.chat_id, "status": "sent"})
+        await manager.broadcast({"type": "scheduled_messages_updated", "chat_id": event.chat_id, "status": "sent"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(MessageFailed, phase=Phase.AFTER_COMMIT)
@@ -66,9 +66,9 @@ async def message_failed(event: MessageFailed) -> None:
         "chat_id": event.chat_id,
         "reason": "message_status",
         "message_statuses": [{"id": event.message_id, "outbox_status": "failed"}],
-    })
+    }, sellers=await lead_audience(event.chat_id))
     if event.scheduled:
-        await manager.broadcast({"type": "scheduled_messages_updated", "chat_id": event.chat_id, "status": "failed"})
+        await manager.broadcast({"type": "scheduled_messages_updated", "chat_id": event.chat_id, "status": "failed"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(MessageDiscarded, phase=Phase.AFTER_COMMIT)
@@ -78,7 +78,7 @@ async def message_discarded(event: MessageDiscarded) -> None:
         "chat_id": event.chat_id,
         "reason": "message_status",
         "message_statuses": [{"id": event.message_id, "outbox_status": "discarded"}],
-    })
+    }, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ProviderMessageStored, phase=Phase.AFTER_COMMIT)
@@ -87,12 +87,14 @@ async def provider_message_stored(event: ProviderMessageStored) -> None:
     reason = "outbound_message"
     if event.inbound:
         reason = "inbound_message"
+    # Lleva el texto del mensaje y dispara la notificación de escritorio: solo
+    # a quien puede abrir ese chat.
     await manager.broadcast({
         "type": "chats_updated",
         "chat_id": event.chat_id,
         "reason": reason,
         **({"latest_message": latest} if latest is not None else {}),
-    })
+    }, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ExternalMessagesSynced, phase=Phase.AFTER_COMMIT)
@@ -102,7 +104,7 @@ async def external_messages(event: ExternalMessagesSynced) -> None:
         "reason": "external_message",
         "latest_message": event.latest,
         "chat_id": event.chat_id,
-    })
+    }, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(MessageStatusChanged, phase=Phase.AFTER_COMMIT)
@@ -112,49 +114,49 @@ async def message_status_changed(event: MessageStatusChanged) -> None:
         "chat_id": event.chat_id,
         "reason": "message_status",
         "message_statuses": [{"id": event.message_id, "meta_status": event.meta_status}],
-    })
+    }, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ReactionChanged, phase=Phase.AFTER_COMMIT)
 async def reaction_changed(event: ReactionChanged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "reaction"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "reaction"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(MessageMediaReady, phase=Phase.AFTER_COMMIT)
 async def media_ready(event: MessageMediaReady) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "media_ready"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "media_ready"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ProviderMessageChanged, phase=Phase.AFTER_COMMIT)
 async def provider_message_changed(event: ProviderMessageChanged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "message_changed"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "message_changed"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(MessagePinChanged, phase=Phase.AFTER_COMMIT)
 async def pin_changed(event: MessagePinChanged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "message_pinned"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "message_pinned"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ChatRead, phase=Phase.AFTER_COMMIT)
 async def chat_read(event: ChatRead) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "read"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "read"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ChatMarkedUnread, phase=Phase.AFTER_COMMIT)
 async def chat_unread(event: ChatMarkedUnread) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "unread"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "unread"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(ScheduledMessageChanged, phase=Phase.AFTER_COMMIT)
 async def scheduled_changed(event: ScheduledMessageChanged) -> None:
     await manager.broadcast({
         "type": "scheduled_messages_updated", "chat_id": event.chat_id, "status": event.status,
-    })
+    }, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(InternalNotesChanged, phase=Phase.AFTER_COMMIT)
 async def notes_changed(event: InternalNotesChanged) -> None:
-    await manager.broadcast({"type": "internal_notes_updated", "lead_id": event.chat_id})
+    await manager.broadcast({"type": "internal_notes_updated", "lead_id": event.chat_id}, sellers=await lead_audience(event.chat_id))
 
 
 # Llamadas: el aviso va persona por persona a quienes atienden, no a todo el
@@ -162,17 +164,17 @@ async def notes_changed(event: InternalNotesChanged) -> None:
 # consulta las que suenan cada pocos segundos.
 @subscribe(CallRinging, phase=Phase.AFTER_COMMIT)
 async def call_ringing(event: CallRinging) -> None:
-    for agent in await list_call_agents():
+    for agent in await call_agents_for(event.chat_id):
         await manager.send_to_user(agent["id"], {
             "type": "call_incoming", "call_id": event.call_id, "chat_id": event.chat_id,
             "caller_name": event.caller_name,
         })
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "inbound_message"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "inbound_message"}, sellers=await lead_audience(event.chat_id))
 
 
 @subscribe(CallClaimed, phase=Phase.AFTER_COMMIT)
 async def call_claimed(event: CallClaimed) -> None:
-    for agent in await list_call_agents():
+    for agent in await call_agents_for(event.chat_id):
         await manager.send_to_user(agent["id"], {
             "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
             "status": "connecting", "handled_by_user_id": event.user_id,
@@ -181,7 +183,7 @@ async def call_claimed(event: CallClaimed) -> None:
 
 @subscribe(CallAnswered, phase=Phase.AFTER_COMMIT)
 async def call_answered(event: CallAnswered) -> None:
-    for agent in await list_call_agents():
+    for agent in await call_agents_for(event.chat_id):
         await manager.send_to_user(agent["id"], {
             "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
             "status": "accepted", "handled_by_user_id": event.user_id,
@@ -190,7 +192,7 @@ async def call_answered(event: CallAnswered) -> None:
 
 @subscribe(CallReleased, phase=Phase.AFTER_COMMIT)
 async def call_released(event: CallReleased) -> None:
-    for agent in await list_call_agents():
+    for agent in await call_agents_for(event.chat_id):
         await manager.send_to_user(agent["id"], {
             "type": "call_updated", "call_id": event.call_id, "chat_id": event.chat_id,
             "status": "ringing", "handled_by_user_id": None,
@@ -208,10 +210,10 @@ async def call_dismissed(event: CallDismissed) -> None:
 
 @subscribe(CallEnded, phase=Phase.AFTER_COMMIT)
 async def call_ended(event: CallEnded) -> None:
-    for agent in await list_call_agents():
+    for agent in await call_agents_for(event.chat_id):
         await manager.send_to_user(agent["id"], {
             "type": "call_ended", "call_id": event.call_id, "chat_id": event.chat_id,
             "status": event.status, "cause": event.cause,
             "handled_by_user_id": event.handled_by_user_id, "caller_name": event.caller_name,
         })
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "inbound_message"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.chat_id, "reason": "inbound_message"}, sellers=await lead_audience(event.chat_id))

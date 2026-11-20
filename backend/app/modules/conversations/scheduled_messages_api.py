@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.modules.auth.public import User
 from app.modules.auth.ports.auth_service import get_current_user
 from app.modules.conversations.application.scheduling import cancel_scheduled_message, schedule_message
-from app.modules.conversations.scheduled_queries import list_scheduled_messages
+from app.modules.conversations.scheduled_queries import list_scheduled_messages, scheduled_lead_id
 from app.modules.conversations.schemas import ScheduledMessageCreate, ScheduledMessageItem
+from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 
-router = APIRouter(tags=["scheduled-messages"])
+router = APIRouter(tags=["scheduled-messages"], dependencies=[Depends(require_visible_lead)])
 
 
 @router.get(
@@ -43,5 +44,10 @@ async def delete_scheduled_message(
     scheduled_id: int,
     user: User = Depends(get_current_user),
 ):
+    if await seller_scope(user) is not None:
+        lead_id = await scheduled_lead_id(scheduled_id)
+        if lead_id is None:
+            raise HTTPException(404, "Mensaje programado no encontrado")
+        await ensure_lead_visible(user, lead_id)
     await cancel_scheduled_message(scheduled_id, user.id, user.role == "admin")
     return {"status": "cancelled"}

@@ -156,6 +156,7 @@ async def list_automation_executions(
     active: bool | None = None,
     started_by_user_id: int | None = None,
     started_by_anyone: bool = False,
+    owner_id: int | None = None,
 ) -> list[dict]:
     # Alias propio: `User` ya está tomado por started_by_user_id y la fila
     # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
@@ -199,6 +200,8 @@ async def list_automation_executions(
         # aporta fila y el nombre queda en NULL.
         parent_rule, parent_rule.id == AutomationExecution.event_payload["parent_rule_id"].as_integer(),
     )
+    if owner_id is not None:
+        stmt = stmt.where(Lead.vendedor_id == owner_id)
     if rule_id is not None:
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
     if status:

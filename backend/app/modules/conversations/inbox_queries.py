@@ -11,6 +11,7 @@ from app.modules.conversations.chat_queries import (
     _has_unread_messages_condition,
     _last_message_subquery,
     _visible_lead_condition,
+    owner_condition,
 )
 
 
@@ -34,7 +35,7 @@ async def fetch_unread_wa_message_ids(chat_id: str) -> list[str]:
         return list((await session.execute(stmt)).scalars().all())
 
 
-async def fetch_total_unread_chat_count() -> int:
+async def fetch_total_unread_chat_count(owner_id: int | None = None) -> int:
     """Total de chats con al menos un mensaje de cliente aún no visto.
 
     Solo los que la lista puede mostrar: mismo criterio de visibilidad y de
@@ -44,7 +45,7 @@ async def fetch_total_unread_chat_count() -> int:
     """
     stmt = (
         select(func.count(Lead.id))
-        .where(await _visible_lead_condition(), _has_unread_messages_condition())
+        .where(await _visible_lead_condition(), _has_unread_messages_condition(), owner_condition(owner_id))
     )
     async with session_scope() as session:
         return (await session.execute(stmt)).scalar_one()

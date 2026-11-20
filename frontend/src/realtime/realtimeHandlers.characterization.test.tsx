@@ -304,3 +304,18 @@ describe('conexión', () => {
     expect(FakeWebSocket.instances).toHaveLength(1)
   })
 })
+
+
+it('descarta los datos guardados cuando cambia la visibilidad del vendedor', () => {
+  connect()
+  emit({ type: 'lead_visibility_changed' })
+  for (const key of SEEDED.filter(key => [
+    'chats', 'chat', 'messages', 'kanban', 'tasks', 'notifications', 'lead-activity',
+    'customer-service-window', 'pinned-messages', 'suggestions', 'scheduled-messages',
+    'internal-notes', 'automation-executions', 'automation-manual-flows',
+  ].includes(String(key[0])))) {
+    expect(queryClient.getQueryData(key), JSON.stringify(key)).toBeUndefined()
+  }
+  expect(notify).not.toHaveBeenCalled()
+  expect(onMention).not.toHaveBeenCalled()
+})

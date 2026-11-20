@@ -266,6 +266,11 @@ class _FakeSession:
 
 @pytest.fixture
 def in_memory_appointments(monkeypatch) -> AppointmentWorld:
+    from unittest.mock import AsyncMock
+    from app.modules.leads import visibility
+
+    # El negocio del doble usa la visibilidad por defecto; no lee PostgreSQL.
+    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=False))
     repository = FakeAppointments()
     world = AppointmentWorld(
         repository=repository,

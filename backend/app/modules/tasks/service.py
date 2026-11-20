@@ -29,9 +29,10 @@ async def update_task(task_id: int, values: dict, user_id: int) -> dict | None:
 
 async def complete_pending_tasks(
     user_id: int, is_admin: bool, assigned_user_id: int | None = None, all_users: bool = False,
+    *, owner_id: int | None = None,
 ) -> int:
     async with unit_of_work():
-        completed = await repository.complete_pending_tasks(user_id, is_admin, assigned_user_id, all_users)
+        completed = await repository.complete_pending_tasks(user_id, is_admin, assigned_user_id, all_users, owner_id=owner_id)
         if completed:
             collect(TasksChanged())
     return completed

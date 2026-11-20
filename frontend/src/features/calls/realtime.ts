@@ -7,6 +7,9 @@ import { callKeys } from './keys'
 export function createCallsRealtime(): RealtimeModule {
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: callKeys.all })
+      },
       call_incoming: (_event, { queryClient }) => invalidate(queryClient, callKeys.ringing),
       call_updated: (_event, { queryClient }) => invalidate(queryClient, callKeys.ringing),
       call_ended: (event, { queryClient }) => {

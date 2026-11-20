@@ -43,8 +43,11 @@ async def list_tasks(
     lead_id: str | None,
     assigned_user_id: int | None = None,
     all_users: bool = False,
+    owner_id: int | None = None,
 ):
     stmt = _task_query()
+    if owner_id is not None:
+        stmt = stmt.where(Lead.vendedor_id == owner_id)
     if not is_admin or (not all_users and assigned_user_id is None):
         stmt = stmt.where(LeadTask.assigned_user_id == user_id)
     elif assigned_user_id is not None:

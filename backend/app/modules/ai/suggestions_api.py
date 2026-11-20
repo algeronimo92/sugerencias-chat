@@ -1,14 +1,16 @@
 """Contrato HTTP del asistente IA del vendedor. Los casos de uso viven en
 application/assistant.py y sus errores los traduce bootstrap."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.modules.ai.ai_access import AIUnavailableError, ensure_ai_configured, usage_summary
 from app.modules.ai.application.assistant import LeadNotFound, analyze_lead, suggest_reply
 from app.modules.ai.schemas import AIUsage, AnalysisRequest, LeadAnalysisResult, SuggestionRequest, SuggestionResponse, SuggestionStatus, SuggestionUnavailable
 from app.modules.ai.suggestions_service import get_suggestion_status
+from app.modules.auth.public import User, get_current_user
+from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead
 
-router = APIRouter(prefix="/api/suggestions", tags=["suggestions"])
+router = APIRouter(prefix="/api/suggestions", tags=["suggestions"], dependencies=[Depends(require_visible_lead)])
 
 
 @router.get("/usage", response_model=AIUsage)
@@ -18,8 +20,9 @@ async def read_ai_usage():
 
 
 @router.post("/analyze", response_model=LeadAnalysisResult)
-async def analyze_lead_on_demand(body: AnalysisRequest):
+async def analyze_lead_on_demand(body: AnalysisRequest, user: User = Depends(get_current_user)):
     """Run the analyst only after an authenticated user asks for it."""
+    await ensure_lead_visible(user, body.chat_id)
     return await analyze_lead(body.chat_id)
 
 
@@ -43,6 +46,7 @@ async def read_suggestion_status(chat_id: str):
 
 
 @router.post("", response_model=SuggestionResponse)
-async def get_suggestions(body: SuggestionRequest):
+async def get_suggestions(body: SuggestionRequest, user: User = Depends(get_current_user)):
+    await ensure_lead_visible(user, body.chat_id)
     result = await suggest_reply(body.chat_id, body.phone, force=body.force, instruction=body.instruction)
     return SuggestionResponse(**result) if isinstance(result, dict) else result

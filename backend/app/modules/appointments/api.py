@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.modules.appointments.application import calendar_template, commands, notice
 from app.modules.appointments.domain.notice import Audience
 from app.modules.appointments.domain.appointment import CUSTOM_ADELANTO_KEY, AppointmentRequest, LeadLink
-from app.modules.appointments.queries import list_appointments
+from app.modules.appointments.queries import get_appointment, list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
 from app.modules.auth.public import User
 from app.modules.appointments.schemas import (
@@ -29,6 +29,7 @@ from app.modules.media.ports.media_upload import (normalize_media_content_type)
 from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.platform.public import effective_country_code
 from app.modules.auth.public import list_active_sellers
+from app.modules.leads.ports.visibility import ensure_lead_visible, seller_scope
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 
@@ -41,8 +42,8 @@ async def _active_seller_names() -> set[str]:
 
 
 @router.get("", response_model=list[AppointmentItem])
-async def get_appointments(_user: User = Depends(get_current_user)):
-    return await list_appointments()
+async def get_appointments(user: User = Depends(get_current_user)):
+    return await list_appointments(owner_id=await seller_scope(user))
 
 
 @router.get("/calendar-template", response_model=CalendarEventTemplate)
@@ -92,8 +93,16 @@ async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User 
 @router.post("/{appointment_id}/sync-calendar", response_model=AppointmentItem)
 async def sync_appointment_calendar(
     appointment_id: int,
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    if await seller_scope(user) is not None:
+        appointment = await get_appointment(appointment_id)
+        if appointment is None:
+            raise HTTPException(404, "Cita no encontrada")
+        if appointment["lead_id"] is not None:
+            await ensure_lead_visible(user, appointment["lead_id"])
+        elif appointment["created_by_user_id"] != user.id:
+            raise HTTPException(404, "Cita no encontrada")
     return await commands.sync_calendar(appointment_id)
 
 
@@ -128,6 +137,13 @@ def _attachment(body: AppointmentCreate):
 
 @router.post("", response_model=AppointmentCreated)
 async def post_appointment(body: AppointmentCreate, user: User = Depends(get_current_user)):
+    if body.lead_id is not None:
+        await ensure_lead_visible(user, body.lead_id)
+    elif await seller_scope(user) is not None:
+        # La carga desde Citas también puede encontrar un lead por teléfono.
+        matched = await commands.resolve_lead_for_phone(body.telefono)
+        if matched is not None:
+            await ensure_lead_visible(user, matched)
     try:
         normalize_phone(body.telefono, await effective_country_code())
     except PhoneValidationError as exc:

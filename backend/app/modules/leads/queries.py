@@ -36,6 +36,21 @@ async def lead_ids_for_contacts(phones: list[str], user_ids: list[str]) -> dict[
     return found
 
 
+def lead_ids_owned_by(owner_id: int):
+    """Subconsulta para filtrar datos asociados sin copiar la regla de dueño."""
+    return select(Lead.id).where(Lead.vendedor_id == owner_id)
+
+
+async def fetch_lead_sellers(lead_ids: list[str]) -> dict[str, int | None]:
+    """Vendedor asignado de cada lead pedido. Los que no existen no aparecen."""
+    wanted = {lead_id for lead_id in lead_ids if lead_id}
+    if not wanted:
+        return {}
+    stmt = select(Lead.id, Lead.vendedor_id).where(Lead.id.in_(wanted))
+    async with session_scope() as session:
+        return {str(lead_id): seller_id for lead_id, seller_id in (await session.execute(stmt)).all()}
+
+
 async def list_lead_activity(chat_id: str, limit: int = 50) -> list[dict]:
     stmt = (
         select(

@@ -10,9 +10,10 @@ from dataclasses import dataclass
 from app.core.events import Phase, subscribe
 from app.modules.appointments.public import AppointmentCreated
 from app.db.uow import collect
-from app.modules.auth.ports.users import list_active_sellers, list_call_agents
+from app.modules.auth.ports.users import list_active_sellers
 from app.modules.conversations.public import CallEnded, CallRinging, NoteMentionsAdded, NoteMentionsRead
 from app.modules.issue_reports.ports.service import list_active_admin_ids
+from app.modules.leads.ports.visibility import call_agents_for, lead_recipients
 from app.modules.notifications.events import NotificationCreated, NotificationsRead
 from app.modules.notifications.push_service import send_push_to_user
 from app.modules.notifications.service import (
@@ -36,7 +37,7 @@ class _Author:
 @subscribe(NoteMentionsAdded, phase=Phase.AFTER_COMMIT)
 async def notify_mentions(event: NoteMentionsAdded) -> None:
     created = await create_mention_notifications(
-        event.note, list(event.user_ids), _Author(event.author_id, event.author_name),
+        event.note, sorted(await lead_recipients(event.chat_id, event.user_ids)), _Author(event.author_id, event.author_name),
     )
     for user_id, notification in created:
         await manager.send_to_user(user_id, {"type": "notification_created", "notification": notification})
@@ -72,10 +73,12 @@ async def notify_new_appointment(event: AppointmentCreated) -> None:
             *(await list_active_admin_ids()),
             *(await _seller_ids(event.seller_name)),
         }
+        if event.lead_id is not None:
+            recipient_ids = await lead_recipients(event.lead_id, recipient_ids)
         for recipient_id in recipient_ids:
             notification = await create_system_notification(
                 recipient_id, NotificationType.APPOINTMENT, event.title, event.text,
-                source_id=str(event.appointment_id), metadata={"appointment_id": event.appointment_id},
+                source_id=str(event.appointment_id), metadata={"appointment_id": event.appointment_id}, lead_id=event.lead_id,
             )
             await manager.send_to_user(recipient_id, {"type": "notification_created", "notification": notification})
             await send_push_to_user(
@@ -99,6 +102,9 @@ async def refresh_the_bell(event: NotificationsRead) -> None:
 
 @subscribe(NotificationCreated, phase=Phase.AFTER_COMMIT)
 async def deliver_notification(event: NotificationCreated) -> None:
+    lead_id = event.notification.get("lead_id")
+    if lead_id and event.user_id not in await lead_recipients(lead_id, [event.user_id]):
+        return
     await manager.send_to_user(event.user_id, {"type": "notification_created", "notification": event.notification})
     try:
         await send_push_to_user(event.user_id, event.push_title, event.push_body, event.push_url, tag=event.push_tag)
@@ -119,7 +125,7 @@ async def record_missed_call(event: CallEnded) -> None:
     nunca. El timbre por push y el WebSocket sí pueden perderse; esto no."""
     if event.status != "missed":
         return
-    for agent in await list_call_agents():
+    for agent in await call_agents_for(event.chat_id):
         notification = await create_system_notification(
             agent["id"], NotificationType.MISSED_CALL, "Llamada perdida", _caller(event.caller_name),
             lead_id=event.chat_id, source_id=str(event.call_id),
@@ -143,6 +149,8 @@ RING_PUSH_TTL_SECONDS = 45
 
 async def _push_ring(user_ids: list[int], body: str, chat_id: str, call_id: int) -> None:
     for user_id in user_ids:
+        if user_id not in await lead_recipients(chat_id, [user_id]):
+            continue
         try:
             await send_push_to_user(
                 user_id, "Llamada entrante", body, f"/chat/{chat_id}", tag=f"call-{call_id}", kind="incoming_call",
@@ -158,7 +166,7 @@ async def _push_ring(user_ids: list[int], body: str, chat_id: str, call_id: int)
 async def push_incoming_call(event: CallRinging) -> None:
     """Para quien tiene el CRM cerrado o en segundo plano: con la app a la
     vista ya suena por el WebSocket y el service worker no muestra el push."""
-    user_ids = [agent["id"] for agent in await list_call_agents()]
+    user_ids = [agent["id"] for agent in await call_agents_for(event.chat_id)]
     task = asyncio.create_task(_push_ring(user_ids, _caller(event.caller_name), event.chat_id, event.call_id))
     _ring_pushes.add(task)
     task.add_done_callback(_ring_pushes.discard)

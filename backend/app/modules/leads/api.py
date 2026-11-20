@@ -41,10 +41,13 @@ from app.modules.leads.schemas import (
     ServiceInterestReassignResult,
 )
 from app.modules.leads.updates import lead_column_values
+from app.modules.leads.visibility import require_visible_lead, seller_scope
 from app.modules.platform.public import effective_country_code
 
 
-router = APIRouter(prefix="/api/chats", tags=["chats"])
+# Toda ruta que recibe un lead por id pasa por la visibilidad del vendedor
+# (ver leads/visibility.py); las listas la aplican en sus filtros.
+router = APIRouter(prefix="/api/chats", tags=["chats"], dependencies=[Depends(require_visible_lead)])
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +65,8 @@ async def _normalized_phone(raw: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _lead_filters(
+async def _lead_filters(
+    user: User = Depends(get_current_user),
     unread_only: bool = False,
     stages: str | None = None,
     tag_ids: str | None = None,
@@ -100,6 +104,7 @@ def _lead_filters(
         automation_paused=automation_paused,
         unassigned=unassigned,
         conversation=conversation,
+        owner_id=await seller_scope(user),
     )
 
 
@@ -156,9 +161,9 @@ async def get_message_search(
 
 
 @router.get("/unread-count", response_model=UnreadCount)
-async def get_unread_count():
+async def get_unread_count(user: User = Depends(get_current_user)):
     """Cantidad de chats no leídos; solo baja al marcar uno como visto."""
-    return {"count": await fetch_total_unread_chat_count()}
+    return {"count": await fetch_total_unread_chat_count(await seller_scope(user))}
 
 
 @router.get("/counts", response_model=InboxCounts)
@@ -172,13 +177,13 @@ async def get_inbox_counts(
 
 
 @router.get("/kanban/counts", response_model=dict[str, int])
-async def get_kanban_counts(search: str | None = None):
-    return await fetch_kanban_counts(search.strip() if search else None)
+async def get_kanban_counts(search: str | None = None, user: User = Depends(get_current_user)):
+    return await fetch_kanban_counts(search.strip() if search else None, await seller_scope(user))
 
 
 @router.get("/kanban/snapshot", response_model=KanbanSnapshot)
-async def get_kanban_snapshot(search: str | None = None):
-    return await fetch_kanban_snapshot(search.strip() if search else None)
+async def get_kanban_snapshot(search: str | None = None, user: User = Depends(get_current_user)):
+    return await fetch_kanban_snapshot(search.strip() if search else None, owner_id=await seller_scope(user))
 
 
 @router.get("/kanban/{stage}", response_model=KanbanPage)
@@ -187,8 +192,11 @@ async def get_kanban_stage(
     search: str | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=KANBAN_PAGE_SIZE, ge=1, le=100),
+    user: User = Depends(get_current_user),
 ):
-    return await fetch_kanban_stage(stage, search.strip() if search else None, offset, limit)
+    return await fetch_kanban_stage(
+        stage, search.strip() if search else None, offset, limit, owner_id=await seller_scope(user),
+    )
 
 
 # Antes de las rutas con `{chat_id}`: "service-interest" no es un lead.
@@ -219,6 +227,11 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
 
     if user.role != "admin" and body.vendedor_id not in (None, user.id):
         raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
+    vendedor_id = body.vendedor_id
+    # Si solo ve sus leads, uno que crea sin asignar desaparecería de su lista
+    # en cuanto lo guarda.
+    if vendedor_id is None and await seller_scope(user) is not None:
+        vendedor_id = user.id
 
     try:
         custom_fields = await normalize_values("lead", body.custom_fields, require_required=True)
@@ -233,7 +246,7 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
         name,
         actor=Actor.user(user.id),
         servicio_interes=body.servicio_interes,
-        vendedor_id=body.vendedor_id,
+        vendedor_id=vendedor_id,
         origen=body.origen,
         notas=body.notas,
         secondary_phone=body.secondary_phone,

@@ -10,6 +10,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from app.modules.tasks.repository import claim_due_reminders, release_reminder
+from app.modules.leads.ports.visibility import lead_recipients
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,10 @@ async def deliver_due_reminders() -> None:
     if _deliver is None:
         raise RuntimeError("La entrega de recordatorios no está configurada (app.composition)")
     for reminder in await claim_due_reminders():
+        if reminder["assigned_user_id"] not in await lead_recipients(reminder["lead_id"], [reminder["assigned_user_id"]]):
+            # Puede volver a ser visible si se reasigna el lead o se apaga el ajuste.
+            await release_reminder(reminder["task_id"])
+            continue
         delivered = await _deliver(reminder["assigned_user_id"], {"type": "task_reminder", "task": reminder})
         if not delivered:
             # El usuario estaba desconectado: se reintenta en el próximo

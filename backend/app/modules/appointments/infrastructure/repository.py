@@ -14,6 +14,7 @@ from app.integrations.whatsapp.identity import lead_id_for_identifier
 from app.modules.conversations.ports.message_queries import phoneless_chats_mentioning
 from app.modules.conversations.public import NoteAuthor, create_note
 from app.modules.leads.public import Actor, LeadAlreadyExists, create_lead, fetch_lead_raw, register_appointment
+from app.modules.leads.ports.visibility import seller_scope_by_id
 from app.modules.appointments.queries import _query, _serialize
 
 # Así se reconoce en el CRM el lead que nació de una cita cargada desde Citas.
@@ -99,7 +100,10 @@ class SqlAppointmentLeads:
 
     async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
         try:
-            return await create_lead(phone, name, actor=Actor.user(actor_user_id), origen=NEW_LEAD_ORIGIN)
+            return await create_lead(
+                phone, name, actor=Actor.user(actor_user_id), origen=NEW_LEAD_ORIGIN,
+                vendedor_id=await seller_scope_by_id(actor_user_id),
+            )
         except LeadAlreadyExists:
             # Un mensaje entrante (u otra cita) dio de alta el número entre la
             # búsqueda y el alta: la cita va a ese lead.

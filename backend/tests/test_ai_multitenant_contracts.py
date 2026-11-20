@@ -29,6 +29,9 @@ from app.modules.ai.ai_job_tokens import AIJobClaims, decode_ai_job_token, issue
 from app.modules.ai.ai_jobs import AIContextStale, AIJobConflict
 from tests.conftest import patch_webhooks
 
+# La visibilidad por vendedor no aplica a un admin y no consulta el ajuste.
+ADMIN = SimpleNamespace(id=1, role="admin")
+
 
 JOB_ID = "5e0dd73e-80c7-4a9d-82a9-b4a670c8b90d"
 ORG_ID = UUID("68b010ae-8f9b-4f47-ab57-c74048923081")
@@ -190,9 +193,7 @@ async def test_rag_response_never_changes_stage(monkeypatch):
     cache = AsyncMock(return_value="cached")
     monkeypatch.setattr(suggestions_service, "cache_suggestion_if_current", cache)
 
-    result = await suggestions.get_suggestions(
-        SuggestionRequest(chat_id="lead-1", force=True)
-    )
+    result = await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert result.estado == "calificado"
     cache.assert_awaited_once()
@@ -208,7 +209,7 @@ async def test_suggestions_without_tenant_never_reach_the_workflow(monkeypatch):
     _provide(monkeypatch, suggest=call)
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert exc.value.status_code == 503
     call.assert_not_awaited()
@@ -236,7 +237,7 @@ async def test_platform_entitlement_blocks_generation_before_creating_a_job(
     monkeypatch.setattr(ai_jobs_module, "create_ai_job", create)
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert exc.value.status_code == status
     assert exc.value.detail["code"] == code
@@ -266,7 +267,7 @@ async def test_unconfigured_platform_explains_instead_of_crashing(monkeypatch):
     monkeypatch.setattr(ai_jobs_module, "create_ai_job", create)
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "ai_not_configured"
@@ -308,7 +309,7 @@ async def test_signing_failure_closes_the_job_instead_of_leaving_it_pending(monk
     _provide(monkeypatch, suggest=call)
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "ai_not_configured"
@@ -322,7 +323,7 @@ async def test_workflow_failure_is_reported_as_retryable(monkeypatch):
     _provide(monkeypatch, suggest=AsyncMock(side_effect=RuntimeError("n8n caido")))
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert exc.value.status_code == 502
     assert exc.value.detail["code"] == "ai_workflow_failed"
@@ -335,7 +336,7 @@ async def test_workflow_rejecting_the_backend_is_a_configuration_problem(monkeyp
     _provide(monkeypatch, suggest=AsyncMock(side_effect=AiWorkflowRejected("rechazado")))
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1", force=True), ADMIN)
 
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "ai_workflow_rejected"
@@ -471,7 +472,7 @@ async def test_saved_suggestion_is_not_served_without_a_business_key(monkeypatch
     monkeypatch.setattr(ai_access, "platform_ready", _key_missing())
 
     with pytest.raises(AssistantError) as exc:
-        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"))
+        await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"), ADMIN)
 
     assert exc.value.detail["code"] == "ai_key_missing"
     cached.assert_not_awaited()
@@ -482,7 +483,7 @@ async def test_saved_suggestion_still_shows_with_the_monthly_quota_used_up(monke
     _enabled_tenant(monkeypatch, quota=10, used=10)
     monkeypatch.setattr(suggestions_service, "get_cached_suggestion", AsyncMock(return_value=_SAVED))
 
-    result = await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"))
+    result = await suggestions.get_suggestions(SuggestionRequest(chat_id="lead-1"), ADMIN)
 
     assert result.analisis == "Generada por n8n antes del corte"
 

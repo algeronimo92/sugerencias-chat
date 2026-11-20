@@ -11,7 +11,7 @@ from tests.conftest import patch_chats
 CHAT_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
 TARGET = "ae6ec286-8f50-52f1-94c0-89e92f3c0e1e"
 OTHER_TARGET = "26b3350d-169d-5d67-89f6-ab65487e91bf"
-USER = SimpleNamespace(id=7)
+USER = SimpleNamespace(id=7, role="admin")
 
 
 def _message(**overrides) -> dict:

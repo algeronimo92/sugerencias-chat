@@ -182,6 +182,10 @@ class LeadsWorld:
 
 @pytest.fixture
 def in_memory_leads(monkeypatch) -> LeadsWorld:
+    from unittest.mock import AsyncMock
+    from app.modules.leads import visibility
+
+    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=False))
     repository = InMemoryLeadRepository()
     published: list[events.DomainEvent] = []
     monkeypatch.setattr(ports, "_repository", repository)

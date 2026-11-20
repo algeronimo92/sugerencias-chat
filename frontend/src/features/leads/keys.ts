@@ -9,6 +9,9 @@
 import type { ChatFilters, ChatOrder } from './types'
 
 export const leadKeys = {
+  duplicates: ['duplicate-lead'] as const,
+  searchAll: ['lead-search'] as const,
+  customFieldsAll: ['lead-custom-fields'] as const,
   /** El listado de leads (la bandeja de chats lo muestra). */
   all: ['chats'] as const,
   lists: ['chats', 'list'] as const,

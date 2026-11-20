@@ -122,8 +122,19 @@ async def notices_by_appointment(appointment_ids: list[int]) -> dict[int, list[d
     return grouped
 
 
-async def list_appointments(limit: int = 300) -> list[dict]:
-    stmt = _query().order_by(Appointment.created_at.desc(), Appointment.id.desc()).limit(limit)
+def appointment_ids_visible_to(owner_id: int):
+    """También filtra avisos históricos que solo guardaron el id de la cita."""
+    return select(Appointment.id).outerjoin(Lead, Lead.id == Appointment.lead_id).where(
+        (Lead.vendedor_id == owner_id)
+        | (Appointment.lead_id.is_(None) & (Appointment.created_by_user_id == owner_id))
+    )
+
+
+async def list_appointments(limit: int = 300, *, owner_id: int | None = None) -> list[dict]:
+    stmt = _query()
+    if owner_id is not None:
+        stmt = stmt.where(Appointment.id.in_(appointment_ids_visible_to(owner_id)))
+    stmt = stmt.order_by(Appointment.created_at.desc(), Appointment.id.desc()).limit(limit)
     async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     items = [_serialize(row) for row in rows]
