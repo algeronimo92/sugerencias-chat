@@ -172,7 +172,7 @@ El detalle y el porqué están en `docs/analisis/18-rediseno-ui-sistema-visual.m
 5. Radix dropdown-menu (instalado, 2.1.22 fijada exacta: comparte versiones con el resto de Radix), popover y tabs aprobados.
 6. Fuente del sistema.
 7. Barra inferior del celular: Chats, Tareas, Contactos y Más.
-8. Configuración pasa de diálogo a página con secciones (pendiente).
+8. Configuración es una página con secciones (hecho): `/configuracion` (General) y `/configuracion/usuarios`, con `PageHeader` y las secciones como enlaces debajo del título. El contenido va en una columna de `max-w-3xl` alineada a la izquierda con el título (no centrada), cada grupo de ajustes en un bloque `bg-surface` con borde, y "Guardar" en una barra fija al pie, alineado al borde derecho de esa columna.
 9. Las vistas propias ("Mis vistas") se guardarán en el servidor (pendiente; hoy en el navegador).
 10. Backend de bandejas aprobado: contadores, sin asignar, abiertas/cerradas, orden por espera, asignación masiva.
 

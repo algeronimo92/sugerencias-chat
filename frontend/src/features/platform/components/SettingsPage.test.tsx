@@ -1,11 +1,33 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, it, vi } from 'vitest'
+import { Route, Routes } from 'react-router-dom'
+import { expect, it } from 'vitest'
 import { installFakeApi } from '../../../test/fakeApi'
 import { createTestQueryClient, queryWrapper } from '../../../test/queryWrapper'
-import { SettingsDialog } from './SettingsDialog'
+import { SettingsPage } from './SettingsPage'
 
 const api = installFakeApi()
+
+function renderAt(path: string) {
+  return render(
+    <Routes>
+      <Route path="/configuracion" element={<SettingsPage />} />
+      <Route path="/configuracion/:section" element={<SettingsPage />} />
+    </Routes>,
+    { wrapper: queryWrapper(createTestQueryClient(), { route: path }) },
+  )
+}
+
+it('es una página con su título y una sección por URL', async () => {
+  api.current.on('get', '/api/settings', { data: [] })
+  renderAt('/configuracion')
+
+  expect(screen.getByRole('heading', { level: 1, name: 'Configuración' })).toBeInTheDocument()
+  const nav = screen.getByRole('navigation', { name: 'Secciones de configuración' })
+  expect(within(nav).getByRole('link', { name: 'General' })).toHaveAttribute('aria-current', 'page')
+  expect(within(nav).getByRole('link', { name: 'Usuarios' })).toHaveAttribute('href', '/configuracion/usuarios')
+  expect(screen.getByRole('link', { name: 'Integraciones' })).toHaveAttribute('href', '/integraciones')
+})
 
 it('permite activar, guardar y desactivar que cada vendedor vea solo sus leads', async () => {
   const key = 'sellers_see_only_assigned_leads'
@@ -19,7 +41,7 @@ it('permite activar, guardar y desactivar que cada vendedor vea solo sus leads',
     return { data: items() }
   })
   const user = userEvent.setup()
-  render(<SettingsDialog onClose={vi.fn()} />, { wrapper: queryWrapper(createTestQueryClient()) })
+  renderAt('/configuracion')
   const checkbox = await screen.findByRole('checkbox', { name: label })
   expect(checkbox).not.toBeChecked()
   await user.click(checkbox)

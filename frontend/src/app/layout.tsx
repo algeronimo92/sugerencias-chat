@@ -28,9 +28,6 @@ import { readGoogleCalendarReturn } from '../features/platform/public/googleCale
 import { readEmailConnectReturn } from '../features/platform/public/emailConnectReturn';
 import { OnboardingChecklist, OnboardingReopenButton } from '../features/platform/public/OnboardingChecklist';
 
-const SettingsDialog = lazy(() =>
-  import("../features/platform/public/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
-);
 const AccountSecurityDialog = lazy(() =>
   import("../features/auth/index").then((module) => ({ default: module.AccountSecurityDialog })),
 );
@@ -73,11 +70,8 @@ export function MainLayout() {
   const location = useLocation();
   const isMobile = useLayout() === "mobile";
   const { theme, toggleTheme } = useTheme();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false);
   const [isIssueReportOpen, setIsIssueReportOpen] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] =
-    useState<SettingsTab>("general");
 
   const layoutContext: LayoutContext = {
     chatFilters: useChatFiltersState(me?.id ?? null),
@@ -90,15 +84,14 @@ export function MainLayout() {
     logout(undefined, { onSettled: () => navigate("/") });
   }
 
+  // Configuración es una página con una sección por URL (antes un diálogo).
   function openSettings(tab: SettingsTab = "general") {
-    setSettingsInitialTab(tab);
-    setIsSettingsOpen(true);
+    navigate(tab === "usuarios" ? "/configuracion/usuarios" : "/configuracion");
   }
 
   // Las conexiones con terceros (WhatsApp, calendario, ERP, voz, correo) tienen su
-  // página: el diálogo de Configuración queda para los ajustes del CRM.
+  // página: Configuración queda para los ajustes del CRM.
   function openIntegrations(anchor?: IntegrationAnchor) {
-    setIsSettingsOpen(false);
     navigate(anchor ? `/integraciones#${anchor}` : "/integraciones");
   }
 
@@ -203,15 +196,6 @@ export function MainLayout() {
         onOpenIntegrations={openIntegrations}
       />
 
-      {isSettingsOpen && (
-        <Suspense fallback={null}>
-          <SettingsDialog
-            onClose={() => setIsSettingsOpen(false)}
-            initialTab={settingsInitialTab}
-            onOpenIntegrations={() => openIntegrations()}
-          />
-        </Suspense>
-      )}
       {isAccountSecurityOpen && (
         <Suspense fallback={null}>
           <AccountSecurityDialog
