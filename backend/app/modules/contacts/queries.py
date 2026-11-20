@@ -12,6 +12,7 @@ from app.db.models.contacts import (
     Contact, ContactImportBatch, ContactImportRow, ContactSettings, WhatsAppAppSync,
 )
 from app.db.uow import session_scope
+from app.modules.leads.ports.visibility import lead_ids_owned_by
 
 # Periodos que se ofrecen para elegir "solo quienes conversaron en los
 # últimos N días". Coinciden con las fases en que Meta manda el historial.
@@ -49,6 +50,10 @@ def _contact_query() -> Select:
     )
 
 
+def _visible_contact(owner_id: int | None):
+    return True if owner_id is None else Contact.lead_id.is_(None) | Contact.lead_id.in_(lead_ids_owned_by(owner_id))
+
+
 def _escaped(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -63,8 +68,9 @@ async def list_contacts(
     consent: bool | None = None,
     offset: int = 0,
     limit: int = 50,
+    owner_id: int | None = None,
 ) -> dict:
-    conditions = []
+    conditions = [_visible_contact(owner_id)]
     if search and search.strip():
         term = search.strip()
         pattern = f"%{_escaped(term)}%"
@@ -99,16 +105,17 @@ async def list_contacts(
     return {"items": [_contact(row) for row in rows], "total": total or 0}
 
 
-async def get_contact(contact_id: str) -> dict | None:
+async def get_contact(contact_id: str, *, owner_id: int | None = None) -> dict | None:
     async with session_scope() as session:
-        row = (await session.execute(_contact_query().where(Contact.id == contact_id))).mappings().first()
+        row = (await session.execute(_contact_query().where(Contact.id == contact_id, _visible_contact(owner_id)))).mappings().first()
     return _contact(row) if row else None
 
 
-async def list_tags() -> list[str]:
-    tag = func.unnest(Contact.etiquetas).column_valued("tag")
+async def list_tags(owner_id: int | None = None) -> list[str]:
+    # PostgreSQL evalúa unnest por cada contacto (LATERAL implícito).
+    tag = func.unnest(Contact.etiquetas).column_valued("tag", joins_implicitly=True)
     async with session_scope() as session:
-        rows = (await session.execute(select(tag).distinct().order_by(tag))).scalars().all()
+        rows = (await session.execute(select(tag).select_from(Contact).where(_visible_contact(owner_id)).distinct().order_by(tag))).scalars().all()
     return [row for row in rows if row]
 
 

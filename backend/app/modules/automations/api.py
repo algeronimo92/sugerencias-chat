@@ -6,6 +6,7 @@ from app.modules.automations.domain.types import AutomationBuilderMode
 from app.modules.auth.public import User
 from app.modules.automations.schemas import AutomationExecutionItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
 from app.modules.auth.public import get_current_user, require_admin
+from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 from app.modules.automations.public import (
     cancel_automation_execution,
     create_visual_flow,
@@ -30,7 +31,7 @@ from app.modules.automations.public import (
     validate_automation_rule,
 )
 
-router = APIRouter(prefix="/api/automations", tags=["automations"])
+router = APIRouter(prefix="/api/automations", tags=["automations"], dependencies=[Depends(require_visible_lead)])
 
 
 @router.get("", response_model=list[AutomationRuleItem])
@@ -189,6 +190,7 @@ async def post_start_manual_flow(
     body: ManualFlowStartRequest,
     user: User = Depends(get_current_user),
 ):
+    await ensure_lead_visible(user, body.chat_id)
     item = await start_manual_flow_execution(rule_id, body.chat_id, user.id, user.role == "admin")
     return item
 
@@ -240,6 +242,7 @@ async def get_executions(
         date_to=date_to,
         started_by_user_id=initiator,
         started_by_anyone=any_initiator,
+        owner_id=await seller_scope(user),
     )
 
 
@@ -285,6 +288,7 @@ async def _require_execution_access(execution_id: int, user: User, action: str) 
     execution = await get_automation_execution(execution_id)
     if execution is None or execution["lead_id"] is None:
         raise HTTPException(403, f"No puedes {action} este flujo porque no está ligado a ningún lead.")
+    await ensure_lead_visible(user, execution["lead_id"])
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=AutomationExecutionItem)

@@ -42,6 +42,13 @@ export function createChatsRealtime(): RealtimeModule {
 
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: messageKeys.all })
+        void queryClient.resetQueries({ queryKey: messageKeys.pinnedAll })
+        void queryClient.resetQueries({ queryKey: messageKeys.serviceWindowAll })
+        void queryClient.resetQueries({ queryKey: noteKeys.all })
+        void queryClient.resetQueries({ queryKey: scheduledKeys.all })
+      },
       chats_updated: (event, { queryClient, navigate, notify }) => {
         const latest = event.latest_message
         const changedChatId = event.chat_id ?? latest?.chat_id

@@ -23,6 +23,7 @@ ACTOR = Actor.user(7)
 def broadcast(monkeypatch):
     mock = AsyncMock()
     monkeypatch.setattr(subscribers.manager, "broadcast", mock)
+    monkeypatch.setattr(subscribers, "lead_audience", AsyncMock(return_value=None))
     return mock
 
 

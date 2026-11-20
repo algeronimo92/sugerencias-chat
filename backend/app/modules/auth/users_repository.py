@@ -62,9 +62,10 @@ async def list_active_sellers() -> list[dict]:
 
 async def list_call_agents() -> list[dict]:
     """A quiénes les suenan las llamadas de WhatsApp: activos, con el permiso
-    y con un rol que abre chats."""
+    y con un rol que abre chats. El rol va porque un vendedor puede tener
+    acotados los leads que ve (leads/visibility.call_agents_for)."""
     stmt = (
-        select(User.id, User.name)
+        select(User.id, User.name, User.role)
         .where(User.is_active == true(), User.can_handle_calls == true(), User.role.in_(("admin", "vendedor")))
         .order_by(User.name.asc())
     )

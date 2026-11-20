@@ -240,8 +240,9 @@ async def chats_websocket(websocket: WebSocket):
         await websocket.close(code=4403)
         return
 
-    await manager.connect(websocket, user.id)
+    await manager.connect(websocket, user.id, is_seller=user.role == "vendedor")
     try:
+        await websocket.send_json({"type": "lead_visibility_changed"})
         await websocket.send_json({"type": "notifications_updated"})
         while True:
             raw = await websocket.receive_text()

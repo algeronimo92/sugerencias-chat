@@ -9,6 +9,7 @@ type MessageType = string
 
 export const REALTIME_EVENT_TYPES = [
   'chats_updated',
+  'lead_visibility_changed',
   'tasks_updated',
   'task_reminder',
   'scheduled_messages_updated',
@@ -85,7 +86,7 @@ export interface CreatedNotification {
   metadata: { author_name?: string; issue_report_id?: number } | null
 }
 
-type SignalEventType = 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' | 'issue_reports_updated' | 'lead_stages_updated' | 'notice_sender_updated' | 'contacts_updated' | 'contact_imports_updated'
+type SignalEventType = 'lead_visibility_changed' | 'tasks_updated' | 'templates_updated' | 'media_library_updated' | 'notifications_updated' | 'automations_updated' | 'issue_reports_updated' | 'lead_stages_updated' | 'notice_sender_updated' | 'contacts_updated' | 'contact_imports_updated'
 
 export type ChatSocketEvent =
   | { [K in SignalEventType]: { type: K } }[SignalEventType]
@@ -243,6 +244,7 @@ const SOCKET_EVENT_PARSERS: Record<RealtimeEventType, SocketEventParser> = {
   notification_created: parseNotification,
   task_reminder: parseTaskReminder,
   chats_updated: parseChatsUpdated,
+  lead_visibility_changed: signal('lead_visibility_changed'),
   call_incoming: (parsed) => {
     const call = parseCall(parsed)
     return call && { type: 'call_incoming', ...call, caller_name: nullableString(parsed.caller_name) }

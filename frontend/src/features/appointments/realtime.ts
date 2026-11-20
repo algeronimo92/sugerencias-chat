@@ -7,6 +7,9 @@ import { appointmentKeys } from './keys'
 export function createAppointmentsRealtime(): RealtimeModule {
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: appointmentKeys.all })
+      },
       templates_updated: (_event, { queryClient }) => invalidate(queryClient, appointmentKeys.notices),
       notice_sender_updated: (_event, { queryClient }) => invalidate(queryClient, appointmentKeys.noticeSender),
     },

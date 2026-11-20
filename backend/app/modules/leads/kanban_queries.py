@@ -7,7 +7,7 @@ from app.modules.conversations.ports.chat_queries import _row_to_chat, _tags_by_
 
 KANBAN_PAGE_SIZE = 40
 
-from app.modules.conversations.ports.chat_queries import (_chat_columns, _chat_search_condition, _last_message_subquery, _matched_message_subquery, _search_rank_expression, _visible_lead_condition)
+from app.modules.conversations.ports.chat_queries import (_chat_columns, _chat_search_condition, _last_message_subquery, _matched_message_subquery, _search_rank_expression, _visible_lead_condition, owner_condition)
 from app.db.uow import session_scope
 async def _ordered_stage_keys(session) -> list[str]:
     """Claves de las etapas del negocio en el orden del embudo."""
@@ -20,14 +20,14 @@ async def _ordered_stage_keys(session) -> list[str]:
     )
 
 
-async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
+async def fetch_kanban_counts(search: str | None = None, owner_id: int | None = None) -> dict[str, int]:
     """Conteos del embudo. Con búsqueda se aplica el mismo filtro que a las
     tarjetas, incluido el último mensaje, para que los encabezados coincidan."""
     last_message = _last_message_subquery()
     stmt = (
         select(Lead.estado, func.count(Lead.id))
         .join(last_message, true(), isouter=True)
-        .where(await _visible_lead_condition())
+        .where(await _visible_lead_condition(), owner_condition(owner_id))
         .group_by(Lead.estado)
     )
     if search:
@@ -46,6 +46,7 @@ async def fetch_kanban_counts(search: str | None = None) -> dict[str, int]:
 async def fetch_kanban_snapshot(
     search: str | None = None,
     limit: int = KANBAN_PAGE_SIZE,
+    owner_id: int | None = None,
 ) -> dict:
     """Primera página de todas las columnas en una sola consulta.
 
@@ -74,7 +75,7 @@ async def fetch_kanban_snapshot(
             ).label("stage_rank"),
         )
         .join(last_message, true(), isouter=True)
-        .where(await _visible_lead_condition())
+        .where(await _visible_lead_condition(), owner_condition(owner_id))
     )
     if search:
         ranked_stmt = ranked_stmt.where(_chat_search_condition(search))
@@ -112,6 +113,7 @@ async def fetch_kanban_stage(
     search: str | None = None,
     offset: int = 0,
     limit: int = KANBAN_PAGE_SIZE,
+    owner_id: int | None = None,
 ) -> dict:
     """Página independiente de una columna del Kanban. Esto evita renderizar
     los más de mil leads de la base en una sola carga."""
@@ -130,7 +132,7 @@ async def fetch_kanban_stage(
     stmt = (
         select(*columns)
         .join(last_message, true(), isouter=True)
-        .where(Lead.estado == stage, await _visible_lead_condition())
+        .where(Lead.estado == stage, await _visible_lead_condition(), owner_condition(owner_id))
     )
     if search:
         stmt = stmt.where(_chat_search_condition(search))

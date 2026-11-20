@@ -43,6 +43,7 @@ from app.modules.conversations.chat_messaging import (
     forward_item,
 )
 from app.modules.conversations.common import _require_existing_lead, _require_open_service_window, chats_router
+from app.modules.leads.ports.visibility import visible_lead_ids
 
 
 router = chats_router()
@@ -295,7 +296,8 @@ async def forward_messages(
     # Se validan todos los destinos de una vez: reenviar a un lead borrado no
     # debería tumbar el reenvío a los demás.
     targets = list(dict.fromkeys(body.target_chat_ids))
-    existing = await filter_existing_leads(targets)
+    # Un destino que el vendedor no puede ver cuenta como inexistente.
+    existing = await filter_existing_leads(targets) & await visible_lead_ids(user, targets)
     targets = [target for target in targets if target in existing]
     if not targets:
         raise HTTPException(404, "Ninguno de los chats destino existe")

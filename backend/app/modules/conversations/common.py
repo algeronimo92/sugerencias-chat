@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.modules.conversations.chat_queries import lead_exists
 from app.modules.conversations.domain.errors import ChatNotFound, ServiceWindowClosed
 from app.modules.conversations.service_window import service_window_is_open
+from app.modules.leads.ports.visibility import require_visible_lead
 
 
 ROUTER_PREFIX = "/api/chats"
@@ -10,7 +11,9 @@ ROUTER_TAGS = ["chats"]
 
 
 def chats_router() -> APIRouter:
-    return APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
+    """Router de las rutas ``/api/chats/{chat_id}/...``: un vendedor que solo
+    ve sus leads no lee ni escribe en el chat de otro."""
+    return APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS, dependencies=[Depends(require_visible_lead)])
 
 
 async def _require_existing_lead(chat_id: str) -> None:

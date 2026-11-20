@@ -12,6 +12,15 @@ const KANBAN_REASONS: ReadonlySet<ChatsUpdateReason> = new Set(['lead_created', 
 export function createLeadsRealtime(): RealtimeModule {
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: leadKeys.all })
+        void queryClient.resetQueries({ queryKey: leadKeys.detailAll })
+        void queryClient.resetQueries({ queryKey: leadKeys.activityAll })
+        void queryClient.resetQueries({ queryKey: leadKeys.duplicates })
+        void queryClient.resetQueries({ queryKey: leadKeys.searchAll })
+        void queryClient.resetQueries({ queryKey: leadKeys.customFieldsAll })
+        void queryClient.resetQueries({ queryKey: kanbanKeys.all })
+      },
       chats_updated: (event, { queryClient }) => {
         const changedChatId = event.chat_id ?? event.latest_message?.chat_id
         const reason = event.reason

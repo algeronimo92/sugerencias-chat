@@ -19,6 +19,8 @@ from app.modules.contacts.normalization import clean_text, merge_tags, parse_tag
 from app.modules.contacts.queries import get_contact
 from app.modules.contacts.types import ContactOrigin
 from app.modules.leads.public import Actor, create_lead, fetch_lead_raw, lead_ids_for_contacts
+from app.modules.leads.ports.visibility import lead_recipients, seller_scope_by_id
+from app.modules.leads.public import LeadNotFound
 from app.modules.platform.public import effective_country_code
 
 # Textos libres que se editan desde la ficha.
@@ -146,11 +148,15 @@ async def promote_to_lead(contact_id: str, *, user_id: int) -> str:
         if contact is None:
             raise ContactNotFound()
         if contact["lead_id"]:
+            if user_id not in await lead_recipients(str(contact["lead_id"]), [user_id]):
+                raise LeadNotFound()
             return str(contact["lead_id"])
         if not contact["telefono"]:
             raise ContactWithoutPhone()
         found = await lead_ids_for_contacts([contact["telefono"]], [contact["wa_user_id"]] if contact["wa_user_id"] else [])
         lead_id = found.get(contact["telefono"]) or found.get(contact["wa_user_id"] or "")
+        if lead_id is not None and user_id not in await lead_recipients(lead_id, [user_id]):
+            raise LeadNotFound()
         if lead_id is None:
             lead_id = await create_lead(
                 contact["telefono"],
@@ -158,6 +164,7 @@ async def promote_to_lead(contact_id: str, *, user_id: int) -> str:
                 actor=Actor.user(user_id),
                 origen="contactos",
                 notas=contact["notas"],
+                vendedor_id=await seller_scope_by_id(user_id),
             )
         await repository.update_contact(contact_id, {"lead_id": lead_id})
         collect(ContactsChanged())

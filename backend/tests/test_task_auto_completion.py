@@ -138,7 +138,7 @@ async def test_admin_can_complete_current_team_filter(monkeypatch):
     )
 
     assert result == {"completed": 4}
-    complete.assert_awaited_once_with(1, True, 7, False)
+    complete.assert_awaited_once_with(1, True, 7, False, owner_id=None)
     # El aviso lo registra el comando como TasksChanged (ver
     # test_completing_tasks_announces_it): la ruta ya no emite nada.
     broadcast.assert_not_awaited()

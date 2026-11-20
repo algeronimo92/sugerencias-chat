@@ -386,6 +386,15 @@ Al iniciar se vinculan automáticamente los valores históricos de `vendedor`
 que coincidan de forma única con el nombre de un usuario. La migración manual
 equivalente está en `backend/migrations/004_structured_seller.sql`.
 
+En **Configuración → General → Leads (CRM)**, el administrador puede activar
+**Cada vendedor ve solo los leads asignados a él**. Apagado por defecto, todo
+el equipo ve todos los leads. Encendido, los vendedores no ven los leads de
+otros ni los que están sin asignar; los administradores siguen viendo todos.
+La regla también se aplica al acceso por URL, búsquedas, contadores, embudo,
+llamadas y datos vinculados. Los leads que un vendedor crea manualmente quedan
+asignados a él. Al cambiar el ajuste o la asignación se refrescan las pestañas
+abiertas; las llamadas nunca se derivan a un vendedor sin acceso al lead.
+
 ### Dashboard CRM
 
 Los administradores disponen de un dashboard para periodos de 7, 30 o 90

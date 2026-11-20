@@ -22,6 +22,9 @@ const DESTINATIONS: Record<string, (notification: CreatedNotification) => string
 export function createNotificationsRealtime(): RealtimeModule {
   return {
     handlers: {
+      lead_visibility_changed: (_event, { queryClient }) => {
+        void queryClient.resetQueries({ queryKey: notificationKeys.all })
+      },
       notifications_updated: (_event, { queryClient }) => invalidate(queryClient, notificationKeys.all),
       notification_created: ({ notification }, { queryClient, navigate, notify, onInternalMention }) => {
         invalidate(queryClient, notificationKeys.all)

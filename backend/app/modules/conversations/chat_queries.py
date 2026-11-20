@@ -421,6 +421,10 @@ class LeadFilters:
     unassigned: bool = False
     # Estado de la conversación: "open", "closed" o None (las dos).
     conversation: str | None = None
+    # No es un filtro que la persona elige sino lo que puede ver: con el
+    # ajuste de leads/visibility.py encendido, el vendedor solo ve los suyos.
+    # Va aparte de `seller_id` para que los dos se combinen.
+    owner_id: int | None = None
 
     @property
     def needs_last_message(self) -> bool:
@@ -433,7 +437,16 @@ class LeadFilters:
         )
 
 
+def owner_condition(owner_id: int | None):
+    """Los leads que ve quien tiene acotada la visibilidad (ver
+    ``LeadFilters.owner_id``), o todos."""
+    return Lead.vendedor_id == owner_id if owner_id is not None else true()
+
+
 def _apply_lead_filters(stmt, last_message, filters: LeadFilters):
+    if filters.owner_id is not None:
+        stmt = stmt.where(owner_condition(filters.owner_id))
+
     if filters.unread_only:
         stmt = stmt.where(_has_unread_messages_condition())
 

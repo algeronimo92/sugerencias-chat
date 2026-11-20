@@ -186,6 +186,16 @@ SETTING_DEFS: list[SettingDef] = [
         "Leads (CRM)",
         secret=False,
     ),
+    # Lo aplica app/modules/leads/visibility.py en listas, rutas por id y
+    # avisos en tiempo real. Apagado (o vacío), todo el equipo ve todo.
+    SettingDef(
+        "sellers_see_only_assigned_leads",
+        "Cada vendedor ve solo los leads asignados a él (los administradores ven todos)",
+        "leads",
+        "Leads (CRM)",
+        secret=False,
+        boolean=True,
+    ),
     SettingDef(
         "conversation_auto_close_hours",
         "Cerrar la conversación tras N horas sin mensajes (vacío o 0 = nunca)",
@@ -558,6 +568,11 @@ async def update_settings(values: dict[str, str]) -> None:
         if enabled not in {"", "true", "false"}:
             raise ValueError("El reparto automático debe ser true o false")
         values["auto_assign_leads_enabled"] = enabled
+    if "sellers_see_only_assigned_leads" in values:
+        enabled = values["sellers_see_only_assigned_leads"].strip().lower()
+        if enabled not in {"", "true", "false"}:
+            raise ValueError("La visibilidad de leads de los vendedores debe ser true o false")
+        values["sellers_see_only_assigned_leads"] = enabled
     if "auto_assign_excluded_user_ids" in values:
         values["auto_assign_excluded_user_ids"] = normalize_user_ids(
             values["auto_assign_excluded_user_ids"]

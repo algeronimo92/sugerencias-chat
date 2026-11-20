@@ -153,6 +153,7 @@ async def create_appointment(
             collect(AppointmentCreated(
                 appointment_id=appointment["id"], created_by_user_id=created_by_user_id,
                 seller_name=appointment["vendedor"], title=title, text=text,
+                lead_id=appointment["lead_id"],
             ))
     return {
         **result.payload, "success": True, "message": result.message,

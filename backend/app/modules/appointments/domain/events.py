@@ -18,6 +18,7 @@ class AppointmentCreated(DomainEvent):
     seller_name: str
     title: str
     text: str
+    lead_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

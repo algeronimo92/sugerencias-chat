@@ -5,6 +5,7 @@ from enum import StrEnum
 
 class RealtimeEvent(StrEnum):
     CHATS_UPDATED = "chats_updated"
+    LEAD_VISIBILITY_CHANGED = "lead_visibility_changed"
     TASKS_UPDATED = "tasks_updated"
     TASK_REMINDER = "task_reminder"
     SCHEDULED_MESSAGES_UPDATED = "scheduled_messages_updated"

@@ -30,18 +30,20 @@ from app.modules.leads.domain.events import (
 )
 from app.modules.leads.domain.lead import BOOKKEEPING_FIELDS, Actor
 from app.modules.leads.queries import service_usage
+from app.modules.leads.visibility import lead_audience
 from app.realtime.ws_manager import manager
 
 logger = logging.getLogger(__name__)
 
+
 @subscribe(LeadCreated, phase=Phase.AFTER_COMMIT)
 async def lead_created(event: LeadCreated) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_created"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_created"}, sellers=await lead_audience(event.lead_id))
 
 
 @subscribe(LeadStageChanged, phase=Phase.AFTER_COMMIT)
 async def stage_changed(event: LeadStageChanged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "stage_changed"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "stage_changed"}, sellers=await lead_audience(event.lead_id))
 
 
 @subscribe(LeadUpdated, phase=Phase.AFTER_COMMIT)
@@ -50,33 +52,43 @@ async def lead_updated(event: LeadUpdated) -> None:
     # el mensaje ya avisa por su lado.
     if set(event.fields) <= BOOKKEEPING_FIELDS:
         return
+    if "vendedor_id" in event.fields and await lead_audience(event.lead_id) is not None:
+        # El vendedor anterior también debe vaciar su caché, sin recibir el lead.
+        await manager.broadcast({"type": "lead_visibility_changed"})
+        return
     reason = "lead_updated"
     if event.event_type == "conversation_opened":
         reason = "conversation_opened"
     elif event.event_type == "conversation_closed":
         reason = "conversation_closed"
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": reason})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": reason}, sellers=await lead_audience(event.lead_id))
 
 
 @subscribe(LeadNoShowRegistered, phase=Phase.AFTER_COMMIT)
 async def no_show_registered(event: LeadNoShowRegistered) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"}, sellers=await lead_audience(event.lead_id))
 
 
 @subscribe(LeadTagged, phase=Phase.AFTER_COMMIT)
 async def tag_changed(event: LeadTagged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "tag_changed"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "tag_changed"}, sellers=await lead_audience(event.lead_id))
 
 
 @subscribe(LeadDeleted, phase=Phase.AFTER_COMMIT)
 async def lead_deleted(event: LeadDeleted) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_deleted"})
+    if await lead_audience(event.lead_id) is None:
+        await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_deleted"})
+    else:
+        await manager.broadcast({"type": "lead_visibility_changed"})
 
 
 @subscribe(LeadsMerged, phase=Phase.AFTER_COMMIT)
 async def leads_merged(event: LeadsMerged) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"})
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.source_id, "reason": "lead_deleted"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"}, sellers=await lead_audience(event.lead_id))
+    if await lead_audience(event.source_id) is None:
+        await manager.broadcast({"type": "chats_updated", "chat_id": event.source_id, "reason": "lead_deleted"})
+    else:
+        await manager.broadcast({"type": "lead_visibility_changed"})
 
 
 @subscribe(ServiceRenamed, phase=Phase.TRANSACTION)
@@ -105,7 +117,7 @@ async def audit_internal_note(event: InternalNoteWritten) -> None:
 
 @subscribe(LeadChangedOutside, phase=Phase.AFTER_COMMIT)
 async def lead_changed_outside(event: LeadChangedOutside) -> None:
-    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"})
+    await manager.broadcast({"type": "chats_updated", "chat_id": event.lead_id, "reason": "lead_updated"}, sellers=await lead_audience(event.lead_id))
 
 
 @subscribe(LeadStagesChanged, phase=Phase.AFTER_COMMIT)

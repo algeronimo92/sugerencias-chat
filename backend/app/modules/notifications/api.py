@@ -4,6 +4,7 @@ from app.modules.auth.public import User
 from app.modules.notifications.schemas import NotificationPage
 from app.modules.auth.ports.auth_service import (get_current_user)
 from app.modules.notifications.queries import list_notifications
+from app.modules.leads.ports.visibility import seller_scope
 from app.modules.notifications.service import mark_all_notifications_read, mark_notification_read
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -16,7 +17,7 @@ async def get_notifications(
     offset: int = Query(default=0, ge=0),
     user: User = Depends(get_current_user),
 ):
-    return await list_notifications(user.id, unread_only, limit, offset)
+    return await list_notifications(user.id, unread_only, limit, offset, owner_id=await seller_scope(user))
 
 
 @router.post("/{notification_id}/read")

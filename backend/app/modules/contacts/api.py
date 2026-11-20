@@ -19,8 +19,16 @@ from app.modules.contacts.schemas import (
     PromotedLead, PromotedLeads, WhatsAppSyncSettings, WhatsAppSyncStatus,
 )
 from app.modules.contacts.types import ContactOrigin
+from app.modules.leads.ports.visibility import seller_scope
 
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
+
+
+async def _visible_contact(contact_id: str, user: User) -> dict:
+    contact = await get_contact(contact_id, owner_id=await seller_scope(user))
+    if contact is None:
+        raise HTTPException(404, "Contacto no encontrado")
+    return contact
 
 
 def _decode(body: CsvUpload) -> bytes:
@@ -40,17 +48,17 @@ async def get_contacts(
     consent: bool | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     return await list_contacts(
         search=search, origen=origen, tag=tag, has_lead=has_lead, removed_in_app=removed_in_app,
-        consent=consent, offset=offset, limit=limit,
+        consent=consent, offset=offset, limit=limit, owner_id=await seller_scope(user),
     )
 
 
 @router.get("/tags", response_model=list[str])
-async def get_contact_tags(_user: User = Depends(get_current_user)):
-    return await list_tags()
+async def get_contact_tags(user: User = Depends(get_current_user)):
+    return await list_tags(await seller_scope(user))
 
 
 @router.post("", response_model=ContactItem, status_code=201)
@@ -59,7 +67,10 @@ async def post_contact(body: ContactCreate, user: User = Depends(get_current_use
 
 
 @router.post("/bulk/tags", response_model=AffectedCount)
-async def post_bulk_tags(body: ContactTagsChange, _user: User = Depends(get_current_user)):
+async def post_bulk_tags(body: ContactTagsChange, user: User = Depends(get_current_user)):
+    if await seller_scope(user) is not None:
+        for contact_id in body.id_strings():
+            await _visible_contact(contact_id, user)
     return {"count": await service.change_tags(body.id_strings(), add=body.add, remove=body.remove)}
 
 
@@ -140,15 +151,13 @@ async def put_whatsapp_sync_settings(body: WhatsAppSyncSettings, _admin: User = 
 # --- Un contacto -------------------------------------------------------------
 
 @router.get("/{contact_id}", response_model=ContactItem)
-async def get_one_contact(contact_id: UUID, _user: User = Depends(get_current_user)):
-    contact = await get_contact(str(contact_id))
-    if contact is None:
-        raise HTTPException(404, "Contacto no encontrado")
-    return contact
+async def get_one_contact(contact_id: UUID, user: User = Depends(get_current_user)):
+    return await _visible_contact(str(contact_id), user)
 
 
 @router.patch("/{contact_id}", response_model=ContactItem)
-async def patch_contact(contact_id: UUID, body: ContactUpdate, _user: User = Depends(get_current_user)):
+async def patch_contact(contact_id: UUID, body: ContactUpdate, user: User = Depends(get_current_user)):
+    await _visible_contact(str(contact_id), user)
     return await service.update_contact(str(contact_id), body.model_dump(exclude_unset=True))
 
 
@@ -161,4 +170,5 @@ async def delete_contact(contact_id: UUID, _admin: User = Depends(require_admin)
 
 @router.post("/{contact_id}/lead", response_model=PromotedLead)
 async def post_contact_lead(contact_id: UUID, user: User = Depends(get_current_user)):
+    await _visible_contact(str(contact_id), user)
     return {"lead_id": await service.promote_to_lead(str(contact_id), user_id=user.id)}
