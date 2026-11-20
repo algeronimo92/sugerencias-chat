@@ -7,6 +7,7 @@ import { useMe } from '../../auth/public/queries'
 import type { UserNotification } from '../types'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHistory } from '../hooks/useNotificationHistory'
 import type { NotificationPermissionState } from '../hooks/useNotifications'
+import { usePanelRoom } from '../hooks/usePanelRoom'
 import { usePushSubscription } from '../hooks/usePushSubscription'
 import { BrowserPermissionFooter } from './BrowserPermissionFooter'
 import { NotificationBellButton, type NotificationPlacement } from './NotificationBellButton'
@@ -60,6 +61,7 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const rootRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
+  const panelRoom = usePanelRoom(open, placement, rootRef)
   const lastSurfacedIdRef = useRef(0)
   const unreadCount = history.data?.pages[0]?.unread_count ?? 0
   const notifications = history.data?.pages.flatMap(page => page.items) ?? []
@@ -103,7 +105,9 @@ export function NotificationCenter({ browserPermission, onRequestBrowserPermissi
       />
 
       {open && (
-        <div className={`fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface-raised shadow-overlay sm:absolute sm:inset-x-auto sm:w-96 sm:max-w-[calc(100vw-2rem)] ${PANEL_POSITION[placement]}`}>
+        <div className={`fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.25rem)] z-[80] flex max-h-[min(620px,calc(100vh-5rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface-raised shadow-overlay sm:absolute sm:inset-x-auto sm:w-96 sm:max-w-[calc(100vw-2rem)] ${PANEL_POSITION[placement]}`}
+          style={panelRoom === null ? undefined : { maxHeight: panelRoom }}
+        >
           <header className="flex items-center justify-between gap-3 border-b border-wa-border px-4 py-3 dark:border-wa-border-dark">
             <div>
               <h2 className="text-sm font-semibold text-wa-text dark:text-white">Notificaciones</h2>
