@@ -13,7 +13,7 @@ from time import monotonic
 from app.db.privileges import enforcement_active
 from app.db.signals import on_reconnect, signal, tell_others_soon
 from app.modules.auth import roles_repository
-from app.modules.auth.db_privileges import DB_ROLES, object_privileges_for
+from app.modules.auth.db_privileges import CONTROL_READ_TABLES, DB_ROLES, object_privileges_for
 from app.modules.auth.permissions import ALL_PERMISSIONS, EDITABLE_ROLES, GRANTABLE_PERMISSIONS
 from app.modules.auth.types import UserRole
 from app.tenancy.context import get_current_tenant
@@ -94,7 +94,7 @@ async def set_role_permissions(role: str, permissions: set[str]) -> None:
 
 
 def desired_db_grants(matrix: dict[str, frozenset[str]]) -> dict[str, dict[str, frozenset[str]]]:
-    """Privilegios de objeto de cada rol de PostgreSQL según la matriz."""
+    """Privilegios de objeto de cada rol de base del negocio (por sufijo) según su matriz."""
     return {
         DB_ROLES[role]: object_privileges_for(role, matrix.get(role, frozenset()))
         for role in DB_ROLES
@@ -102,13 +102,15 @@ def desired_db_grants(matrix: dict[str, frozenset[str]]) -> dict[str, dict[str, 
 
 
 async def sync_db_privileges() -> bool:
-    """Lleva los GRANT del schema del negocio actual a lo que dice su matriz.
-    Sin negocio activo (plano de control) no hay schema que tocar."""
+    """Crea los roles de base del negocio actual si faltan y lleva sus GRANT a
+    lo que dice su matriz. Sin negocio activo (plano de control) no hay schema
+    que tocar; sin CREATEROLE no hay roles y devuelve False."""
     context = get_current_tenant()
     if context is None:
         return False
-    await roles_repository.apply_db_grants(context.schema_name, desired_db_grants(await role_permissions_map()))
-    return True
+    return await roles_repository.apply_db_grants(
+        context.schema_name, desired_db_grants(await role_permissions_map()), CONTROL_READ_TABLES,
+    )
 
 
 async def describe_db_privileges() -> list[dict]:

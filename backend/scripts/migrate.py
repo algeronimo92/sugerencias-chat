@@ -40,8 +40,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models.control import TenantSchemaVersion
 from app.db.session import close_engine, control_session, get_engine
-from app.db.privileges import ensure_db_roles, grant_control_reads
-from app.modules.auth.db_privileges import CONTROL_READ_TABLES
 from app.modules.auth.public import sync_db_privileges
 from app.tenancy.context import TenantContext, tenant_context, validate_schema_name
 from app.tenancy.provisioning import _mark_active, _migrate_schema
@@ -255,23 +253,21 @@ async def _upgrade_tenants(engine) -> int:
 
 
 async def _sync_db_privileges(engine) -> int:
-    """Roles de PostgreSQL y GRANT de cada negocio, después de migrar.
+    """Roles de PostgreSQL de cada negocio y sus GRANT, después de migrar.
 
     Corre siempre (no solo con migraciones pendientes): los GRANT son una
     proyección del catálogo del código y de la matriz de cada negocio, y una
     tabla nueva no le da privilegios a nadie hasta que esto pase.
     """
-    async with engine.begin() as connection:
-        if not await ensure_db_roles(connection):
-            print("Sin CREATEROLE: no se crearon los roles de base; DB_ROLE_ENFORCEMENT no se activará",
-                  file=sys.stderr)
-            return 0
-        await grant_control_reads(connection, CONTROL_READ_TABLES)
     failures = 0
     for context, _registered, _status in await _active_tenants(engine):
         try:
             with tenant_context(context):
-                await sync_db_privileges()
+                if not await sync_db_privileges():
+                    print(
+                        f"Sin CREATEROLE: el tenant {context.organization_id} quedó sin roles de base; "
+                        "DB_ROLE_ENFORCEMENT no se activará", file=sys.stderr,
+                    )
         except Exception as exc:  # el siguiente tenant debe poder continuar
             failures += 1
             print(f"Falló el GRANT del tenant {context.organization_id}: {type(exc).__name__}", file=sys.stderr)

@@ -4,10 +4,12 @@ La app decide por permiso (qué pantallas y acciones); la base pone la
 segunda barrera con sus propios roles. Si una ruta olvida su guard, o un bug
 intenta escribir donde ese rol no puede, PostgreSQL lo rechaza igual.
 
-- Roles de PostgreSQL: uno por rol de la app (``DB_ROLES``), ``NOLOGIN`` y sin
-  ningún atributo de sistema. La conexión del backend es miembro de los tres
-  y en cada transacción de una petición hace ``SET LOCAL ROLE`` según el
-  usuario (``app/db/session.py``).
+- Roles de PostgreSQL: tres por negocio, uno por rol de la app
+  (``cv_<id>_admin``, ``cv_<id>_vendedor``, ``cv_<id>_analista``), ``NOLOGIN`` y
+  sin ningún atributo de sistema. Solo tienen privilegios en el schema de su
+  negocio: la base impide cruzar datos entre clínicas. La conexión del
+  backend es miembro de todos y en cada transacción de una petición hace
+  ``SET LOCAL ROLE`` según el usuario y el negocio (``app/db/session.py``).
 - Privilegios de sistema: crear, alterar o borrar objetos (``CREATE`` sobre el
   schema, DDL) queda solo para el dueño, que es quien migra. Los roles de la
   app reciben ``USAGE`` sobre el schema y nada más.
@@ -30,10 +32,11 @@ from __future__ import annotations
 from app.modules.auth.permissions import Permission as P
 from app.modules.auth.types import UserRole
 
+# Rol de la app → sufijo del rol de base del negocio (ver app/db/privileges.py).
 DB_ROLES: dict[str, str] = {
-    UserRole.ADMIN: "cv_admin",
-    UserRole.SELLER: "cv_vendedor",
-    UserRole.ANALYST: "cv_analista",
+    UserRole.ADMIN: "admin",
+    UserRole.SELLER: "vendedor",
+    UserRole.ANALYST: "analista",
 }
 
 SELECT, INSERT, UPDATE, DELETE = "SELECT", "INSERT", "UPDATE", "DELETE"

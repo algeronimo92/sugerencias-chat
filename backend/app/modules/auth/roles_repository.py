@@ -47,9 +47,11 @@ async def replace_role_permissions(role: str, permissions: set[str]) -> None:
             ])
 
 
-async def apply_db_grants(schema: str, grants: dict[str, dict[str, frozenset[str]]]) -> None:
+async def apply_db_grants(
+    schema: str, grants: dict[str, dict[str, frozenset[str]]], control_reads: tuple[str, ...],
+) -> bool:
     async with session_scope() as db:
-        await db_privileges.apply_schema_grants(db, schema, grants)
+        return await db_privileges.apply_schema_grants(db, schema, grants, control_reads)
 
 
 async def describe_db_privileges(schema: str) -> list[dict]:

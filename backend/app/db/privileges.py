@@ -4,6 +4,12 @@ Qué privilegios le tocan a cada rol lo decide ``app/modules/auth/db_privileges.
 acá solo se crean los roles, se aplican ``GRANT``/``REVOKE`` y se fija el rol
 de cada transacción. Todo identificador que llega a un SQL armado a mano pasa
 por una lista cerrada o por una expresión regular: nunca sale de un input.
+
+Cada negocio tiene sus propios tres roles: ``cv_<id>_admin``, ``cv_<id>_vendedor``
+y ``cv_<id>_analista``, donde ``<id>`` es el de su schema (``tenant_<id>``). Solo
+tienen privilegios en ese schema, así que la base misma impide que una
+petición de un negocio lea o escriba las tablas de otro, aunque el
+``search_path`` fallara.
 """
 
 from __future__ import annotations
@@ -19,11 +25,12 @@ from app.tenancy.context import validate_schema_name
 
 logger = logging.getLogger(__name__)
 
-DB_ROLE_NAMES: frozenset[str] = frozenset({"cv_admin", "cv_vendedor", "cv_analista"})
+# El rol de la app dentro del nombre del rol de base.
+DB_ROLE_SUFFIXES: frozenset[str] = frozenset({"admin", "vendedor", "analista"})
 PRIVILEGES: frozenset[str] = frozenset({"SELECT", "INSERT", "UPDATE", "DELETE"})
 _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 
-# El rol de PostgreSQL de la petición en curso; ``None`` fuera de una petición
+# El rol de la app de la petición en curso; ``None`` fuera de una petición
 # (workers, webhooks, migraciones), que siguen con el usuario de la conexión.
 _request_db_role: ContextVar[str | None] = ContextVar("request_db_role", default=None)
 # Lo decide el arranque (``check_db_roles``): sin los roles listos, pedirlos
@@ -37,88 +44,99 @@ def _ident(name: str) -> str:
     return f'"{name}"'
 
 
-def _role(name: str) -> str:
-    if name not in DB_ROLE_NAMES:
-        raise ValueError(f"Rol de base desconocido: {name!r}")
-    return _ident(name)
+def tenant_db_role(schema: str, suffix: str) -> str:
+    """``tenant_<id>`` + ``vendedor`` → ``cv_<id>_vendedor``."""
+    if suffix not in DB_ROLE_SUFFIXES:
+        raise ValueError(f"Rol de base desconocido: {suffix!r}")
+    tenant_id = validate_schema_name(schema).removeprefix("tenant_")
+    return f"cv_{tenant_id}_{suffix}"
+
+
+def tenant_db_roles(schema: str) -> dict[str, str]:
+    return {suffix: tenant_db_role(schema, suffix) for suffix in sorted(DB_ROLE_SUFFIXES)}
 
 
 def enforcement_active() -> bool:
     return _enforcement_active
 
 
-def set_request_db_role(role: str | None) -> None:
-    if role is not None and role not in DB_ROLE_NAMES:
-        raise ValueError(f"Rol de base desconocido: {role!r}")
-    _request_db_role.set(role if _enforcement_active else None)
+def set_request_db_role(suffix: str | None) -> None:
+    if suffix is not None and suffix not in DB_ROLE_SUFFIXES:
+        raise ValueError(f"Rol de base desconocido: {suffix!r}")
+    _request_db_role.set(suffix if _enforcement_active else None)
 
 
 def request_db_role() -> str | None:
     return _request_db_role.get()
 
 
-def set_local_role_sql() -> str | None:
-    """``SET LOCAL ROLE`` de la petición en curso, o None si no corresponde."""
-    role = _request_db_role.get()
-    return f"SET LOCAL ROLE {_role(role)}" if role else None
+def set_local_role_sql(schema: str) -> str | None:
+    """``SET LOCAL ROLE`` de la petición en curso en ``schema``, o None."""
+    suffix = _request_db_role.get()
+    return f"SET LOCAL ROLE {_ident(tenant_db_role(schema, suffix))}" if suffix else None
 
 
-async def ensure_db_roles(connection: AsyncConnection) -> bool:
-    """Crea los roles si faltan y hace a la conexión miembro de cada uno (para
-    poder ``SET ROLE``). Pide ``CREATEROLE``; sin él, avisa y devuelve False."""
-    existing = set((await connection.execute(
-        text("SELECT rolname FROM pg_roles WHERE rolname = ANY(:names)"), {"names": sorted(DB_ROLE_NAMES)},
+async def ensure_tenant_db_roles(session: AsyncSession, schema: str) -> bool:
+    """Crea los roles del negocio si faltan y hace a la conexión miembro de
+    cada uno (para poder ``SET ROLE``). Pide ``CREATEROLE``; sin él, avisa y
+    devuelve False."""
+    names = tenant_db_roles(schema).values()
+    existing = set((await session.execute(
+        text("SELECT rolname FROM pg_roles WHERE rolname = ANY(:names)"), {"names": sorted(names)},
     )).scalars().all())
-    can_create = (await connection.execute(
-        text("SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname = current_user")
-    )).scalar_one()
-    missing = DB_ROLE_NAMES - existing
-    if missing and not can_create:
-        logger.warning("Faltan los roles de base %s y el usuario no tiene CREATEROLE", sorted(missing))
-        return False
+    missing = set(names) - existing
+    if missing:
+        can_create = (await session.execute(
+            text("SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname = current_user")
+        )).scalar_one()
+        if not can_create:
+            logger.warning("Faltan los roles de base de %s y el usuario no tiene CREATEROLE", schema)
+            return False
     for name in sorted(missing):
         # Privilegios de sistema: ninguno. No inician sesión, no crean bases
         # ni roles, no se saltan RLS y no heredan nada por defecto.
-        await connection.execute(text(
-            f"CREATE ROLE {_role(name)} NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
+        await session.execute(text(
+            f"CREATE ROLE {_ident(name)} NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
         ))
-    for name in sorted(DB_ROLE_NAMES):
-        member = (await connection.execute(
+    for name in sorted(names):
+        member = (await session.execute(
             text("SELECT pg_has_role(current_user, :role, 'MEMBER')"), {"role": name},
         )).scalar_one()
         if not member:
-            await connection.execute(text(f"GRANT {_role(name)} TO CURRENT_USER"))
-    # Leer el plano de control sin tocar usuarios ni sesiones de la plataforma.
-    await connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {', '.join(_role(n) for n in sorted(DB_ROLE_NAMES))}"))
+            await session.execute(text(f"GRANT {_ident(name)} TO CURRENT_USER"))
     return True
 
 
-async def grant_control_reads(connection: AsyncConnection, tables: tuple[str, ...]) -> None:
-    roles = ", ".join(_role(name) for name in sorted(DB_ROLE_NAMES))
-    present = set((await connection.execute(text(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY(:t)"
-    ), {"t": list(tables)})).scalars().all())
-    for table in sorted(present):
-        await connection.execute(text(f"GRANT SELECT ON public.{_ident(table)} TO {roles}"))
+async def apply_schema_grants(
+    session: AsyncSession,
+    schema: str,
+    grants: dict[str, dict[str, frozenset[str]]],
+    control_reads: tuple[str, ...] = (),
+) -> bool:
+    """Deja a cada rol del negocio con exactamente ``grants[sufijo]`` en ``schema``.
 
-
-async def apply_schema_grants(session: AsyncSession, schema: str, grants: dict[str, dict[str, frozenset[str]]]) -> None:
-    """Deja a cada rol con exactamente ``grants[rol]`` en ``schema``.
-
-    ``grants[rol]`` es ``{"tabla": privilegios, "tabla.columna": privilegios}``.
-    Corre como dueño (``RESET ROLE``): solo él puede dar y quitar privilegios.
+    ``grants[sufijo]`` es ``{"tabla": privilegios, "tabla.columna": privilegios}``;
+    ``control_reads``, las tablas de ``public`` que pueden leer. Corre como
+    dueño (``RESET ROLE``): solo él puede crear roles y dar o quitar privilegios.
+    Devuelve False si los roles no existen ni se pueden crear.
     """
     schema_sql = _ident(validate_schema_name(schema))
     previous = request_db_role()
     await session.execute(text("RESET ROLE"))
     try:
+        if not await ensure_tenant_db_roles(session, schema):
+            return False
         present = set((await session.execute(text(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = :s"
         ), {"s": schema})).scalars().all())
+        control_present = set((await session.execute(text(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY(:t)"
+        ), {"t": list(control_reads)})).scalars().all())
         # Privilegio de sistema: nadie más que el dueño crea objetos acá.
         await session.execute(text(f"REVOKE CREATE ON SCHEMA {schema_sql} FROM PUBLIC"))
-        for role, targets in grants.items():
-            role_sql = _role(role)
+        for suffix, targets in grants.items():
+            role = tenant_db_role(schema, suffix)
+            role_sql = _ident(role)
             await session.execute(text(f"REVOKE CREATE ON SCHEMA {schema_sql} FROM {role_sql}"))
             await session.execute(text(f"GRANT USAGE ON SCHEMA {schema_sql} TO {role_sql}"))
             await session.execute(text(f"REVOKE ALL ON ALL TABLES IN SCHEMA {schema_sql} FROM {role_sql}"))
@@ -145,28 +163,34 @@ async def apply_schema_grants(session: AsyncSession, schema: str, grants: dict[s
                 else:
                     listed = ", ".join(sorted(privileges))
                 await session.execute(text(f"GRANT {listed} ON {schema_sql}.{_ident(table)} TO {role_sql}"))
+            await session.execute(text(f"GRANT USAGE ON SCHEMA public TO {role_sql}"))
+            for table in sorted(control_present):
+                await session.execute(text(f"GRANT SELECT ON public.{_ident(table)} TO {role_sql}"))
+        return True
     finally:
         if previous:
-            await session.execute(text(f"SET LOCAL ROLE {_role(previous)}"))
+            await session.execute(text(f"SET LOCAL ROLE {_ident(tenant_db_role(schema, previous))}"))
 
 
 async def describe_privileges(session: AsyncSession, schema: str) -> list[dict]:
-    """Lo que PostgreSQL dice hoy de cada rol: atributos de sistema, privilegios
-    sobre el schema y privilegios de objeto (por tabla y por columna)."""
+    """Lo que PostgreSQL dice hoy de cada rol del negocio: atributos de
+    sistema, privilegios sobre el schema y privilegios de objeto (por tabla y
+    por columna)."""
+    names = sorted(tenant_db_roles(schema).values())
     rows = (await session.execute(text(
         "SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolcanlogin, rolbypassrls, "
         "has_schema_privilege(rolname, :s, 'USAGE') AS schema_usage, "
         "has_schema_privilege(rolname, :s, 'CREATE') AS schema_create "
         "FROM pg_roles WHERE rolname = ANY(:names) ORDER BY rolname"
-    ), {"s": schema, "names": sorted(DB_ROLE_NAMES)})).mappings().all()
+    ), {"s": schema, "names": names})).mappings().all()
     tables = (await session.execute(text(
         "SELECT grantee, table_name, privilege_type FROM information_schema.role_table_grants "
         "WHERE table_schema = :s AND grantee = ANY(:names)"
-    ), {"s": schema, "names": sorted(DB_ROLE_NAMES)})).all()
+    ), {"s": schema, "names": names})).all()
     columns = (await session.execute(text(
         "SELECT grantee, table_name, column_name, privilege_type FROM information_schema.column_privileges "
         "WHERE table_schema = :s AND grantee = ANY(:names)"
-    ), {"s": schema, "names": sorted(DB_ROLE_NAMES)})).all()
+    ), {"s": schema, "names": names})).all()
     by_role: dict[str, dict[str, set[str]]] = {}
     for grantee, table, privilege in tables:
         by_role.setdefault(grantee, {}).setdefault(table, set()).add(privilege)
@@ -194,27 +218,31 @@ async def describe_privileges(session: AsyncSession, schema: str) -> list[dict]:
 
 
 async def check_db_roles(connection: AsyncConnection, *, enabled: bool) -> bool:
-    """Activa ``SET LOCAL ROLE`` solo si la conexión puede asumir los tres roles."""
+    """Activa ``SET LOCAL ROLE`` solo si la conexión puede asumir los roles de
+    todos los negocios activos. Uno que falte apaga la barrera entera en vez
+    de dejar a ese negocio sin poder atender."""
     global _enforcement_active
     if not enabled:
         _enforcement_active = False
         return False
-    ready = True
-    for name in sorted(DB_ROLE_NAMES):
-        if not await _role_exists(connection, name) or not (await connection.execute(
-            text("SELECT pg_has_role(current_user, :role, 'MEMBER')"), {"role": name},
-        )).scalar_one():
-            ready = False
-    _enforcement_active = ready
-    if not _enforcement_active:
+    schemas = (await connection.execute(text(
+        "SELECT schema_name FROM public.organizations WHERE status = 'active' ORDER BY schema_name"
+    ))).scalars().all()
+    missing: list[str] = []
+    for schema in schemas:
+        for name in tenant_db_roles(schema).values():
+            # pg_has_role falla con un rol inexistente: primero se mira si existe.
+            ready = (await connection.execute(text(
+                "SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :n) "
+                "THEN pg_has_role(current_user, :n, 'MEMBER') ELSE false END"
+            ), {"n": name})).scalar_one()
+            if not ready:
+                missing.append(name)
+    _enforcement_active = not missing
+    if missing:
         logger.error(
-            "DB_ROLE_ENFORCEMENT está encendido pero faltan los roles de base o la conexión no es "
-            "miembro de ellos: correr scripts.migrate. Las peticiones siguen sin SET ROLE."
+            "DB_ROLE_ENFORCEMENT está encendido pero faltan %d roles de base (%s…) o la conexión no es "
+            "miembro de ellos: correr scripts.migrate. Las peticiones siguen sin SET ROLE.",
+            len(missing), missing[0],
         )
     return _enforcement_active
-
-
-async def _role_exists(connection: AsyncConnection, name: str) -> bool:
-    return (await connection.execute(
-        text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :n)"), {"n": name},
-    )).scalar_one()

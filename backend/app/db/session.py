@@ -48,7 +48,7 @@ def _apply_current_tenant_after_begin(session, transaction, connection) -> None:
     # Dentro de una petición, la transacción corre con el rol de PostgreSQL
     # del usuario (app/db/privileges.py): la base rechaza por sí misma lo que
     # ese rol no puede hacer. También es LOCAL: no sobrevive al commit.
-    set_role = set_local_role_sql()
+    set_role = set_local_role_sql(schema_name)
     if set_role:
         connection.execute(text(set_role))
 

@@ -174,24 +174,39 @@ def test_giving_a_permission_widens_the_database_grants_of_that_role():
 
 def test_the_desired_grants_cover_the_three_database_roles():
     matrix = {role: frozenset(granted) for role, granted in DEFAULT_ROLE_PERMISSIONS.items()}
-    assert set(roles_service.desired_db_grants(matrix)) == set(DB_ROLES.values()) == db.DB_ROLE_NAMES
+    assert set(roles_service.desired_db_grants(matrix)) == set(DB_ROLES.values()) == db.DB_ROLE_SUFFIXES
 
 
 # --- SET LOCAL ROLE -------------------------------------------------------
 
+SCHEMA_A = "tenant_" + "a" * 32
+SCHEMA_B = "tenant_" + "b" * 32
+
+
 def test_set_role_only_happens_when_enforcement_is_active(monkeypatch):
     monkeypatch.setattr(db, "_enforcement_active", False)
-    db.set_request_db_role("cv_vendedor")
-    assert db.set_local_role_sql() is None
+    db.set_request_db_role("vendedor")
+    assert db.set_local_role_sql(SCHEMA_A) is None
     monkeypatch.setattr(db, "_enforcement_active", True)
-    db.set_request_db_role("cv_vendedor")
-    assert db.set_local_role_sql() == 'SET LOCAL ROLE "cv_vendedor"'
+    db.set_request_db_role("vendedor")
+    assert db.set_local_role_sql(SCHEMA_A) == f'SET LOCAL ROLE "cv_{"a" * 32}_vendedor"'
     db.set_request_db_role(None)
-    assert db.set_local_role_sql() is None
+    assert db.set_local_role_sql(SCHEMA_A) is None
+
+
+def test_each_business_has_its_own_database_roles():
+    a, b = db.tenant_db_roles(SCHEMA_A), db.tenant_db_roles(SCHEMA_B)
+    assert set(a) == set(b) == {"admin", "vendedor", "analista"}
+    assert not set(a.values()) & set(b.values())
+    assert all(len(name) <= 63 for name in [*a.values(), *b.values()])
 
 
 def test_unknown_database_roles_and_identifiers_are_refused():
     with pytest.raises(ValueError):
         db.set_request_db_role("postgres")
+    with pytest.raises(ValueError):
+        db.tenant_db_role("public", "vendedor")
+    with pytest.raises(ValueError):
+        db.tenant_db_role(SCHEMA_A, "superuser")
     with pytest.raises(ValueError):
         db._ident('leads"; DROP TABLE users; --')
