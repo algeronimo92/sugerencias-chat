@@ -76,6 +76,11 @@ const IntegrationsPage = lazy(() =>
     default: module.IntegrationsPage,
   })),
 );
+const SettingsPage = lazy(() =>
+  import("../features/platform/settings-page").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
 const CatalogsPage = lazy(() =>
   import("./CatalogsPage").then((module) => ({
     default: module.CatalogsPage,
@@ -229,6 +234,8 @@ const crmRoutes = createRoutesFromElements(
           <Route path="automations" element={<AutomationsPage />} />
           <Route path="catalogs" element={<CatalogsPage />} />
           <Route path="integraciones" element={<IntegrationsPage />} />
+          <Route path="configuracion" element={<SettingsPage />} />
+          <Route path="configuracion/:section" element={<SettingsPage />} />
           <Route path="ai-assistant" element={<AiAssistantPage />} />
         </Route>
       </Route>
