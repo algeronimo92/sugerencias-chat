@@ -81,10 +81,13 @@ describe('sesión', () => {
     at('/')
     render(<App />)
 
-    await vi.advanceTimersByTimeAsync(SESSION_CHECK_TIMEOUT_MS - 1)
+    // A mitad del plazo y no a 1 ms del vencimiento: con shouldAdvanceTime el
+    // tiempo real que tarda el render se suma al simulado, y en CI cargado ese
+    // milímetro se pasaba y el aviso ya estaba (falló así en el PR #238).
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_TIMEOUT_MS / 2)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_TIMEOUT_MS / 2)
     expect(await screen.findByText('No se pudo establecer conexión con el servidor.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reintentar conexión' })).toBeInTheDocument()
   })
