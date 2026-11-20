@@ -1,60 +1,17 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { Tooltip } from "../../../shared/ui/Tooltip";
-import { TagChip } from "../../../shared/ui/TagChip";
-import { displayName } from "../../leads/public/chat";
 import type { ReactNode } from "react";
-import {
-AlertCircle,
-Loader2,
-MessagesSquare,
-PanelLeftOpen,
-RefreshCw,
-Search,
-SlidersHorizontal,
-Smartphone,
-UserPlus,
-X,
-} from "lucide-react";
-import {
-lazy,
-Suspense,
-useEffect,
-useLayoutEffect,
-useRef,
-useState,
-} from "react";
-import { useChatSocketConnected } from "../../../realtime/useRealtime";
-import { Button } from "../../../shared/ui/Button";
-import { Checkbox } from "../../../shared/ui/Checkbox";
-import { EmptyState } from "../../../shared/ui/EmptyState";
-import { Select } from "../../../shared/ui/Input";
-import { Skeleton } from "../../../shared/ui/Skeleton";
-import { extractErrorMessage } from "../../../shared/utils/errors";
-import { useTags } from "../../catalogs/public/useTags";
-import { useLeadStageCatalog } from "../../leads/public/useLeadStages";
-import type { LeadStage } from '../../leads/types';
-import { useSellers } from "../../platform/public/useUsers";
-import { useCreateLead } from '../../leads/public/queries'
-import type { Chat, ChatFilters, LeadUpdateInput, MessageSearchHit } from '../../leads/types'
+import { useRef, useState } from "react";
+import type { Chat, ChatFilters, MessageSearchHit } from '../../leads/types'
+import { useTopChatHighlight } from '../hooks/useTopChatHighlight'
+import { useVirtualChatRows } from '../hooks/useVirtualChatRows'
 import type { ChatQuickFilter } from '../layoutContext'
 import { ChatItem } from "./ChatItem";
 import { ChatSearchResults } from "./ChatSearchResults";
-import { ChatViewChips } from "./ChatViewChips";
-
-// Diálogos que solo se abren a pedido: fuera del bundle inicial.
-const LeadFormDialog = lazy(() =>
-  import("../../leads/public/LeadFormDialog").then((m) => ({ default: m.LeadFormDialog })),
-);
-
-// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
-// cada render, lo que además rompía la memoización de los hijos.
-// En el celular 36 px de alto: con py-1.5 medían 28 y se erraba el toque.
-const segmentClass = (active: boolean) =>
-  `flex-1 whitespace-nowrap rounded-md px-2 py-2 text-xs font-semibold outline-none md:py-1.5 transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
-    active
-      ? "bg-white text-wa-primary-strong shadow-sm ring-1 ring-black/[0.03] dark:bg-wa-active-dark dark:text-wa-primary dark:ring-white/[0.04]"
-      : "text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
-  }`;
+import { activeFilterCount } from "./chatList/activeFilterCount";
+import { AdvancedFiltersPanel } from "./chatList/AdvancedFiltersPanel";
+import { ChatListHeader } from "./chatList/ChatListHeader";
+import { ChatListEmpty, ChatListSkeleton, LoadMoreRow } from "./chatList/ChatListStates";
+import { OfflineBanner } from "./chatList/OfflineBanner";
+import { SelectableChatRow } from "./chatList/SelectableChatRow";
 
 interface Props {
   /** El panel de bandejas está a la vista: la lista no repite sus filtros. */
@@ -104,46 +61,6 @@ interface Props {
   onConnectWhatsapp?: () => void;
 }
 
-const ROW_ESTIMATE_PX = 88;
-const HIGHLIGHT_DURATION_MS = 2000;
-// Margen antes de mostrar el aviso de conexión degradada: cubre el parpadeo
-// del socket durante el arranque y las reconexiones automáticas (3s de retry).
-const OFFLINE_BANNER_DELAY_MS = 5_000;
-
-function LoadMoreRow({
-  isFetchingNextPage,
-  hasNextPageError,
-  onRetry,
-}: {
-  isFetchingNextPage: boolean;
-  hasNextPageError: boolean;
-  onRetry: () => void;
-}) {
-  if (hasNextPageError) {
-    return (
-      <div className="py-3 flex items-center justify-center gap-2 text-xs text-red-500 dark:text-red-400">
-        <AlertCircle className="w-3.5 h-3.5" />
-        <span>Error al cargar más leads.</span>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="font-medium underline hover:no-underline text-red-600 dark:text-red-400"
-        >
-          Reintentar
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="py-4 flex items-center justify-center">
-      {isFetchingNextPage && (
-        <Loader2 className="w-4 h-4 text-wa-muted/60 dark:text-wa-muted-dark/60 animate-spin" />
-      )}
-    </div>
-  );
-}
-
 export function ChatList({
   inboxPanelVisible = false,
   onShowInboxes,
@@ -179,628 +96,58 @@ export function ChatList({
   showConnectWhatsapp = false,
   onConnectWhatsapp,
 }: Props) {
-  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
-  const socketConnected = useChatSocketConnected();
-  const [showOfflineBanner, setShowOfflineBanner] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const { mutate: createLead, isPending: isSavingNewLead } = useCreateLead();
-  // Solo los usa el panel de filtros: no se piden al cargar la lista.
-  const { data: tags = [] } = useTags(false, { enabled: showFilters });
-  const selectedTagIds = new Set(advancedFilters.tagIds);
-  const stageCatalog = useLeadStageCatalog();
-  // Todas las etapas, también las desactivadas (sus leads siguen ahí), y las
-  // de un filtro ya aplicado aunque el negocio las haya borrado.
-  const filterStages = [
-    ...stageCatalog.stages,
-    ...advancedFilters.stages
-      .filter((key) => !stageCatalog.stages.some((stage) => stage.key === key))
-      .map((key) => stageCatalog.get(key)),
-  ];
-  const { data: sellers = [] } = useSellers({ enabled: showFilters });
+  const activeAdvancedFilterCount = activeFilterCount(advancedFilters);
 
-  const activeAdvancedFilterCount =
-    advancedFilters.stages.length +
-    advancedFilters.tagIds.length +
-    Number(!!advancedFilters.service) +
-    Number(!!advancedFilters.sellerId) +
-    Number(!!advancedFilters.origin) +
-    Number(!!advancedFilters.lastSender) +
-    Number(!!advancedFilters.inactiveDays) +
-    Number(!!advancedFilters.waitingTime) +
-    Number(advancedFilters.automationPaused);
-
-  function toggleStage(stage: LeadStage) {
-    const stages = advancedFilters.stages.includes(stage)
-      ? advancedFilters.stages.filter((item) => item !== stage)
-      : [...advancedFilters.stages, stage];
-    onAdvancedFiltersChange({ ...advancedFilters, stages });
-  }
-
-  function toggleTag(tagId: number) {
-    const tagIds = advancedFilters.tagIds.includes(tagId)
-      ? advancedFilters.tagIds.filter((item) => item !== tagId)
-      : [...advancedFilters.tagIds, tagId];
-    onAdvancedFiltersChange({ ...advancedFilters, tagIds });
-  }
-
-  function clearAdvancedFilters() {
-    onAdvancedFiltersChange({
-      unreadOnly: false,
-      stages: [],
-      tagIds: [],
-      tagMode: "any",
-      service: "",
-      sellerId: null,
-      unassigned: false,
-      conversation: "",
-      origin: "",
-      lastSender: "",
-      inactiveDays: null,
-      waitingTime: "",
-      automationPaused: false,
-    });
-  }
-
-  function handleCreateLead(values: LeadUpdateInput) {
-    if (isSavingNewLead) return;
-    setCreateError(null);
-    createLead(
-      {
-        phone: values.phone ?? "",
-        name: values.name ?? "",
-        servicio_interes: values.servicio_interes,
-        vendedor_id: values.vendedor_id,
-        origen: values.origen,
-        notas: values.notas,
-        secondary_phone: values.secondary_phone,
-        custom_fields: values.custom_fields,
-      },
-      {
-        onSuccess: (chat) => {
-          setIsCreating(false);
-          onSelect(chat);
-        },
-        onError: (err) => setCreateError(extractErrorMessage(err)),
-      },
-    );
-  }
-
-  // Resalta el lead que salta al tope de la lista por un mensaje nuevo en
-  // tiempo real, para que no pase desapercibido si el usuario está
-  // scrolleado más abajo. Se ignora la primera carga y los cambios de
-  // búsqueda (ahí el "tope nuevo" es solo un resultado distinto, no una
-  // novedad real).
-  const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const prevTopIdRef = useRef<string | null>(null);
-  const topId = chats[0]?.chat_id ?? null;
-
-  useEffect(() => {
-    prevTopIdRef.current = null;
-    setHighlightedId(null);
-    scrollRef.current?.scrollTo({ top: 0 });
-  }, [search, filter, advancedFilters]);
-
-  useEffect(() => {
-    if (
-      prevTopIdRef.current !== null &&
-      topId !== null &&
-      topId !== prevTopIdRef.current
-    ) {
-      setHighlightedId(topId);
-      const timeout = setTimeout(
-        () => setHighlightedId(null),
-        HIGHLIGHT_DURATION_MS,
-      );
-      prevTopIdRef.current = topId;
-      return () => clearTimeout(timeout);
-    }
-    prevTopIdRef.current = topId;
-  }, [topId]);
-
-  // El WebSocket mantiene la lista al día; el refresh manual solo se ofrece
-  // cuando la conexión en tiempo real lleva un rato caída (queda el polling
-  // de respaldo de 60s, pero el usuario puede no querer esperarlo).
-  useEffect(() => {
-    if (socketConnected) {
-      setShowOfflineBanner(false);
-      return;
-    }
-    const timeout = setTimeout(
-      () => setShowOfflineBanner(true),
-      OFFLINE_BANNER_DELAY_MS,
-    );
-    return () => clearTimeout(timeout);
-  }, [socketConnected]);
-
-  async function handleRefresh() {
-    setIsManualRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setIsManualRefreshing(false);
-    }
-  }
-
-  // Fila extra al final para el loader/error de la página siguiente.
-  const rowCount = chats.length + (hasNextPage ? 1 : 0);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => scrollRef.current,
-    // Clave estable por chat_id (no por índice): si la lista se reordena
-    // (llega un mensaje a otro lead), el virtualizador no debe reutilizar
-    // la fila de un chat para otro chat distinto que cayó en el mismo índice.
-    getItemKey: (index) =>
-      index < chats.length ? chats[index].chat_id : `loader-${index}`,
-    estimateSize: () => ROW_ESTIMATE_PX,
-    overscan: 6,
+  const highlightedId = useTopChatHighlight({
+    topId: chats[0]?.chat_id ?? null,
+    scrollRef,
+    search,
+    filter,
+    advancedFilters,
   });
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
-
-  // Ancla de scroll: recuerda qué lead está arriba de la pantalla. Si llega
-  // un mensaje a OTRO lead mientras el usuario está adentro de un chat (la
-  // lista sigue montada, oculta con visibility:hidden detrás), ese lead
-  // puede saltar de posición y reordenar toda la lista. El scrollTop en
-  // píxeles no cambia, pero el lead que quedaba ahí sí — así que al volver
-  // la lista "se ve" scrolleada aunque nadie tocó el scroll. Con el ancla,
-  // si el lead-referencia cambia de posición, reubicamos el scroll para que
-  // siga apareciendo donde el usuario lo dejó.
-  const anchorChatIdRef = useRef<string | null>(null);
-  const prevChatsRef = useRef<Chat[]>(chats);
-
-  // En un layout effect (después del commit y antes de pintar) y no en el
-  // render: React puede descartar un render, y las refs quedaban apuntando a
-  // una lista que nunca llegó a pantalla.
-  useLayoutEffect(() => {
-    const prevChats = prevChatsRef.current;
-    if (prevChats === chats) return;
-    prevChatsRef.current = chats;
-    const anchorId = anchorChatIdRef.current;
-    if (!anchorId) return;
-    const prevIndex = prevChats.findIndex((chat) => chat.chat_id === anchorId);
-    const nextIndex = chats.findIndex((chat) => chat.chat_id === anchorId);
-    if (prevIndex !== -1 && nextIndex !== -1 && nextIndex !== prevIndex) {
-      rowVirtualizer.scrollToIndex(nextIndex, { align: "start" });
-    }
-  }, [chats, rowVirtualizer]);
-
-  // Mantiene el ancla al día mientras el usuario scrollea. rowVirtualizer no
-  // vuelve a renderizar el componente en cada pixel de scroll (con pocos
-  // leads todos caben dentro del overscan, así que ni siquiera cambia qué
-  // filas están montadas), así que se lee la posición real de las filas en
-  // el DOM (data-index) directamente en el evento de scroll.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    function updateAnchor() {
-      if (!el) return;
-      const containerTop = el.getBoundingClientRect().top;
-      let bestIndex: number | null = null;
-      for (const row of el.querySelectorAll<HTMLElement>("[data-index]")) {
-        const index = Number(row.dataset.index);
-        if (row.getBoundingClientRect().bottom <= containerTop) continue;
-        if (bestIndex === null || index < bestIndex) bestIndex = index;
-      }
-      if (bestIndex !== null && bestIndex < chats.length) {
-        anchorChatIdRef.current = chats[bestIndex].chat_id;
-      }
-    }
-    updateAnchor();
-    el.addEventListener("scroll", updateAnchor, { passive: true });
-    return () => el.removeEventListener("scroll", updateAnchor);
-  }, [chats, rowVirtualizer]);
-
-  // Lock síncrono aparte de isFetchingNextPage: el array de virtualItems
-  // cambia de referencia en re-renders muy seguidos (por ejemplo, el propio
-  // recálculo interno del virtualizer), y el efecto de abajo puede volver a
-  // ejecutarse antes de que isFetchingNextPage llegue a reflejar "true" en
-  // el estado de React Query. Sin este ref, eso dispara fetchNextPage()
-  // dos veces para la misma página.
-  const isLoadingMoreRef = useRef(false);
-
-  function triggerLoadMore() {
-    if (isLoadingMoreRef.current) return;
-    isLoadingMoreRef.current = true;
-    Promise.resolve(onLoadMore()).finally(() => {
-      isLoadingMoreRef.current = false;
-    });
-  }
-
-  // Patrón recomendado por @tanstack/react-virtual para infinite scroll:
-  // si la última fila renderizada ya es (o está por llegar a) la fila de
-  // carga, pide la próxima página. El guard de hasNextPageError evita que
-  // esto reintente solo en loop apenas falla un fetch: isFetchingNextPage
-  // vuelve a false al fallar, así que sin el guard este efecto dispararía
-  // otro fetchNextPage de inmediato en cada render, sin que el usuario
-  // llegue a ver ni usar el botón "Reintentar".
-  useEffect(() => {
-    const lastItem = virtualItems[virtualItems.length - 1];
-    if (!lastItem) return;
-    if (
-      lastItem.index >= chats.length - 1 &&
-      hasNextPage &&
-      !isFetchingNextPage &&
-      !hasNextPageError
-    ) {
-      triggerLoadMore();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    virtualItems,
-    chats.length,
+  const { rowVirtualizer, virtualItems, triggerLoadMore } = useVirtualChatRows({
+    chats,
+    scrollRef,
     hasNextPage,
     isFetchingNextPage,
     hasNextPageError,
     onLoadMore,
-  ]);
+  });
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-none border border-wa-border bg-white shadow-sm md:rounded-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
-      {/* Header */}
-      <div className="border-b border-wa-border px-3 pb-2.5 pt-3 dark:border-wa-border-dark">
-        {/* Cabecera compacta: la lista es lo que importa, no el encabezado. */}
-        <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            {onShowInboxes && !inboxLabel && (
-              <Tooltip content="Mostrar bandejas">
-                <button
-                  type="button"
-                  onClick={onShowInboxes}
-                  aria-label="Mostrar bandejas"
-                  className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <PanelLeftOpen className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
-                </button>
-              </Tooltip>
-            )}
-            <h1 className="truncate text-base font-bold tracking-[-0.02em] text-wa-text dark:text-white">
-              Conversaciones
-            </h1>
-            {/* Con una búsqueda, los totales van en cada sección del
-                resultado: acá este número eran las filas cargadas ("30") y
-                se leía como el total de resultados. */}
-            {!isLoading && !searchTerm && (
-              <span className="rounded-full bg-wa-field px-2 py-0.5 text-[10px] font-bold text-wa-muted dark:bg-wa-field-dark dark:text-wa-muted-dark">
-                {chats.length}
-              </span>
-            )}
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setCreateError(null);
-              setIsCreating(true);
-            }}
-            aria-label="Nuevo lead"
-            title="Nuevo lead"
-            className="h-8 shrink-0 rounded-lg px-2.5"
-          >
-            <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
-            Nuevo
-          </Button>
-        </div>
-        {/* Búsqueda y filtros avanzados en una sola fila */}
-        <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-wa-muted dark:text-wa-muted-dark" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Buscar nombre, teléfono o mensaje"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-9 w-full rounded-lg border border-wa-border bg-wa-field/70 pl-9 pr-9 text-sm text-wa-text outline-none transition-all placeholder:text-wa-muted focus:border-wa-primary/50 focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-field-dark/70 dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark dark:focus:border-wa-primary/50 dark:focus:bg-wa-field-dark"
-          />
-          {/* Vaciar la búsqueda: en el teléfono borrar a mano lo escrito es
-              incómodo y el teclado tapa media pantalla. Solo aparece con algo
-              escrito, así el buscador vacío queda igual que antes. */}
-          {search && (
-            <button
-              type="button"
-              onClick={() => {
-                onSearchChange("");
-                searchInputRef.current?.focus();
-              }}
-              aria-label="Borrar búsqueda"
-              title="Borrar búsqueda"
-              className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        {onShowInboxes && inboxLabel && (
-          // Celular: las bandejas se abren desde un icono junto al buscador.
-          <Tooltip content={`Bandeja: ${inboxLabel}`}>
-            <button
-              type="button"
-              onClick={onShowInboxes}
-              aria-label={`Bandeja: ${inboxLabel}. Cambiar de bandeja`}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-control text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <PanelLeftOpen className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </Tooltip>
-        )}
-        {/* Filtros avanzados: ocultos en el celular por ahora, a pedido
-            (2026-11-19); su lugar lo toma el icono de bandejas. El código y
-            el panel siguen: solo no se muestra el botón. */}
-        {!inboxLabel && (
-        <button
-          type="button"
-          onClick={() => setShowFilters((value) => !value)}
-          aria-label="Filtros avanzados"
-          aria-expanded={showFilters}
-          title="Filtros avanzados"
-          className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
-            showFilters || activeAdvancedFilterCount > 0
-              ? "border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-wa-primary/40 dark:bg-wa-primary/15 dark:text-wa-primary"
-              : "border-wa-border text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:text-wa-muted-dark dark:hover:bg-wa-hover-dark"
-          }`}
-        >
-          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-          {activeAdvancedFilterCount > 0 && (
-            <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-wa-primary px-1 text-[10px] font-semibold leading-4 text-white">
-              {activeAdvancedFilterCount}
-            </span>
-          )}
-        </button>
-        )}
-        </div>
-        {/* Con el panel de bandejas a la vista, estos filtros y las vistas
-            rápidas lo repetían: viven en el panel (doc 18 §6.3). */}
-        {!inboxPanelVisible && (<>
-        <div
-          className="mt-2 flex rounded-lg bg-wa-field p-0.5 dark:bg-wa-field-dark"
-          role="group"
-          aria-label="Filtrar leads"
-        >
-          <button
-            type="button"
-            onClick={() => onFilterChange("all")}
-            aria-pressed={filter === "all"}
-            className={segmentClass(filter === "all")}
-          >
-            Todos
-          </button>
-          <button
-            type="button"
-            onClick={() => onFilterChange("unread")}
-            aria-pressed={filter === "unread"}
-            className={`flex items-center justify-center gap-1.5 ${segmentClass(filter === "unread")}`}
-          >
-            No leídos
-            {unreadCount > 0 && (
-              <span className="min-w-4 rounded-full bg-wa-primary px-1 text-[10px] font-semibold leading-4 text-white">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => onFilterChange("mine")}
-            aria-pressed={filter === "mine"}
-            className={segmentClass(filter === "mine")}
-          >
-            Mis leads
-          </button>
-        </div>
-        <ChatViewChips
-          filters={advancedFilters}
-          onChange={onAdvancedFiltersChange}
-          canSave={activeAdvancedFilterCount > 0}
-        />
-        </>)}
+      <ChatListHeader
+        chatCount={chats.length}
+        isLoading={isLoading}
+        searchTerm={searchTerm}
+        search={search}
+        onSearchChange={onSearchChange}
+        inboxPanelVisible={inboxPanelVisible}
+        onShowInboxes={onShowInboxes}
+        inboxLabel={inboxLabel}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters((value) => !value)}
+        activeAdvancedFilterCount={activeAdvancedFilterCount}
+        filter={filter}
+        onFilterChange={onFilterChange}
+        unreadCount={unreadCount}
+        advancedFilters={advancedFilters}
+        onAdvancedFiltersChange={onAdvancedFiltersChange}
+        onSelect={onSelect}
+      >
         {toolbar}
         {showFilters && (
-          <div className="mt-2 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-wa-border bg-wa-field/50 p-3 dark:border-wa-border-dark dark:bg-wa-field-dark/35">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-                Etapas
-              </span>
-              {activeAdvancedFilterCount > 0 && (
-                <button
-                  type="button"
-                  onClick={clearAdvancedFilters}
-                  className="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-600"
-                >
-                  <X className="h-3 w-3" /> Limpiar
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {filterStages.map((stage) => (
-                <button
-                  key={stage.key}
-                  type="button"
-                  onClick={() => toggleStage(stage.key)}
-                  aria-pressed={advancedFilters.stages.includes(stage.key)}
-                  title={stage.is_active ? undefined : "Etapa desactivada"}
-                  className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${stage.is_active ? "" : "border-dashed"} ${
-                    advancedFilters.stages.includes(stage.key)
-                      ? "border-wa-primary bg-wa-primary/15 text-wa-primary-strong dark:bg-wa-primary/20 dark:text-wa-primary"
-                      : "border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-                  }`}
-                >
-                  {stage.name}
-                </button>
-              ))}
-            </div>
-
-            {tags.length > 0 && (
-              <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-                    Etiquetas
-                  </span>
-                  <Select
-                    value={advancedFilters.tagMode}
-                    onChange={(event) =>
-                      onAdvancedFiltersChange({
-                        ...advancedFilters,
-                        tagMode: event.target.value as "any" | "all",
-                      })
-                    }
-                    className="rounded border border-wa-border bg-white px-1.5 py-0.5 text-[10px] text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-                  >
-                    <option value="any">Cualquiera</option>
-                    <option value="all">Todas</option>
-                  </Select>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((tag) => {
-                    const selected = selectedTagIds.has(tag.id)
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        onClick={() => toggleTag(tag.id)}
-                        aria-pressed={selected}
-                        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <TagChip
-                          name={tag.name}
-                          color={tag.color}
-                          size="md"
-                          selected={selected}
-                          className={selected ? "ring-1 ring-line-control" : "hover:bg-selected"}
-                        />
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
-                  ["service", "Servicio"],
-                  ["origin", "Origen"],
-                ] as const
-              ).map(([key, label]) => (
-                <input
-                  key={key}
-                  value={advancedFilters[key]}
-                  onChange={(event) =>
-                    onAdvancedFiltersChange({
-                      ...advancedFilters,
-                      [key]: event.target.value,
-                    })
-                  }
-                  placeholder={label}
-                  className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
-                />
-              ))}
-              <Select
-                value={advancedFilters.sellerId ?? ""}
-                onChange={(event) =>
-                  onAdvancedFiltersChange({
-                    ...advancedFilters,
-                    sellerId: event.target.value
-                      ? Number(event.target.value)
-                      : null,
-                  })
-                }
-                className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-              >
-                <option value="">Cualquier vendedor</option>
-                {sellers.map((seller) => (
-                  <option key={seller.id} value={seller.id}>
-                    {seller.name}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                value={advancedFilters.lastSender}
-                onChange={(event) =>
-                  onAdvancedFiltersChange({
-                    ...advancedFilters,
-                    lastSender: event.target.value as ChatFilters["lastSender"],
-                  })
-                }
-                className="rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-              >
-                <option value="">Último emisor</option>
-                <option value="cliente">Cliente</option>
-                <option value="vendedor">Vendedor</option>
-              </Select>
-              <input
-                type="number"
-                min={1}
-                value={advancedFilters.inactiveDays ?? ""}
-                onChange={(event) =>
-                  onAdvancedFiltersChange({
-                    ...advancedFilters,
-                    inactiveDays: event.target.value
-                      ? Number(event.target.value)
-                      : null,
-                  })
-                }
-                placeholder="Inactivo (días)"
-                className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
-              />
-              <Select
-                value={advancedFilters.waitingTime}
-                onChange={(event) =>
-                  onAdvancedFiltersChange({
-                    ...advancedFilters,
-                    waitingTime: event.target
-                      .value as ChatFilters["waitingTime"],
-                  })
-                }
-                title="Tiempo desde el último mensaje del cliente sin respuesta del vendedor"
-                className="col-span-2 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
-              >
-                <option value="">Tiempo sin responder</option>
-                <option value="any">Todos esperando respuesta</option>
-                <option value="fresh">Menos de 10 minutos</option>
-                <option value="warning">Entre 10 minutos y 1 hora</option>
-                <option value="urgent">Más de 1 hora</option>
-              </Select>
-            </div>
-
-            <label className="flex items-center gap-2 text-xs text-wa-muted dark:text-wa-muted-dark">
-              <Checkbox
-                checked={advancedFilters.automationPaused}
-                onCheckedChange={(checked) =>
-                  onAdvancedFiltersChange({
-                    ...advancedFilters,
-                    automationPaused: checked,
-                  })
-                }
-              />
-              Solo sin automatizaciones nuevas
-            </label>
-          </div>
+          <AdvancedFiltersPanel
+            advancedFilters={advancedFilters}
+            onAdvancedFiltersChange={onAdvancedFiltersChange}
+            activeAdvancedFilterCount={activeAdvancedFilterCount}
+          />
         )}
-      </div>
+      </ChatListHeader>
 
-      {/* Conexión degradada: el refresh manual solo existe cuando hace falta */}
-      {showOfflineBanner && (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1">Sin conexión en tiempo real</span>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isManualRefreshing}
-            className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 font-semibold transition-colors hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-900/40"
-          >
-            <RefreshCw
-              className={`h-3 w-3 ${isManualRefreshing ? "animate-spin" : ""}`}
-              aria-hidden="true"
-            />
-            {isManualRefreshing ? "Actualizando…" : "Actualizar ahora"}
-          </button>
-        </div>
-      )}
+      <OfflineBanner onRefresh={onRefresh} />
 
       {searchTerm && (
         <ChatSearchResults
@@ -824,57 +171,19 @@ export function ChatList({
 
       {/* List */}
       <div ref={scrollRef} className={`flex-1 overflow-y-auto py-1.5 ${searchTerm ? "hidden" : ""}`}>
-        {isLoading && (
-          <div aria-label="Cargando leads" className="px-3 py-2 space-y-1">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 py-2">
-                <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <Skeleton className="h-3 w-2/3" />
-                  <Skeleton className="h-3 w-5/6" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {isLoading && <ChatListSkeleton />}
         {error && (
           <p className="text-sm text-red-500 dark:text-red-400 text-center py-8">
             Error al cargar leads.
           </p>
         )}
         {!isLoading && chats.length === 0 && !error && (
-          <div className="py-4">
-            <EmptyState
-              icon={MessagesSquare}
-              title={
-                search
-                  ? "Sin resultados."
-                  : filter === "unread"
-                    ? "No hay chats sin leer."
-                    : filter === "mine"
-                      ? "No tienes leads asignados."
-                      : "Sin leads todavía."
-              }
-            />
-            {showConnectWhatsapp && filter === "all" && !search && (
-              <div className="mx-4 mt-2 rounded-xl border border-wa-primary/30 bg-wa-primary/10 p-4 text-left dark:border-wa-primary/30 dark:bg-wa-primary/15">
-                <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-wa-primary-strong dark:text-wa-primary">
-                  <Smartphone className="h-4 w-4" /> Conecta tu WhatsApp
-                </div>
-                <p className="mb-3 text-xs text-wa-primary-strong/80 dark:text-wa-primary/80">
-                  Vincula el número del negocio con Meta para empezar a recibir
-                  mensajes.
-                </p>
-                <button
-                  type="button"
-                  onClick={onConnectWhatsapp}
-                  className="rounded-lg bg-wa-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-wa-primary-strong"
-                >
-                  Conectar WhatsApp
-                </button>
-              </div>
-            )}
-          </div>
+          <ChatListEmpty
+            search={search}
+            filter={filter}
+            showConnectWhatsapp={showConnectWhatsapp}
+            onConnectWhatsapp={onConnectWhatsapp}
+          />
         )}
         {!isLoading && chats.length > 0 && (
           <div
@@ -902,28 +211,15 @@ export function ChatList({
                 >
                   {chat ? (
                     selection && onToggleSelected ? (
-                      <div className="flex items-center">
-                        <span className="flex shrink-0 pl-3">
-                          <Checkbox
-                            aria-label={`Seleccionar ${displayName(chat)}`}
-                            checked={selection.has(chat.chat_id)}
-                            onCheckedChange={() => onToggleSelected(chat.chat_id)}
-                          />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <ChatItem
-                            hideHint
-                            chat={chat}
-                            isSelected={selection.has(chat.chat_id)}
-                            isHighlighted={false}
-                            search={search}
-                            onClick={() => onToggleSelected(chat.chat_id)}
-                            onPreview={() => onPreview(chat)}
-                            onMarkUnread={() => onMarkUnread(chat)}
-                            isMarkingUnread={markingUnreadId === chat.chat_id}
-                          />
-                        </div>
-                      </div>
+                    <SelectableChatRow
+                      chat={chat}
+                      checked={selection.has(chat.chat_id)}
+                      onToggle={() => onToggleSelected(chat.chat_id)}
+                      search={search}
+                      onPreview={() => onPreview(chat)}
+                      onMarkUnread={() => onMarkUnread(chat)}
+                      isMarkingUnread={markingUnreadId === chat.chat_id}
+                    />
                     ) : (
                     <ChatItem
                       chat={chat}
@@ -950,24 +246,6 @@ export function ChatList({
         )}
       </div>
       {footer}
-
-      <Suspense fallback={null}>
-        {isCreating && (
-          <LeadFormDialog
-            title="Agregar lead"
-            submitLabel="Agregar"
-            requirePhoneAndName
-            isSubmitting={isSavingNewLead}
-            error={createError}
-            onSubmit={handleCreateLead}
-            onCancel={() => setIsCreating(false)}
-            onOpenExisting={(chat) => {
-              setIsCreating(false);
-              onSelect(chat);
-            }}
-          />
-        )}
-      </Suspense>
     </div>
   );
 }
