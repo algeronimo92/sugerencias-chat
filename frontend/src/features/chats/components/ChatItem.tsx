@@ -1,7 +1,5 @@
 import { CalendarX, Clock, Copy, Eye, GitMerge, Loader2, LockKeyhole, Mail, Trash2, ZapOff } from 'lucide-react'
-import { TagChip } from '../../../shared/ui/TagChip'
 import { Avatar } from '../../../shared/ui/Avatar'
-import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -16,6 +14,7 @@ import { displayName, formatElapsedShort, isAwaitingReply, isBotAttended, waitin
 import { parseContent, searchSnippet, splitOnMatch } from '../../whatsapp/public/message'
 import { useChatDraft } from '../draftStore'
 import { contactMatchReason } from '../searchMatch'
+import { ChatItemMeta } from './ChatItemMeta'
 import { Highlighted } from './MessageSearchRow'
 
 // Diálogos que solo se abren a pedido: fuera del bundle inicial.
@@ -206,8 +205,6 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMat
     : 0
   const isCustomerWindowOpen = customerWindowExpiresAt > Date.now()
   const botAttended = isBotAttended(chat)
-  const stageCatalog = useLeadStageCatalog()
-  const stage = chat.stage ? stageCatalog.get(chat.stage) : null
 
   function openContextMenu(event: ReactMouseEvent<HTMLButtonElement>) {
     event.preventDefault()
@@ -323,24 +320,7 @@ export function ChatItem({ chat, isSelected, isHighlighted, search = '', showMat
             {matchReason.label}: <Highlighted text={matchReason.value} search={search} />
           </p>
         )}
-        {/* Etapa, vendedora y etiquetas en una línea de 12 px: lo que antes
-            obligaba a abrir el chat para saber en qué estaba. */}
-        <div className="mt-1.5 flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-fg-muted">
-          {stage && (
-            <>
-              <span className="flex shrink-0 items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: stage.color }} aria-hidden="true" />
-                <span className="max-w-28 truncate">{stage.name}</span>
-              </span>
-              <span aria-hidden="true">·</span>
-            </>
-          )}
-          <span className="max-w-24 shrink-0 truncate">{chat.vendedor ?? 'Sin asignar'}</span>
-          {chat.tags.slice(0, 2).map((tag) => (
-            <TagChip key={tag.id} name={tag.name} color={tag.color} className="max-w-24 shrink" />
-          ))}
-          {chat.tags.length > 2 && <span className="shrink-0">+{chat.tags.length - 2}</span>}
-        </div>
+        <ChatItemMeta chat={chat} />
       </div>
     </button>
     </Tooltip>

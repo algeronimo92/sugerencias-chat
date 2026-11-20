@@ -157,11 +157,12 @@ export function Select({
             <ChevronUp className="h-4 w-4" />
           </SelectPrimitive.ScrollUpButton>
           <SelectPrimitive.Viewport className="p-1">
-            {options.map((option, index) => {
+            {options.map((option) => {
               const showGroup = option.group != null && option.group !== lastGroup
               lastGroup = option.group
               return (
-                <SelectPrimitive.Group key={`${option.value}-${index}`}>
+                // Radix exige valores únicos dentro de un Select: el valor es la clave.
+                <SelectPrimitive.Group key={option.value}>
                   {showGroup && <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-semibold text-fg-muted">{option.group}</SelectPrimitive.Label>}
                   <SelectPrimitive.Item
                     value={option.value === '' ? EMPTY_VALUE : option.value}

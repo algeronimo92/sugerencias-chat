@@ -9,10 +9,8 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { displayPhone, displayUsername } from '../utils/chat'
 import { useMarkNoShow, useUpdateLead } from '../queries'
 import type { Chat, LeadUpdateInput } from '../types'
-import { useCustomFields } from '../../catalogs/public/useCustomFields'
-import { useLeadCustomFieldValues, useUpdateLeadCustomFieldValues } from '../hooks/useLeadCustomFieldValues'
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
-import { CustomFieldInput } from '../../catalogs/public/CustomFieldInput'
+import { LeadCustomFields } from './LeadCustomFields'
 import { LeadFormDialog } from './LeadFormDialog'
 import { useMoveLeadStage } from '../kanban-queries'
 
@@ -53,17 +51,12 @@ export function LeadInfo({ chat, footer }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [noShowError, setNoShowError] = useState<string | null>(null)
-  const [editingCustomFields, setEditingCustomFields] = useState(false)
-  const [customDraft, setCustomDraft] = useState<Record<string, unknown>>({})
   const navigate = useNavigate()
   const updateLead = useUpdateLead(chat.chat_id)
   const moveLeadStage = useMoveLeadStage()
   const isSaving = updateLead.isPending || moveLeadStage.isPending
   const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
   const stageCatalog = useLeadStageCatalog()
-  const { data: customDefinitions = [] } = useCustomFields('lead')
-  const { data: customValues = {} } = useLeadCustomFieldValues(chat.chat_id)
-  const updateCustomValues = useUpdateLeadCustomFieldValues(chat.chat_id)
 
   function handleMarkNoShow() {
     if (isMarkingNoShow) return
@@ -161,40 +154,7 @@ export function LeadInfo({ chat, footer }: Props) {
         </dl>
       )}
 
-      {customDefinitions.length > 0 && (
-        <div className="mt-4 border-t border-line pt-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-fg-muted">Campos del negocio</h4>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => { if (!editingCustomFields) setCustomDraft(customValues); setEditingCustomFields(value => !value) }}
-            >
-              {editingCustomFields ? 'Cancelar' : 'Editar'}
-            </Button>
-          </div>
-          {editingCustomFields ? (
-            <div className="space-y-3">
-              {customDefinitions.map(field => (
-                <label key={field.id} className="block text-xs font-medium text-fg-muted">
-                  {field.label}{field.required ? ' *' : ''}
-                  <CustomFieldInput field={field} value={customDraft[field.key]} onChange={value => setCustomDraft(current => ({ ...current, [field.key]: value }))} className="mt-1" />
-                </label>
-              ))}
-              <Button size="sm" disabled={updateCustomValues.isPending} onClick={() => updateCustomValues.mutate(customDraft, { onSuccess: () => setEditingCustomFields(false), onError: err => setEditError(extractErrorMessage(err)) })}>Guardar campos</Button>
-            </div>
-          ) : (
-            <dl className="space-y-2">
-              {customDefinitions.map(field => customValues[field.key] == null || customValues[field.key] === '' ? null : (
-                <div key={field.id} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 text-sm">
-                  <dt className="pt-px text-xs text-fg-muted">{field.label}</dt>
-                  <dd className="break-words leading-snug text-fg">{typeof customValues[field.key] === 'boolean' ? customValues[field.key] ? 'Sí' : 'No' : String(customValues[field.key])}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-      )}
+      <LeadCustomFields chatId={chat.chat_id} />
 
       {(chat.proxima_cita || footer) && (
         <div className="mt-4 flex flex-wrap items-start gap-2">
