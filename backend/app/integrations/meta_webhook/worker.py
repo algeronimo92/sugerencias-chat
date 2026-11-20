@@ -21,9 +21,11 @@ from app.integrations.meta_webhook.inbox import (
     Lane,
     claim_events,
     complete_event,
+    inbox_stats,
     purge_processed,
     release_event,
 )
+from app.integrations.meta_webhook import metrics
 from app.integrations.meta_webhook.processor import process_change
 from app.db.signals import ring, signal
 
@@ -38,6 +40,7 @@ META_INBOX_SIGNAL = "meta-inbox"
 # la apaga y el otro duerme hasta su sondeo (2 s de una llamada sonando).
 META_CALLS_SIGNAL = "meta-inbox-calls"
 CALLS_IDLE_POLL_SECONDS = 1.0
+METRICS_POLL_SECONDS = 30.0
 
 
 async def notify_new_events(event_types: set[str] | None = None) -> None:
@@ -114,3 +117,24 @@ async def watch_meta_calls_inbox() -> None:
         except Exception:
             logger.exception("Error al vaciar el carril de llamadas de Meta")
         await signal(META_CALLS_SIGNAL).wait(CALLS_IDLE_POLL_SECONDS)
+
+
+async def update_inbox_metrics() -> None:
+    stats = await inbox_stats()
+    metrics.webhook_inbox_pending.set(stats.pending)
+    metrics.webhook_inbox_exhausted.set(stats.exhausted)
+    metrics.webhook_inbox_exhausted_last_hour.set(stats.exhausted_last_hour)
+    metrics.webhook_inbox_oldest_pending_age_seconds.set(stats.oldest_pending_age_seconds)
+
+
+async def watch_meta_inbox_metrics() -> None:
+    """Ciclo aparte del que vacía el inbox: si ese se cuelga, este sigue
+    midiendo y la edad del pendiente más viejo es justo lo que lo delata."""
+    while True:
+        try:
+            await update_inbox_metrics()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("No se pudieron medir los eventos del inbox de Meta")
+        await asyncio.sleep(METRICS_POLL_SECONDS)

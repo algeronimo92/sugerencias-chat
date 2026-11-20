@@ -17,6 +17,7 @@ from app.integrations.meta_webhook.inbox import (
     MESSAGES_LANE,
     claim_events,
     complete_event,
+    inbox_stats,
     purge_processed,
     release_event,
     store_changes,
@@ -127,3 +128,26 @@ async def test_exhausted_events_are_purged_after_the_retention(stored) -> None:
     async with control_session() as session:
         left = (await session.execute(select(WebhookInbox.id).where(WebhookInbox.id.in_([exhausted, recent])))).scalars().all()
     assert left == [recent]
+
+
+async def test_inbox_stats_count_pending_and_lost_events(stored) -> None:
+    """Las métricas de la cola de entrada. El inbox es global y otros tests
+    escriben en él: se comparan diferencias, no valores absolutos."""
+    before = await inbox_stats()
+    waiting, retrying, lost = await stored("messages", "messages", "messages")
+    async with control_session() as session:
+        await session.execute(
+            update(WebhookInbox).where(WebhookInbox.id == waiting)
+            .values(received_at=datetime.now(timezone.utc) - timedelta(minutes=30))
+        )
+        await session.execute(update(WebhookInbox).where(WebhookInbox.id == retrying).values(status="failed", attempts=3))
+        await session.execute(
+            update(WebhookInbox).where(WebhookInbox.id == lost).values(status="failed", attempts=MAX_ATTEMPTS)
+        )
+
+    after = await inbox_stats()
+
+    assert after.pending - before.pending == 2
+    assert after.exhausted - before.exhausted == 1
+    assert after.exhausted_last_hour - before.exhausted_last_hour == 1
+    assert after.oldest_pending_age_seconds >= 30 * 60 - 5

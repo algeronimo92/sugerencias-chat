@@ -5,7 +5,7 @@ una salida rechazada no rompen nada, y justamente por eso necesitan una señal
 propia: si no, se pierden hasta que alguien mira un chat puntual.
 """
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 webhook_signature_rejected = Counter(
     "meta_webhook_signature_rejected_total",
@@ -98,4 +98,26 @@ call_notice_delay_seconds = Histogram(
     "Segundos entre que el webhook guardó el aviso de una llamada y se procesó. "
     "Meta da 30 a 60 s para atender: una demora de segundos acá es una llamada que suena tarde.",
     buckets=(0.25, 0.5, 1, 2, 3, 5, 10, 30, 60),
+)
+
+# La cola de entrada (public.webhook_inbox). La de salida tenía gauges desde
+# hace meses y esta ninguno: un evento que agotaba sus diez intentos —por
+# ejemplo, con el token de Meta de un negocio vencido— desaparecía del CRM sin
+# una sola señal, y el equipo se enteraba cuando el paciente reclamaba.
+# Son de toda la plataforma: el inbox no es de ningún negocio.
+webhook_inbox_pending = Gauge(
+    "meta_webhook_inbox_pending",
+    "Eventos de Meta esperando, en curso o fallidos que todavía se reintentan",
+)
+webhook_inbox_exhausted = Gauge(
+    "meta_webhook_inbox_exhausted",
+    "Eventos de Meta que agotaron sus intentos y siguen en el inbox (se purgan a los 7 días)",
+)
+webhook_inbox_exhausted_last_hour = Gauge(
+    "meta_webhook_inbox_exhausted_last_hour",
+    "Eventos de Meta que agotaron sus intentos en la última hora",
+)
+webhook_inbox_oldest_pending_age_seconds = Gauge(
+    "meta_webhook_inbox_oldest_pending_age_seconds",
+    "Antigüedad del evento de Meta pendiente más viejo del inbox",
 )

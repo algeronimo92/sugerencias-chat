@@ -19,8 +19,49 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
-  # La outbox es la cola de salida real del sistema (la de entrada es
-  # public.webhook_inbox, que todavía no publica métricas). Un pendiente que
+  # La cola de entrada: durante un deploy los dos colores miden la misma tabla.
+  # Tiene que sonar una sola vez, no una por color.
+  - interval: 1m
+    input_series:
+      - series: 'meta_webhook_inbox_oldest_pending_age_seconds{job="worker", color="blue", instance="sugerencias-chat-blue-worker-1"}'
+        values: "0 600 600 600 600 600 600 600"
+      - series: 'meta_webhook_inbox_oldest_pending_age_seconds{job="worker", color="green", instance="sugerencias-chat-green-worker-1"}'
+        values: "0 600 600 600 600 600 600 600"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: InboxMetaAtascado
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: InboxMetaAtascado
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Mensajes de WhatsApp recibidos hace más de 5 minutos que no entraron al CRM"
+              description: "El worker del inbox de Meta está detenido o fallando. Evento pendiente más viejo: 600s."
+
+  # Un evento perdido suena enseguida y se apaga solo cuando sale de la ventana.
+  - interval: 1m
+    input_series:
+      - series: 'meta_webhook_inbox_exhausted_last_hour{job="worker", instance="sugerencias-chat-blue-worker-1"}'
+        values: "0 1 1 0"
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: InboxMetaEventosPerdidos
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: InboxMetaEventosPerdidos
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Eventos de WhatsApp agotaron sus reintentos y no llegaron al CRM"
+              description: "Revisar last_error en public.webhook_inbox (status failed, attempts >= 10): token de Meta vencido, medio que no baja o un bug. Última hora: 1."
+      - eval_time: 3m
+        alertname: InboxMetaEventosPerdidos
+        exp_alerts: []
+
+  # La outbox es la cola de salida del sistema. Un pendiente que
   # envejece más de dos minutos es un vendedor viendo "no enviado".
   - interval: 1m
     input_series:

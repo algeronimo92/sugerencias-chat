@@ -26,6 +26,29 @@ groups:
           summary: "Más de 3 mensajes agotaron sus reintentos en la última hora"
           description: "Meta Cloud API caída, token vencido o número mal configurado. outbox_failed_last_hour = {{ $value }}."
 
+      # La cola de entrada. `max` porque durante un deploy los dos colores
+      # miden la misma tabla global y no se quiere una alerta por color.
+      - alert: InboxMetaAtascado
+        expr: max(meta_webhook_inbox_oldest_pending_age_seconds) > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mensajes de WhatsApp recibidos hace más de 5 minutos que no entraron al CRM"
+          description: "El worker del inbox de Meta está detenido o fallando. Evento pendiente más viejo: {{ $value }}s."
+
+      # Un evento que agota sus diez intentos ya no se reintenta: es un mensaje
+      # de paciente que no va a aparecer en el chat. Se mira la ventana de 1 h
+      # (y no el total, que tarda 7 días en purgarse) para que la alerta se
+      # apague sola cuando se atiende.
+      - alert: InboxMetaEventosPerdidos
+        expr: max(meta_webhook_inbox_exhausted_last_hour) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Eventos de WhatsApp agotaron sus reintentos y no llegaron al CRM"
+          description: "Revisar last_error en public.webhook_inbox (status failed, attempts >= 10): token de Meta vencido, medio que no baja o un bug. Última hora: {{ $value }}."
+
       # Meta da entre 30 y 60 s para atender una llamada: si el aviso tarda
       # segundos en procesarse, la llamada suena tarde o no suena
       # (docs/analisis/17-plan-llamadas-whatsapp.md, §4.8).

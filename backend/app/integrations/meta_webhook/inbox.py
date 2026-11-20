@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.control import WebhookInbox
@@ -265,3 +265,40 @@ async def purge_processed() -> None:
                 WebhookInbox.updated_at < cutoff,
             )
         )
+
+
+@dataclass(frozen=True)
+class InboxStats:
+    # Esperando, en curso o fallidos que todavía se van a reintentar.
+    pending: int
+    # Agotaron sus intentos: el mensaje del paciente no llegó al CRM.
+    exhausted: int
+    exhausted_last_hour: int
+    oldest_pending_age_seconds: float
+
+
+async def inbox_stats() -> InboxStats:
+    now = datetime.now(timezone.utc)
+    pending = or_(
+        WebhookInbox.status.in_(("received", "processing")),
+        and_(WebhookInbox.status == "failed", WebhookInbox.attempts < MAX_ATTEMPTS),
+    )
+    exhausted = and_(WebhookInbox.status == "failed", WebhookInbox.attempts >= MAX_ATTEMPTS)
+    async with control_session() as session:
+        row = (
+            await session.execute(
+                select(
+                    func.count().filter(pending),
+                    func.count().filter(exhausted),
+                    func.count().filter(exhausted, WebhookInbox.updated_at >= now - timedelta(hours=1)),
+                    func.min(WebhookInbox.received_at).filter(pending),
+                ).where(WebhookInbox.provider == PROVIDER)
+            )
+        ).one()
+    oldest = row[3]
+    return InboxStats(
+        pending=row[0] or 0,
+        exhausted=row[1] or 0,
+        exhausted_last_hour=row[2] or 0,
+        oldest_pending_age_seconds=max(0.0, (now - oldest).total_seconds()) if oldest else 0.0,
+    )
