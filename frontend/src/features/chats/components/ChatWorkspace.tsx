@@ -353,11 +353,11 @@ export function ChatWorkspace() {
             de la lista. */}
         {showInboxes && !inboxesCollapsed && (
           <div className="h-full shrink-0 overflow-hidden rounded-xl">
-            <InboxPanel role={me?.role} filters={chatFilters} onCollapse={toggleInboxes} />
+            <InboxPanel filters={chatFilters} onCollapse={toggleInboxes} />
           </div>
         )}
         {isMobile && (
-          <InboxSheet role={me?.role} filters={chatFilters} open={inboxSheetOpen} onOpenChange={setInboxSheetOpen} />
+          <InboxSheet filters={chatFilters} open={inboxSheetOpen} onOpenChange={setInboxSheetOpen} />
         )}
         <div
           className={`h-full overflow-hidden ${isMobile ? (chatId ? "invisible pointer-events-none absolute inset-0" : "w-full") : "w-72 shrink-0 2xl:w-[324px]"}`}

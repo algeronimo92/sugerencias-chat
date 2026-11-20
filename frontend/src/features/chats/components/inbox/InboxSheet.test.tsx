@@ -23,7 +23,7 @@ function Harness() {
   return (
     <>
       <p>bandeja: {chatFilter}</p>
-      <InboxSheet role="admin" filters={filters} open={open} onOpenChange={setOpen} />
+      <InboxSheet filters={filters} open={open} onOpenChange={setOpen} />
     </>
   )
 }

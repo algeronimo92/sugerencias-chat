@@ -4,7 +4,6 @@ import type { ChatFiltersState } from '../../layoutContext'
 import { InboxSections } from './InboxSections'
 
 interface Props {
-  role: string | undefined
   filters: ChatFiltersState
   onCollapse: () => void
 }
@@ -16,7 +15,7 @@ interface Props {
  * chips de vistas rápidas de la lista. En el celular, las mismas secciones
  * van en una hoja inferior (InboxSheet).
  */
-export function InboxPanel({ role, filters, onCollapse }: Props) {
+export function InboxPanel({ filters, onCollapse }: Props) {
   return (
     <nav aria-label="Bandejas" className="flex h-full w-60 shrink-0 flex-col border-r border-line bg-surface">
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-5">
@@ -34,7 +33,7 @@ export function InboxPanel({ role, filters, onCollapse }: Props) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
-        <InboxSections role={role} filters={filters} />
+        <InboxSections filters={filters} />
       </div>
     </nav>
   )
