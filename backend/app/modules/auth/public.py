@@ -1,7 +1,7 @@
 """Dependencias de identidad compartidas con otros módulos.
 
 ``User`` es el usuario autenticado que entregan ``get_current_user`` y
-``require_admin``: las rutas de otros módulos lo usan para anotar la
+``require_permission``: las rutas de otros módulos lo usan para anotar la
 dependencia sin tocar el modelo de auth.
 """
 
@@ -11,9 +11,11 @@ from app.modules.auth.auth_service import (
     cookie_is_secure,
     get_current_user,
     hash_password,
-    require_admin,
+    require_permission,
     verify_password,
 )
+from app.modules.auth.permissions import Permission, can
+from app.modules.auth.roles_service import roles_with_permission, set_role_permission, sync_db_privileges
 from app.modules.auth.login_throttle import (
     LoginThrottledError,
     clear_account_attempts,

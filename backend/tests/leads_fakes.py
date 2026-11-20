@@ -22,6 +22,7 @@ from app.modules.leads.domain.errors import LeadAlreadyExists
 from app.modules.leads.domain.lead import ActivityRecord, Lead, TriggerMessage
 from app.modules.leads.domain.stage import StageRule
 from app.modules.leads.ports.types import LeadStageKind
+from tests.permission_fakes import use_role_matrix
 
 DEFAULT_STAGES = {
     "nuevo": StageRule("nuevo", LeadStageKind.OPEN, True, 0),
@@ -185,7 +186,7 @@ def in_memory_leads(monkeypatch) -> LeadsWorld:
     from unittest.mock import AsyncMock
     from app.modules.leads import visibility
 
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=False))
+    use_role_matrix(monkeypatch)
     repository = InMemoryLeadRepository()
     published: list[events.DomainEvent] = []
     monkeypatch.setattr(ports, "_repository", repository)

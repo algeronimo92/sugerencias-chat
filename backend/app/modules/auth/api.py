@@ -15,6 +15,7 @@ from app.modules.auth.auth_service import (
     set_session_cookie,
     verify_password,
 )
+from app.modules.auth.roles_service import permissions_for_role
 from app.modules.auth.users_service import get_user_by_email
 from app.modules.auth.admin_totp import (
     TotpSetupError,
@@ -55,10 +56,12 @@ from app.modules.auth.session_service import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _to_user_out(user: User) -> UserOut:
+async def _to_user_out(user: User) -> UserOut:
     return UserOut(
         id=user.id, email=user.email, name=user.name, role=user.role,
         can_handle_calls=bool(getattr(user, "can_handle_calls", False)),
+        # El login no pasa por get_current_user: se lee la matriz acá.
+        permissions=sorted(await permissions_for_role(user.role)),
     )
 
 
@@ -127,7 +130,7 @@ async def login(body: LoginRequest, response: Response, request: Request):
         persistent=auth_session.persistent,
         absolute_expires_at=auth_session.absolute_expires_at,
     )
-    return _to_user_out(user)
+    return await _to_user_out(user)
 
 
 @router.get("/pin/status", response_model=PinStatusOut)
@@ -168,7 +171,7 @@ async def pin_login(body: PinLoginRequest, response: Response, request: Request)
         persistent=True,
         absolute_expires_at=auth_session.absolute_expires_at,
     )
-    return _to_user_out(user)
+    return await _to_user_out(user)
 
 
 @router.post("/pin/setup", response_model=PinStatusOut)
@@ -297,7 +300,7 @@ async def logout_all(
 
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
-    return _to_user_out(user)
+    return await _to_user_out(user)
 
 
 @router.post("/forgot-password", status_code=202)

@@ -11,7 +11,7 @@ from app.modules.auth import api as auth
 from app.modules.auth import users_api as users
 from app.integrations import email_service
 from app.modules.auth.account_actions import INVITATION, InvalidActionTokenError
-from app.modules.auth.auth_service import require_admin
+from app.modules.auth.auth_service import get_current_user
 from app.integrations.email_service import EmailNotConfiguredError
 from app.tenancy.context import TenantContext
 
@@ -90,7 +90,7 @@ def _users_client() -> TestClient:
     app = FastAPI()
     app.include_router(users.router)
     admin = SimpleNamespace(id=1, role="admin")
-    app.dependency_overrides[require_admin] = lambda: admin
+    app.dependency_overrides[get_current_user] = lambda: admin
     return TestClient(app)
 
 

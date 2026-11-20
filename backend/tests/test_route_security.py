@@ -5,7 +5,7 @@ import pytest
 
 import main
 from app import bootstrap
-from app.modules.auth.auth_service import get_current_user, require_admin, verify_webhook_token, websocket_origin_allowed
+from app.modules.auth.auth_service import get_current_user, verify_webhook_token, websocket_origin_allowed
 from app.modules.platform.platform_auth import get_current_platform_user
 
 # El panel de plataforma tiene su propia identidad (public.platform_users), así
@@ -14,7 +14,6 @@ from app.modules.platform.platform_auth import get_current_platform_user
 # contrario de lo que son.
 AUTH_GUARDS = {
     get_current_user,
-    require_admin,
     verify_webhook_token,
     get_current_platform_user,
 }
@@ -73,6 +72,57 @@ def test_every_api_route_requires_authentication_unless_explicitly_public():
     }
 
     assert unguarded - PUBLIC_ROUTES == set()
+
+
+# Rutas de sesión que solo sostienen la propia cuenta: cualquiera que inicie
+# sesión las necesita, tenga el rol que tenga. Todo lo demás con sesión pide
+# un permiso (``require_permission``): así una ruta nueva no queda abierta
+# para el analista sin que nadie lo decida. Solo se achica.
+SELF_SERVICE_ROUTES = {
+    ("GET", "/api/auth/me"),
+    ("GET", "/api/auth/sessions"),
+    ("DELETE", "/api/auth/sessions/{session_id}"),
+    ("POST", "/api/auth/logout-all"),
+    ("POST", "/api/auth/pin/setup"),
+    ("DELETE", "/api/auth/pin"),
+    ("GET", "/api/auth/mfa/status"),
+    ("POST", "/api/auth/mfa/start"),
+    ("POST", "/api/auth/mfa/confirm"),
+    ("POST", "/api/auth/mfa/disable"),
+    # Cada quien reporta problemas de la app y ve los suyos; gestionar los
+    # del equipo es ``issue_reports.manage``.
+    ("GET", "/api/issue-reports"),
+    ("POST", "/api/issue-reports"),
+    ("GET", "/api/issue-reports/{report_id}"),
+    ("PATCH", "/api/issue-reports/{report_id}"),
+    ("POST", "/api/issue-reports/{report_id}/comments"),
+}
+
+
+def _permissions_of(dependant) -> set[str]:
+    found: set[str] = set()
+    for dep in dependant.dependencies:
+        found |= set(getattr(dep.call, "__permissions__", ()))
+        found |= _permissions_of(dep)
+    return found
+
+
+def _requires_session(dependant) -> bool:
+    return any(dep.call is get_current_user or _requires_session(dep) for dep in dependant.dependencies)
+
+
+def test_every_session_route_requires_a_permission_unless_self_service():
+    without_permission = {
+        (method, route.path)
+        for route in main.app.routes
+        if isinstance(route, APIRoute)
+        and _requires_session(route.dependant)
+        and not _permissions_of(route.dependant)
+        for method in route.methods
+    }
+
+    assert without_permission - SELF_SERVICE_ROUTES == set()
+    assert SELF_SERVICE_ROUTES - without_permission == set(), "sobran entradas en SELF_SERVICE_ROUTES"
 
 
 @pytest.mark.parametrize(("origin", "host", "allowed"), [

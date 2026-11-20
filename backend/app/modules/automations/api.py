@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.modules.automations.domain.types import AutomationBuilderMode
 from app.modules.auth.public import User
 from app.modules.automations.schemas import AutomationExecutionItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
-from app.modules.auth.public import get_current_user, require_admin
+from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 from app.modules.automations.public import (
     cancel_automation_execution,
@@ -31,23 +31,26 @@ from app.modules.automations.public import (
     validate_automation_rule,
 )
 
+require_automations_manage = require_permission(Permission.AUTOMATIONS_MANAGE)
+require_automations_run = require_permission(Permission.AUTOMATIONS_RUN)
+
 router = APIRouter(prefix="/api/automations", tags=["automations"], dependencies=[Depends(require_visible_lead)])
 
 
 @router.get("", response_model=list[AutomationRuleItem])
-async def get_rules(_admin: User = Depends(require_admin)):
+async def get_rules(_admin: User = Depends(require_automations_manage)):
     return await list_automation_rules()
 
 
 @router.post("", response_model=AutomationRuleItem, status_code=201)
-async def post_rule(body: AutomationRuleCreate, admin: User = Depends(require_admin)):
+async def post_rule(body: AutomationRuleCreate, admin: User = Depends(require_automations_manage)):
     values = await validate_automation_rule(body.model_dump())
     item = await create_automation_rule(values, admin.id)
     return item
 
 
 @router.post("/{rule_id}/duplicate", response_model=AutomationRuleItem, status_code=201)
-async def post_duplicate(rule_id: int, admin: User = Depends(require_admin)):
+async def post_duplicate(rule_id: int, admin: User = Depends(require_automations_manage)):
     item = await duplicate_automation_rule(rule_id, admin.id)
     if item is None:
         raise HTTPException(404, "Automatización no encontrada")
@@ -55,7 +58,7 @@ async def post_duplicate(rule_id: int, admin: User = Depends(require_admin)):
 
 
 @router.post("/flows", response_model=AutomationRuleItem, status_code=201)
-async def post_flow(body: AutomationFlowCreate, admin: User = Depends(require_admin)):
+async def post_flow(body: AutomationFlowCreate, admin: User = Depends(require_automations_manage)):
     item = await create_visual_flow(body.name, body.flow_definition, admin.id)
     return item
 
@@ -64,7 +67,7 @@ async def post_flow(body: AutomationFlowCreate, admin: User = Depends(require_ad
 async def patch_flow(
     rule_id: int,
     body: AutomationFlowUpdate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_automations_manage),
 ):
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
@@ -76,7 +79,7 @@ async def patch_flow(
 
 
 @router.post("/{rule_id}/publish", response_model=AutomationRuleItem)
-async def publish_flow(rule_id: int, _admin: User = Depends(require_admin)):
+async def publish_flow(rule_id: int, _admin: User = Depends(require_automations_manage)):
     item = await publish_visual_flow(rule_id)
     if item is None:
         raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
@@ -84,7 +87,7 @@ async def publish_flow(rule_id: int, _admin: User = Depends(require_admin)):
 
 
 @router.get("/{rule_id}/versions", response_model=list[AutomationFlowVersionItem])
-async def get_flow_versions(rule_id: int, _admin: User = Depends(require_admin)):
+async def get_flow_versions(rule_id: int, _admin: User = Depends(require_automations_manage)):
     current = await get_automation_rule(rule_id)
     if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
         raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
@@ -95,7 +98,7 @@ async def get_flow_versions(rule_id: int, _admin: User = Depends(require_admin))
 async def post_restore_flow_version(
     rule_id: int,
     version: int,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_automations_manage),
 ):
     item = await restore_flow_version(rule_id, version)
     if item is None:
@@ -107,7 +110,7 @@ async def post_restore_flow_version(
 async def simulate_flow(
     rule_id: int,
     body: AutomationFlowSimulationRequest,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_automations_manage),
 ):
     return await simulate_visual_flow(rule_id, body.lead_id)
 
@@ -116,7 +119,7 @@ async def simulate_flow(
 async def patch_rule(
     rule_id: int,
     body: AutomationRuleUpdate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_automations_manage),
 ):
     current = await get_automation_rule(rule_id)
     if current is None:
@@ -163,7 +166,7 @@ async def patch_rule(
 
 
 @router.delete("/{rule_id}")
-async def delete_rule(rule_id: int, _admin: User = Depends(require_admin)):
+async def delete_rule(rule_id: int, _admin: User = Depends(require_automations_manage)):
     result = await delete_automation_rule(rule_id)
     if result is None:
         raise HTTPException(404, "Automatización no encontrada")
@@ -178,20 +181,23 @@ async def get_manual_flows(
     # se acepta para simetría con el resto de la API y por si una futura
     # iteración necesita, por ejemplo, ocultar un flujo ya en curso en ese chat.
     chat_id: str | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_automations_run),
 ):
     del chat_id
-    return await list_manual_flows(is_admin=user.role == "admin")
+    # Quien edita automatizaciones ve también las ocultas e inactivas.
+    return await list_manual_flows(is_admin=can(user, Permission.AUTOMATIONS_MANAGE))
 
 
 @router.post("/{rule_id}/start", response_model=AutomationExecutionItem, status_code=201)
 async def post_start_manual_flow(
     rule_id: int,
     body: ManualFlowStartRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_automations_run),
 ):
     await ensure_lead_visible(user, body.chat_id)
-    item = await start_manual_flow_execution(rule_id, body.chat_id, user.id, user.role == "admin")
+    item = await start_manual_flow_execution(
+        rule_id, body.chat_id, user.id, can(user, Permission.AUTOMATIONS_MANAGE),
+    )
     return item
 
 
@@ -207,17 +213,17 @@ async def get_executions(
     # Fuerza el historial a "lo que yo mismo inicié", sin importar el rol —
     # es lo que usa la pantalla "Flujos enviados" del vendedor.
     mine: bool = False,
-    # Solo admin: lo que inició otra persona (`started_by`) o cualquiera del
+    # Con ``team.supervise``: lo que inició otra persona (`started_by`) o cualquiera del
     # equipo (`team`). Nació porque la dueña abría "Flujos enviados" con su
     # cuenta, veía cero y creía que ese día no había salido ningún flujo.
     started_by: int | None = Query(default=None, ge=1),
     team: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_automations_run),
 ):
-    is_admin = user.role == "admin"
+    is_admin = can(user, Permission.TEAM_SUPERVISE)
     if (started_by is not None or team) and not is_admin:
-        raise HTTPException(403, "Solo un administrador puede ver los flujos que envió otra persona.")
+        raise HTTPException(403, "Tu rol no puede ver los flujos que envió otra persona.")
     # Sin admin y sin chat puntual, jamás se entrega el historial completo de
     # todos los leads: se acota siempre a lo que el propio usuario disparó a
     # mano. Con chat_id, en cambio, el vendedor sigue viendo todo lo que corre
@@ -247,7 +253,7 @@ async def get_executions(
 
 
 @router.get("/executions/{execution_id}", response_model=AutomationExecutionItem)
-async def get_execution(execution_id: int, admin: User = Depends(require_admin)):
+async def get_execution(execution_id: int, admin: User = Depends(require_automations_manage)):
     """Estado puntual de una ejecución — lo usa el centro de notificaciones
     para saber si una autorización de ventana de 24 h ya quedó registrada
     (`window_override_at`), algo que la notificación en sí no guarda y que
@@ -262,7 +268,7 @@ async def get_execution(execution_id: int, admin: User = Depends(require_admin))
 async def post_retry_execution(
     execution_id: int,
     body: AutomationExecutionRetryRequest | None = None,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_automations_manage),
 ):
     """Reintenta una ejecución con error. Con `ignore_service_window` el admin
     autoriza además a que los envíos de esta ejecución salgan con la ventana
@@ -283,7 +289,7 @@ async def _require_execution_access(execution_id: int, user: User, action: str) 
     incluidas las de sistema: ya puede frenarlas todas de golpe pausando el
     lead, así que actuar sobre una sola es estrictamente menos drástico. Lo
     único fuera de su alcance son las ejecuciones sin lead."""
-    if user.role == "admin":
+    if can(user, Permission.AUTOMATIONS_MANAGE):
         return
     execution = await get_automation_execution(execution_id)
     if execution is None or execution["lead_id"] is None:
@@ -292,7 +298,7 @@ async def _require_execution_access(execution_id: int, user: User, action: str) 
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=AutomationExecutionItem)
-async def post_cancel_execution(execution_id: int, user: User = Depends(get_current_user)):
+async def post_cancel_execution(execution_id: int, user: User = Depends(require_automations_run)):
     await _require_execution_access(execution_id, user, "cancelar")
     item = await cancel_automation_execution(execution_id)
     if item is None:
@@ -301,7 +307,7 @@ async def post_cancel_execution(execution_id: int, user: User = Depends(get_curr
 
 
 @router.post("/executions/{execution_id}/pause", response_model=AutomationExecutionItem)
-async def post_pause_execution(execution_id: int, user: User = Depends(get_current_user)):
+async def post_pause_execution(execution_id: int, user: User = Depends(require_automations_run)):
     await _require_execution_access(execution_id, user, "pausar")
     item = await pause_automation_execution(execution_id)
     if item is None:
@@ -313,7 +319,7 @@ async def post_pause_execution(execution_id: int, user: User = Depends(get_curre
 
 
 @router.post("/executions/{execution_id}/resume", response_model=AutomationExecutionItem)
-async def post_resume_execution(execution_id: int, user: User = Depends(get_current_user)):
+async def post_resume_execution(execution_id: int, user: User = Depends(require_automations_run)):
     await _require_execution_access(execution_id, user, "reanudar")
     item = await resume_automation_execution(execution_id)
     if item is None:

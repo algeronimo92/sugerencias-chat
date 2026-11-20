@@ -31,6 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
+from app.db.privileges import check_db_roles
 from app.db.session import close_engine, get_engine
 from app.db.signals import run_bus
 from app.integrations.meta import client as meta_client
@@ -405,6 +406,8 @@ async def prepare(*, maintenance: bool) -> None:
     await _log_database_encryption()
     await _verify_schema_is_current()
     await _detect_search_capabilities()
+    async with get_engine().connect() as connection:
+        await check_db_roles(connection, enabled=settings.db_role_enforcement)
 
     if maintenance:
         await _maintain()

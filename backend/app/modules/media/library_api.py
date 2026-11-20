@@ -12,12 +12,18 @@ import logging
 from app.modules.auth.public import User
 from app.modules.media.schemas import MediaAssetCreate, MediaAssetItem, MediaAssetUpdate
 from app.modules.media.media_upload import normalize_media_content_type, save_media_file
-from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
+from app.modules.auth.ports.auth_service import (Permission, require_permission)
 from app.modules.media.media_library_queries import list_media_assets
 from app.modules.media.media_library_service import create_media_asset, delete_media_asset, rename_media_asset
 from app.integrations.storage.media_storage import MediaNotFoundError, MediaStorageError, delete_media, media_size, read_media_bytes
 
 logger = logging.getLogger(__name__)
+
+require_media_library_manage = require_permission(Permission.MEDIA_LIBRARY_MANAGE)
+# Se elige un archivo de la biblioteca al escribir o al armar una plantilla.
+require_media_library_view = require_permission(
+    Permission.CONVERSATIONS_SEND, Permission.TEMPLATES_MANAGE, Permission.MEDIA_LIBRARY_MANAGE,
+)
 
 router = APIRouter(prefix="/api/media-library", tags=["media-library"])
 
@@ -26,13 +32,13 @@ router = APIRouter(prefix="/api/media-library", tags=["media-library"])
 async def get_library(
     search: str | None = None,
     kind: Literal["image", "video", "audio", "document"] | None = None,
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_media_library_view),
 ):
     return await list_media_assets(search, kind)
 
 
 @router.post("", response_model=MediaAssetItem, status_code=201)
-async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(require_admin)):
+async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(require_media_library_manage)):
     content_type = normalize_media_content_type(body.content_type, body.filename)
     try:
         media_url = await asyncio.to_thread(
@@ -69,7 +75,7 @@ async def post_library_asset(body: MediaAssetCreate, admin: User = Depends(requi
 
 
 @router.post("/from-sticker", response_model=MediaAssetItem, status_code=201)
-async def import_sticker_asset(body: ImportStickerBody, admin: User = Depends(require_admin)):
+async def import_sticker_asset(body: ImportStickerBody, admin: User = Depends(require_media_library_manage)):
     """Guarda en la librería un sticker que apareció en un chat, para poder
     reenviarlo — el equivalente a 'agregar a favoritos' de WhatsApp. Copia el
     archivo del sticker a uno nuevo y crea el asset."""
@@ -110,7 +116,7 @@ async def import_sticker_asset(body: ImportStickerBody, admin: User = Depends(re
 
 
 @router.delete("/{asset_id}")
-async def delete_library_asset(asset_id: int, _admin: User = Depends(require_admin)):
+async def delete_library_asset(asset_id: int, _admin: User = Depends(require_media_library_manage)):
     async def delete_stored_media(media_url: str) -> None:
         await asyncio.to_thread(delete_media, media_url)
 
@@ -129,7 +135,7 @@ async def delete_library_asset(asset_id: int, _admin: User = Depends(require_adm
 async def patch_library_asset(
     asset_id: int,
     body: MediaAssetUpdate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_media_library_manage),
 ):
     try:
         item = await rename_media_asset(asset_id, body.filename)

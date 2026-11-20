@@ -13,6 +13,7 @@ from app.db import uow
 from app.modules.appointments.application import ports
 from app.modules.appointments.application.ports import AppointmentPorts
 from app.modules.appointments.domain.appointment import SyncResult
+from tests.permission_fakes import use_role_matrix
 
 
 class FakeAppointments:
@@ -270,7 +271,7 @@ def in_memory_appointments(monkeypatch) -> AppointmentWorld:
     from app.modules.leads import visibility
 
     # El negocio del doble usa la visibilidad por defecto; no lee PostgreSQL.
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=False))
+    use_role_matrix(monkeypatch)
     repository = FakeAppointments()
     world = AppointmentWorld(
         repository=repository,

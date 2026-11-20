@@ -17,7 +17,7 @@ from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.platform.public import effective_country_code
 from app.modules.conversations.message_history import fetch_messages_to_forward, filter_existing_leads, fetch_reply_target
 from app.modules.conversations.message_origin import attach_origin, with_user_origin
-from app.modules.auth.public import get_current_user
+from app.modules.auth.public import Permission, get_current_user, require_permission
 from app.modules.conversations.message_media import mediatype_from_content_type as _mediatype_from_content_type
 from app.modules.conversations.application.outbound import (
     discard_failed_message,
@@ -46,7 +46,8 @@ from app.modules.conversations.common import _require_existing_lead, _require_op
 from app.modules.leads.ports.visibility import visible_lead_ids
 
 
-router = chats_router()
+# Leer el chat lo exige bootstrap; escribir en él es otro permiso.
+router = chats_router(Depends(require_permission(Permission.CONVERSATIONS_SEND)))
 
 
 async def _resolve_reply_to(chat_id: str, message_id: int | None) -> dict | None:

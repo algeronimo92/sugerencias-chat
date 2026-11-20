@@ -7,6 +7,37 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+class Role(Base):
+    """Los roles fijos del negocio. Existen como filas para que ``users.role``
+    y la matriz tengan una clave foránea; no se crean ni se borran desde la app."""
+
+    __tablename__ = "roles"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    # ``admin`` tiene todos los permisos sin filas en ``role_permissions``.
+    editable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class PermissionDef(Base):
+    """Catálogo de permisos (``app/modules/auth/permissions.py``). Lo llenan
+    las migraciones; la app solo lo lee para validar la matriz."""
+
+    __tablename__ = "permissions"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    admin_only: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class RolePermission(Base):
+    """Qué permisos tiene cada rol editable en este negocio."""
+
+    __tablename__ = "role_permissions"
+
+    role: Mapped[str] = mapped_column(ForeignKey("roles.key", ondelete="CASCADE"), primary_key=True)
+    permission: Mapped[str] = mapped_column(ForeignKey("permissions.key", ondelete="CASCADE"), primary_key=True)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -14,7 +45,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(Text, unique=True)
     name: Mapped[str] = mapped_column(Text)
     password_hash: Mapped[str] = mapped_column(Text)
-    role: Mapped[str] = mapped_column(Text)  # "admin" | "vendedor" | "analista"
+    # Lo que puede hacer lo dice la matriz del rol (``role_permissions``).
+    role: Mapped[str] = mapped_column(ForeignKey("roles.key"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # Nulo mientras la invitación sigue pendiente; distingue "nunca entró" de
@@ -27,10 +59,6 @@ class User(Base):
     # atiende el teléfono. ``server_default`` porque en un despliegue
     # blue-green el color viejo sigue creando usuarios sin conocer la columna.
     can_handle_calls: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-
-    __table_args__ = (
-        CheckConstraint("role IN ('admin', 'vendedor', 'analista')", name="users_role_check"),
-    )
 
     @property
     def invitation_pending(self) -> bool:

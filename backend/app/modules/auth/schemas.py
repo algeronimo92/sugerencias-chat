@@ -33,6 +33,65 @@ class UserOut(BaseModel):
     role: UserRole
     # Le suenan las llamadas de WhatsApp: la app monta el timbre solo para ellos.
     can_handle_calls: bool = False
+    # Los de su rol hoy (``app/modules/auth/permissions.py``). La app decide
+    # qué mostrar con esto; el backend igual los exige en cada ruta.
+    permissions: list[str] = []
+
+
+class RoleItem(BaseModel):
+    key: UserRole
+    name: str
+    # ``admin`` no se edita: tiene todos los permisos.
+    editable: bool
+    permissions: list[str]
+    active_users: int
+
+
+class PermissionItem(BaseModel):
+    key: str
+    group: str
+    label: str
+    # No se puede dar a un rol que no sea admin.
+    admin_only: bool
+
+
+class RolesOut(BaseModel):
+    roles: list[RoleItem]
+    permissions: list[PermissionItem]
+
+
+class RolePermissionsUpdate(BaseModel):
+    permissions: list[str] = Field(max_length=200)
+
+
+class DbSystemPrivileges(BaseModel):
+    """Atributos del rol en PostgreSQL y lo que puede hacer con el schema."""
+    superuser: bool
+    create_db: bool
+    create_role: bool
+    login: bool
+    bypass_rls: bool
+    schema_usage: bool
+    # Crear objetos (DDL) en el schema del negocio: debe ser siempre falso.
+    schema_create: bool
+
+
+class DbObjectPrivileges(BaseModel):
+    # "tabla" o "tabla.columna".
+    object: str
+    privileges: list[str]
+
+
+class DbRolePrivileges(BaseModel):
+    db_role: str
+    system: DbSystemPrivileges
+    objects: list[DbObjectPrivileges]
+
+
+class DbPrivilegesOut(BaseModel):
+    # Si las peticiones de este proceso corren hoy con SET LOCAL ROLE.
+    enforcement_active: bool
+    roles: list[DbRolePrivileges]
 
 class PinStatusOut(BaseModel):
     available: bool

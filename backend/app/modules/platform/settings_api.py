@@ -8,6 +8,8 @@ from app.integrations.meta import client as meta_service
 from app.integrations.meta.client import MetaApiError
 from app.modules.platform.email_settings import EMAIL_KEYS
 from app.modules.platform.platform_settings import platform_settings_many
+from app.modules.auth.ports.types import UserRole
+from app.modules.auth.public import Permission, roles_with_permission, set_role_permission
 from app.modules.platform.subscribers import lead_visibility_changed
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
@@ -20,10 +22,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
+# Desde 2026-11-20 lo decide la matriz de permisos (``leads.view_all`` del
+# vendedor). El interruptor de Configuración sigue existiendo: se lee y se
+# escribe sobre la matriz. El valor guardado en ``app_settings`` lo sigue
+# escribiendo para el color viejo de un despliegue blue-green.
+SELLER_VISIBILITY_KEY = "sellers_see_only_assigned_leads"
+
+
+async def _settings_out() -> list[dict]:
+    scoped = UserRole.SELLER not in await roles_with_permission(Permission.LEADS_VIEW_ALL)
+    return [
+        {**item, "value": "true" if scoped else "false", "configured": True}
+        if item["key"] == SELLER_VISIBILITY_KEY else item
+        for item in await list_settings()
+    ]
+
 
 @router.get("", response_model=list[SettingItem])
 async def get_settings():
-    return await list_settings()
+    return await _settings_out()
 
 
 @router.get("/timezones", response_model=list[BusinessTimezoneItem])
@@ -51,9 +68,11 @@ async def put_settings(body: UpdateSettingsRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    if "sellers_see_only_assigned_leads" in body.values:
+    if SELLER_VISIBILITY_KEY in body.values:
+        scoped = body.values[SELLER_VISIBILITY_KEY].strip().lower() == "true"
+        await set_role_permission(UserRole.SELLER, Permission.LEADS_VIEW_ALL, granted=not scoped)
         await lead_visibility_changed()
-    return await list_settings()
+    return await _settings_out()
 
 
 @router.get("/meta/public-config", response_model=MetaPublicConfig)

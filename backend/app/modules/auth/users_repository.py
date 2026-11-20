@@ -6,12 +6,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import User
 from app.modules.auth.errors import (
-    AnalystCannotHandleCallsError,
     EmailAlreadyExistsError,
     LastAdminError,
     UserAlreadyActiveError,
 )
-from app.modules.auth.role_policy import calls_allowed_for
 from app.db.uow import session_scope
 
 
@@ -60,13 +58,12 @@ async def list_active_sellers() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-async def list_call_agents() -> list[dict]:
-    """A quiénes les suenan las llamadas de WhatsApp: activos, con el permiso
-    y con un rol que abre chats. El rol va porque un vendedor puede tener
-    acotados los leads que ve (leads/visibility.call_agents_for)."""
+async def list_call_agents(roles: Iterable[str]) -> list[dict]:
+    """Activos, con ``can_handle_calls`` y con uno de ``roles`` (los que
+    tienen ``calls.handle``, ver users_service.list_call_agents)."""
     stmt = (
         select(User.id, User.name, User.role)
-        .where(User.is_active == true(), User.can_handle_calls == true(), User.role.in_(("admin", "vendedor")))
+        .where(User.is_active == true(), User.can_handle_calls == true(), User.role.in_(sorted(roles)))
         .order_by(User.name.asc())
     )
     async with session_scope() as session:
@@ -125,9 +122,7 @@ async def update_user(user_id: int, values: dict) -> dict | None:
     rechaza con LastAdminError antes de aplicarlo; un correo que ya usa otra
     cuenta, con EmailAlreadyExistsError.
 
-    El permiso de llamadas sigue al rol: pasar a alguien a un rol que no
-    atiende llamadas se lo quita, y dárselo a quien tiene ese rol se rechaza
-    con AnalystCannotHandleCallsError.
+    La regla de llamadas según el rol la aplica antes users_service.
 
     El correo solo cambia mientras la invitación sigue pendiente: es la
     identidad con la que esa persona entra, y cambiárselo a alguien que ya
@@ -138,8 +133,6 @@ async def update_user(user_id: int, values: dict) -> dict | None:
         user = await get_user_by_id(user_id)
         if user is not None and user.role == "admin" and await count_active_admins(exclude_user_id=user_id) == 0:
             raise LastAdminError()
-
-    values = await _with_calls_permission_rule(user_id, values)
 
     if not values:
         user = await get_user_by_id(user_id)
@@ -161,19 +154,6 @@ async def update_user(user_id: int, values: dict) -> dict | None:
 
     user = await get_user_by_id(user_id)
     return _row_to_user(user) if user else None
-
-
-async def _with_calls_permission_rule(user_id: int, values: dict) -> dict:
-    new_role = values.get("role")
-    if new_role is not None and not calls_allowed_for(new_role):
-        if values.get("can_handle_calls") is True:
-            raise AnalystCannotHandleCallsError()
-        return {**values, "can_handle_calls": False}
-    if values.get("can_handle_calls") is True and new_role is None:
-        user = await get_user_by_id(user_id)
-        if user is not None and not calls_allowed_for(user.role):
-            raise AnalystCannotHandleCallsError()
-    return values
 
 
 async def set_user_password(user_id: int, password_hash: str) -> bool:

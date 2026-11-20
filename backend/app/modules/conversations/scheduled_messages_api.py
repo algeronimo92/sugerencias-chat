@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
-from app.modules.auth.ports.auth_service import get_current_user
+from app.modules.auth.ports.auth_service import Permission, can, require_permission
 from app.modules.conversations.application.scheduling import cancel_scheduled_message, schedule_message
 from app.modules.conversations.scheduled_queries import list_scheduled_messages, scheduled_lead_id
 from app.modules.conversations.schemas import ScheduledMessageCreate, ScheduledMessageItem
@@ -18,7 +18,7 @@ router = APIRouter(tags=["scheduled-messages"], dependencies=[Depends(require_vi
 )
 async def get_scheduled_messages(
     chat_id: str,
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission(Permission.CONVERSATIONS_VIEW)),
 ):
     return await list_scheduled_messages(chat_id)
 
@@ -31,7 +31,7 @@ async def get_scheduled_messages(
 async def post_scheduled_message(
     chat_id: str,
     body: ScheduledMessageCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Permission.CONVERSATIONS_SEND)),
 ):
     text = body.text.strip()
     if not text:
@@ -42,12 +42,12 @@ async def post_scheduled_message(
 @router.delete("/api/scheduled-messages/{scheduled_id}")
 async def delete_scheduled_message(
     scheduled_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Permission.CONVERSATIONS_SEND)),
 ):
     if await seller_scope(user) is not None:
         lead_id = await scheduled_lead_id(scheduled_id)
         if lead_id is None:
             raise HTTPException(404, "Mensaje programado no encontrado")
         await ensure_lead_visible(user, lead_id)
-    await cancel_scheduled_message(scheduled_id, user.id, user.role == "admin")
+    await cancel_scheduled_message(scheduled_id, user.id, can(user, Permission.TEAM_SUPERVISE))
     return {"status": "cancelled"}

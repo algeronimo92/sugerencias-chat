@@ -12,6 +12,7 @@ from app.modules.auth import api as auth
 from app.modules.platform import api as platform
 from app.modules.auth.session_service import CreatedSession, PinLockedError, TrustedDeviceResult, new_token
 from app.modules.auth.login_throttle import LoginThrottledError
+from tests.permission_fakes import use_role_matrix
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +20,7 @@ def isolated_login_security(monkeypatch):
     monkeypatch.setattr(auth, "reserve_login_attempt", AsyncMock())
     monkeypatch.setattr(auth, "clear_account_attempts", AsyncMock())
     monkeypatch.setattr(auth, "mfa_status", AsyncMock(return_value={"enabled": False, "recovery_codes_remaining": 0}))
+    use_role_matrix(monkeypatch)
 
 
 def _user():

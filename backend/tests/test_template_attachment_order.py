@@ -26,5 +26,4 @@ def test_the_order_route_requires_an_admin():
     import inspect
 
     guard = inspect.signature(put_attachment_order).parameters["_admin"].default
-    from app.modules.auth.ports.auth_service import require_admin
-    assert guard.dependency is require_admin
+    assert guard.dependency.__permissions__ == {"templates.manage"}

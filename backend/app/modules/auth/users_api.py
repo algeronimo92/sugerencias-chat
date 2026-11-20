@@ -11,7 +11,8 @@ from app.modules.auth.account_actions import (
     request_password_reset,
     revoke_pending_invitations,
 )
-from app.modules.auth.auth_service import invalidate_user_cache, require_admin
+from app.modules.auth.auth_service import invalidate_user_cache, require_permission
+from app.modules.auth.permissions import Permission
 from app.modules.auth.errors import AnalystCannotHandleCallsError, LastCallAgentError, UserAlreadyActiveError
 from app.modules.auth.users_service import (
     EmailAlreadyExistsError,
@@ -19,6 +20,7 @@ from app.modules.auth.users_service import (
     get_user_by_id,
     list_call_agents,
     list_users,
+    role_handles_calls,
     update_user,
 )
 from app.integrations.email_service import EmailDeliveryError, EmailNotConfiguredError
@@ -27,7 +29,9 @@ from app.modules.auth.types import UserRole
 from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.platform.public import calls_enabled, effective_country_code
 
-router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
+require_users_manage = require_permission(Permission.USERS_MANAGE)
+
+router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_users_manage)])
 
 # Un correo con forma de correo: lo que importa es no guardar algo a lo que
 # nunca llegará una invitación ni un restablecimiento.
@@ -47,12 +51,12 @@ async def _normalized_phone(raw: str | None) -> str | None:
 
 
 async def _keep_someone_answering(user_id: int, values: dict) -> None:
-    """Quitarle el permiso, desactivar o pasar a analista a la última persona
-    que atiende, con las llamadas activas, se rechaza."""
+    """Quitarle el permiso, desactivar o pasar a un rol sin ``calls.handle`` a
+    la última persona que atiende, con las llamadas activas, se rechaza."""
     leaves = (
         values.get("can_handle_calls") is False
         or values.get("is_active") is False
-        or values.get("role") == UserRole.ANALYST
+        or (values.get("role") is not None and not await role_handles_calls(values["role"]))
     )
     if not leaves or not await calls_enabled():
         return
@@ -98,7 +102,7 @@ async def add_user(body: CreateUserRequest):
 
 
 @router.patch("/{user_id}", response_model=UserItem)
-async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depends(require_admin)):
+async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depends(require_users_manage)):
     if body.role is not None and body.role not in UserRole:
         raise HTTPException(status_code=400, detail="Rol inválido")
 
@@ -133,7 +137,7 @@ async def patch_user(user_id: int, body: UpdateUserRequest, current: User = Depe
             detail="Es la única persona que atiende llamadas. Elige a otra o desactiva las llamadas en Integraciones.",
         )
     except AnalystCannotHandleCallsError:
-        raise HTTPException(status_code=400, detail="Un analista no puede atender llamadas: solo ve el dashboard")
+        raise HTTPException(status_code=400, detail="Ese rol no tiene permiso para atender llamadas")
 
     if user is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")

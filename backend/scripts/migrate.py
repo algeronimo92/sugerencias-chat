@@ -40,7 +40,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models.control import TenantSchemaVersion
 from app.db.session import close_engine, control_session, get_engine
-from app.tenancy.context import TenantContext, validate_schema_name
+from app.db.privileges import ensure_db_roles, grant_control_reads
+from app.modules.auth.db_privileges import CONTROL_READ_TABLES
+from app.modules.auth.public import sync_db_privileges
+from app.tenancy.context import TenantContext, tenant_context, validate_schema_name
 from app.tenancy.provisioning import _mark_active, _migrate_schema
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -251,6 +254,30 @@ async def _upgrade_tenants(engine) -> int:
     return 1 if failures else 0
 
 
+async def _sync_db_privileges(engine) -> int:
+    """Roles de PostgreSQL y GRANT de cada negocio, después de migrar.
+
+    Corre siempre (no solo con migraciones pendientes): los GRANT son una
+    proyección del catálogo del código y de la matriz de cada negocio, y una
+    tabla nueva no le da privilegios a nadie hasta que esto pase.
+    """
+    async with engine.begin() as connection:
+        if not await ensure_db_roles(connection):
+            print("Sin CREATEROLE: no se crearon los roles de base; DB_ROLE_ENFORCEMENT no se activará",
+                  file=sys.stderr)
+            return 0
+        await grant_control_reads(connection, CONTROL_READ_TABLES)
+    failures = 0
+    for context, _registered, _status in await _active_tenants(engine):
+        try:
+            with tenant_context(context):
+                await sync_db_privileges()
+        except Exception as exc:  # el siguiente tenant debe poder continuar
+            failures += 1
+            print(f"Falló el GRANT del tenant {context.organization_id}: {type(exc).__name__}", file=sys.stderr)
+    return 1 if failures else 0
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -281,7 +308,8 @@ async def main() -> int:
         head = ScriptDirectory.from_config(config).get_current_head()
         if args.check:
             return await _check_tenants(engine, head)
-        return await _upgrade_tenants(engine)
+        upgraded = await _upgrade_tenants(engine)
+        return await _sync_db_privileges(engine) or upgraded
     finally:
         await close_engine()
 

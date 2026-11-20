@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # sin cifrar — ver _log_database_encryption en main.py.
     # Valores: disable | allow | prefer | require | verify-ca | verify-full
     database_ssl: str = "prefer"
+    # Cada petición corre con el rol de PostgreSQL de su usuario (SET LOCAL
+    # ROLE, ver app/db/privileges.py). Apagado, todo usa el usuario de la
+    # conexión. Encenderlo exige haber corrido scripts.migrate, que crea los
+    # roles y aplica los GRANT de cada negocio.
+    db_role_enforcement: bool = False
     # La DB puede estar a cientos de milisegundos. Hacer SELECT 1 antes de
     # cada checkout duplica el costo de todas las consultas; los despliegues
     # que prefieran esa comprobación pueden volver a activarla por env.

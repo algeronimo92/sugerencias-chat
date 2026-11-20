@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException
 
 from app.modules.auth.public import User
 from app.integrations.whatsapp.channel import ChannelError, describe_send_failure
-from app.modules.auth.public import get_current_user
+from app.modules.auth.public import Permission, get_current_user, require_permission
 from app.modules.conversations.application.inbox import pin_message, unpin_message
 from app.modules.conversations.application.outbound import send_reaction
 from app.modules.conversations.common import chats_router
@@ -18,10 +18,14 @@ from app.modules.conversations.schemas import Message, PinnedMessagesResponse, R
 
 
 router = chats_router()
+require_conversations_send = require_permission(Permission.CONVERSATIONS_SEND)
 logger = logging.getLogger(__name__)
 
 
-@router.post("/{chat_id}/messages/{message_id}/reaction", response_model=Message)
+@router.post(
+    "/{chat_id}/messages/{message_id}/reaction", response_model=Message,
+    dependencies=[Depends(require_conversations_send)],
+)
 async def react_to_message(chat_id: str, message_id: int, body: ReactionRequest):
     """Reacciona (o quita la reacción) del vendedor sobre un mensaje del chat.
 
@@ -50,7 +54,10 @@ async def get_pinned_messages(chat_id: str):
     return {"items": await fetch_pinned_messages(chat_id)}
 
 
-@router.post("/{chat_id}/messages/{message_id}/pin", response_model=Message)
+@router.post(
+    "/{chat_id}/messages/{message_id}/pin", response_model=Message,
+    dependencies=[Depends(require_conversations_send)],
+)
 async def pin_chat_message(chat_id: str, message_id: int, user: User = Depends(get_current_user)):
     """Fija un mensaje, como el "Fijar" de WhatsApp — pero solo dentro del CRM:
     Meta no expone forma de fijar un mensaje del lado de quien envía, así que
@@ -58,6 +65,9 @@ async def pin_chat_message(chat_id: str, message_id: int, user: User = Depends(g
     return await attach_origin(await pin_message(chat_id, message_id, user.id))
 
 
-@router.post("/{chat_id}/messages/{message_id}/unpin", response_model=Message)
+@router.post(
+    "/{chat_id}/messages/{message_id}/unpin", response_model=Message,
+    dependencies=[Depends(require_conversations_send)],
+)
 async def unpin_chat_message(chat_id: str, message_id: int):
     return await attach_origin(await unpin_message(chat_id, message_id))

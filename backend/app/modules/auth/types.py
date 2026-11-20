@@ -1,5 +1,6 @@
 """Roles de usuario, métodos de inicio de sesión y propósitos de los enlaces
-de cuenta. La base los restringe con CHECK (ver las migraciones)."""
+de cuenta. Los roles son filas de ``roles`` (clave foránea de ``users.role``);
+los demás, CHECK (ver las migraciones)."""
 
 from enum import StrEnum
 
@@ -7,7 +8,7 @@ from enum import StrEnum
 class UserRole(StrEnum):
     ADMIN = "admin"
     SELLER = "vendedor"
-    # Solo mira el dashboard: qué rutas puede pedir lo decide role_policy.py.
+    # Por defecto solo mira el dashboard (ver permissions.py).
     ANALYST = "analista"
 
 

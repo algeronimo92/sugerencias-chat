@@ -6,7 +6,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.integrations.meta import client as meta_service
-from app.modules.auth.public import User, require_admin
+from app.modules.auth.public import User, Permission, require_permission
 from app.modules.leads.ports.ad_conversions import (
     ACCEPTED_AT_KEY,
     ACCEPTED_BY_KEY,
@@ -34,6 +34,8 @@ from app.modules.platform.schemas import (
     WhatsappStatusItem,
 )
 from app.modules.platform.settings_service import get_effective_many, update_settings
+
+require_settings_manage = require_permission(Permission.SETTINGS_MANAGE)
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 logger = logging.getLogger(__name__)
@@ -174,7 +176,7 @@ async def whatsapp_conversion_events(
 
 
 @router.put("/conversions", response_model=MetaConversionsStatus)
-async def update_whatsapp_conversions(body: MetaConversionsUpdate, user: User = Depends(require_admin)):
+async def update_whatsapp_conversions(body: MetaConversionsUpdate, user: User = Depends(require_settings_manage)):
     """Enciende o apaga el envío y guarda el código de prueba. Encender exige
     aceptar las Condiciones de las herramientas comerciales de Meta (queda
     quién y cuándo) y obtener el dataset de la WABA: si el token no tiene

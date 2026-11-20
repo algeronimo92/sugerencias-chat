@@ -231,11 +231,19 @@ async def test_admin_and_analyst_open_the_team_and_a_seller_is_refused(monkeypat
     await dashboard_router.dashboard(days=30, scope=SCOPE_MINE, seller_id=None, user=SimpleNamespace(id=1, role="admin"))
     assert received == [(30, SCOPE_TEAM, 1), (30, SCOPE_TEAM, 2), (30, SCOPE_MINE, 1)]
 
-    seller = SimpleNamespace(id=3, role="vendedor")
-    for scope, seller_id in ((None, None), (SCOPE_MINE, None), (SCOPE_TEAM, None), (None, 3)):
-        with pytest.raises(HTTPException) as exc:
-            await dashboard_router.dashboard(days=30, scope=scope, seller_id=seller_id, user=seller)
-        assert exc.value.status_code == 403
+    # El vendedor no tiene ``dashboard.view``: lo frena el guard de la ruta,
+    # antes de mirar scope o seller_id.
+    import inspect
+    from app.core.errors import Forbidden
+    guard = inspect.signature(dashboard_router.dashboard).parameters["user"].default.dependency
+    with pytest.raises(Forbidden):
+        await guard(user=SimpleNamespace(id=3, role="vendedor"))
+    assert await guard(user=SimpleNamespace(id=2, role="analista"))
+
+    # Sin ``dashboard.view_member``, el analista no abre el de otra persona.
+    with pytest.raises(HTTPException) as exc:
+        await dashboard_router.dashboard(days=30, scope=None, seller_id=3, user=SimpleNamespace(id=2, role="analista"))
+    assert exc.value.status_code == 403
     assert len(received) == 3
 
 
