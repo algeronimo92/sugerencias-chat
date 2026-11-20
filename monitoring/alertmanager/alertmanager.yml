@@ -13,12 +13,41 @@
 # es el camino bueno: el archivo se lee en cada notificación y se le hace
 # TrimSpace, o sea que rotar el webhook ya no necesita re-render ni recrear
 # el contenedor, solo reescribir el archivo del secreto.
+# Las críticas salen por dos caminos —n8n y correo— porque n8n vive en la otra
+# VPS y era el único receptor: si caía él (o la ruta entre los dos servidores),
+# el sistema quedaba ciego justo cuando algo fallaba (auditoría 11, E2). Y el
+# Watchdog cubre el caso que ninguna alerta puede avisar: que se caiga el
+# monitoreo entero. Suena siempre; si Healthchecks.io deja de recibirlo, es él
+# quien avisa.
+#
+# Secretos en monitoring/secrets/ (gitignoreados), leídos en cada envío y no al
+# cargar: si falta uno, ese envío falla y queda en el log, pero el config carga
+# y los demás receptores siguen funcionando.
+#   n8n_webhook_url          URL del webhook de alertas de n8n
+#   smtp_password            clave de la casilla que manda el correo
+#   healthchecks_ping_url    URL de ping del check de Healthchecks.io
+#
+# En el servidor, una vez (sin dejar la clave en el historial de bash):
+#   read -rs P && printf '%s' "$P" > monitoring/secrets/smtp_password
+#   printf '%s' 'https://hc-ping.com/<uuid>' > monitoring/secrets/healthchecks_ping_url
+#   chmod 600 monitoring/secrets/* && docker kill -s HUP monitoring-alertmanager-1
+# El check de Healthchecks.io: período 1 min, gracia 5 min.
 route:
   receiver: n8n
   group_by: [alertname]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 3h
+  routes:
+    - matchers: [alertname="Watchdog"]
+      receiver: deadmans-switch
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+    - matchers: [severity="critical"]
+      receiver: n8n-y-correo
+      # Una crítica perdida no debe esperar 3 h a repetirse.
+      repeat_interval: 1h
 
 receivers:
   - name: n8n
@@ -27,3 +56,23 @@ receivers:
       # fuera de /etc/alertmanager para no anidar un mount adentro del otro.
       - url_file: /etc/alertmanager-secrets/n8n_webhook_url
         send_resolved: true
+
+  - name: n8n-y-correo
+    webhook_configs:
+      - url_file: /etc/alertmanager-secrets/n8n_webhook_url
+        send_resolved: true
+    email_configs:
+      # El mismo SMTP que usa la app para el correo transaccional. El 465 es
+      # TLS directo: Alertmanager lo detecta por el puerto, sin STARTTLS.
+      - to: contacto@alangeronimo.com
+        from: gportal@dermicapro.com
+        smarthost: smtp.hostinger.com:465
+        auth_username: gportal@dermicapro.com
+        auth_password_file: /etc/alertmanager-secrets/smtp_password
+        require_tls: false
+        send_resolved: true
+
+  - name: deadmans-switch
+    webhook_configs:
+      - url_file: /etc/alertmanager-secrets/healthchecks_ping_url
+        send_resolved: false

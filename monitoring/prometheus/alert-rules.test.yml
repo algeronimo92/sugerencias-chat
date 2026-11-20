@@ -19,6 +19,18 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
+  # El Watchdog tiene que estar disparado siempre: si no suena, Healthchecks.io
+  # avisa que el monitoreo se cayó, aunque esté todo bien.
+  - interval: 1m
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels:
+              severity: none
+            exp_annotations:
+              summary: "El monitoreo está vivo (alerta permanente, no requiere acción)"
+
   # La cola de entrada: durante un deploy los dos colores miden la misma tabla.
   # Tiene que sonar una sola vez, no una por color.
   - interval: 1m

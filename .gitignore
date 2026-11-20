@@ -12,6 +12,10 @@ monitoring/.env
 # es un secreto aunque no lo parezca. Alertmanager lo lee en caliente del
 # archivo montado, ver monitoring/alertmanager/alertmanager.yml.
 monitoring/secrets/n8n_webhook_url
+# Igual de secretos: la clave del SMTP de las alertas y la URL de ping del
+# Watchdog (cualquiera con ella puede marcar el monitoreo como vivo).
+monitoring/secrets/smtp_password
+monitoring/secrets/healthchecks_ping_url
 # Restos del render que hacía falta cuando Alertmanager 0.27 no soportaba
 # url_file (scripts/render-alertmanager-config.sh, ya borrado). Se siguen
 # ignorando para no versionar por accidente un archivo con la URL embebida
