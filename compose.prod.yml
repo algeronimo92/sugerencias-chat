@@ -26,8 +26,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
-    ports:
-      - "8000:8000"
+    # Sin `ports`: ni la API ni nginx se publican desde este archivo. Con
+    # "8000:8000" y "80:80" aquí, un `docker compose -f compose.prod.yml up` a
+    # secas dejaba /metrics, /docs y /openapi.json abiertos a Internet sin
+    # pasar por traefik (la regresión de 4abc239). Los puertos, atados a
+    # loopback, los pone compose.bluegreen.yml.
     environment:
       # Los workers de fondo corren en el servicio `worker`: la API atiende
       # HTTP, WebSocket y los recordatorios de tareas (que dependen de sus
@@ -64,8 +67,6 @@ services:
         VITE_API_BASE_URL: ""
         VITE_BUILD_ID: ${VITE_BUILD_ID:-}
     restart: unless-stopped
-    ports:
-      - "80:80"
     depends_on:
       - backend
 

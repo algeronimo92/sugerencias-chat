@@ -98,6 +98,15 @@ def test_backend_is_not_published() -> None:
     assert config["services"]["backend"].get("ports", []) == []
 
 
+def test_base_production_file_publishes_no_port() -> None:
+    """`docker compose -f compose.prod.yml up` a secas no debe abrir nada a
+    Internet: los puertos (en loopback) los pone compose.bluegreen.yml. Se lee
+    el YAML directo para que valga también sin docker."""
+    services = yaml.safe_load((ROOT / "compose.prod.yml").read_text(encoding="utf-8"))["services"]
+    published = {name: service["ports"] for name, service in services.items() if service.get("ports")}
+    assert published == {}
+
+
 @requires_docker
 def test_frontend_is_bound_to_loopback_only() -> None:
     """Sin el 127.0.0.1, cualquiera entraría por el puerto del color y se
