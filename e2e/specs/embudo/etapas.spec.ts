@@ -142,8 +142,9 @@ test('al seleccionar, las acciones aparecen al pie y el buscador sigue a mano', 
   // la etapa; abajo solo las acciones.
   await expect(page.getByRole('status').filter({ hasText: '1 seleccionado' })).toBeVisible()
   await expect(barra.getByRole('button', { name: 'Cancelar' })).toHaveCount(0)
-  await expect(barra.getByRole('combobox', { name: /Mover 1 lead/ })).toBeVisible()
-  await expect(barra.getByRole('combobox', { name: /Agregar etiqueta a 1 lead/ })).toBeVisible()
+  // La misma barra que la bandeja de chats: menús que abren hacia arriba.
+  await expect(barra.getByRole('button', { name: 'Mover 1 lead a otra etapa' })).toBeVisible()
+  await expect(barra.getByRole('button', { name: 'Agregar etiqueta a 1 lead' })).toBeVisible()
   // Antes la barra reemplazaba la cabecera y tapaba el buscador.
   await expect(page.getByRole('searchbox', { name: 'Buscar leads' })).toBeVisible()
   await expectNoPageOverflow(page)

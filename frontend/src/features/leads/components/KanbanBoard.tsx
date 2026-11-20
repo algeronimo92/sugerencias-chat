@@ -8,25 +8,18 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { displayName } from '../utils/chat'
 import type { Chat } from '../types'
 import { kanbanColumns } from '../domain/leadStageMeta'
-import { useTags } from '../../catalogs/public/useTags'
+import { useMe } from '../../auth/public/queries'
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
-import { useBulkAssignTag, useBulkMoveStage, useKanbanSnapshot, useMoveLeadStage } from '../kanban-queries'
+import { useKanbanSnapshot, useMoveLeadStage } from '../kanban-queries'
 import type { LeadStage } from '../types'
 import { LostReasonDialog } from './LostReasonDialog'
-import { BulkActionsBar } from './kanban/BulkActionsBar'
+import { BulkActionsFooter } from './BulkActionsFooter'
 import { StageLeadList } from './kanban/StageLeadList'
 import { StageSidebar } from './kanban/StageSidebar'
 import { KanbanColumn } from './kanban/BoardColumn'
 import { ViewSwitch } from './kanban/ViewSwitch'
 import { useKanbanView } from '../hooks/useKanbanView'
 import { useDragAutoScroll } from '../hooks/useDragAutoScroll'
-
-// Puras y sin estado: viven en ámbito de módulo para no reconstruirse en
-// cada render, lo que además rompía la memoización de los hijos.
-function describeBulkFailure(action: string, failed: string[]) {
-  if (failed.length === 0) return null
-  return `${failed.length} lead${failed.length === 1 ? '' : 's'} no se pud${failed.length === 1 ? 'o' : 'ieron'} ${action}.`
-}
 
 interface KanbanBoardProps {
   onOpenChat: (chat: Chat) => void
@@ -41,19 +34,14 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
   useDragAutoScroll(boardRef, 'x', view === 'tablero' && draggedChat !== null)
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [bulkError, setBulkError] = useState<string | null>(null)
   // Movimiento a una etapa de tipo `lost` esperando que el asesor escriba (o
-  // saltee) la razón.
-  const [pendingLost, setPendingLost] = useState<
-    { kind: 'single'; chat: Chat; stage: LeadStage } | { kind: 'bulk'; count: number; stage: LeadStage } | null
-  >(null)
+  // saltee) la razón. Los movimientos en bloque piden la suya en la barra.
+  const [pendingLost, setPendingLost] = useState<{ chat: Chat; stage: LeadStage } | null>(null)
   const [params, setParams] = useSearchParams()
   const catalog = useLeadStageCatalog()
   const { data: snapshot, isLoading: snapshotLoading, isError: snapshotError, refetch } = useKanbanSnapshot(debouncedSearch)
-  const { data: tags = [] } = useTags()
+  const { data: me } = useMe()
   const { mutate: moveLead } = useMoveLeadStage()
-  const { mutate: bulkMoveStage, isPending: isBulkMoving } = useBulkMoveStage()
-  const { mutate: bulkAssignTag, isPending: isBulkTagging } = useBulkAssignTag()
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -66,7 +54,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     // segunda pasada llega desde el diálogo con razonPerdido ya definido).
     if (catalog.isLost(stage) && razonPerdido === undefined) {
       setDraggedChat(null)
-      setPendingLost({ kind: 'single', chat, stage })
+      setPendingLost({ chat, stage })
       return
     }
     setMovingIds((current) => new Set(current).add(chat.chat_id))
@@ -123,7 +111,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     // La selección es de lo que se ve: al cambiar de etapa se descarta para no
     // mover en bloque leads que ya no están en pantalla.
     setSelectedIds(new Set())
-    setBulkError(null)
     setParams((current) => {
       const next = new URLSearchParams(current)
       next.set('etapa', stage)
@@ -131,39 +118,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
     }, { replace: true })
   }
 
-  function handleBulkMove(stage: LeadStage, razonPerdido?: string | null) {
-    if (catalog.isLost(stage) && razonPerdido === undefined) {
-      setPendingLost({ kind: 'bulk', count: selectedIds.size, stage })
-      return
-    }
-    setBulkError(null)
-    bulkMoveStage(
-      { chatIds: Array.from(selectedIds), stage, razonPerdido },
-      {
-        onSuccess: (result) => {
-          setBulkError(describeBulkFailure('mover', result.failed))
-          setSelectedIds(new Set(result.failed))
-        },
-        onError: () => setBulkError('No se pudo mover la selección.'),
-      }
-    )
-  }
-
-  function handleBulkTag(tagId: number) {
-    setBulkError(null)
-    bulkAssignTag(
-      { chatIds: Array.from(selectedIds), tagId },
-      {
-        onSuccess: (result) => {
-          setBulkError(describeBulkFailure('etiquetar', result.failed))
-          setSelectedIds(new Set(result.failed))
-        },
-        onError: () => setBulkError('No se pudo etiquetar la selección.'),
-      }
-    )
-  }
-
-  const isBulkBusy = isBulkMoving || isBulkTagging
   const totalLeads = snapshot ? Object.values(snapshot.counts).reduce((count, total) => count + total, 0) : 0
   const columns = kanbanColumns(catalog, snapshot?.counts ?? {})
   // La etapa elegida vive en la URL: al abrir un chat y volver, la vendedora
@@ -197,7 +151,6 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             onChange={(event) => {
               setSearch(event.target.value)
               setSelectedIds(new Set())
-              setBulkError(null)
             }}
             placeholder="Buscar por nombre, servicio o mensaje"
             className="h-9 border-wa-border pl-9 text-sm focus:ring-wa-primary-strong dark:border-wa-border-dark"
@@ -225,7 +178,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             <h2 className="mt-3 text-lg font-semibold text-wa-text dark:text-wa-text-dark">{debouncedSearch ? 'No hay leads con esta búsqueda' : 'Aún no hay leads en el embudo'}</h2>
             <p className="mt-2 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">{debouncedSearch ? 'Prueba con otro nombre, servicio o mensaje.' : 'Los leads que registres desde Conversaciones aparecerán aquí para seguir su avance.'}</p>
             {debouncedSearch ? (
-              <Button variant="secondary" onClick={() => { setSearch(''); setDebouncedSearch(''); setSelectedIds(new Set()); setBulkError(null) }} className="mt-5 h-10">Limpiar búsqueda</Button>
+              <Button variant="secondary" onClick={() => { setSearch(''); setDebouncedSearch(''); setSelectedIds(new Set()) }} className="mt-5 h-10">Limpiar búsqueda</Button>
             ) : (
               <Link to="/" className="mt-5 inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-wa-primary-strong px-4 text-sm font-semibold text-white hover:bg-wa-primary-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-primary-strong">Ir a Conversaciones <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
             )}
@@ -277,10 +230,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
             onToggleSelect={toggleSelect}
             onSelectMany={selectMany}
             isDragging={draggedChat !== null}
-            onClearSelection={() => {
-              setSelectedIds(new Set())
-              setBulkError(null)
-            }}
+            onClearSelection={() => setSelectedIds(new Set())}
             onOpen={onOpenChat}
             onDragStart={setDraggedChat}
             onDragEnd={() => setDraggedChat(null)}
@@ -292,32 +242,26 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
       {/* Al pie, como en la bandeja de chats: arriba el buscador sigue a mano y
           la lista no salta al marcar un lead. */}
       {selectedIds.size > 0 && (
-        <BulkActionsBar
-          count={selectedIds.size}
-          catalog={catalog}
-          tags={tags}
-          isBusy={isBulkBusy}
-          error={bulkError}
-          onMove={(stage) => handleBulkMove(stage)}
-          onTag={handleBulkTag}
-          showSummary={view === 'tablero'}
-          onClear={() => {
-            setSelectedIds(new Set())
-            setBulkError(null)
-          }}
+        <BulkActionsFooter
+          selected={selectedIds}
+          onSelectionChange={setSelectedIds}
+          isAdmin={me?.role === 'admin'}
+          noun="lead"
+          // En la lista el conteo y "Cancelar" ya están arriba, en la fila de
+          // la etapa: la barra queda solo con las acciones.
+          onCancel={view === 'tablero' ? () => setSelectedIds(new Set()) : undefined}
         />
       )}
 
       {pendingLost && (
         <LostReasonDialog
-          count={pendingLost.kind === 'bulk' ? pendingLost.count : 1}
+          count={1}
           stageName={catalog.label(pendingLost.stage)}
           onCancel={() => setPendingLost(null)}
           onConfirm={(razon) => {
             const pending = pendingLost
             setPendingLost(null)
-            if (pending.kind === 'single') handleMove(pending.chat, pending.stage, razon)
-            else handleBulkMove(pending.stage, razon)
+            handleMove(pending.chat, pending.stage, razon)
           }}
         />
       )}
