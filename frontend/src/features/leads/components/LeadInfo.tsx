@@ -1,18 +1,15 @@
 import { CalendarX, Pencil } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { toast } from 'sonner'
+import { useSearchParams } from 'react-router-dom'
 import { readEditField, withoutEditField } from '../../../shared/navigation/editFieldLink'
 import { Button } from '../../../shared/ui/Button'
 import { PanelSection, PanelSectionAction } from '../../../shared/ui/PanelSection'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { displayPhone, displayUsername } from '../utils/chat'
-import { useMarkNoShow, useUpdateLead } from '../queries'
-import type { Chat, LeadUpdateInput } from '../types'
-import { useLeadStageCatalog } from '../hooks/useLeadStages'
+import { useMarkNoShow } from '../queries'
+import type { Chat } from '../types'
 import { LeadCustomFields } from './LeadCustomFields'
-import { LeadFormDialog } from './LeadFormDialog'
-import { useMoveLeadStage } from '../kanban-queries'
+import { LeadEditor } from './LeadEditor'
 
 interface Props {
   chat: Chat
@@ -47,23 +44,8 @@ function formatDateTime(value: string | null): string | null {
   })
 }
 
-export function LeadInfo({ chat, footer }: Props) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editError, setEditError] = useState<string | null>(null)
-  const [noShowError, setNoShowError] = useState<string | null>(null)
-  const navigate = useNavigate()
-  const updateLead = useUpdateLead(chat.chat_id)
-  const moveLeadStage = useMoveLeadStage()
-  const isSaving = updateLead.isPending || moveLeadStage.isPending
-  const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
-  const stageCatalog = useLeadStageCatalog()
-
-  function handleMarkNoShow() {
-    if (isMarkingNoShow) return
-    setNoShowError(null)
-    markNoShow(undefined, { onError: (err) => setNoShowError(extractErrorMessage(err)) })
-  }
-
+/** Datos de la ficha que tienen algo que mostrar. */
+function leadInfoFields(chat: Chat): LeadInfoField[] {
   // Ojo con el .filter(f => f.value) de abajo: descarta cualquier valor falsy,
   // así que los números se formatean a string acá (un 0 tiene que verse) y los
   // booleanos se resuelven a null cuando no hay nada que contar.
@@ -91,7 +73,43 @@ export function LeadInfo({ chat, footer }: Props) {
     { label: 'No-shows', value: chat.contador_noshow != null ? String(chat.contador_noshow) : null },
     { label: 'Toques de seguimiento', value: chat.toques_seguimiento != null ? String(chat.toques_seguimiento) : null },
     { label: 'Último toque', value: formatDateTime(chat.fecha_ultimo_toque) },
-  ].filter((f) => f.value)
+  ]
+  return fields.filter((f) => f.value)
+}
+
+/** Acciones al pie de los datos: las de otras features y "Marcar no-show"
+ * cuando hay una cita por delante. */
+function LeadDataActions({ chat, footer }: Props) {
+  const [noShowError, setNoShowError] = useState<string | null>(null)
+  const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
+
+  function handleMarkNoShow() {
+    if (isMarkingNoShow) return
+    setNoShowError(null)
+    markNoShow(undefined, { onError: (err) => setNoShowError(extractErrorMessage(err)) })
+  }
+
+  return (
+    <>
+      {(chat.proxima_cita || footer) && (
+        <div className="mt-4 flex flex-wrap items-start gap-2">
+          {footer}
+          {chat.proxima_cita && (
+            <Button variant="dangerGhost" size="sm" onClick={handleMarkNoShow} disabled={isMarkingNoShow}>
+              <CalendarX className="h-3.5 w-3.5" aria-hidden="true" />
+              {isMarkingNoShow ? 'Registrando…' : 'Marcar no-show'}
+            </Button>
+          )}
+        </div>
+      )}
+      {noShowError && <p role="alert" className="mt-1 text-xs text-danger-fg">{noShowError}</p>}
+    </>
+  )
+}
+
+export function LeadInfo({ chat, footer }: Props) {
+  const [isEditing, setIsEditing] = useState(false)
+  const fields = leadInfoFields(chat)
 
   // Desde otra pantalla (Catálogos, al eliminar un servicio) se llega con
   // ?editar=servicio_interes: el editor se abre con ese campo resaltado. La URL
@@ -106,39 +124,13 @@ export function LeadInfo({ chat, footer }: Props) {
     if (serviceRequest) setSearchParams(withoutEditField(searchParams), { replace: true })
   }
 
-  async function handleUpdate(values: LeadUpdateInput, selectedStage?: string) {
-    if (isSaving) return
-    setEditError(null)
-    const cameFromCatalog = serviceRequest !== null
-    try {
-      const updated = await updateLead.mutateAsync(values)
-      if (selectedStage && selectedStage !== chat.stage) {
-        await moveLeadStage.mutateAsync({
-          chatId: chat.chat_id,
-          stage: selectedStage,
-          razonPerdido: values.razon_perdido,
-        })
-      }
-      closeEditor()
-      // Cambió el número: el lead vive bajo otro chat_id, hay que seguirlo.
-      if (updated.chat_id !== chat.chat_id) navigate(`/chat/${updated.chat_id}`)
-      if (cameFromCatalog) {
-        toast.success('Servicio de interés actualizado', {
-          action: { label: 'Volver a Catálogos', onClick: () => navigate('/catalogs') },
-        })
-      }
-    } catch (err) {
-      setEditError(extractErrorMessage(err))
-    }
-  }
-
   return (
     <>
     <PanelSection
       title="Datos"
       storageKey="ficha-seccion-datos"
       action={
-        <PanelSectionAction label="Editar lead" onClick={() => { setEditError(null); setIsEditing(true) }}>
+        <PanelSectionAction label="Editar lead" onClick={() => setIsEditing(true)}>
           <Pencil />
         </PanelSectionAction>
       }
@@ -156,51 +148,11 @@ export function LeadInfo({ chat, footer }: Props) {
 
       <LeadCustomFields chatId={chat.chat_id} />
 
-      {(chat.proxima_cita || footer) && (
-        <div className="mt-4 flex flex-wrap items-start gap-2">
-          {footer}
-          {chat.proxima_cita && (
-            <Button variant="dangerGhost" size="sm" onClick={handleMarkNoShow} disabled={isMarkingNoShow}>
-              <CalendarX className="h-3.5 w-3.5" aria-hidden="true" />
-              {isMarkingNoShow ? 'Registrando…' : 'Marcar no-show'}
-            </Button>
-          )}
-        </div>
-      )}
-      {noShowError && <p role="alert" className="mt-1 text-xs text-danger-fg">{noShowError}</p>}
+      <LeadDataActions chat={chat} footer={footer} />
     </PanelSection>
 
       {showEditor && (
-        <LeadFormDialog
-          title="Editar lead"
-          submitLabel="Guardar"
-          // El teléfono se bloquea solo cuando ya hay algo resuelto que
-          // cambiarlo podría redirigir sin querer. Con telefono en null (un
-          // user_id de Meta que nunca reveló el número) no hay nada que
-          // proteger, aunque ya haya conversación — se deja completar a mano.
-          canEditPhone={chat.last_message == null || chat.phone == null}
-          phoneEditIsRisky={chat.last_message != null && chat.phone == null}
-          initial={{
-            phone: chat.phone,
-            secondary_phone: chat.secondary_phone,
-            name: chat.name,
-            servicio_interes: chat.servicio_interes,
-            vendedor_id: chat.vendedor_id,
-            origen: chat.origen,
-            notas: chat.notas,
-            con_especialista: chat.con_especialista,
-            razon_perdido: chat.razon_perdido,
-            fecha_recontacto: chat.fecha_recontacto,
-            proxima_cita: chat.proxima_cita,
-          }}
-          initialStage={chat.stage}
-          stageCatalog={stageCatalog}
-          isSubmitting={isSaving}
-          error={editError}
-          onSubmit={handleUpdate}
-          onCancel={closeEditor}
-          highlightService={serviceRequest ? { reason: serviceRequest.reason } : undefined}
-        />
+        <LeadEditor chat={chat} serviceRequest={serviceRequest} onClose={closeEditor} />
       )}
     </>
   )
