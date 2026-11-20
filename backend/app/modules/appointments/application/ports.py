@@ -55,9 +55,10 @@ class AppointmentLeads(Protocol):
 
     async def exists(self, lead_id: str) -> bool: ...
 
-    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+    async def create(self, *, phone: str, name: str, actor_user_id: int, seller_name: str) -> str:
         """Da de alta el lead de ese ``wa_id`` (E.164 en dígitos), como el alta
-        manual, y devuelve su id. Si en el medio otro alta tomó ese número,
+        manual, y devuelve su id. Queda asignado a ``seller_name``, el
+        responsable de la cita. Si en el medio otro alta tomó ese número,
         devuelve el de ese lead."""
 
     async def snapshot(self, lead_id: str) -> dict | None:

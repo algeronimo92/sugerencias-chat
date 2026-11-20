@@ -119,8 +119,16 @@ async def test_linked_contacts_and_appointments_follow_the_owner_and_new_leads_s
         assert (await list_notifications(ana, owner_id=ana))["unread_count"] == 2
         visible = await list_appointments(owner_id=ana)
         assert {item["lead_id"] for item in visible} == {own, None}
+        # Con el ajuste apagado el lead de la cita igual queda del responsable
+        # que la cita nombra: sin vendedor fallaba la automatización de lead nuevo.
+        for_bea = await SqlAppointmentLeads().create(
+            phone="51987000106", name="De Bea", actor_user_id=ana, seller_name="Bea",
+        )
+        assert await fetch_lead_sellers([for_bea]) == {for_bea: bea}
         await update_settings({"sellers_see_only_assigned_leads": "true"})
-        new_from_appointment = await SqlAppointmentLeads().create(phone="51987000104", name="Nueva", actor_user_id=ana)
+        new_from_appointment = await SqlAppointmentLeads().create(
+            phone="51987000104", name="Nueva", actor_user_id=ana, seller_name="Nadie",
+        )
         contact = await create_contact({"nombre": "Nuevo contacto", "telefono": "987000105"}, user_id=ana)
         new_from_contact = await promote_to_lead(contact["id"], user_id=ana)
         assert await fetch_lead_sellers([new_from_appointment, new_from_contact]) == {
