@@ -10,7 +10,7 @@ import { NewLeadButton } from "./NewLeadButton";
 // render, lo que además rompía la memoización de los hijos.
 // En el celular 36 px de alto: con py-1.5 medían 28 y se erraba el toque.
 const segmentClass = (active: boolean) =>
-  `flex-1 whitespace-nowrap rounded-md px-2 py-2 text-xs font-semibold outline-none md:py-1.5 transition-all focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
+  `flex-1 whitespace-nowrap rounded-md px-2 py-2 text-xs font-semibold outline-none md:py-1.5 transition-[color,background-color,box-shadow] focus-visible:ring-2 focus-visible:ring-wa-primary/50 ${
     active
       ? "bg-white text-wa-primary-strong shadow-sm ring-1 ring-black/[0.03] dark:bg-wa-active-dark dark:text-wa-primary dark:ring-white/[0.04]"
       : "text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark"
@@ -103,9 +103,10 @@ export function ChatListHeader({
           ref={searchInputRef}
           type="text"
           placeholder="Buscar nombre, teléfono o mensaje"
+          aria-label="Buscar nombre, teléfono o mensaje"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="h-9 w-full rounded-lg border border-wa-border bg-wa-field/70 pl-9 pr-9 text-sm text-wa-text outline-none transition-all placeholder:text-wa-muted focus:border-wa-primary/50 focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-field-dark/70 dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark dark:focus:border-wa-primary/50 dark:focus:bg-wa-field-dark"
+          className="h-9 w-full rounded-lg border border-wa-border bg-wa-field/70 pl-9 pr-9 text-sm text-wa-text outline-none transition-[color,background-color,border-color,box-shadow] placeholder:text-wa-muted focus:border-wa-primary/50 focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-field-dark/70 dark:text-wa-text-dark dark:placeholder:text-wa-muted-dark dark:focus:border-wa-primary/50 dark:focus:bg-wa-field-dark"
         />
         {/* Vaciar la búsqueda: en el teléfono borrar a mano lo escrito es
             incómodo y el teclado tapa media pantalla. Solo aparece con algo

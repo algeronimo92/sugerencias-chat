@@ -24,7 +24,6 @@ export function useTopChatHighlight({ topId, scrollRef, search, filter, advanced
 
   useEffect(() => {
     prevTopIdRef.current = null;
-    setHighlightedId(null);
     scrollRef.current?.scrollTo({ top: 0 });
   }, [search, filter, advancedFilters, scrollRef]);
 
@@ -45,5 +44,7 @@ export function useTopChatHighlight({ topId, scrollRef, search, filter, advanced
     prevTopIdRef.current = topId;
   }, [topId]);
 
-  return highlightedId;
+  // El resaltado es siempre del lead que está arriba: si la búsqueda o un
+  // filtro cambian el tope, deja de valer sin un efecto que lo borre.
+  return highlightedId === topId ? highlightedId : null;
 }

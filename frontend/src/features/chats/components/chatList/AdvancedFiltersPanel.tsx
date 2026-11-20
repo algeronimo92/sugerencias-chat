@@ -22,13 +22,15 @@ export function AdvancedFiltersPanel({
 }: Props) {
   const { data: tags = [] } = useTags(false);
   const selectedTagIds = new Set(advancedFilters.tagIds);
+  const selectedStages = new Set(advancedFilters.stages);
   const stageCatalog = useLeadStageCatalog();
+  const catalogStageKeys = new Set(stageCatalog.stages.map((stage) => stage.key));
   // Todas las etapas, también las desactivadas (sus leads siguen ahí), y las
   // de un filtro ya aplicado aunque el negocio las haya borrado.
   const filterStages = [
     ...stageCatalog.stages,
     ...advancedFilters.stages
-      .filter((key) => !stageCatalog.stages.some((stage) => stage.key === key))
+      .filter((key) => !catalogStageKeys.has(key))
       .map((key) => stageCatalog.get(key)),
   ];
   const { data: sellers = [] } = useSellers();
@@ -73,10 +75,10 @@ export function AdvancedFiltersPanel({
             key={stage.key}
             type="button"
             onClick={() => toggleStage(stage.key)}
-            aria-pressed={advancedFilters.stages.includes(stage.key)}
+            aria-pressed={selectedStages.has(stage.key)}
             title={stage.is_active ? undefined : "Etapa desactivada"}
             className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${stage.is_active ? "" : "border-dashed"} ${
-              advancedFilters.stages.includes(stage.key)
+              selectedStages.has(stage.key)
                 ? "border-wa-primary bg-wa-primary/15 text-wa-primary-strong dark:bg-wa-primary/20 dark:text-wa-primary"
                 : "border-wa-border bg-white text-wa-muted dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-muted-dark"
             }`}
@@ -148,6 +150,7 @@ export function AdvancedFiltersPanel({
               })
             }
             placeholder={label}
+            aria-label={label}
             className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
           />
         ))}
@@ -197,6 +200,7 @@ export function AdvancedFiltersPanel({
             })
           }
           placeholder="Inactivo (días)"
+          aria-label="Días sin actividad"
           className="min-w-0 rounded-md border border-wa-border bg-white px-2 py-1.5 text-xs text-wa-text outline-none focus:border-wa-primary dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark"
         />
         <Select
