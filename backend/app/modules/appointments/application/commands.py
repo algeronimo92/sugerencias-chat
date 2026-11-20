@@ -88,6 +88,7 @@ async def _new_lead(e164: str, request: AppointmentRequest, created_by_user_id: 
     try:
         return await appointment_ports().leads.create(
             phone=e164, name=request.nombre_completo.strip() or e164, actor_user_id=created_by_user_id,
+            seller_name=request.vendedor,
         )
     except Exception:
         logger.exception("No se pudo crear el lead de la cita del teléfono terminado en %s", e164[-4:])

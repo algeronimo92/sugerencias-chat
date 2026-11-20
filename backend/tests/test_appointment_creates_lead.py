@@ -51,7 +51,7 @@ def world(monkeypatch, in_memory_appointments):
 async def test_a_phone_nobody_has_gets_its_own_lead(world):
     result = await appointments.post_appointment(_body(), SELLER)
 
-    assert world.leads.created == [{"phone": "51980000275", "name": "Lucía Torres", "actor_user_id": SELLER.id}]
+    assert world.leads.created == [{"phone": "51980000275", "name": "Lucía Torres", "actor_user_id": SELLER.id, "seller_name": "Antonella"}]
     assert result["appointment"]["lead_id"] == "lead-nuevo-1"
     # El lead nuevo se entera de la cita como si se hubiera agendado desde su
     # ficha: próxima cita, actividad, nota y etapa.

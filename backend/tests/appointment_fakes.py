@@ -118,11 +118,11 @@ class FakeLeads:
     async def exists(self, lead_id: str) -> bool:
         return lead_id in self.existing
 
-    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+    async def create(self, *, phone: str, name: str, actor_user_id: int, seller_name: str) -> str:
         if self.create_error is not None:
             raise self.create_error
         lead_id = f"lead-nuevo-{len(self.created) + 1}"
-        self.created.append({"phone": phone, "name": name, "actor_user_id": actor_user_id})
+        self.created.append({"phone": phone, "name": name, "actor_user_id": actor_user_id, "seller_name": seller_name})
         self.existing.add(lead_id)
         self.identities[phone] = lead_id
         return lead_id

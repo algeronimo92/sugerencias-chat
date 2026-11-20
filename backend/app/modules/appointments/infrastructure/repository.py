@@ -11,6 +11,7 @@ from app.db.models.appointments import Appointment, AppointmentNotice
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
+from app.modules.auth.ports.users import list_active_sellers
 from app.modules.conversations.ports.message_queries import phoneless_chats_mentioning
 from app.modules.conversations.public import NoteAuthor, create_note
 from app.modules.leads.public import Actor, LeadAlreadyExists, create_lead, fetch_lead_raw, register_appointment
@@ -83,6 +84,15 @@ class SqlAppointmentRepository:
         return _serialize(row)
 
 
+async def _seller_id(name: str) -> int | None:
+    """El usuario activo que la cita nombra como responsable. Sin esto el
+    lead nacía sin vendedor cuando "cada vendedor ve solo sus leads" estaba
+    apagado, y la automatización de lead nuevo que crea una tarea fallaba
+    en cada cita de un número nuevo (DermicaPro, 12 al 19 de noviembre)."""
+    wanted = name.strip()
+    return next((user["id"] for user in await list_active_sellers() if str(user["name"]).strip() == wanted), None)
+
+
 class SqlAppointmentLeads:
     async def by_whatsapp_identity(self, e164: str) -> str | None:
         return await lead_id_for_identifier(e164)
@@ -98,11 +108,11 @@ class SqlAppointmentLeads:
         since = datetime.now(timezone.utc) - CHAT_MENTION_WINDOW
         return await phoneless_chats_mentioning(tail, since=since)
 
-    async def create(self, *, phone: str, name: str, actor_user_id: int) -> str:
+    async def create(self, *, phone: str, name: str, actor_user_id: int, seller_name: str) -> str:
         try:
             return await create_lead(
                 phone, name, actor=Actor.user(actor_user_id), origen=NEW_LEAD_ORIGIN,
-                vendedor_id=await seller_scope_by_id(actor_user_id),
+                vendedor_id=await _seller_id(seller_name) or await seller_scope_by_id(actor_user_id),
             )
         except LeadAlreadyExists:
             # Un mensaje entrante (u otra cita) dio de alta el número entre la
