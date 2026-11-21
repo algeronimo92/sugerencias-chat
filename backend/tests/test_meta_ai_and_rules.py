@@ -71,6 +71,18 @@ def test_an_unsupported_from_the_client_names_what_it_was():
     )
 
 
+def test_the_album_notice_says_the_photos_arrive_on_their_own():
+    """Varias fotos juntas: Meta manda cada foto aparte y este aviso (131051).
+    No falta nada: la IA no debe creer que el cliente mandó algo oculto."""
+    album = {
+        "from": "51911111111", "type": "unsupported", "errors": [{"code": 131051}],
+        "unsupported": {"type": "album", "raw_type": "album"},
+    }
+    assert message_text("unsupported", None, None, album) == (
+        "[el cliente envió varias fotos juntas; cada una aparece como su propio mensaje]"
+    )
+
+
 def test_the_first_message_withheld_by_coexistence_points_to_the_phone():
     """131060: en coexistencia el primer mensaje de un cliente nuevo (p. ej. de
     un anuncio) no llega por la API. No es un fallo del cliente: está en el

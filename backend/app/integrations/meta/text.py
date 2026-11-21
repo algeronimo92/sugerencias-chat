@@ -45,6 +45,10 @@ UNSUPPORTED_TYPE_LABELS = {
     "hsm": "de plantilla",
 }
 
+# Varias fotos mandadas juntas: Meta entrega cada foto aparte y además este
+# aviso sin contenido (131051), tenga o no coexistencia el número.
+ALBUM_TYPE = "album"
+
 # 131060 ("This message is currently unavailable"): en coexistencia, Meta no
 # entrega por la API el primer mensaje de un cliente nuevo (típico de un
 # anuncio Click-to-WhatsApp) ni lo que pasa por un dispositivo vinculado no
@@ -145,6 +149,11 @@ def message_text(
             f"[mensaje {label + ' ' if label else ''}enviado por el negocio desde el celular; "
             "WhatsApp no comparte su contenido]"
         )
+    if message_type == "unsupported" and _object(message.get("unsupported")).get("type") == ALBUM_TYPE:
+        # Las fotos del álbum llegan cada una como su propio mensaje: este
+        # aviso solo dice que vinieron juntas. Leerlo como "no compartido"
+        # hacía creer a la IA que faltaba algo.
+        return "[el cliente envió varias fotos juntas; cada una aparece como su propio mensaje]"
     if message_type == "unsupported" and UNAVAILABLE_ERROR_CODE in _error_codes(message):
         return (
             "[mensaje del cliente que WhatsApp no entregó al CRM (suele ser su primer mensaje); "

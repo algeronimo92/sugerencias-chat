@@ -7,7 +7,7 @@ import { useLeadActivity } from '../../leads/public/useLeadMeta'
 import type { InternalNote } from '../types'
 import type { LeadActivity } from '../../leads/types'
 import type { Message } from '../../whatsapp/types'
-import { groupByDay, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
+import { groupByDay, isAlbumNotice, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
 import type { FlowNamesByExecution } from '../domain/messageOrigin'
 import { messageMediaFilename } from '../utils/messageMedia'
 import { useInternalNotes } from './useInternalNotes'
@@ -57,8 +57,12 @@ export function useChatTimeline(chatId: string, highlightMessageId: number | nul
   // Las páginas llegan desde la más reciente hacia atrás. Se invierte el
   // orden de páginas, pero se conserva el orden ascendente dentro de cada
   // página, para renderizar el historial de viejo a nuevo.
+  // Sin el aviso de álbum de Meta: sus fotos llegan aparte y, en medio de
+  // ellas, el aviso partía la grilla y pedía mirar el celular.
   const messages = useMemo(
-    () => [...(messagePages?.pages ?? [])].reverse().flatMap((page) => page.items),
+    () => [...(messagePages?.pages ?? [])].reverse()
+      .flatMap((page) => page.items)
+      .filter((message) => !isAlbumNotice(message)),
     [messagePages],
   )
 

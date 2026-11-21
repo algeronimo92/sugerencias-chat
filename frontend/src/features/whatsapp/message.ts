@@ -24,7 +24,7 @@ type LucideIcon,
 import type { JsonObject, JsonValue } from '../../shared/types';
 import { isJsonObject } from '../../shared/utils/json';
 import { META_CONTRACT } from "./domain/metaContract";
-import type { MessageAnalysis, MessageType } from './types'
+import type { Message, MessageAnalysis, MessageType } from './types'
 
 /** Tipo literal de Meta (`messages[].type`). Un tipo que el contrato todavía
  * no conoce llega igual, con su nombre, y se muestra con un renderer genérico. */
@@ -545,10 +545,25 @@ export function messageUnsupported(meta: JsonObject): UnsupportedMessage {
   };
 }
 
+// Varias fotos mandadas juntas: Meta entrega cada foto como su propio
+// mensaje y además este aviso sin contenido (131051), con o sin coexistencia.
+// Espejo de ALBUM_TYPE en backend/app/integrations/meta/text.py.
+const ALBUM_TYPE = "album";
+
+/** El aviso de álbum no trae nada que mostrar: las fotos ya están en el hilo.
+ * Mostrarlo decía "míralo en el celular" y partía el álbum en dos. */
+export function isAlbumNotice(message: Pick<Message, "message_type" | "provider_payload">): boolean {
+  return (
+    message.message_type === "unsupported" &&
+    asString(asObject(asObject(message.provider_payload as JsonValue | undefined).unsupported).type) === ALBUM_TYPE
+  );
+}
+
 // Texto de la lista de chats y de las citas: "No soportado" a secas hace
 // pensar en un envío fallido o en un cliente que no escribió nada.
 function unsupportedText(unsupported: UnsupportedMessage): string {
-  const { typeLabel, fromPhone, unavailable } = unsupported;
+  const { type, typeLabel, fromPhone, unavailable } = unsupported;
+  if (type === ALBUM_TYPE) return "Varias fotos";
   if (fromPhone) return typeLabel ? `Mensaje ${typeLabel} enviado desde el celular` : "Mensaje enviado desde el celular";
   if (unavailable) return "Mensaje no disponible en el CRM: revísalo en el celular";
   return typeLabel ? `Mensaje ${typeLabel} que WhatsApp no comparte con el CRM` : "";
