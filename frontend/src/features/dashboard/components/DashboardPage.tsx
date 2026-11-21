@@ -51,29 +51,19 @@ interface Props {
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
-  // Elegir a otra persona del equipo (por defecto, solo el admin).
-  const isAdmin = can(viewer, 'dashboard.view_member')
-  // Quien no atiende chats no tiene leads propios: mira siempre el total y no
-  // elige a quién mirar (por defecto, el analista).
-  const isAnalyst = !can(viewer, 'conversations.view')
-  const filters = useDashboardFilters(isAdmin || isAnalyst)
-  const { tab, setTab, days, setDays, setView } = filters
-  const view: DashboardView = isAnalyst ? 'team' : filters.view
-  // Solo el admin puede mirar a otra persona: la lista se pide solo para él.
-  const sellersQuery = useSellers({ enabled: isAdmin })
-  const sellers = isAdmin ? sellersQuery.data ?? [] : []
-  const sellerId = typeof view === 'number' ? view : null
-  const scope: DashboardScope = view === 'team' ? 'team' : 'mine'
-  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useDashboard(days, sellerId ? null : scope, sellerId)
-  const sellerName = sellerId ? sellers.find((seller) => seller.id === sellerId)?.name ?? 'esta persona' : null
-  const subject: DashboardSubject = sellerName ? { kind: 'seller', name: sellerName } : view === 'mine' ? { kind: 'me' } : { kind: 'team' }
+type DashboardData = NonNullable<ReturnType<typeof useDashboard>['data']>
+type Seller = { id: number; name: string }
 
-  // Un enlace de sección trae su nombre en el fragmento (#por-tratamiento):
-  // al tener los datos se baja hasta ella y se resalta un momento, para que
-  // quien lo abrió vea de qué gráfico le hablaban.
+function subjectFor(view: DashboardView, sellerName: string | null): DashboardSubject {
+  if (sellerName) return { kind: 'seller', name: sellerName }
+  return view === 'mine' ? { kind: 'me' } : { kind: 'team' }
+}
+
+// Un enlace de sección trae su nombre en el fragmento (#por-tratamiento):
+// al tener los datos se baja hasta ella y se resalta un momento, para que
+// quien lo abrió vea de qué gráfico le hablaban.
+function useSectionHighlight(hasData: boolean, tab: TabId) {
   const { hash } = useLocation()
-  const hasData = Boolean(data)
   useEffect(() => {
     const anchor = decodeURIComponent(hash.replace(/^#/, ''))
     if (!anchor || !hasData) return
@@ -84,6 +74,147 @@ export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, on
     const timer = window.setTimeout(() => { section.style.boxShadow = '' }, 2500)
     return () => window.clearTimeout(timer)
   }, [hash, hasData, tab])
+}
+
+function ViewSelect({ view, sellers, sellerId, sellerName, onChange }: {
+  view: DashboardView
+  sellers: Seller[]
+  sellerId: number | null
+  sellerName: string | null
+  onChange: (view: DashboardView) => void
+}) {
+  return (
+  <Select
+    value={viewValue(view)}
+    onChange={(event) => onChange(parseView(event.target.value))}
+    aria-label="De quién son las métricas"
+    className={SELECT_CLASS}
+  >
+    <option value="mine">Solo lo mío</option>
+    <option value="team">Todo el equipo</option>
+    {sellers.map((seller) => (
+      <option key={seller.id} value={`vendedora:${seller.id}`}>{seller.name}</option>
+    ))}
+    {/* Un enlace compartido con alguien que ya no está en la lista
+        igual tiene que mostrar a quién se mira. */}
+    {sellerId && !sellers.some((seller) => seller.id === sellerId) && (
+      <option value={`vendedora:${sellerId}`}>{sellerName}</option>
+    )}
+  </Select>
+  )
+}
+
+function DashboardTabs({ tab, hasCalls, onChange }: { tab: TabId; hasCalls: boolean; onChange: (tab: TabId) => void }) {
+  return (
+  <div role="tablist" aria-label="Secciones del dashboard" className="mb-5 flex gap-1 overflow-x-auto border-b border-wa-border pb-px dark:border-wa-border-dark">
+    {/* Llamadas solo aparece si el negocio tuvo alguna: a quien no las
+        usa no se le suma una pestaña vacía. */}
+    {TABS.filter(item => item.id !== 'calls' || hasCalls || tab === 'calls').map((item) => (
+      <button
+        key={item.id}
+        type="button"
+        role="tab"
+        aria-selected={tab === item.id}
+        onClick={() => onChange(item.id)}
+        className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+          tab === item.id
+            ? 'border-wa-primary text-wa-primary-strong dark:text-wa-primary'
+            : 'border-transparent text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
+        }`}
+      >
+        {item.label}
+      </button>
+    ))}
+  </div>
+  )
+}
+
+interface PanelProps {
+  tab: TabId
+  data: DashboardData
+  days: number
+  subject: DashboardSubject
+  canOpenChats: boolean
+  onTab: (tab: TabId) => void
+  onOpenTasks: () => void
+  onOpenFlows: () => void
+  onOpenChat: (leadId: string) => void
+  onFilterChats: (filters: Partial<ChatFilters>) => void
+}
+
+function DashboardTabPanel({ tab, data, days, subject, canOpenChats, onTab, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: PanelProps) {
+  return (
+    <>
+      {tab === 'summary' && (
+        <SummaryTab
+          data={data}
+          days={days}
+          subject={subject}
+          onOpenTasks={onOpenTasks}
+          onOpenFlows={onOpenFlows}
+          onOpenChat={onOpenChat}
+          onFilterChats={onFilterChats}
+          onOpenSales={() => onTab('sales')}
+        />
+      )}
+      {tab === 'calls' && <CallsTab data={data} days={days} onOpenChat={canOpenChats ? onOpenChat : undefined} />}
+      {tab === 'flows' && <FlowsTab data={data} days={days} subject={subject} onOpenFlows={onOpenFlows} />}
+      {tab === 'tags' && <TagsTab data={data} days={days} subject={subject} onFilterChats={onFilterChats} />}
+      {tab === 'pipeline' && (
+        <PipelineTab data={data} days={days} subject={subject} onFilterChats={onFilterChats} />
+      )}
+      {tab === 'sales' && <SalesTab data={data} days={days} subject={subject} onOpenChat={onOpenChat} />}
+    </>
+  )
+}
+
+
+/** A quién se mira: lo propio, el equipo o una persona (por permiso). */
+function useDashboardView(viewer: Viewer) {
+  // Elegir a otra persona del equipo (por defecto, solo el admin).
+  const isAdmin = can(viewer, 'dashboard.view_member')
+  // Quien no atiende chats no tiene leads propios: mira siempre el total y no
+  // elige a quién mirar (por defecto, el analista).
+  const isAnalyst = !can(viewer, 'conversations.view')
+  const filters = useDashboardFilters(isAdmin || isAnalyst)
+  const view: DashboardView = isAnalyst ? 'team' : filters.view
+  // Solo el admin puede mirar a otra persona: la lista se pide solo para él.
+  const sellersQuery = useSellers({ enabled: isAdmin })
+  const sellers = isAdmin ? sellersQuery.data ?? [] : []
+  const sellerId = typeof view === 'number' ? view : null
+  const scope: DashboardScope = view === 'team' ? 'team' : 'mine'
+  const sellerName = sellerId ? sellers.find((seller) => seller.id === sellerId)?.name ?? 'esta persona' : null
+  return { ...filters, isAnalyst, view, sellers, sellerId, scope, sellerName }
+}
+
+function UpdatedAt({ generatedAt }: { generatedAt: string }) {
+  return (
+    <span className="text-[11px] text-wa-muted dark:text-wa-muted-dark" title={new Date(generatedAt).toLocaleString('es-PE')}>
+      Actualizado {formatRelativeTime(generatedAt)}
+    </span>
+  )
+}
+
+function PeriodSelect({ days, onChange }: { days: number; onChange: (days: number) => void }) {
+  return (
+  <Select
+    value={days}
+    onChange={(event) => onChange(Number(event.target.value))}
+    aria-label="Período"
+    className={SELECT_CLASS}
+  >
+    <option value={7}>Últimos 7 días</option>
+    <option value={30}>Últimos 30 días</option>
+    <option value={90}>Últimos 90 días</option>
+  </Select>
+  )
+}
+
+export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
+  const { tab, setTab, days, setDays, setView, isAnalyst, view, sellers, sellerId, scope, sellerName } = useDashboardView(viewer)
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useDashboard(days, sellerId ? null : scope, sellerId)
+  const subject = subjectFor(view, sellerName)
+  useSectionHighlight(Boolean(data), tab)
 
   return (
     <div className="h-full overflow-y-auto bg-wa-app p-3 sm:p-6 dark:bg-wa-app-dark">
@@ -93,14 +224,7 @@ export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, on
             <h1 className="text-xl font-semibold text-wa-text dark:text-white">Dashboard CRM</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {data && (
-              <span
-                className="text-[11px] text-wa-muted dark:text-wa-muted-dark"
-                title={new Date(data.generated_at).toLocaleString('es-PE')}
-              >
-                Actualizado {formatRelativeTime(data.generated_at)}
-              </span>
-            )}
+            {data && <UpdatedAt generatedAt={data.generated_at} />}
             <Button
               variant="secondary"
               size="icon"
@@ -111,61 +235,15 @@ export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, on
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
             </Button>
-            {!isAnalyst && (
-              <Select
-                value={viewValue(view)}
-                onChange={(event) => setView(parseView(event.target.value))}
-                aria-label="De quién son las métricas"
-                className={SELECT_CLASS}
-              >
-                <option value="mine">Solo lo mío</option>
-                <option value="team">Todo el equipo</option>
-                {sellers.map((seller) => (
-                  <option key={seller.id} value={`vendedora:${seller.id}`}>{seller.name}</option>
-                ))}
-                {/* Un enlace compartido con alguien que ya no está en la lista
-                    igual tiene que mostrar a quién se mira. */}
-                {sellerId && !sellers.some((seller) => seller.id === sellerId) && (
-                  <option value={`vendedora:${sellerId}`}>{sellerName}</option>
-                )}
-              </Select>
-            )}
-            <Select
-              value={days}
-              onChange={(event) => setDays(Number(event.target.value))}
-              aria-label="Período"
-              className={SELECT_CLASS}
-            >
-              <option value={7}>Últimos 7 días</option>
-              <option value={30}>Últimos 30 días</option>
-              <option value={90}>Últimos 90 días</option>
-            </Select>
+            {!isAnalyst && <ViewSelect view={view} sellers={sellers} sellerId={sellerId} sellerName={sellerName} onChange={setView} />}
+            <PeriodSelect days={days} onChange={setDays} />
             {can(viewer, 'dashboard.export', 'dashboard.export_personal_data') && (
               <ExportMenu isAdmin={can(viewer, 'dashboard.export_personal_data')} days={days} />
             )}
           </div>
         </div>
 
-        <div role="tablist" aria-label="Secciones del dashboard" className="mb-5 flex gap-1 overflow-x-auto border-b border-wa-border pb-px dark:border-wa-border-dark">
-          {/* Llamadas solo aparece si el negocio tuvo alguna: a quien no las
-              usa no se le suma una pestaña vacía. */}
-          {TABS.filter(item => item.id !== 'calls' || (data?.calls?.total ?? 0) > 0 || tab === 'calls').map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              onClick={() => setTab(item.id)}
-              className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                tab === item.id
-                  ? 'border-wa-primary text-wa-primary-strong dark:text-wa-primary'
-                  : 'border-transparent text-wa-muted hover:text-wa-text dark:text-wa-muted-dark dark:hover:text-wa-text-dark'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <DashboardTabs tab={tab} hasCalls={(data?.calls?.total ?? 0) > 0} onChange={setTab} />
 
         {isLoading && (
           <div className="flex justify-center py-24">
@@ -183,25 +261,10 @@ export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, on
           // Al cambiar de período se conserva el render anterior atenuado: un
           // spinner a pantalla completa haría saltar la página en cada cambio.
           <div role="tabpanel" aria-busy={isFetching} className={`transition-opacity ${isPlaceholderData ? 'opacity-60' : ''}`}>
-            {tab === 'summary' && (
-              <SummaryTab
-                data={data}
-                days={days}
-                subject={subject}
-                onOpenTasks={onOpenTasks}
-                onOpenFlows={onOpenFlows}
-                onOpenChat={onOpenChat}
-                onFilterChats={onFilterChats}
-                onOpenSales={() => setTab('sales')}
-              />
-            )}
-            {tab === 'calls' && <CallsTab data={data} days={days} onOpenChat={isAnalyst ? undefined : onOpenChat} />}
-            {tab === 'flows' && <FlowsTab data={data} days={days} subject={subject} onOpenFlows={onOpenFlows} />}
-            {tab === 'tags' && <TagsTab data={data} days={days} subject={subject} onFilterChats={onFilterChats} />}
-            {tab === 'pipeline' && (
-              <PipelineTab data={data} days={days} subject={subject} onFilterChats={onFilterChats} />
-            )}
-            {tab === 'sales' && <SalesTab data={data} days={days} subject={subject} onOpenChat={onOpenChat} />}
+            <DashboardTabPanel
+              tab={tab} data={data} days={days} subject={subject} canOpenChats={!isAnalyst} onTab={setTab}
+              onOpenTasks={onOpenTasks} onOpenFlows={onOpenFlows} onOpenChat={onOpenChat} onFilterChats={onFilterChats}
+            />
           </div>
         )}
       </div>
