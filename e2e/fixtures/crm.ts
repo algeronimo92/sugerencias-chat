@@ -7,7 +7,23 @@ type Message = ApiResponse<'/api/chats/{chat_id}/messages', 'post'>
 type Flow = ApiResponse<'/api/automations/manual', 'get'>[number]
 type Execution = ApiResponse<'/api/automations/{rule_id}/start', 'post'>
 
-export const ADMIN: User = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin', can_handle_calls: false }
+// Como lo arma /api/auth/me para un admin: el catálogo completo de
+// app/modules/auth/permissions.py.
+const ALL_PERMISSIONS = [
+  'dashboard.view', 'dashboard.view_member', 'dashboard.export', 'dashboard.export_personal_data',
+  'leads.view', 'leads.view_all', 'leads.edit', 'leads.assign', 'leads.merge', 'leads.delete',
+  'conversations.view', 'conversations.send', 'calls.handle', 'team.supervise',
+  'tasks.use',
+  'appointments.view', 'appointments.edit', 'appointments.manage', 'appointments.configure',
+  'contacts.view', 'contacts.edit', 'contacts.delete', 'contacts.import',
+  'automations.run', 'automations.manage',
+  'templates.use', 'templates.manage', 'catalogs.manage', 'media_library.manage', 'ai.configure', 'issue_reports.manage',
+  'settings.manage', 'users.manage',
+].sort()
+
+export const ADMIN: User = {
+  id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin', can_handle_calls: false, permissions: ALL_PERMISSIONS,
+}
 
 export const CHAT_ID = '51999000111'
 

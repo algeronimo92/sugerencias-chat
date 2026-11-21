@@ -16,7 +16,9 @@ from app.modules.leads.domain.errors import LeadNotFound
 from app.modules.notifications.repository import create_system_notification
 from app.modules.notifications.queries import list_notifications
 from app.modules.notifications.types import NotificationType
-from app.modules.platform.settings_service import update_settings
+from app.modules.auth.permissions import Permission
+from app.modules.auth.roles_service import permissions_for_role, set_role_permission
+from app.modules.auth.types import UserRole
 from app.modules.tasks.repository import create_task, complete_pending_tasks
 from app.modules.tasks.queries import list_tasks
 from app.tenancy.context import tenant_context
@@ -25,16 +27,27 @@ from tests.test_chat_inboxes_postgres import _lead, _seller
 from datetime import datetime, timezone
 
 
+async def _scope_sellers(scoped: bool) -> None:
+    """Desde la matriz de permisos lo decide ``leads.view_all`` del vendedor;
+    el interruptor de Configuración escribe exactamente esto."""
+    await set_role_permission(UserRole.SELLER, Permission.LEADS_VIEW_ALL, granted=not scoped)
+
+
+async def _as_seller(user_id: int) -> SimpleNamespace:
+    # Como lo deja ``get_current_user``: con la fila vigente de la matriz.
+    return SimpleNamespace(id=user_id, role=UserRole.SELLER, permissions=await permissions_for_role(UserRole.SELLER))
+
+
 async def test_toggle_scopes_lists_search_counts_and_kanban_and_admins_keep_everything(tenant):
     with tenant_context(tenant):
         ana, bea = await _seller("Ana"), await _seller("Bea")
         own = await _lead("Ana cliente", seller_id=ana, last_from="cliente", read=False)
         await _lead("Bea cliente", seller_id=bea, last_from="cliente", read=False)
         await _lead("Libre cliente", last_from="cliente", read=False)
-        user = SimpleNamespace(id=ana, role="vendedor")
         admin = SimpleNamespace(id=1, role="admin")
-        for value, expected in [("false", 3), ("true", 1), ("false", 3)]:
-            await update_settings({"sellers_see_only_assigned_leads": value})
+        for scoped, expected in [(False, 3), (True, 1), (False, 3)]:
+            await _scope_sellers(scoped)
+            user = await _as_seller(ana)
             filters = await _lead_filters(user=user, tag_mode="any", seller_id=None, last_sender=None, inactive_days=None, waiting_time=None, conversation=None)
             owner = await seller_scope(user)
             assert len((await fetch_chats(filters=filters))["items"]) == expected
@@ -49,7 +62,8 @@ async def test_toggle_scopes_lists_search_counts_and_kanban_and_admins_keep_ever
             assert len((await fetch_kanban_stage("nuevo", owner_id=owner))["items"]) == expected
             assert await seller_scope(admin) is None
             assert len((await fetch_chats(filters=await _lead_filters(user=admin, tag_mode="any", seller_id=None, last_sender=None, inactive_days=None, waiting_time=None, conversation=None)))["items"]) == 3
-        await update_settings({"sellers_see_only_assigned_leads": "true"})
+        await _scope_sellers(True)
+        user = await _as_seller(ana)
         # Elegir otra vendedora o "sin asignar" no puede ampliar la visibilidad.
         assert (await fetch_chats(filters=LeadFilters(owner_id=ana, seller_id=bea)))["items"] == []
         assert (await fetch_chats(filters=LeadFilters(owner_id=ana, unassigned=True)))["items"] == []
@@ -119,13 +133,13 @@ async def test_linked_contacts_and_appointments_follow_the_owner_and_new_leads_s
         assert (await list_notifications(ana, owner_id=ana))["unread_count"] == 2
         visible = await list_appointments(owner_id=ana)
         assert {item["lead_id"] for item in visible} == {own, None}
-        # Con el ajuste apagado el lead de la cita igual queda del responsable
+        # Con la visibilidad sin acotar el lead de la cita igual queda del responsable
         # que la cita nombra: sin vendedor fallaba la automatización de lead nuevo.
         for_bea = await SqlAppointmentLeads().create(
             phone="51987000106", name="De Bea", actor_user_id=ana, seller_name="Bea",
         )
         assert await fetch_lead_sellers([for_bea]) == {for_bea: bea}
-        await update_settings({"sellers_see_only_assigned_leads": "true"})
+        await _scope_sellers(True)
         new_from_appointment = await SqlAppointmentLeads().create(
             phone="51987000104", name="Nueva", actor_user_id=ana, seller_name="Nadie",
         )
