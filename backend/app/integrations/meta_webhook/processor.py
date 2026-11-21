@@ -68,6 +68,12 @@ TEMPLATE_FIELDS = frozenset({
     "template_category_update",
     "message_template_components_update",
 })
+ACCOUNT_FIELD = "account_update"
+# Eventos de ``account_update`` con los que la WABA deja de estar vinculada a
+# esta app. Son los dos que mandó Meta el 20-11-2026 cuando DermicaPro
+# desconectó su número desde WhatsApp; el resto (términos firmados, webhook
+# reconfigurado, app instalada) no cambia nada acá.
+ACCOUNT_DISCONNECTION_EVENTS = frozenset({"PARTNER_REMOVED", "PARTNER_APP_UNINSTALLED"})
 # Raíces que cambian un mensaje ya enviado en vez de ser uno nuevo.
 MESSAGE_CHANGES = frozenset({"edit", "revoke"})
 
@@ -101,6 +107,10 @@ async def _tenant_for(change: dict) -> TenantContext | None:
     if field in TEMPLATE_FIELDS:
         waba_id = change.get("entry_id")
         context = await resolve_tenant_by_waba_id(str(waba_id)) if waba_id else None
+    elif field == ACCOUNT_FIELD:
+        # ``entry_id`` acá es el portfolio del negocio, no la WABA.
+        waba_id = _account_waba_id(value)
+        context = await resolve_tenant_by_waba_id(waba_id) if waba_id else None
     else:
         phone_number_id = _phone_number_id(value)
         context = await resolve_tenant_by_phone_number_id(phone_number_id) if phone_number_id else None
@@ -369,6 +379,32 @@ async def _template_change(change: dict, _webhook_event_id: str) -> None:
         await notice_account_template_changed(str(change.get("entry_id") or ""))
 
 
+def _account_waba_id(value: dict) -> str | None:
+    info = value.get("waba_info") if isinstance(value.get("waba_info"), dict) else {}
+    waba_id = info.get("waba_id")
+    return str(waba_id) if waba_id else None
+
+
+def _is_account_disconnection(change: dict) -> bool:
+    value = change.get("value") if isinstance(change.get("value"), dict) else {}
+    return value.get("event") in ACCOUNT_DISCONNECTION_EVENTS
+
+
+async def _account_change(change: dict, _webhook_event_id: str) -> None:
+    """El negocio desvinculó su cuenta de WhatsApp de esta app. Meta deja de
+    mandar mensajes en ese instante, así que este aviso es lo último que se
+    recibe: si se pierde, el CRM se queda mostrando "conectado"."""
+    value = change.get("value") if isinstance(change.get("value"), dict) else {}
+    waba_id = _account_waba_id(value)
+    crm_waba = (await get_effective_many(("meta_waba_id",)))["meta_waba_id"]
+    if waba_id != crm_waba:
+        # La WABA propia del número de avisos: los chats siguen funcionando.
+        logger.warning("Meta desvinculó la WABA %s, que no es la del CRM (%s)", waba_id, value.get("event"))
+        return
+    if await meta_service.mark_disconnected():
+        logger.warning("Meta desvinculó la WABA del CRM %s (%s)", waba_id, value.get("event"))
+
+
 async def _app_data_change(change: dict, _webhook_event_id: str) -> None:
     """Coexistencia: la agenda (``smb_app_state_sync``) y el historial
     (``history``) de la app WhatsApp Business del celular. Los del número de
@@ -464,6 +500,7 @@ FIELD_HANDLERS: dict[str, ChangeHandler] = {
     "history": _app_data_change,
     **{field: _template_change for field in TEMPLATE_FIELDS},
     "calls": _calls_change,
+    ACCOUNT_FIELD: _account_change,
 }
 
 
@@ -474,7 +511,20 @@ async def process_change(event: InboxEvent) -> None:
         metrics.webhook_ignored_fields.labels(field=str(change.get("field"))).inc()
         logger.info("Field de Meta sin handler: %s", change.get("field"))
         return
-    context = await _tenant_for(change)
+    if handler is _account_change and not _is_account_disconnection(change):
+        # Antes de buscar el negocio: el alta de una cuenta avisa por acá
+        # cuando su WABA todavía no pertenece a ninguno.
+        metrics.webhook_ignored_fields.labels(field=ACCOUNT_FIELD).inc()
+        return
+    try:
+        context = await _tenant_for(change)
+    except UnroutableChange:
+        if handler is not _account_change:
+            raise
+        # Una cuenta que no llegó a quedar conectada a un negocio: no hay a
+        # quién avisarle, y reintentar el evento no la va a encontrar.
+        logger.info("Meta desvinculó una WABA que no es de ningún negocio activo")
+        return
     scope = tenant_context(context) if context is not None else contextlib.nullcontext()
     with scope:
         if handler is _calls_change:

@@ -188,6 +188,8 @@ async def test_embedded_signup_combines_platform_app_with_tenant_connection(monk
         "meta_access_token": "tenant-access-token",
         "meta_waba_id": "DERMICA_WABA",
         "meta_phone_number_id": "DERMICA_PHONE",
+        # Reconectar cierra una desconexión anterior.
+        meta_service.DISCONNECTED_AT_KEY: "",
     })
 
 

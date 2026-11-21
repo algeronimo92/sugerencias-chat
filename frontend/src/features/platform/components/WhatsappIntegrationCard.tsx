@@ -14,6 +14,8 @@ export function WhatsappIntegrationCard({ highlight = false }: { highlight?: boo
   const { data: settings = [] } = useSettings(true)
   const keys = useMemo(() => settings.filter(item => item.group === META_GROUP), [settings])
   const connected = status?.state === 'open'
+  // Las claves siguen guardadas, pero Meta avisó que el número se desvinculó.
+  const disconnected = status?.state === 'disconnected'
   const [keysOpen, setKeysOpen] = useState(false)
 
   return (
@@ -21,8 +23,8 @@ export function WhatsappIntegrationCard({ highlight = false }: { highlight?: boo
       id="whatsapp"
       icon={WhatsAppMark}
       title="WhatsApp"
-      state={status ? (connected ? 'connected' : 'unconfigured') : 'unconfigured'}
-      stateLabel={connected && status?.instance ? `Conectado · ${status.instance}` : undefined}
+      state={connected ? 'connected' : disconnected ? 'error' : 'unconfigured'}
+      stateLabel={disconnected ? 'Desconectado' : connected && status?.instance ? `Conectado · ${status.instance}` : undefined}
       highlight={highlight && !connected}
     >
       <div className="space-y-4">

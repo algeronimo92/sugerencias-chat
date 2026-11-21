@@ -7,6 +7,8 @@ export type { WhatsappState } from '../types'
 
 export type { WhatsappStatus } from '../types'
 
+const STATUS_POLL_MS = 60_000
+
 export function useWhatsappStatus(options: StatusOptions = {}) {
   return useQuery({
     queryKey: whatsappKeys.status,
@@ -21,7 +23,9 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
           // Ya vinculada o sin credenciales: no tiene sentido seguir sondeando.
           return state === 'open' || state === 'not_configured' ? false : 3000
         }
-      : false,
+      // Meta avisa la baja solo al backend: con el chat abierto y sin enviar
+      // nada, este sondeo es lo que hace aparecer el aviso.
+      : STATUS_POLL_MS,
   })
 }
 

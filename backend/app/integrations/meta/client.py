@@ -25,6 +25,15 @@ _META_ERROR_CODE_WINDOW_CLOSED = 131047  # ventana de 24h del contacto cerrada
 _META_ERROR_CODE_SCHEMA_VIOLATION = 100  # ej. botón no-reply fuera de plantilla
 _META_ERROR_CODE_AUTH = 190  # token vencido o inválido
 _META_ERROR_CODE_BSUID_UNSUPPORTED = 131062  # tipo de mensaje que exige número
+# Junto al código 100: el objeto de la URL no existe o el token ya no lo ve.
+_META_ERROR_SUBCODE_OBJECT_UNAVAILABLE = 33
+
+# Cuándo Meta dejó de reconocer el número del CRM; vacío mientras funciona.
+DISCONNECTED_AT_KEY = "meta_disconnected_at"
+DISCONNECTED_MESSAGE = (
+    "WhatsApp está desconectado y este mensaje no salió. Un administrador debe "
+    "volver a conectarlo desde Integraciones."
+)
 
 
 class MetaApiError(ChannelError):
@@ -60,6 +69,26 @@ class MetaInvalidTokenException(MetaApiError):
     def __init__(self, message: str, *, error: dict | None = None, status_code: int | None = None):
         super().__init__(message, error=error, status_code=status_code)
         self.user_message = message
+
+
+class WhatsAppDisconnectedError(MetaApiError):
+    """Meta ya no reconoce el número del CRM con el token guardado: la cuenta
+    se desvinculó desde WhatsApp o se borró. Reintentar da lo mismo hasta que
+    un administrador la vuelva a conectar."""
+
+    def __init__(self, *, error: dict | None = None, status_code: int | None = None):
+        super().__init__(DISCONNECTED_MESSAGE, error=error, status_code=status_code)
+        self.user_message = DISCONNECTED_MESSAGE
+
+
+def _object_unavailable(error: dict) -> bool:
+    """"Unsupported post request. Object with ID ... does not exist, cannot be
+    loaded due to missing permissions". Comparte el código 100 con los rechazos
+    de contenido, que son ``OAuthException`` y no traen este subcódigo."""
+    return error.get("code") == _META_ERROR_CODE_SCHEMA_VIOLATION and (
+        error.get("error_subcode") == _META_ERROR_SUBCODE_OBJECT_UNAVAILABLE
+        or error.get("type") == "GraphMethodException"
+    )
 
 
 def describe_template_error(exc: Exception) -> str:
@@ -162,6 +191,45 @@ async def is_configured() -> bool:
         "meta_access_token", "meta_phone_number_id", "meta_waba_id",
     ))
     return all(values.values())
+
+
+async def disconnected_since() -> datetime | None:
+    """Desde cuándo Meta no deja operar el número del CRM, o None si funciona.
+
+    Tener las credenciales guardadas no dice que sirvan. El 20-11-2026
+    DermicaPro desvinculó su número desde WhatsApp y el CRM siguió mostrando
+    "conectado" mientras los envíos fallaban y no entraba ningún mensaje."""
+    value = (await get_effective_many((DISCONNECTED_AT_KEY,)))[DISCONNECTED_AT_KEY]
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        # Un valor escrito a mano que no es fecha sigue queriendo decir
+        # "desconectado": se informa sin la hora antes que darlo por sano.
+        return datetime.now(timezone.utc)
+
+
+async def mark_disconnected() -> bool:
+    """Registra que Meta desvinculó el número del CRM y avisa a los
+    administradores. True si recién ahora quedó registrado: la hora que se
+    muestra es la del primer aviso, no la del último envío que falló."""
+    if (await get_effective_many((DISCONNECTED_AT_KEY,)))[DISCONNECTED_AT_KEY]:
+        return False
+    now = datetime.now(timezone.utc)
+    await update_settings({DISCONNECTED_AT_KEY: now.isoformat()})
+    await try_send_operational_alert(
+        event_key=f"whatsapp-disconnected:{now.strftime('%Y-%m-%d')}",
+        event_type="whatsapp_disconnected",
+        subject="WhatsApp necesita reconectarse",
+        title="WhatsApp se desconectó",
+        message=(
+            "Meta informó que el número del negocio ya no está vinculado al CRM. "
+            "Desde ese momento no salen ni llegan mensajes. Un administrador debe "
+            "volver a conectar WhatsApp desde Integraciones."
+        ),
+    )
+    return True
 
 
 NOTICE_NUMBER_KEY = "appointment_notice_phone_number_id"
@@ -351,6 +419,9 @@ async def complete_embedded_signup(
         "meta_access_token": access_token,
         "meta_waba_id": waba_id,
         "meta_phone_number_id": phone_number_id,
+        # Volver a vincular cierra la desconexión aunque Meta devuelva el
+        # mismo token de antes.
+        DISCONNECTED_AT_KEY: "",
     })
 
     # Los webhooks entrantes llegan a una URL común y se rutean por
@@ -678,8 +749,8 @@ async def unregister_extra_number(phone_number_id: str) -> None:
 async def _post_message(
     recipient: dict[str, str], message: dict, *, sender_phone_number_id: str | None = None,
 ) -> dict:
-    token, phone_number_id, _waba_id = await _config()
-    phone_number_id = sender_phone_number_id or phone_number_id
+    token, crm_number, _waba_id = await _config()
+    phone_number_id = sender_phone_number_id or crm_number
     body = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -691,9 +762,21 @@ async def _post_message(
         response = await _request("POST", url, token, json_body=body, timeout=60.0)
     except _REQUEST_NOT_SENT_ERRORS:
         raise
+    except MetaApiError as exc:
+        if sender_phone_number_id in (None, crm_number) and _object_unavailable(exc.error):
+            raise await _disconnected(exc) from exc
+        raise
     except (httpx.TransportError, ValueError) as exc:
         raise DeliveryUnconfirmedError() from exc
     return {"body": body, "response": response}
+
+
+async def _disconnected(exc: MetaApiError) -> WhatsAppDisconnectedError:
+    """El único objeto en la URL de un envío es el número: si Meta dice que no
+    existe o que el token no lo ve, la cuenta ya no está vinculada. Cubre el
+    caso en que el aviso ``account_update`` no llegó (cuenta borrada)."""
+    await mark_disconnected()
+    return WhatsAppDisconnectedError(error=exc.error, status_code=exc.status_code)
 
 
 async def upload_media(
@@ -704,8 +787,8 @@ async def upload_media(
     recién después el mensaje con ``{tipo: {"id": media_id}}``. El id solo
     vale para el número que lo subió: un envío desde el número de avisos
     tiene que subirlo con ese número."""
-    token, phone_number_id, _waba_id = await _config()
-    phone_number_id = sender_phone_number_id or phone_number_id
+    token, crm_number, _waba_id = await _config()
+    phone_number_id = sender_phone_number_id or crm_number
     started_at = perf_counter()
     try:
         response = await _client().post(
@@ -718,7 +801,13 @@ async def upload_media(
     finally:
         record_external_duration("meta_graph", (perf_counter() - started_at) * 1000)
     if response.is_error:
-        _raise_meta_error(response)
+        try:
+            _raise_meta_error(response)
+        except MetaApiError as exc:
+            # Un mensaje con adjunto falla acá, antes de llegar al envío.
+            if sender_phone_number_id in (None, crm_number) and _object_unavailable(exc.error):
+                raise await _disconnected(exc) from exc
+            raise
     media_id = response.json().get("id")
     if not media_id:
         raise MetaApiError("Meta no devolvió un id de medio válido")

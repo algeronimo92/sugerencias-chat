@@ -1,4 +1,4 @@
-import { ArrowRightLeft, CheckCircle2, Link2, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, Link2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../../shared/ui/Button";
@@ -29,6 +29,24 @@ function LinkedMode({ onBusinessApp }: { onBusinessApp: boolean | null | undefin
   );
 }
 
+// El negocio desvinculó el número desde WhatsApp (o borró la cuenta): Meta lo
+// avisó y desde entonces no pasa ningún mensaje. Se dice con la hora para
+// que se pueda revisar qué quedó sin atender.
+function DisconnectedNotice({ since }: { since: string | null | undefined }) {
+  const when = since
+    ? new Date(since).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" })
+    : null;
+  return (
+    <p role="alert" className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>
+        <strong className="font-semibold">Este número se desvinculó de Meta{when ? ` el ${when}` : ""}.</strong>{" "}
+        Desde entonces no salen ni llegan mensajes. Vuelve a vincularlo para reanudar los chats.
+      </span>
+    </p>
+  );
+}
+
 // Conexión con Meta (WhatsApp Embedded Signup), con los dos caminos: el
 // número que ya está en la app de WhatsApp Business sigue ahí (coexistencia),
 // o un número queda solo en el CRM. Completa las mismas credenciales que se
@@ -39,6 +57,7 @@ function LinkedMode({ onBusinessApp }: { onBusinessApp: boolean | null | undefin
 function MetaEmbeddedSignupPanel() {
   const { data: whatsappStatus } = useWhatsappStatus();
   const isLinked = whatsappStatus?.state === "open";
+  const isDisconnected = whatsappStatus?.state === "disconnected";
   const { data: readiness } = useCallingReadiness(isLinked);
   // `choosing`: elegir modo para otro número; `moving`: mudar este mismo
   // número de la app del celular a solo CRM.
@@ -80,6 +99,8 @@ function MetaEmbeddedSignupPanel() {
       </div>
       {isLinked ? (
         <LinkedMode onBusinessApp={onBusinessApp} />
+      ) : isDisconnected ? (
+        <DisconnectedNotice since={whatsappStatus?.disconnected_at} />
       ) : (
         <p className="text-[11px] text-wa-muted dark:text-wa-muted-dark">
           Vincula el número que ya usas en WhatsApp Business sin sacarlo del
@@ -122,7 +143,7 @@ function MetaEmbeddedSignupPanel() {
             ) : (
               <Link2 className="h-4 w-4" aria-hidden="true" />
             )}
-            {isLinked ? "Conectar otro número" : "Vincular con Meta"}
+            {isLinked ? "Conectar otro número" : isDisconnected ? "Volver a vincular" : "Vincular con Meta"}
           </Button>
           {onBusinessApp === true && (
             <Button

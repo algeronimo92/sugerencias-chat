@@ -1,5 +1,6 @@
 """Domain HTTP contracts."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -170,10 +171,12 @@ class OrganizationList(BaseModel):
 
 
 class WhatsappStatusItem(BaseModel):
-    # Con Meta Cloud API no hay ciclo de QR: o el número está vinculado o
-    # faltan las credenciales.
-    state: Literal["open", "not_configured"]
+    # Con Meta Cloud API no hay ciclo de QR: o el número está vinculado, o
+    # faltan las credenciales, o Meta avisó que lo desvincularon desde
+    # WhatsApp (las credenciales siguen guardadas pero ya no sirven).
+    state: Literal["open", "disconnected", "not_configured"]
     instance: str | None = None
+    disconnected_at: datetime | None = None
 
 
 class WhatsappCallingReadiness(BaseModel):
