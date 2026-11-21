@@ -295,12 +295,18 @@ def scram_verifier(password: str, *, iterations: int = 4096) -> str:
 
 
 async def find_business_login(session: AsyncSession, schema: str) -> str | None:
-    """El login del negocio: el que inicia sesión y es miembro de su rol dueño."""
+    """El login del negocio: el que inicia sesión y hereda los permisos de su
+    rol dueño. Quien creó el rol con CREATEROLE (la conexión de la app) también
+    figura como miembro, pero solo con ADMIN, sin heredar: en producción eso
+    hacía pasar a ``cliniventas_app`` por el login del negocio (2026-11-21)."""
     return (await session.execute(text(
         "SELECT m.rolname FROM pg_auth_members a "
         "JOIN pg_roles r ON r.oid = a.roleid JOIN pg_roles m ON m.oid = a.member "
-        "WHERE r.rolname = :role AND m.rolcanlogin ORDER BY m.rolname LIMIT 1"
-    ), {"role": tenant_business_role(schema)})).scalar_one_or_none()
+        "WHERE r.rolname = :role AND m.rolcanlogin AND a.inherit_option "
+        "AND m.rolname <> current_user AND m.rolname <> session_user "
+        "AND NOT m.rolsuper AND NOT (m.rolname = ANY(:reserved)) "
+        "ORDER BY m.rolname LIMIT 1"
+    ), {"role": tenant_business_role(schema), "reserved": sorted(RESERVED_LOGINS)})).scalar_one_or_none()
 
 
 async def set_business_login(session: AsyncSession, schema: str, login: str, password: str) -> None:
@@ -339,10 +345,10 @@ async def set_business_login(session: AsyncSession, schema: str, login: str, pas
     database = (await session.execute(text("SELECT current_database()"))).scalar_one()
     await session.execute(text(f"GRANT CONNECT ON DATABASE {_ident(database)} TO {_ident(login)}"))
     member = (await session.execute(
-        text("SELECT pg_has_role(:login, :role, 'MEMBER')"), {"login": login, "role": business_role},
+        text("SELECT pg_has_role(:login, :role, 'USAGE')"), {"login": login, "role": business_role},
     )).scalar_one()
     if not member:
-        await session.execute(text(f"GRANT {_ident(business_role)} TO {_ident(login)}"))
+        await session.execute(text(f"GRANT {_ident(business_role)} TO {_ident(login)} WITH INHERIT TRUE"))
 
 
 async def current_database(session: AsyncSession) -> str:
