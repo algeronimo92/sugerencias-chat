@@ -14,6 +14,7 @@ from app.modules.auth.roles_service import (
     RoleNotEditableError,
     UnknownRoleError,
     describe_db_privileges,
+    roles_can_be_created,
     enforcement_active,
     list_roles,
     set_role_permissions,
@@ -60,4 +61,8 @@ async def get_db_privileges():
     """Lo que PostgreSQL tiene aplicado hoy en el schema de este negocio:
     privilegios de sistema y de objeto de cada rol de base. Se lee de
     ``pg_roles`` e ``information_schema``, no de la matriz."""
-    return {"enforcement_active": enforcement_active(), "roles": await describe_db_privileges()}
+    return {
+        "enforcement_active": enforcement_active(),
+        "can_create_roles": await roles_can_be_created(),
+        "roles": await describe_db_privileges(),
+    }

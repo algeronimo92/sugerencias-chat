@@ -6478,6 +6478,8 @@ export interface components {
         DbPrivilegesOut: {
             /** Enforcement Active */
             enforcement_active: boolean;
+            /** Can Create Roles */
+            can_create_roles: boolean;
             /** Roles */
             roles: components["schemas"]["DbRolePrivileges"][];
         };

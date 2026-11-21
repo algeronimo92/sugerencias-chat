@@ -91,6 +91,10 @@ class DbRolePrivileges(BaseModel):
 class DbPrivilegesOut(BaseModel):
     # Si las peticiones de este proceso corren hoy con SET LOCAL ROLE.
     enforcement_active: bool
+    # Si el usuario de la base puede crear los roles de un negocio. Sin
+    # CREATEROLE, scripts.migrate avisa y el negocio queda sin roles: la
+    # pantalla tiene que decir eso y no "corre las migraciones".
+    can_create_roles: bool
     roles: list[DbRolePrivileges]
 
 class PinStatusOut(BaseModel):
