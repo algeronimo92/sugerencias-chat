@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.db.models.control import Organization, OrganizationDomain, TenantSchemaVersion
 from app.db.session import control_session
 from app.modules.ai.public import AIEntitlement, count_usage_this_month, get_entitlement
-from app.modules.auth.public import team_summary
+from app.modules.auth.public import business_db_access, reset_business_login, team_summary
 from app.modules.platform.onboarding import onboarding_status
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
@@ -203,3 +203,18 @@ async def apply_organization_starter_pack(organization_id: UUID) -> dict[str, in
     context = await organization_context(organization_id)
     with tenant_context(context):
         return await apply_starter_pack()
+
+
+async def organization_db_access(organization_id: UUID) -> dict:
+    """El login propio del negocio en la base, sin la contraseña."""
+    context = await organization_context(organization_id)
+    with tenant_context(context):
+        return await business_db_access()
+
+
+async def reset_organization_db_access(organization_id: UUID) -> dict:
+    """Crea el login del negocio si falta y le da una contraseña nueva, que
+    solo se muestra esta vez."""
+    context = await organization_context(organization_id)
+    with tenant_context(context):
+        return await reset_business_login()

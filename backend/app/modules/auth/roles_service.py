@@ -8,9 +8,10 @@ perdido mientras el bus estaba caído.
 
 from __future__ import annotations
 
+import secrets
 from time import monotonic
 
-from app.db.privileges import enforcement_active
+from app.db.privileges import BusinessLoginError, business_login_name, enforcement_active
 from app.db.signals import on_reconnect, signal, tell_others_soon
 from app.modules.auth import roles_repository
 from app.modules.auth.db_privileges import CONTROL_READ_TABLES, DB_ROLES, object_privileges_for
@@ -147,3 +148,29 @@ async def _invalidated_elsewhere(payload: dict) -> None:
 @on_reconnect
 async def _forget_every_matrix() -> None:
     _cache.clear()
+
+
+async def business_db_access() -> dict:
+    """El login propio del negocio actual en la base (sin contraseña)."""
+    context = get_current_tenant()
+    if context is None:
+        raise BusinessLoginError("Sin negocio activo")
+    found = await roles_repository.business_login(context.schema_name)
+    return {**found, "schema": context.schema_name}
+
+
+async def reset_business_login() -> dict:
+    """Crea el login del negocio si no existe (nombre = su subdominio) y le da
+    una contraseña nueva. Es la única vez que la contraseña sale en claro: la
+    base solo guarda su verificador SCRAM."""
+    context = get_current_tenant()
+    if context is None:
+        raise BusinessLoginError("Sin negocio activo")
+    # El rol dueño del negocio tiene que existir antes de sumarle el login.
+    if not await sync_db_privileges():
+        raise BusinessLoginError("El usuario de la base no puede crear roles (falta CREATEROLE)")
+    current = await roles_repository.business_login(context.schema_name)
+    login = current["user"] or business_login_name(context.hostname)
+    password = secrets.token_urlsafe(24)
+    await roles_repository.assign_business_login(context.schema_name, login, password)
+    return {"user": login, "password": password, "database": current["database"], "schema": context.schema_name}

@@ -4,6 +4,8 @@ import { useId, useRef, useState, type InputHTMLAttributes, type Ref } from 'rea
 import { Button } from '../../../../shared/ui/Button'
 import { DialogPrimitive, dialogContentPositionClass, dialogOverlayClass } from '../../../../shared/ui/Dialog'
 import { createOrganization } from '../../api'
+import type { CredencialesBase } from '../../types'
+import { DbCredentials } from './DbCredentials'
 import { platformKeys } from '../../keys'
 import { mensajeDeError } from './errors'
 import { AvisoError } from './PanelUi'
@@ -16,23 +18,25 @@ export function NewBusinessDialog() {
   const [hostname, setHostname] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  // Las credenciales del login del negocio en la base: solo llegan en la
+  // respuesta del alta, así que el diálogo se queda abierto para mostrarlas.
+  const [credenciales, setCredenciales] = useState<CredencialesBase | null>(null);
 
   const crear = useMutation({
-    mutationFn: async () => {
-      await createOrganization(name, hostname, adminEmail, adminPassword);
-    },
-    onSuccess: () => {
+    mutationFn: async () => await createOrganization(name, hostname, adminEmail, adminPassword),
+    onSuccess: (creado) => {
       setName("");
       setHostname("");
       setAdminEmail("");
       setAdminPassword("");
-      setAbierto(false);
       queryClient.invalidateQueries({ queryKey: platformKeys.organizations });
+      if (creado.db_access) setCredenciales(creado.db_access);
+      else setAbierto(false);
     },
   });
 
   return (
-    <DialogPrimitive.Root open={abierto} onOpenChange={(open) => { if (!crear.isPending) setAbierto(open); }}>
+    <DialogPrimitive.Root open={abierto} onOpenChange={(open) => { if (!crear.isPending) { setAbierto(open); if (!open) setCredenciales(null); } }}>
       <DialogPrimitive.Trigger asChild>
         <Button className="h-11 gap-2 bg-wa-primary-strong px-4 text-sm hover:bg-wa-primary-deep">
           <Plus className="h-4 w-4" aria-hidden="true" />
@@ -42,6 +46,18 @@ export function NewBusinessDialog() {
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className={dialogOverlayClass} />
         <DialogPrimitive.Content className={`${dialogContentPositionClass} max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-wa-border bg-white p-5 shadow-xl sm:p-8 dark:border-wa-border-dark dark:bg-wa-panel-dark`} onOpenAutoFocus={(evento) => { evento.preventDefault(); nombreRef.current?.focus(); }} onEscapeKeyDown={(evento) => { if (crear.isPending) evento.preventDefault(); }} onPointerDownOutside={(evento) => { if (crear.isPending) evento.preventDefault(); }}>
+      {credenciales ? (
+        <div>
+          <DialogPrimitive.Title className="text-xl font-bold tracking-[-0.025em] text-wa-text dark:text-white">Negocio creado</DialogPrimitive.Title>
+          <DialogPrimitive.Description className="mt-1.5 mb-5 max-w-lg text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
+            Este es su acceso directo a la base de datos: administra los datos de su esquema y nada más.
+          </DialogPrimitive.Description>
+          <DbCredentials credenciales={credenciales} />
+          <div className="mt-6 flex justify-end">
+            <Button onClick={() => { setCredenciales(null); setAbierto(false); }}>Listo, ya la guardé</Button>
+          </div>
+        </div>
+      ) : (
       <form
         onSubmit={(evento) => {
           evento.preventDefault();
@@ -82,6 +98,7 @@ export function NewBusinessDialog() {
           </button>
         </div>
       </form>
+      )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

@@ -239,3 +239,53 @@ async def test_a_createrole_owner_that_is_not_superuser_can_set_the_roles_it_cre
                     await connection.execute(text(f'DROP OWNED BY "{role}"'))
                     await connection.execute(text(f'DROP ROLE "{role}"'))
         await engine.dispose()
+
+
+async def test_the_business_login_signs_in_with_its_password_and_sees_only_its_schema(businesses, pg_dsn):
+    """El login propio del negocio: la contraseña se manda como verificador
+    SCRAM, así que iniciar sesión con ella prueba que se armó bien."""
+    import asyncpg
+    from urllib.parse import urlsplit
+
+    engine, (own, other) = businesses
+    login = f"negocio_{secrets.token_hex(4)}"
+    password = secrets.token_urlsafe(24)
+    async with AsyncSession(engine) as session, session.begin():
+        await db.set_business_login(session, own, login, password)
+        assert await db.find_business_login(session, own) == login
+        # Volver a pedirlo con otra contraseña la reemplaza (no duplica el login).
+        password = secrets.token_urlsafe(24)
+        await db.set_business_login(session, own, login, password)
+    try:
+        url = urlsplit(pg_dsn.replace("postgresql+asyncpg", "postgresql"))
+        connection = await asyncpg.connect(
+            host=url.hostname, port=url.port, database=url.path.lstrip("/"),
+            user=login, password=password, ssl=False,
+        )
+        try:
+            await connection.execute(f'INSERT INTO "{own}".leads (nombre) VALUES ($1)', "desde el login")
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await connection.fetch(f'SELECT * FROM "{other}".leads')
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await connection.execute(f'CREATE TABLE "{own}".intrusa (id int)')
+        finally:
+            await connection.close()
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'DROP OWNED BY "{login}"'))
+            await connection.execute(text(f'DROP ROLE "{login}"'))
+
+
+async def test_a_login_of_another_business_is_never_adopted(businesses):
+    engine, (own, other) = businesses
+    login = f"negocio_{secrets.token_hex(4)}"
+    async with AsyncSession(engine) as session, session.begin():
+        await db.set_business_login(session, other, login, "una-clave-cualquiera")
+    try:
+        with pytest.raises(db.BusinessLoginError):
+            async with AsyncSession(engine) as session, session.begin():
+                await db.set_business_login(session, own, login, "otra-clave")
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'DROP OWNED BY "{login}"'))
+            await connection.execute(text(f'DROP ROLE "{login}"'))

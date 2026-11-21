@@ -14,8 +14,12 @@ petición de un negocio lea o escriba las tablas de otro, aunque el
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import re
+import secrets
 from contextvars import ContextVar
 
 from sqlalchemy import text
@@ -255,6 +259,91 @@ async def describe_privileges(session: AsyncSession, schema: str) -> list[dict]:
         }
         for row in rows
     ]
+
+
+# --- Login propio de cada negocio ------------------------------------------
+
+# Nombres que un negocio no puede tomar: los usuarios del servidor y los
+# prefijos de los roles internos.
+RESERVED_LOGINS = frozenset({"postgres", "cliniventas", "cliniventas_app", "n8n_app", "postgres_exporter"})
+_LOGIN_RE = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
+
+
+class BusinessLoginError(ValueError):
+    pass
+
+
+def business_login_name(hostname: str) -> str:
+    """``norte.cliniventas.com`` → ``norte``: el subdominio del negocio."""
+    name = hostname.strip().lower().split(".", 1)[0].replace("-", "_")
+    if not _LOGIN_RE.fullmatch(name) or name in RESERVED_LOGINS or name.startswith(("cv_", "pg_")):
+        raise BusinessLoginError(f"El dominio no sirve como usuario de base: {name!r}")
+    return name
+
+
+def scram_verifier(password: str, *, iterations: int = 4096) -> str:
+    """La contraseña como la guarda PostgreSQL (SCRAM-SHA-256). Se manda ya
+    cifrada: así nunca viaja en claro en un CREATE/ALTER ROLE que podría
+    quedar en el log de sentencias del servidor."""
+    salt = secrets.token_bytes(16)
+    salted = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    client_key = hmac.new(salted, b"Client Key", hashlib.sha256).digest()
+    stored_key = hashlib.sha256(client_key).digest()
+    server_key = hmac.new(salted, b"Server Key", hashlib.sha256).digest()
+    b64 = lambda raw: base64.b64encode(raw).decode("ascii")  # noqa: E731
+    return f"SCRAM-SHA-256${iterations}:{b64(salt)}${b64(stored_key)}:{b64(server_key)}"
+
+
+async def find_business_login(session: AsyncSession, schema: str) -> str | None:
+    """El login del negocio: el que inicia sesión y es miembro de su rol dueño."""
+    return (await session.execute(text(
+        "SELECT m.rolname FROM pg_auth_members a "
+        "JOIN pg_roles r ON r.oid = a.roleid JOIN pg_roles m ON m.oid = a.member "
+        "WHERE r.rolname = :role AND m.rolcanlogin ORDER BY m.rolname LIMIT 1"
+    ), {"role": tenant_business_role(schema)})).scalar_one_or_none()
+
+
+async def set_business_login(session: AsyncSession, schema: str, login: str, password: str) -> None:
+    """Crea (o adopta) el login del negocio, le pone ``password`` y lo hace
+    miembro de su rol dueño. Corre como dueño (``RESET ROLE``)."""
+    if not _LOGIN_RE.fullmatch(login) or login in RESERVED_LOGINS:
+        raise BusinessLoginError(f"Usuario de base inválido: {login!r}")
+    business_role = tenant_business_role(schema)
+    await session.execute(text("RESET ROLE"))
+    exists_role = (await session.execute(
+        text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": business_role},
+    )).scalar_one_or_none()
+    if not exists_role:
+        raise BusinessLoginError("El negocio todavía no tiene su rol en la base: falta correr las migraciones")
+    current = (await session.execute(text(
+        "SELECT rolsuper OR rolcreaterole OR rolcreatedb OR rolbypassrls AS powerful, "
+        "EXISTS (SELECT 1 FROM pg_auth_members a JOIN pg_roles r ON r.oid = a.roleid "
+        "        WHERE a.member = pg_roles.oid AND r.rolname <> :business) AS other "
+        "FROM pg_roles WHERE rolname = :login"
+    ), {"login": login, "business": business_role})).mappings().one_or_none()
+    verifier = scram_verifier(password)
+    if current is None:
+        await session.execute(text(
+            f"CREATE ROLE {_ident(login)} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS "
+            f"PASSWORD '{verifier}'"
+        ))
+    else:
+        # Un nombre ya tomado solo se adopta si es un login sin poderes y sin
+        # otros roles: nunca el de otro negocio ni un usuario del servidor.
+        if current["powerful"] or current["other"]:
+            raise BusinessLoginError(f"El usuario de base {login!r} ya existe y no es de este negocio")
+        await session.execute(text(f"ALTER ROLE {_ident(login)} WITH LOGIN PASSWORD '{verifier}'"))
+    database = (await session.execute(text("SELECT current_database()"))).scalar_one()
+    await session.execute(text(f"GRANT CONNECT ON DATABASE {_ident(database)} TO {_ident(login)}"))
+    member = (await session.execute(
+        text("SELECT pg_has_role(:login, :role, 'MEMBER')"), {"login": login, "role": business_role},
+    )).scalar_one()
+    if not member:
+        await session.execute(text(f"GRANT {_ident(business_role)} TO {_ident(login)}"))
+
+
+async def current_database(session: AsyncSession) -> str:
+    return (await session.execute(text("SELECT current_database()"))).scalar_one()
 
 
 async def check_db_roles(connection: AsyncConnection, *, enabled: bool) -> bool:

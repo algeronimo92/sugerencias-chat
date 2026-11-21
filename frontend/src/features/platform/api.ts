@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { DbPrivileges, RolesMatrix } from './types'
+import type { AccesoBase, CredencialesBase, DbPrivileges, RolesMatrix } from './types'
 import type { AppUser, AsistenteNegocio, CallingReadiness, CallingSettings, CallingUpdate, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
@@ -341,4 +341,16 @@ export async function updateRolePermissions({ role, permissions }: { role: strin
 
 export async function fetchDbPrivileges(): Promise<DbPrivileges> {
   return (await client.get<ApiResponse<'/api/roles/db-privileges', 'get'>>('/api/roles/db-privileges')).data
+}
+
+export async function fetchOrganizationDbAccess(organizacion: Organization): Promise<AccesoBase> {
+  return (
+    await client.get<ApiResponse<'/api/platform/organizations/{organization_id}/db-access', 'get'>>(`/api/platform/organizations/${organizacion.id}/db-access`)
+  ).data
+}
+
+export async function resetOrganizationDbAccess(organizacion: Organization): Promise<CredencialesBase> {
+  return (
+    await client.post<ApiResponse<'/api/platform/organizations/{organization_id}/db-access/reset', 'post'>>(`/api/platform/organizations/${organizacion.id}/db-access/reset`)
+  ).data
 }

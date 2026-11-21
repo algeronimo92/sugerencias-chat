@@ -210,3 +210,60 @@ def test_unknown_database_roles_and_identifiers_are_refused():
         db.tenant_db_role(SCHEMA_A, "superuser")
     with pytest.raises(ValueError):
         db._ident('leads"; DROP TABLE users; --')
+
+
+# --- Login propio del negocio ---------------------------------------------
+
+def test_the_business_login_is_named_after_its_subdomain():
+    assert db.business_login_name("norte.cliniventas.com") == "norte"
+    assert db.business_login_name("Clinica-Sur.cliniventas.com") == "clinica_sur"
+
+
+@pytest.mark.parametrize("hostname", ["cliniventas.cliniventas.com", "cv_x.cliniventas.com", "ab.cliniventas.com", "1abc.cliniventas.com"])
+def test_server_users_and_internal_prefixes_cannot_be_a_business_login(hostname):
+    with pytest.raises(db.BusinessLoginError):
+        db.business_login_name(hostname)
+
+
+def test_the_password_goes_to_postgres_already_hashed():
+    verifier = db.scram_verifier("clave-de-prueba")
+    assert verifier.startswith("SCRAM-SHA-256$4096:")
+    assert "clave-de-prueba" not in verifier
+    # Con sal aleatoria, dos verificadores de la misma clave no coinciden.
+    assert verifier != db.scram_verifier("clave-de-prueba")
+
+
+async def test_reset_names_a_new_login_after_the_subdomain_and_keeps_an_existing_one(monkeypatch):
+    from uuid import uuid4
+    from app.tenancy.context import TenantContext, tenant_context
+
+    assigned = []
+    monkeypatch.setattr(roles_service, "sync_db_privileges", AsyncMock(return_value=True))
+    monkeypatch.setattr(roles_service.roles_repository, "assign_business_login",
+                        AsyncMock(side_effect=lambda schema, login, password: assigned.append((login, password))))
+    context = TenantContext(uuid4(), "tenant_" + "c" * 32, "norte.cliniventas.com")
+
+    monkeypatch.setattr(roles_service.roles_repository, "business_login",
+                        AsyncMock(return_value={"user": None, "database": "cliniventas_db"}))
+    with tenant_context(context):
+        first = await roles_service.reset_business_login()
+    assert first["user"] == "norte" and first["database"] == "cliniventas_db"
+    assert len(first["password"]) >= 24
+
+    monkeypatch.setattr(roles_service.roles_repository, "business_login",
+                        AsyncMock(return_value={"user": "clinica_norte", "database": "cliniventas_db"}))
+    with tenant_context(context):
+        second = await roles_service.reset_business_login()
+    assert second["user"] == "clinica_norte"
+    assert second["password"] != first["password"]
+    assert [login for login, _ in assigned] == ["norte", "clinica_norte"]
+
+
+async def test_reset_says_why_when_the_database_cannot_create_roles(monkeypatch):
+    from uuid import uuid4
+    from app.tenancy.context import TenantContext, tenant_context
+
+    monkeypatch.setattr(roles_service, "sync_db_privileges", AsyncMock(return_value=False))
+    with tenant_context(TenantContext(uuid4(), "tenant_" + "c" * 32, "norte.cliniventas.com")):
+        with pytest.raises(db.BusinessLoginError, match="CREATEROLE"):
+            await roles_service.reset_business_login()

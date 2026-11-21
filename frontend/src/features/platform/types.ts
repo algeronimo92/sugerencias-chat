@@ -106,6 +106,10 @@ export type OrganizationList = Delivered<ApiSchemas['OrganizationList']>;
 
 /** Foto del negocio para el operador: equipo y primeros pasos. */
 export type ResumenNegocio = Delivered<ApiSchemas['OrganizationOverview']>;
+/** El login propio del negocio en la base, sin contraseña. */
+export type AccesoBase = Delivered<ApiSchemas['DbAccessStatus']>;
+/** Credenciales del login del negocio: la contraseña solo llega una vez. */
+export type CredencialesBase = Delivered<ApiSchemas['DbAccessCredentials']>;
 
 export type AsistenteNegocio = {
   enabled: boolean;

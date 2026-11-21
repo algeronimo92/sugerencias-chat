@@ -62,3 +62,16 @@ async def database_can_create_roles() -> bool:
 async def describe_db_privileges(schema: str) -> list[dict]:
     async with session_scope() as db:
         return await db_privileges.describe_privileges(db, schema)
+
+
+async def business_login(schema: str) -> dict:
+    async with session_scope() as db:
+        return {
+            "user": await db_privileges.find_business_login(db, schema),
+            "database": await db_privileges.current_database(db),
+        }
+
+
+async def assign_business_login(schema: str, login: str, password: str) -> None:
+    async with session_scope() as db:
+        await db_privileges.set_business_login(db, schema, login, password)
