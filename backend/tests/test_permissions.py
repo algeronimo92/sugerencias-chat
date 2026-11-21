@@ -267,3 +267,13 @@ async def test_reset_says_why_when_the_database_cannot_create_roles(monkeypatch)
     with tenant_context(TenantContext(uuid4(), "tenant_" + "c" * 32, "norte.cliniventas.com")):
         with pytest.raises(db.BusinessLoginError, match="CREATEROLE"):
             await roles_service.reset_business_login()
+
+
+def test_the_hashed_password_is_not_read_as_bind_parameters():
+    """El verificador lleva ":" y text() los tomaba como parámetros: el
+    CREATE ROLE fallaba antes de llegar a la base."""
+    from sqlalchemy import text as sql_text
+    verifier = db.scram_verifier("clave").replace(":", r"\:")
+    statement = sql_text(f"CREATE ROLE x PASSWORD '{verifier}'")
+    assert list(statement.compile().params) == []
+    assert db.scram_verifier("clave").split("$")[1].count(":") == 1
