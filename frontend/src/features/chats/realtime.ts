@@ -12,6 +12,7 @@ import { messageKeys, noteKeys, scheduledKeys } from './keys'
 import type { MessagePage } from './types'
 import { parseContent } from '../whatsapp/public/message'
 import { leadKeys } from '../leads/public/keys'
+import { whatsappKeys } from '../platform/public/keys'
 
 function applyMessageStatuses(queryClient: QueryClient, chatId: string, updates: MessageStatusUpdate[]) {
   if (!updates.length) return
@@ -60,6 +61,11 @@ export function createChatsRealtime(): RealtimeModule {
         if (!isStatusOnly) invalidate(queryClient, leadKeys.all, leadKeys.unreadCount)
         if (changedChatId) {
           applyMessageStatuses(queryClient, changedChatId, event.message_statuses)
+          // Un envío fallido puede ser el primer síntoma de que WhatsApp se
+          // desconectó: el aviso del chat no espera al próximo sondeo.
+          if (event.message_statuses.some(update => update.outbox_status === 'failed')) {
+            invalidate(queryClient, whatsappKeys.status)
+          }
           if (!isStatusOnly) invalidate(queryClient, leadKeys.detail(changedChatId))
           // Con un envío en vuelo el hilo lo resuelve el envío, no un refetch.
           if (!isStatusOnly && queryClient.isMutating({ mutationKey: messageKeys.sending(changedChatId) }) === 0) {

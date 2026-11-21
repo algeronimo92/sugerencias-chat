@@ -196,7 +196,7 @@ export function crmDefaults(api: MockApi) {
       { key: 'nuevo', name: 'Nuevo', color: '#3b82f6', position: 0, kind: 'open', is_active: true, description: null, is_system: true, on_appointment: false },
       { key: 'cita', name: 'Cita agendada', color: '#22c55e', position: 1, kind: 'open', is_active: true, description: null, is_system: true, on_appointment: true },
     ])
-    .on('get', '/api/whatsapp/status', { state: 'open', instance: 'demo' })
+    .on('get', '/api/whatsapp/status', { state: 'open', instance: 'demo', disconnected_at: null })
     .on('get', '/api/templates', [])
     .on('get', '/api/templates/capabilities', {
       integration: 'meta', official_sending_supported: true, reason: null, interactive_limits: INTERACTIVE_LIMITS,

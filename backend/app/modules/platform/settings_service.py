@@ -43,6 +43,10 @@ class SettingDef:
     hidden: bool = False
 
 
+WHATSAPP_CREDENTIAL_KEYS = ("meta_access_token", "meta_phone_number_id", "meta_waba_id")
+WHATSAPP_DISCONNECTED_KEY = "meta_disconnected_at"
+
+
 # Fuente de verdad de qué keys son editables desde la app. Agregar una nueva
 # integración (ej. otro proveedor de TTS, otra API) es sumar una entrada acá
 # — el resto (endpoint, UI) las recorre genéricamente.
@@ -78,6 +82,16 @@ SETTING_DEFS: list[SettingDef] = [
         "meta",
         "Meta Cloud API (WhatsApp)",
         secret=False,
+    ),
+    # Lo escribe el backend cuando Meta avisa que desvinculó el número o
+    # rechaza un envío porque ya no lo reconoce (app/integrations/meta/client.py).
+    SettingDef(
+        WHATSAPP_DISCONNECTED_KEY,
+        "WhatsApp desconectado desde",
+        "meta",
+        "Meta Cloud API (WhatsApp)",
+        secret=False,
+        hidden=True,
     ),
     # Salidas que Meta solo acepta si la cuenta las tiene (ver
     # app/integrations/meta/outbound.require_capabilities).
@@ -582,6 +596,13 @@ async def update_settings(values: dict[str, str]) -> None:
         if enabled not in {"", "true", "false"}:
             raise ValueError("El estado de Google Calendar debe ser true o false")
         values["google_calendar_enabled"] = enabled
+
+    if WHATSAPP_DISCONNECTED_KEY not in values and any(values.get(key) for key in WHATSAPP_CREDENTIAL_KEYS):
+        # Quien pega credenciales nuevas a mano está reconectando: sin esto la
+        # app seguiría diciendo "desconectado" hasta pasar por el alta de Meta.
+        current = await get_effective_many(WHATSAPP_CREDENTIAL_KEYS)
+        if any(values.get(key) and values[key] != current[key] for key in WHATSAPP_CREDENTIAL_KEYS):
+            values[WHATSAPP_DISCONNECTED_KEY] = ""
 
     stored = {
         key: encrypt_secret(key, value) if value and _DEFS_BY_KEY[key].secret else value or None

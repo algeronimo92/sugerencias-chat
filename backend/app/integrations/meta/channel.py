@@ -108,9 +108,19 @@ MISSING_CONFIG_REASON = (
 )
 
 
+DISCONNECTED_REASON = (
+    "WhatsApp está desconectado: el número se desvinculó de Meta. Un "
+    "administrador debe volver a conectarlo en Integraciones."
+)
+
+
 class MetaChannelStatus:
     async def availability(self) -> ChannelAvailability:
         configured = await meta_service.is_configured()
+        if configured and await meta_service.disconnected_since() is not None:
+            # Las credenciales siguen guardadas pero Meta ya no las acepta:
+            # ofrecer el envío de plantillas terminaría en un mensaje fallido.
+            return ChannelAvailability(integration=None, configured=False, reason=DISCONNECTED_REASON)
         return ChannelAvailability(
             integration="WHATSAPP-BUSINESS" if configured else None,
             configured=configured,

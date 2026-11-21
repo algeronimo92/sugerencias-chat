@@ -9,23 +9,32 @@ from __future__ import annotations
 
 from app.modules.auth.public import team_summary
 from app.modules.catalogs.public import onboarding_catalog_status
-from app.modules.platform.settings_service import get_effective_many, update_settings
+from app.modules.platform.settings_service import (
+    WHATSAPP_CREDENTIAL_KEYS,
+    WHATSAPP_DISCONNECTED_KEY,
+    get_effective_many,
+    update_settings,
+)
 from app.modules.platform.starter_pack import STARTER_SHORTCUTS
 
 DISMISSED_KEY = "onboarding_checklist_dismissed"
 
-# Lo mismo que mira `meta_service.is_configured`: sin los tres no se puede
-# mandar ni recibir. Se lee acá directo para no sumar otro consumidor del
-# cliente de Meta (la lista de test_layering.META_ALLOWED solo se achica).
-_WHATSAPP_KEYS = ("meta_access_token", "meta_phone_number_id", "meta_waba_id")
+# Lo mismo que mira el estado de WhatsApp: las tres credenciales y que Meta
+# no haya desvinculado el número. Se lee acá directo para no sumar otro
+# consumidor del cliente de Meta (test_layering.META_ALLOWED solo se achica).
 
 
 async def onboarding_status() -> dict:
-    values = await get_effective_many((*_WHATSAPP_KEYS, "google_calendar_refresh_token", DISMISSED_KEY))
+    values = await get_effective_many(
+        (*WHATSAPP_CREDENTIAL_KEYS, WHATSAPP_DISCONNECTED_KEY, "google_calendar_refresh_token", DISMISSED_KEY)
+    )
+    whatsapp_connected = (
+        all(values[key] for key in WHATSAPP_CREDENTIAL_KEYS) and not values[WHATSAPP_DISCONNECTED_KEY]
+    )
     team = await team_summary()
     catalog = await onboarding_catalog_status(STARTER_SHORTCUTS)
     steps = [
-        {"key": "whatsapp", "done": all(values[key] for key in _WHATSAPP_KEYS), "optional": False},
+        {"key": "whatsapp", "done": whatsapp_connected, "optional": False},
         # El admin que abrió la cuenta no cuenta: una invitación pendiente sí.
         {"key": "team", "done": team["users"] > 1, "optional": False},
         {"key": "services", "done": catalog["priced_services"] > 0, "optional": False},

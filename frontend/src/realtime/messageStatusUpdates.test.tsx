@@ -130,6 +130,28 @@ describe('useRealtimeConnection con un evento message_status', () => {
   })
 })
 
+describe('useRealtimeConnection con un envío fallido', () => {
+  it('vuelve a preguntar si WhatsApp sigue conectado', () => {
+    // El 20-11-2026 el número se desvinculó de Meta y los envíos fallaban con
+    // la app diciendo "conectado": el fallo es el primer síntoma que se ve.
+    renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
+    act(() => {
+      FakeWebSocket.last.onopen?.()
+    })
+    const invalidate = vi.spyOn(currentClient, 'invalidateQueries')
+
+    act(() => {
+      FakeWebSocket.last.emit({
+        type: 'chats_updated', chat_id: CHAT_ID, reason: 'message_status',
+        message_statuses: [{ id: 1, outbox_status: 'failed' }],
+      })
+    })
+
+    const keys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey))
+    expect(keys).toEqual([JSON.stringify(['whatsapp', 'status'])])
+  })
+})
+
 describe('useRealtimeConnection con otros motivos', () => {
   it('un mensaje entrante sí refresca la lista y el historial', () => {
     renderHook(({ bus }) => useRealtimeConnection(bus), { wrapper, initialProps: { bus: createAppRealtimeBus() } })
