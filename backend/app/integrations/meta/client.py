@@ -397,6 +397,9 @@ async def complete_embedded_signup(
     # El evento de coexistencia es el único que no trae el número.
     coexistence = not phone_number_id
     connected_at = datetime.now(timezone.utc)
+    stored = await get_effective_many((NOTICE_NUMBER_KEY, "meta_phone_number_id"))
+    notice_number = (stored[NOTICE_NUMBER_KEY] or "").strip()
+    previous_number = (stored["meta_phone_number_id"] or "").strip()
 
     # Sin esto la WABA no manda webhooks (mensajes entrantes, estados) a esta
     # app -- paso obligatorio de Embedded Signup, ver docs de Meta.
@@ -405,7 +408,6 @@ async def complete_embedded_signup(
     if not phone_number_id:
         # Con número de avisos la WABA tiene dos números: el de avisos nunca
         # es el del CRM.
-        notice_number = (await get_effective_many((NOTICE_NUMBER_KEY,)))[NOTICE_NUMBER_KEY]
         phone_number_id = await _resolve_phone_number_id(
             waba_id, access_token, exclude={notice_number} if notice_number else None,
         )
@@ -439,6 +441,16 @@ async def complete_embedded_signup(
             phone_number_id=phone_number_id,
             waba_id=waba_id,
         )
+        if previous_number and previous_number not in (phone_number_id, notice_number):
+            # Pasar de la app del celular a solo CRM (o al revés) suele cambiar
+            # de número y de WABA. El anterior seguía ruteando a este negocio:
+            # en DermicaPro quedaron dos números activos tras mudar el suyo.
+            from app.tenancy.provisioning import disable_whatsapp_connection
+
+            await disable_whatsapp_connection(context.organization_id, phone_number_id=previous_number)
+
+    if notice_number and notice_number != phone_number_id:
+        await _drop_unreachable_notice_number(notice_number, access_token)
 
     if coexistence:
         # Meta acepta este pedido una sola vez y solo en las 24 h siguientes a
@@ -448,6 +460,34 @@ async def complete_embedded_signup(
             await request_app_data_sync(phone_number_id, access_token, window_started_at=connected_at)
         except Exception:
             logger.exception("No se pudo pedir la sincronización de la app del celular")
+
+
+async def _drop_unreachable_notice_number(notice_number: str, access_token: str) -> None:
+    """Los avisos de cita salen con el token del CRM. Si la conexión nueva ya
+    no ve el número de avisos (otro portfolio, o su WABA quedó fuera del
+    signup), cada aviso fallaría sin que nadie lo note: pasó en DermicaPro al
+    mudar el número del CRM. Los avisos vuelven a salir del número del CRM
+    (la tarjeta de avisos lo muestra así) hasta que se vincule otro.
+
+    Solo con el rechazo de "objeto no disponible": un corte de red o un 5xx
+    no dicen nada del número y no deben desarmar la configuración."""
+    try:
+        await _request("GET", _graph_url(notice_number), access_token, params={"fields": "id"}, timeout=20.0)
+        return
+    except MetaApiError as exc:
+        if not _object_unavailable(exc.error):
+            logger.warning("No se pudo comprobar el número de avisos %s: %s", notice_number, exc)
+            return
+    except httpx.HTTPError as exc:
+        logger.warning("No se pudo comprobar el número de avisos %s: %s", notice_number, exc)
+        return
+    logger.warning("La conexión nueva no ve el número de avisos %s: los avisos vuelven al del CRM", notice_number)
+    await update_settings({NOTICE_NUMBER_KEY: "", NOTICE_WABA_KEY: ""})
+    context = get_current_tenant()
+    if context is not None:
+        from app.tenancy.provisioning import disable_whatsapp_connection
+
+        await disable_whatsapp_connection(context.organization_id, phone_number_id=notice_number)
 
 
 # Contactos primero y después el historial, como pide Meta.

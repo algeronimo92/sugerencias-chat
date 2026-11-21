@@ -247,16 +247,20 @@ async def batch_rows(
     }
 
 
-async def whatsapp_sync_status() -> dict:
+async def whatsapp_sync_status(phone_number_id: str | None = None) -> dict:
+    """Con ``phone_number_id``, solo lo pedido para ese número. El CRM pasa el
+    suyo: tras mudarlo a solo CRM, los pedidos del número anterior hacían
+    decir a la tarjeta que la agenda del celular seguía llegando."""
     now = datetime.now(timezone.utc)
+    query = select(
+        WhatsAppAppSync.phone_number_id, WhatsAppAppSync.sync_type, WhatsAppAppSync.status,
+        WhatsAppAppSync.error, WhatsAppAppSync.progress, WhatsAppAppSync.window_started_at,
+        WhatsAppAppSync.requested_at, WhatsAppAppSync.updated_at,
+    ).order_by(WhatsAppAppSync.window_started_at.desc())
+    if phone_number_id is not None:
+        query = query.where(WhatsAppAppSync.phone_number_id == phone_number_id)
     async with session_scope() as session:
-        syncs = (await session.execute(
-            select(
-                WhatsAppAppSync.phone_number_id, WhatsAppAppSync.sync_type, WhatsAppAppSync.status,
-                WhatsAppAppSync.error, WhatsAppAppSync.progress, WhatsAppAppSync.window_started_at,
-                WhatsAppAppSync.requested_at, WhatsAppAppSync.updated_at,
-            ).order_by(WhatsAppAppSync.window_started_at.desc())
-        )).mappings().all()
+        syncs = (await session.execute(query)).mappings().all()
         auto_import = await session.scalar(
             select(ContactSettings.auto_import_whatsapp).where(ContactSettings.id == 1)
         )
