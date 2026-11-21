@@ -5,6 +5,8 @@ import { can } from '../../../shared/permissions'
 import { Button } from '../../../shared/ui/Button'
 import { submitLabel } from '../domain/submitLabel'
 import { DEPOSIT_FIELD_KEY, appointmentResultMessage, loadAppointmentDraft, useAppointmentForm } from '../hooks/useAppointmentForm'
+
+type AppointmentFormState = ReturnType<typeof useAppointmentForm>
 import { useBusinessCurrency } from '../hooks/useBusinessCurrency'
 import { AppointmentCalendar } from './AppointmentCalendar'
 import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
@@ -19,13 +21,46 @@ const tabClass = (active: boolean) =>
 type Tab = 'form' | 'calendar' | 'history'
 const DRAFT_KEY = 'nueva-cita-draft-v2'
 
+
+const TITLES: Record<Tab, string> = { form: 'Nueva cita', calendar: 'Calendario', history: 'Historial de citas' }
+
+function AppointmentFormTab({ state, testMode, canTest }: { state: AppointmentFormState; testMode: boolean; canTest: boolean }) {
+  const { data: me } = useMe()
+  const { data: calendar } = useGoogleCalendarStatus()
+  const currency = useBusinessCurrency()
+  const busy = state.busy
+  const feedback = state.result ? appointmentResultMessage(state.result) : null
+  const error = state.error
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    void state.submit({ testMode: canTest && testMode })
+  }
+
+  return (
+  <form onSubmit={submit} className="space-y-5">
+    {calendar?.connected === false && (
+      <IntegrationNotice
+        message="Google Calendar no está conectado: la cita se guardará en la app, pero no aparecerá en el calendario del negocio."
+        anchor="calendario"
+        canConnect={can(me, 'settings.manage')}
+      />
+    )}
+    {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.tone === 'info' ? 'border-amber-400/40 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300' : 'border-green-500/30 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300'}`}><CheckCircle2 className="mr-2 inline h-4 w-4" />{feedback.text}</div>}
+    {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700"><Info className="mr-2 inline h-4 w-4" />{error}</div>}
+
+    <AppointmentFormFields state={state} />
+
+    <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:items-center sm:justify-end">{state.hasDraft && <p className="flex items-center justify-center gap-1.5 text-xs text-wa-muted sm:mr-auto"><Check className="h-3.5 w-3.5" aria-hidden="true" />Borrador guardado automáticamente<button type="button" className="font-semibold underline" onClick={state.reset} disabled={busy}>Descartar</button></p>}<Button type="submit" disabled={busy || state.customFieldsLoading || state.customFieldsError}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : submitLabel(state.customFields[DEPOSIT_FIELD_KEY], currency, state.definitions.some(field => field.key === DEPOSIT_FIELD_KEY))}</Button></div>
+  </form>
+  )
+}
+
 export function NewAppointmentPage() {
   const { data: me } = useMe()
   // Enviar en modo prueba (por defecto, solo el admin).
   const isAdmin = can(me, 'appointments.manage')
-  const { data: calendar } = useGoogleCalendarStatus()
   const state = useAppointmentForm(DRAFT_KEY)
-  const currency = useBusinessCurrency()
   const { load } = state
   const [testMode, setTestMode] = useState(false)
   const [tab, setTab] = useState<Tab>('form')
@@ -35,15 +70,7 @@ export function NewAppointmentPage() {
     if (draft) load(draft.form, draft.customFields, true)
   }, [load])
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    void state.submit({ testMode: isAdmin && testMode })
-  }
-
-  const busy = state.busy
-  const feedback = state.result ? appointmentResultMessage(state.result) : null
-  const error = state.error
-  const title = tab === 'form' ? 'Nueva cita' : tab === 'calendar' ? 'Calendario' : 'Historial de citas'
+  const title = TITLES[tab]
 
   return (
     <main className="h-full overflow-x-hidden overflow-y-auto bg-wa-app text-wa-text dark:bg-wa-app-dark dark:text-wa-text-dark">
@@ -61,23 +88,9 @@ export function NewAppointmentPage() {
         </header>
 
         <div className="mt-6">
-          {tab === 'calendar' ? <AppointmentCalendar /> : tab === 'history' ? <div className="rounded-xl border border-wa-border bg-wa-panel p-4 sm:p-6 dark:border-wa-border-dark dark:bg-wa-panel-dark"><AppointmentHistoryList /></div> : (
-            <form onSubmit={submit} className="space-y-5">
-              {calendar?.connected === false && (
-                <IntegrationNotice
-                  message="Google Calendar no está conectado: la cita se guardará en la app, pero no aparecerá en el calendario del negocio."
-                  anchor="calendario"
-                  canConnect={can(me, 'settings.manage')}
-                />
-              )}
-              {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.tone === 'info' ? 'border-amber-400/40 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300' : 'border-green-500/30 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300'}`}><CheckCircle2 className="mr-2 inline h-4 w-4" />{feedback.text}</div>}
-              {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-50 px-4 py-3 text-sm text-red-700"><Info className="mr-2 inline h-4 w-4" />{error}</div>}
-
-              <AppointmentFormFields state={state} />
-
-              <div className="flex flex-col-reverse gap-2 rounded-xl border border-wa-border bg-wa-panel p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark sm:flex-row sm:items-center sm:justify-end">{state.hasDraft && <p className="flex items-center justify-center gap-1.5 text-xs text-wa-muted sm:mr-auto"><Check className="h-3.5 w-3.5" aria-hidden="true" />Borrador guardado automáticamente<button type="button" className="font-semibold underline" onClick={state.reset} disabled={busy}>Descartar</button></p>}<Button type="submit" disabled={busy || state.customFieldsLoading || state.customFieldsError}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}{busy ? 'Guardando…' : submitLabel(state.customFields[DEPOSIT_FIELD_KEY], currency, state.definitions.some(field => field.key === DEPOSIT_FIELD_KEY))}</Button></div>
-            </form>
-          )}
+          {tab === 'calendar' && <AppointmentCalendar />}
+          {tab === 'history' && <div className="rounded-xl border border-wa-border bg-wa-panel p-4 sm:p-6 dark:border-wa-border-dark dark:bg-wa-panel-dark"><AppointmentHistoryList /></div>}
+          {tab === 'form' && <AppointmentFormTab state={state} testMode={testMode} canTest={isAdmin} />}
         </div>
       </div>
     </main>

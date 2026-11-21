@@ -89,12 +89,10 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/automations/components/flow/FlowCanvas.tsx',
   'features/chats/components/ChatComposer.tsx',
   'features/chats/components/ChatThread.tsx',
-  'features/chats/components/ChatWorkspace.tsx',
   'features/chats/components/MessageBody.tsx',
   'features/chats/components/MessageBubble.tsx',
   'features/chats/components/TemplateSendDialog.tsx',
   'features/leads/components/LeadFormDialog.tsx',
-  'features/tasks/components/TasksPage.tsx',
   'features/templates/components/TemplatesPage.tsx',
 ]
 
