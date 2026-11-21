@@ -8,8 +8,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.integrations.email_service import EmailNotConfiguredError
-from app.modules.auth import users_api, users_repository
-from app.modules.auth.auth_service import require_admin
+from app.modules.auth import users_api, users_repository, users_service
+from app.modules.auth.auth_service import get_current_user
+from tests.permission_fakes import use_role_matrix
 from app.modules.auth.errors import AnalystCannotHandleCallsError, EmailAlreadyExistsError, UserAlreadyActiveError
 
 ADMIN = SimpleNamespace(id=1, email="admin@example.com", name="Admin", role="admin", is_active=True)
@@ -32,6 +33,7 @@ def _pending(user_id: int) -> dict:
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
+    use_role_matrix(monkeypatch)
     monkeypatch.setattr(users_api, "invite_user", AsyncMock(side_effect=lambda **kw: _user(2, kw["role"])))
     monkeypatch.setattr(users_api, "update_user", AsyncMock(side_effect=lambda user_id, values: _user(user_id, values.get("role", "vendedor"))))
     monkeypatch.setattr(users_api, "invalidate_user_cache", lambda *_: None)
@@ -39,7 +41,7 @@ def client(monkeypatch) -> TestClient:
     monkeypatch.setattr(users_api, "list_call_agents", AsyncMock(return_value=[]))
     app = FastAPI()
     app.include_router(users_api.router)
-    app.dependency_overrides[require_admin] = lambda: ADMIN
+    app.dependency_overrides[get_current_user] = lambda: ADMIN
     return TestClient(app)
 
 
@@ -157,7 +159,7 @@ def test_an_analyst_cannot_be_given_the_calls_permission(client, monkeypatch):
     monkeypatch.setattr(users_api, "update_user", AsyncMock(side_effect=AnalystCannotHandleCallsError()))
     response = client.patch("/api/users/2", json={"can_handle_calls": True})
     assert response.status_code == 400
-    assert "analista" in response.json()["detail"]
+    assert "llamadas" in response.json()["detail"]
 
 
 @pytest.mark.parametrize(("current_role", "values", "expected"), [
@@ -174,8 +176,23 @@ def test_an_analyst_cannot_be_given_the_calls_permission(client, monkeypatch):
     ("vendedor", {"phone": "51999888777"}, {"phone": "51999888777"}),
 ])
 async def test_the_calls_permission_follows_the_role(monkeypatch, current_role, values, expected):
+    use_role_matrix(monkeypatch)
     monkeypatch.setattr(users_repository, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(role=current_role)))
-    assert await users_repository._with_calls_permission_rule(7, values) == expected
+    saved = AsyncMock(return_value={})
+    monkeypatch.setattr(users_repository, "update_user", saved)
+    await users_service.update_user(7, values)
+    assert saved.await_args.args == (7, expected)
+
+
+async def test_the_calls_permission_follows_the_matrix_not_the_role_name(monkeypatch):
+    # Si el negocio le quita ``calls.handle`` al vendedor, pasar a alguien a
+    # vendedor también le quita el permiso.
+    use_role_matrix(monkeypatch, vendedor={"leads.view", "conversations.view"})
+    monkeypatch.setattr(users_repository, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(role="admin")))
+    saved = AsyncMock(return_value={})
+    monkeypatch.setattr(users_repository, "update_user", saved)
+    await users_service.update_user(7, {"role": "vendedor"})
+    assert saved.await_args.args == (7, {"role": "vendedor", "can_handle_calls": False})
 
 
 @pytest.mark.parametrize(("current_role", "values"), [
@@ -183,9 +200,11 @@ async def test_the_calls_permission_follows_the_role(monkeypatch, current_role, 
     ("vendedor", {"role": "analista", "can_handle_calls": True}),
 ])
 async def test_the_calls_permission_is_refused_for_a_role_that_cannot_answer(monkeypatch, current_role, values):
+    use_role_matrix(monkeypatch)
     monkeypatch.setattr(users_repository, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(role=current_role)))
+    monkeypatch.setattr(users_repository, "update_user", AsyncMock(side_effect=AssertionError("no debe guardar")))
     with pytest.raises(AnalystCannotHandleCallsError):
-        await users_repository._with_calls_permission_rule(7, values)
+        await users_service.update_user(7, values)
 
 
 @pytest.mark.parametrize("change", [{"can_handle_calls": False}, {"is_active": False}, {"role": "analista"}])

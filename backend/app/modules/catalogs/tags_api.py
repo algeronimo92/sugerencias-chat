@@ -4,27 +4,31 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import Tag, TagCreate, TagUpdate
-from app.modules.auth.public import get_current_user, require_admin
+from app.modules.auth.public import Permission, require_permission
 from app.modules.catalogs.queries import list_tags
 from app.modules.catalogs.service import TagAlreadyExistsError, create_tag, update_tag
+
+require_catalogs_manage = require_permission(Permission.CATALOGS_MANAGE)
+# El chat y la ficha del lead los listan para elegir.
+require_leads_view = require_permission(Permission.LEADS_VIEW)
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 @router.get("", response_model=list[Tag])
-async def get_tags(_user: User = Depends(get_current_user)):
+async def get_tags(_user: User = Depends(require_leads_view)):
     return await list_tags()
 
 
 @router.get("/all", response_model=list[Tag])
-async def get_all_tags(_admin: User = Depends(require_admin)):
+async def get_all_tags(_admin: User = Depends(require_catalogs_manage)):
     """Catálogo completo para administración, incluidas las desactivadas."""
     return await list_tags(include_inactive=True)
 
 
 @router.post("", response_model=Tag, status_code=201)
-async def post_tag(body: TagCreate, admin: User = Depends(require_admin)):
+async def post_tag(body: TagCreate, admin: User = Depends(require_catalogs_manage)):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
@@ -37,7 +41,7 @@ async def post_tag(body: TagCreate, admin: User = Depends(require_admin)):
 
 
 @router.patch("/{tag_id}", response_model=Tag)
-async def patch_tag(tag_id: int, body: TagUpdate, _admin: User = Depends(require_admin)):
+async def patch_tag(tag_id: int, body: TagUpdate, _admin: User = Depends(require_catalogs_manage)):
     values = body.model_dump(exclude_unset=True)
     if "name" in values:
         if values["name"] is None:

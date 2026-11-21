@@ -11,6 +11,7 @@ import { useMe } from '../features/auth/public/queries';
 import { asApiError } from "../shared/http/errors";
 import { extractErrorMessage } from "../shared/utils/errors";
 import { MainLayout } from "./layout";
+import { can, type Permission } from "../shared/permissions";
 import { canSeeDashboard, homePathFor } from "./navigation";
 import { AccountActionProviders, CrmProviders, DataProviders } from "./providers";
 import { RouteError } from "./RouteError";
@@ -101,33 +102,20 @@ const IssueReportsPage = lazy(() =>
     default: module.IssueReportsPage,
   })),
 );
-function useRole() {
-  return useMe().data?.role;
-}
-
-/** La "bandeja" de cada rol: los chats, salvo para el analista, que vive en
- *  el dashboard. */
+/** La "bandeja" de cada quien: los chats, o el dashboard para quien no los
+ *  ve (por defecto, el analista). */
 function HomeRedirect() {
-  return <Navigate to={homePathFor(useRole())} replace />;
+  return <Navigate to={homePathFor(useMe().data)} replace />;
 }
 
-function RequireAdmin() {
+/** Deja pasar a quien tenga alguno de `anyOf`; si no, a su bandeja. Un enlace
+ *  guardado no debe dejar a nadie frente al 403 del backend. */
+function RequirePermission({ anyOf }: { anyOf: Permission[] }) {
   const layoutContext = useLayoutContext();
-  return useRole() === "admin" ? (
+  return can(useMe().data, ...anyOf) ? (
     <Outlet context={layoutContext} />
   ) : (
     <HomeRedirect />
-  );
-}
-
-/** Lo que opera el CRM (chats, kanban, tareas, citas…). El analista solo mira
- *  el dashboard, y el backend le niega estas rutas (role_policy.py). */
-function RequireOperator() {
-  const layoutContext = useLayoutContext();
-  return useRole() === "analista" ? (
-    <HomeRedirect />
-  ) : (
-    <Outlet context={layoutContext} />
   );
 }
 
@@ -152,15 +140,15 @@ function IssueReportsRoute() {
 }
 
 function DashboardRoute() {
-  const role = useRole();
+  const { data: me } = useMe();
   const navigate = useNavigate();
   const { chatFilters } = useLayoutContext();
   // Un enlace guardado o compartido no puede dejar al vendedor frente a un
   // error: el backend le niega el dashboard, así que vuelve a su bandeja.
-  if (!canSeeDashboard(role)) return <HomeRedirect />;
+  if (!canSeeDashboard(me)) return <HomeRedirect />;
   return (
     <DashboardPage
-      role={role}
+      viewer={me}
       onOpenTasks={() => navigate("/tasks")}
       onOpenFlows={() => navigate("/mis-flujos")}
       onOpenChat={(leadId) => navigate(`/chat/${leadId}`)}
@@ -217,27 +205,49 @@ const crmRoutes = createRoutesFromElements(
   <Route element={<MainLayout />} errorElement={<RouteError />}>
     <Route errorElement={<RouteError />}>
       <Route path="dashboard" element={<DashboardRoute />} />
-      <Route element={<RequireOperator />}>
+      <Route path="reports" element={<IssueReportsRoute />} />
+      <Route element={<RequirePermission anyOf={["conversations.view"]} />}>
         <Route element={<ChatWorkspace />}>
           <Route index element={null} />
           <Route path="chat/:chatId" element={null} />
         </Route>
+      </Route>
+      <Route element={<RequirePermission anyOf={["leads.view"]} />}>
         <Route path="kanban" element={<KanbanRoute />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["tasks.use"]} />}>
         <Route path="tasks" element={<TasksRoute />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["contacts.view"]} />}>
         <Route path="contacts" element={<ContactsRoute />} />
-        <Route path="reports" element={<IssueReportsRoute />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["automations.run"]} />}>
         <Route path="mis-flujos" element={<MyAutomationExecutionsPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["appointments.edit"]} />}>
         <Route path="citas/nueva" element={<NewAppointmentPage />} />
-        <Route element={<RequireAdmin />}>
-          <Route path="templates" element={<TemplatesPage />} />
-          <Route path="media-library" element={<MediaLibraryPage />} />
-          <Route path="automations" element={<AutomationsPage />} />
-          <Route path="catalogs" element={<CatalogsPage />} />
-          <Route path="integraciones" element={<IntegrationsPage />} />
-          <Route path="configuracion" element={<SettingsPage />} />
-          <Route path="configuracion/:section" element={<SettingsPage />} />
-          <Route path="ai-assistant" element={<AiAssistantPage />} />
-        </Route>
+      </Route>
+      <Route element={<RequirePermission anyOf={["templates.manage"]} />}>
+        <Route path="templates" element={<TemplatesPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["media_library.manage"]} />}>
+        <Route path="media-library" element={<MediaLibraryPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["automations.manage"]} />}>
+        <Route path="automations" element={<AutomationsPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["catalogs.manage"]} />}>
+        <Route path="catalogs" element={<CatalogsPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["settings.manage"]} />}>
+        <Route path="integraciones" element={<IntegrationsPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["settings.manage", "users.manage"]} />}>
+        <Route path="configuracion" element={<SettingsPage />} />
+        <Route path="configuracion/:section" element={<SettingsPage />} />
+      </Route>
+      <Route element={<RequirePermission anyOf={["ai.configure"]} />}>
+        <Route path="ai-assistant" element={<AiAssistantPage />} />
       </Route>
       <Route path="*" element={<HomeRedirect />} />
     </Route>

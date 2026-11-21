@@ -9,7 +9,10 @@ from fastapi import Depends, Header, Request, Response
 from app.core.config import settings
 from app.core.errors import Forbidden, Unauthorized, Unavailable
 from app.db.models.auth import User
-from app.modules.auth.role_policy import route_allowed_for
+from app.db.privileges import set_request_db_role
+from app.modules.auth.db_privileges import DB_ROLES
+from app.modules.auth.permissions import can
+from app.modules.auth.roles_service import permissions_for_role
 from app.modules.auth.session_service import invalidate_session_cache, resolve_session
 
 logger = logging.getLogger(__name__)
@@ -31,9 +34,19 @@ def invalidate_user_cache(user_id: int | None = None) -> None:
     invalidate_session_cache(user_id=user_id)
 
 
+async def _with_permissions(user: User) -> User:
+    # La fila vigente de la matriz de su rol, para ``can(user, ...)``. Se
+    # asigna en cada petición: la sesión puede venir de la caché y la matriz
+    # pudo cambiar desde que se resolvió.
+    user.permissions = await permissions_for_role(user.role)
+    # Desde acá, cada transacción de la petición corre con su rol de base.
+    set_request_db_role(DB_ROLES.get(user.role))
+    return user
+
+
 async def get_user_from_token(token: str | None) -> User | None:
     resolved = await resolve_session(token, rotate=False)
-    return resolved.user if resolved else None
+    return await _with_permissions(resolved.user) if resolved else None
 
 
 async def get_current_user(request: Request, response: Response) -> User:
@@ -50,12 +63,27 @@ async def get_current_user(request: Request, response: Response) -> User:
             persistent=resolved.persistent,
             absolute_expires_at=resolved.absolute_expires_at,
         )
-    # Después de renovar la cookie: la sesión sigue siendo válida aunque esta
-    # ruta no sea para su rol. El analista solo puede pedir el dashboard y lo
-    # que sostiene su propia sesión (ver role_policy.py).
-    if not route_allowed_for(resolved.user.role, request.method, request.url.path):
-        raise Forbidden("Tu rol solo tiene acceso al dashboard")
-    return resolved.user
+    return await _with_permissions(resolved.user)
+
+
+def require_permission(*permissions: str):
+    """Dependencia que deja pasar a quien tenga alguno de ``permissions``.
+
+    Va después de renovar la cookie (la sesión sigue siendo válida aunque la
+    ruta no sea para su rol). ``__permissions__`` es lo que mira
+    ``tests/test_route_security.py`` para exigir un permiso en cada ruta.
+    """
+    if not permissions:
+        raise ValueError("require_permission necesita al menos un permiso")
+
+    async def dependency(user: User = Depends(get_current_user)) -> User:
+        if not can(user, *permissions):
+            raise Forbidden("Tu rol no tiene permiso para esto")
+        return user
+
+    dependency.__permissions__ = frozenset(permissions)
+    dependency.__name__ = "require_" + "_or_".join(p.replace(".", "_") for p in permissions)
+    return dependency
 
 
 def cookie_is_secure(request: Request) -> bool:
@@ -132,12 +160,6 @@ def websocket_origin_allowed(
         return True
     origin_host = urlsplit(origin).netloc.lower()
     return bool(host) and origin_host == host.lower()
-
-
-async def require_admin(user: User = Depends(get_current_user)) -> User:
-    if user.role != "admin":
-        raise Forbidden("Requiere permisos de administrador")
-    return user
 
 
 def _extract_bearer(authorization: str | None) -> str | None:

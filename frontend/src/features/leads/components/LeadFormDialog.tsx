@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowDown, Loader2, MessageCircle, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { can } from '../../../shared/permissions'
 import { Button } from '../../../shared/ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClassOverPanel, dialogOverlayClassOverPanel } from '../../../shared/ui/Dialog'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
@@ -104,8 +105,9 @@ export function LeadFormDialog({
   // requirePhoneAndName solo lo manda el alta de leads: en ese modo el
   // seguimiento (cita, recontacto, pérdida) todavía no tiene nada que decir.
   const isCreating = !!requirePhoneAndName
-  const canEditSeller = me?.role === 'admin' || !!requirePhoneAndName || initial?.vendedor_id == null
-  const visibleSellers = me?.role === 'admin' || !canEditSeller
+  const canAssign = can(me, 'leads.assign')
+  const canEditSeller = canAssign || !!requirePhoneAndName || initial?.vendedor_id == null
+  const visibleSellers = canAssign || !canEditSeller
     ? sellers
     : sellers.filter((seller) => seller.id === me?.id)
   const availableLeadServices = useMemo(() => {

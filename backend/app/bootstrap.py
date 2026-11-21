@@ -35,7 +35,7 @@ from app.modules.tasks import api as tasks
 from app.modules.contacts import api as contacts
 from app.integrations.meta_webhook import api as meta_webhook
 from app.modules.ai import assistant_api as ai_assistant, suggestions_api as suggestions
-from app.modules.auth import api as auth, users_api as users
+from app.modules.auth import api as auth, roles_api as roles, users_api as users
 from app.modules.automations import api as automations
 from app.modules.platform import api as platform
 from app.modules.conversations import api as chats
@@ -56,8 +56,8 @@ from app.modules.catalogs import templates_api as templates
 from app.modules.ai import tts_api as tts
 from app.modules.platform import whatsapp_api as whatsapp
 from app.modules.platform import onboarding_api as onboarding
-from app.modules.auth.auth_service import COOKIE_NAME, get_current_user, get_user_from_token, require_admin, verify_webhook_token, websocket_origin_allowed
-from app.modules.auth.role_policy import realtime_allowed_for
+from app.modules.auth.auth_service import COOKIE_NAME, get_user_from_token, require_permission, verify_webhook_token, websocket_origin_allowed
+from app.modules.auth.permissions import Permission, can
 from app.realtime.ws_manager import manager
 from app.core.request_metrics import begin_request_metrics, finish_request_metrics
 from app.core.request_context import reset_request_id, set_request_id
@@ -150,23 +150,26 @@ app.include_router(branding.router)
 # middleware de tenancy solo lo deja responder en TENANT_PLATFORM_HOSTS.
 app.include_router(platform.router)
 app.include_router(users.router)
-app.include_router(lead_routes.router, dependencies=[Depends(get_current_user)])
-app.include_router(chats.router, dependencies=[Depends(get_current_user)])
-app.include_router(suggestions.router, dependencies=[Depends(get_current_user)])
-app.include_router(tts.router, dependencies=[Depends(get_current_user)])
-app.include_router(settings_router.router, dependencies=[Depends(require_admin)])
-app.include_router(google_calendar.router, dependencies=[Depends(require_admin)])
-app.include_router(email_settings.router, dependencies=[Depends(require_admin)])
+app.include_router(roles.router)
+app.include_router(lead_routes.router, dependencies=[Depends(require_permission(Permission.LEADS_VIEW))])
+app.include_router(chats.router, dependencies=[Depends(require_permission(Permission.CONVERSATIONS_VIEW))])
+app.include_router(suggestions.router, dependencies=[Depends(require_permission(Permission.CONVERSATIONS_SEND))])
+app.include_router(tts.router, dependencies=[Depends(require_permission(Permission.CONVERSATIONS_SEND))])
+app.include_router(settings_router.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
+app.include_router(google_calendar.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
+app.include_router(email_settings.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
 # Vuelta de Google, Microsoft o Zoho tras "Conectar con…" del correo: igual
 # que la de Calendar, una URL común sin sesión; el negocio sale del state.
 app.include_router(email_settings.callback_router)
 # Vuelta de Google tras "Conectar con Google": una URL para todos los
 # negocios, sin sesión; el negocio sale del state firmado.
 app.include_router(google_calendar.callback_router)
-app.include_router(ai_assistant.router, dependencies=[Depends(require_admin)])
-app.include_router(whatsapp.router, dependencies=[Depends(require_admin)])
-app.include_router(whatsapp.status_router, dependencies=[Depends(get_current_user)])
-app.include_router(onboarding.router, dependencies=[Depends(require_admin)])
+app.include_router(ai_assistant.router, dependencies=[Depends(require_permission(Permission.AI_CONFIGURE))])
+app.include_router(whatsapp.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
+# Si WhatsApp está conectado lo ve quien atiende chats: tiene que saber que sus
+# mensajes no salen. Conectarlo sigue siendo settings.manage.
+app.include_router(whatsapp.status_router, dependencies=[Depends(require_permission(Permission.CONVERSATIONS_VIEW))])
+app.include_router(onboarding.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
 app.include_router(tags.router)
 app.include_router(lead_services.router)
 app.include_router(lead_stages.router)
@@ -201,7 +204,12 @@ app.include_router(
 # /media/<archivo> sí es contenido de clientes (fotos, audios, documentos) y
 # solo lo consume el navegador del vendedor. La cookie es SameSite=Lax y tanto
 # dev como producción son same-site, así que <img>/<audio>/<video> la envían.
-app.include_router(media.files_router, dependencies=[Depends(get_current_user)])
+# Cualquiera que vea chats o edite algo que adjunta archivos (plantillas,
+# biblioteca, recursos de la IA) necesita ver su vista previa.
+app.include_router(media.files_router, dependencies=[Depends(require_permission(
+    Permission.CONVERSATIONS_VIEW, Permission.TEMPLATES_MANAGE,
+    Permission.MEDIA_LIBRARY_MANAGE, Permission.AI_CONFIGURE,
+))])
 
 
 @app.get("/health", tags=["health"])
@@ -237,11 +245,14 @@ async def chats_websocket(websocket: WebSocket):
     if user is None:
         await websocket.close(code=4401)
         return
-    if not realtime_allowed_for(user.role):
+    # El socket empuja chats, avisos y el timbre de llamadas: todo trae leads.
+    if not can(user, Permission.LEADS_VIEW):
         await websocket.close(code=4403)
         return
 
-    await manager.connect(websocket, user.id, is_seller=user.role == "vendedor")
+    # Quien no ve todos los leads recibe solo los avisos de los suyos
+    # (leads/visibility.py decide la audiencia de cada aviso).
+    await manager.connect(websocket, user.id, is_seller=not can(user, Permission.LEADS_VIEW_ALL))
     try:
         await websocket.send_json({"type": "lead_visibility_changed"})
         await websocket.send_json({"type": "notifications_updated"})

@@ -24,7 +24,7 @@ from app.integrations.email_service import (
     platform_transport,
     send_test_email,
 )
-from app.modules.auth.public import User, require_admin
+from app.modules.auth.public import User, Permission, require_permission
 from app.modules.platform.email_settings import (
     EmailSettingsError,
     clear_email_settings,
@@ -57,6 +57,8 @@ from app.tenancy.context import get_current_tenant, tenant_context
 from app.tenancy.resolver import resolve_tenant_by_organization_id
 
 logger = logging.getLogger(__name__)
+
+require_settings_manage = require_permission(Permission.SETTINGS_MANAGE)
 
 router = APIRouter(prefix="/api/settings/email", tags=["settings"])
 callback_router = APIRouter(tags=["integrations"])
@@ -113,7 +115,7 @@ async def delete_email_settings():
 async def post_email_connect(
     body: EmailConnectRequest,
     request: Request,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_settings_manage),
 ):
     client = await email_oauth.oauth_client(body.provider)
     if client is None:
@@ -140,7 +142,7 @@ async def post_email_disconnect():
 
 
 @router.post("/test", response_model=EmailTestResult)
-async def post_email_test(user: User = Depends(require_admin)):
+async def post_email_test(user: User = Depends(require_settings_manage)):
     try:
         transport = await send_test_email(recipient=user.email)
     except EmailNotConfiguredError as exc:

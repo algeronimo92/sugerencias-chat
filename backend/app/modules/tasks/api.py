@@ -3,12 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.modules.tasks.types import TaskStatus
 from app.modules.auth.public import User
 from app.modules.tasks.schemas import CompletedTasks, TaskCreate, TaskItem, TaskUpdate
-from app.modules.auth.public import get_current_user
+from app.modules.auth.public import Permission, can, get_current_user, require_permission
 from app.modules.tasks.queries import get_task, list_tasks
 from app.modules.tasks.service import MissingTaskReferenceError, complete_pending_tasks, create_task, update_task
 from app.modules.leads.ports.visibility import ensure_lead_visible, seller_scope
 
-router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+# Ver o tocar tareas de otros es ``team.supervise``.
+router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(require_permission(Permission.TASKS_USE))])
 
 
 @router.get("", response_model=list[TaskItem])
@@ -21,11 +22,11 @@ async def get_tasks(
 ):
     if status and status not in frozenset(TaskStatus):
         raise HTTPException(400, "Estado inválido")
-    if user.role != "admin" and (assigned_user_id is not None or all_users):
-        raise HTTPException(403, "Solo un administrador puede consultar tareas de otros usuarios")
+    if not can(user, Permission.TEAM_SUPERVISE) and (assigned_user_id is not None or all_users):
+        raise HTTPException(403, "Tu rol no puede consultar tareas de otros usuarios")
     if lead_id:
         await ensure_lead_visible(user, lead_id)
-    return await list_tasks(user.id, user.role == "admin", status, lead_id, assigned_user_id, all_users, owner_id=await seller_scope(user))
+    return await list_tasks(user.id, can(user, Permission.TEAM_SUPERVISE), status, lead_id, assigned_user_id, all_users, owner_id=await seller_scope(user))
 
 
 @router.post("", response_model=TaskItem, status_code=201)
@@ -36,8 +37,8 @@ async def post_task(body: TaskCreate, user: User = Depends(get_current_user)):
     if not values["title"]:
         raise HTTPException(400, "El título es obligatorio")
     values["assigned_user_id"] = values["assigned_user_id"] or user.id
-    if user.role != "admin" and values["assigned_user_id"] != user.id:
-        raise HTTPException(403, "Solo un administrador puede asignar tareas a otro usuario")
+    if not can(user, Permission.TEAM_SUPERVISE) and values["assigned_user_id"] != user.id:
+        raise HTTPException(403, "Tu rol no puede asignar tareas a otro usuario")
     try:
         item = await create_task(values, user.id)
     except MissingTaskReferenceError as exc:
@@ -51,11 +52,11 @@ async def post_complete_all_tasks(
     all_users: bool = False,
     user: User = Depends(get_current_user),
 ):
-    if user.role != "admin" and (assigned_user_id is not None or all_users):
-        raise HTTPException(403, "Solo un administrador puede completar tareas de otros usuarios")
+    if not can(user, Permission.TEAM_SUPERVISE) and (assigned_user_id is not None or all_users):
+        raise HTTPException(403, "Tu rol no puede completar tareas de otros usuarios")
     completed = await complete_pending_tasks(
         user.id,
-        user.role == "admin",
+        can(user, Permission.TEAM_SUPERVISE),
         assigned_user_id,
         all_users,
         owner_id=await seller_scope(user),
@@ -69,11 +70,11 @@ async def patch_task(task_id: int, body: TaskUpdate, user: User = Depends(get_cu
     if not current:
         raise HTTPException(404, "Tarea no encontrada")
     await ensure_lead_visible(user, current["lead_id"])
-    if user.role != "admin" and current["assigned_user_id"] != user.id:
+    if not can(user, Permission.TEAM_SUPERVISE) and current["assigned_user_id"] != user.id:
         raise HTTPException(403, "No puedes modificar una tarea de otro usuario")
     values = body.model_dump(exclude_unset=True)
-    if "assigned_user_id" in values and values["assigned_user_id"] != current["assigned_user_id"] and user.role != "admin":
-        raise HTTPException(403, "Solo un administrador puede reasignar tareas")
+    if "assigned_user_id" in values and values["assigned_user_id"] != current["assigned_user_id"] and not can(user, Permission.TEAM_SUPERVISE):
+        raise HTTPException(403, "Tu rol no puede reasignar tareas")
     try:
         item = await update_task(task_id, values, user.id)
     except MissingTaskReferenceError as exc:

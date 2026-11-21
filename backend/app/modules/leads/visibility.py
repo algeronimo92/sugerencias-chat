@@ -1,9 +1,10 @@
 """Qué leads ve cada persona del equipo.
 
-Por defecto todo el equipo ve todos los leads. Con el ajuste
-``sellers_see_only_assigned_leads`` encendido, un vendedor ve solo los que
-tiene asignados: ni los de otros ni los sin asignar. Los administradores ven
-siempre todos, porque son quienes reparten.
+Quien tiene ``leads.view_all`` ve todos los leads; quien tiene solo
+``leads.view`` ve los que tiene asignados: ni los de otros ni los sin asignar.
+Lo decide la matriz de permisos de cada rol (antes, el ajuste
+``sellers_see_only_assigned_leads``). Los administradores ven siempre todos,
+porque son quienes reparten.
 
 La regla se aplica en tres lugares, y los tres tienen que coincidir: si una
 lista oculta un lead pero el aviso en tiempo real lo deja pasar, al vendedor
@@ -22,30 +23,32 @@ from collections.abc import Iterable
 
 from fastapi import Depends, Request
 
-from app.modules.auth.ports.types import UserRole
 from app.modules.auth.ports.users import list_active_sellers, list_call_agents
-from app.modules.auth.public import User, get_current_user
+from app.modules.auth.public import Permission, User, can, get_current_user, roles_with_permission
 from app.modules.leads.domain.errors import LeadNotFound
 from app.modules.leads.queries import fetch_lead_sellers
-from app.modules.platform.public import sellers_see_only_assigned_leads
 
 # Nombres con que las rutas reciben el lead, en el path o en la query.
 LEAD_ID_PARAMS = ("chat_id", "lead_id")
 
 
+async def scoped_roles() -> frozenset[str]:
+    """Roles que ven leads pero no todos: a ellos se les acota la vista."""
+    return await roles_with_permission(Permission.LEADS_VIEW) - await roles_with_permission(Permission.LEADS_VIEW_ALL)
+
+
 async def seller_scope(user: User) -> int | None:
     """Id del vendedor al que se acotan los leads de ``user``, o None si ve
-    todos. Se lee en cada petición: el ajuste se cambia sin recargar."""
-    if user.role != UserRole.SELLER:
-        return None
-    return user.id if await sellers_see_only_assigned_leads() else None
+    todos. Se lee en cada petición: la matriz se cambia sin recargar."""
+    return None if can(user, Permission.LEADS_VIEW_ALL) else user.id
 
 
 async def seller_scope_by_id(user_id: int) -> int | None:
     """Para las altas desde Citas o Contactos, que solo reciben el actor."""
-    if not await sellers_see_only_assigned_leads():
+    scoped = await scoped_roles()
+    if not scoped:
         return None
-    return next((user_id for user in await list_active_sellers() if user["id"] == user_id and user["role"] == UserRole.SELLER), None)
+    return next((user_id for user in await list_active_sellers() if user["id"] == user_id and user["role"] in scoped), None)
 
 
 async def visible_lead_ids(user: User, lead_ids: Iterable[str]) -> set[str]:
@@ -90,9 +93,9 @@ async def require_visible_lead(request: Request, user: User = Depends(get_curren
 
 async def lead_audience(lead_id: str) -> frozenset[int] | None:
     """Vendedores que pueden recibir un aviso sobre ``lead_id``, o None si lo
-    reciben todos (el ajuste apagado). Un lead sin asignar no tiene vendedor:
-    solo se enteran los administradores."""
-    if not await sellers_see_only_assigned_leads():
+    reciben todos (ningún rol tiene la vista acotada). Un lead sin asignar no
+    tiene vendedor: solo se enteran quienes ven todos."""
+    if not await scoped_roles():
         return None
     seller_id = (await fetch_lead_sellers([lead_id])).get(lead_id)
     return frozenset({seller_id}) if seller_id is not None else frozenset()
@@ -101,24 +104,25 @@ async def lead_audience(lead_id: str) -> frozenset[int] | None:
 async def call_agents_for(lead_id: str) -> list[dict]:
     """A quiénes les suena una llamada del cliente de ``lead_id``.
 
-    Con el ajuste encendido, solo a los administradores y al vendedor del lead.
+    Con la vista acotada, solo a quienes ven todos y al vendedor del lead.
     """
     agents = await list_call_agents()
     audience = await lead_audience(lead_id)
     if audience is None:
         return agents
-    allowed = [agent for agent in agents if agent.get("role") != UserRole.SELLER or agent["id"] in audience]
-    return allowed
+    scoped = await scoped_roles()
+    return [agent for agent in agents if agent.get("role") not in scoped or agent["id"] in audience]
 
 
 async def lead_recipients(lead_id: str, user_ids: Iterable[int]) -> set[int]:
     """Evita que una mención o recordatorio revele un lead ajeno, incluso
-    cuando se guardó antes de activar el ajuste o de reasignar el lead."""
+    cuando se guardó antes de acotar la vista o de reasignar el lead."""
     wanted = set(user_ids)
     audience = await lead_audience(lead_id)
     if audience is None:
         return wanted
+    scoped = await scoped_roles()
     return {
         user["id"] for user in await list_active_sellers()
-        if user["id"] in wanted and (user["role"] == UserRole.ADMIN or user["id"] in audience)
+        if user["id"] in wanted and (user["role"] not in scoped or user["id"] in audience)
     }

@@ -14,6 +14,14 @@ export interface SettingItem {
 
 export type AppUser = Delivered<ApiSchemas['UserItem']>
 
+/** La matriz de permisos del negocio: los tres roles y el catálogo. */
+export type RolesMatrix = Delivered<ApiSchemas['RolesOut']>
+export type RoleRow = Delivered<ApiSchemas['RoleItem']>
+export type PermissionDef = Delivered<ApiSchemas['PermissionItem']>
+/** Lo que PostgreSQL tiene aplicado hoy a los roles de base del negocio. */
+export type DbPrivileges = Delivered<ApiSchemas['DbPrivilegesOut']>
+export type DbRolePrivileges = Delivered<ApiSchemas['DbRolePrivileges']>
+
 export type SellerOption = Delivered<ApiSchemas['SellerItem']>
 
 export interface CreateUserPayload {

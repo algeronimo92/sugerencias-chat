@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import { Bug, ChevronsLeft, ChevronsRight, CircleHelp, ClipboardList, LogOut, Moon, Settings as SettingsIcon, ShieldCheck, Sun } from 'lucide-react'
-import { isNavItemActive, NAV_GROUP_LABELS, visibleNavItems, type NavGroup, type NavItem } from './navigation'
+import { isNavItemActive, NAV_GROUP_LABELS, visibleNavItems, type NavGroup, type NavItem, type Viewer } from './navigation'
 import { useMediaQuery } from '../shared/hooks/useBreakpoint'
 import { cn } from '../shared/utils/cn'
 import { Avatar } from '../shared/ui/Avatar'
@@ -92,7 +92,8 @@ export interface RailAccount {
 }
 
 interface Props {
-  role: string | undefined
+  /** Quién mira: decide qué entradas aparecen. */
+  viewer: Viewer
   unreadCount: number
   brandName: string
   account: RailAccount | null
@@ -116,7 +117,7 @@ interface Props {
  * quitaba alto a las vistas, que terminaban con barra de desplazamiento.
  */
 export function Sidebar({
-  role, unreadCount, brandName, account, theme, onToggleTheme, onLogout, onOpenSettings, onOpenIssueReport, renderNotifications, extras,
+  viewer, unreadCount, brandName, account, theme, onToggleTheme, onLogout, onOpenSettings, onOpenIssueReport, renderNotifications, extras,
 }: Props) {
   const isWide = useMediaQuery(WIDE_QUERY)
   const [stored, setStored] = useState<boolean | null>(readStoredExpanded)
@@ -132,7 +133,7 @@ export function Sidebar({
     }
   }
 
-  const items = visibleNavItems(role)
+  const items = visibleNavItems(viewer)
   const byGroup = (group: NavGroup) => items.filter((item) => item.group === group)
   const chatBadge = unreadCount > 0 ? <Counter value={unreadCount} /> : null
   const reportsItem = byGroup('footer').find((item) => item.path === '/reports')

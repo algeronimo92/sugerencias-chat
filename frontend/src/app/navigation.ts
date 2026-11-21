@@ -1,11 +1,13 @@
 import { BarChart3, BookOpen, Bug, CalendarClock, CalendarPlus, Columns3, FileText, FolderOpen, MessagesSquare, Plug, Send, Sparkles, Users, Workflow } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { can, type Permission, type Viewer } from '../shared/permissions'
 
 export type NavItem = {
   path: string
   label: string
   icon: LucideIcon
-  adminOnly: boolean
+  /** Se muestra a quien tenga alguno; vacío, a cualquiera con sesión. */
+  permissions: readonly Permission[]
   /**
    * Dónde va en el riel de escritorio (doc 18 §7.1): de 14 entradas planas a
    * grupos. `footer` queda fijo abajo con la cuenta. Las rutas no cambian;
@@ -22,20 +24,20 @@ export const NAV_GROUP_LABELS: Record<Exclude<NavGroup, 'main' | 'footer'>, stri
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { path: '/', label: 'Chats', icon: MessagesSquare, adminOnly: false, group: 'main' },
-  { path: '/kanban', label: 'Embudo', icon: Columns3, adminOnly: false, group: 'main' },
-  { path: '/contacts', label: 'Contactos', icon: Users, adminOnly: false, group: 'main' },
-  { path: '/tasks', label: 'Tareas', icon: CalendarClock, adminOnly: false, group: 'main' },
-  { path: '/dashboard', label: 'Dashboard', icon: BarChart3, adminOnly: false, group: 'main' },
-  { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, adminOnly: false, group: 'main' },
-  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, adminOnly: false, group: 'tools' },
-  { path: '/automations', label: 'Automatizaciones', icon: Workflow, adminOnly: true, group: 'tools' },
-  { path: '/templates', label: 'Plantillas', icon: FileText, adminOnly: true, group: 'tools' },
-  { path: '/media-library', label: 'Archivos', icon: FolderOpen, adminOnly: true, group: 'settings' },
-  { path: '/catalogs', label: 'Catálogos', icon: BookOpen, adminOnly: true, group: 'settings' },
-  { path: '/integraciones', label: 'Integraciones', icon: Plug, adminOnly: true, group: 'settings' },
-  { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, adminOnly: true, group: 'settings' },
-  { path: '/reports', label: 'Reportes', icon: Bug, adminOnly: false, group: 'footer' },
+  { path: '/', label: 'Chats', icon: MessagesSquare, permissions: ['conversations.view'], group: 'main' },
+  { path: '/kanban', label: 'Embudo', icon: Columns3, permissions: ['leads.view'], group: 'main' },
+  { path: '/contacts', label: 'Contactos', icon: Users, permissions: ['contacts.view'], group: 'main' },
+  { path: '/tasks', label: 'Tareas', icon: CalendarClock, permissions: ['tasks.use'], group: 'main' },
+  { path: '/dashboard', label: 'Dashboard', icon: BarChart3, permissions: ['dashboard.view'], group: 'main' },
+  { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, permissions: ['appointments.edit'], group: 'main' },
+  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, permissions: ['automations.run'], group: 'tools' },
+  { path: '/automations', label: 'Automatizaciones', icon: Workflow, permissions: ['automations.manage'], group: 'tools' },
+  { path: '/templates', label: 'Plantillas', icon: FileText, permissions: ['templates.manage'], group: 'tools' },
+  { path: '/media-library', label: 'Archivos', icon: FolderOpen, permissions: ['media_library.manage'], group: 'settings' },
+  { path: '/catalogs', label: 'Catálogos', icon: BookOpen, permissions: ['catalogs.manage'], group: 'settings' },
+  { path: '/integraciones', label: 'Integraciones', icon: Plug, permissions: ['settings.manage'], group: 'settings' },
+  { path: '/ai-assistant', label: 'Asistente IA', icon: Sparkles, permissions: ['ai.configure'], group: 'settings' },
+  { path: '/reports', label: 'Reportes', icon: Bug, permissions: [], group: 'footer' },
 ]
 
 /**
@@ -52,29 +54,29 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return pathname === item.path
 }
 
+export type { Viewer }
+
 /**
- * El dashboard compara al equipo por nombre, así que por ahora lo leen solo
- * quienes dirigen: admin y analista. El backend le niega la ruta al vendedor
- * (app/modules/leads/dashboard/api.py); esto solo evita mostrarle una entrada
- * que termina en error.
+ * Por defecto el dashboard lo leen quienes dirigen (admin y analista): compara
+ * al equipo por nombre. Lo decide el permiso `dashboard.view`, que el negocio
+ * puede darle también al vendedor.
  */
-export function canSeeDashboard(role: string | undefined): boolean {
-  return role === 'admin' || role === 'analista'
+export function canSeeDashboard(viewer: Viewer): boolean {
+  return can(viewer, 'dashboard.view')
 }
 
-/** `role` es el de la sesión tal como llega del backend (texto). */
-export function visibleNavItems(role: string | undefined): NavItem[] {
-  // El analista existe para mirar el dashboard: ninguna otra vista le sirve y
-  // el backend se las niega (app/modules/auth/role_policy.py).
-  if (role === 'analista') return NAV_ITEMS.filter((item) => item.path === '/dashboard')
-  return NAV_ITEMS.filter((item) => (
-    (!item.adminOnly || role === 'admin') && (item.path !== '/dashboard' || canSeeDashboard(role))
-  ))
+/** Cada entrada se muestra según los permisos del rol, no por el nombre del
+ * rol: si el negocio le da `catalogs.manage` al vendedor, le aparece Catálogos. */
+export function visibleNavItems(viewer: Viewer): NavItem[] {
+  if (!viewer) return []
+  return NAV_ITEMS.filter((item) => item.permissions.length === 0 || can(viewer, ...item.permissions))
 }
 
-/** A dónde va "/" y cualquier ruta que el rol no puede ver. */
-export function homePathFor(role: string | undefined): string {
-  return role === 'analista' ? '/dashboard' : '/'
+/** A dónde va "/" y cualquier ruta que el rol no puede ver: los chats, o el
+ * dashboard para quien no los ve (por defecto, el analista). */
+export function homePathFor(viewer: Viewer): string {
+  if (!viewer || can(viewer, 'conversations.view')) return '/'
+  return can(viewer, 'dashboard.view') ? '/dashboard' : '/reports'
 }
 
 export function roleLabel(role: string | undefined): string {

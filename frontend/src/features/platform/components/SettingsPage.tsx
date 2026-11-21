@@ -1,17 +1,24 @@
-import { Check, Plug, SlidersHorizontal, Users, type LucideIcon } from 'lucide-react'
+import { Check, Database, KeyRound, Plug, SlidersHorizontal, Users, type LucideIcon } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, NavLink, useParams } from 'react-router-dom'
+import { Link, NavLink, Navigate, useParams } from 'react-router-dom'
+import { useCan, type Permission } from '../../../shared/permissions'
 import { Button } from '../../../shared/ui/Button'
 import { useSettings } from '../hooks/useSettings'
 import { groupSettings, useSettingsDraft } from '../settingsDraft'
 import { SettingField } from './SettingField'
+import { DbPrivilegesPanel } from './DbPrivilegesPanel'
+import { RolesPanel } from './RolesPanel'
 import { UsersPanel } from './UsersPanel'
 
-export type SettingsSection = 'general' | 'usuarios'
+export type SettingsSection = 'general' | 'usuarios' | 'roles' | 'base'
 
-const SECTIONS: { key: SettingsSection; label: string; path: string; icon: LucideIcon }[] = [
-  { key: 'general', label: 'General', path: '/configuracion', icon: SlidersHorizontal },
-  { key: 'usuarios', label: 'Usuarios', path: '/configuracion/usuarios', icon: Users },
+// Usuarios, permisos y privilegios van juntos: quien gestiona personas decide
+// qué puede hacer cada rol (`users.manage`, solo del admin).
+const SECTIONS: { key: SettingsSection; label: string; path: string; icon: LucideIcon; permission: Permission }[] = [
+  { key: 'general', label: 'General', path: '/configuracion', icon: SlidersHorizontal, permission: 'settings.manage' },
+  { key: 'usuarios', label: 'Usuarios', path: '/configuracion/usuarios', icon: Users, permission: 'users.manage' },
+  { key: 'roles', label: 'Roles y permisos', path: '/configuracion/roles', icon: KeyRound, permission: 'users.manage' },
+  { key: 'base', label: 'Privilegios en la base', path: '/configuracion/base', icon: Database, permission: 'users.manage' },
 ]
 
 // Las conexiones con terceros viven en la página de Integraciones, cada una
@@ -84,7 +91,8 @@ function GeneralSettings() {
 
 /**
  * Configuración del CRM como página propia (antes un diálogo): una sección
- * por URL (/configuracion, /configuracion/usuarios), así recargar o volver
+ * por URL (/configuracion, /configuracion/usuarios, /configuracion/roles,
+ * /configuracion/base), así recargar o volver
  * atrás deja a la persona donde estaba y se puede enlazar a una sección.
  *
  * Las secciones van en una columna a la izquierda, como las bandejas de la
@@ -93,17 +101,25 @@ function GeneralSettings() {
  */
 export function SettingsPage() {
   const { section: param } = useParams<{ section?: string }>()
-  const section: SettingsSection = param === 'usuarios' ? 'usuarios' : 'general'
+  const allowed = useCan()
+  const sections = SECTIONS.filter((item) => allowed(item.permission))
+  const requested = SECTIONS.find((item) => item.key === (param ?? 'general'))
+  // Una sección que no existe o que el rol no puede ver lleva a la primera que sí.
+  if (!requested || !sections.includes(requested)) {
+    const fallback = sections[0]
+    if (fallback && fallback.key !== requested?.key) return <Navigate to={fallback.path} replace />
+  }
+  const section: SettingsSection = requested && sections.includes(requested) ? requested.key : 'general'
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas md:flex-row">
       <aside className="flex shrink-0 flex-col border-b border-line bg-surface px-2 pt-4 md:w-60 md:border-b-0 md:border-r md:py-4 lg:w-64">
         <div className="px-3 pb-3">
           <h1 className="text-xl font-semibold text-fg">Configuración</h1>
-          <p className="mt-1 hidden text-sm text-fg-muted md:block">Ajustes del CRM y personas que lo usan.</p>
+          <p className="mt-1 hidden text-sm text-fg-muted md:block">Ajustes del CRM, personas que lo usan y qué puede hacer cada rol.</p>
         </div>
         <nav aria-label="Secciones de configuración" className="flex gap-1 overflow-x-auto pb-2 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0">
-          {SECTIONS.map(({ key, label, path, icon: Icon }) => (
+          {sections.map(({ key, label, path, icon: Icon }) => (
             <NavLink key={key} to={path} end className={SECTION_LINK}>
               <Icon className="h-4 w-4 shrink-0 text-fg-muted" strokeWidth={1.75} aria-hidden="true" />
               {label}
@@ -114,6 +130,10 @@ export function SettingsPage() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {section === 'general' ? (
           <GeneralSettings />
+        ) : section === 'roles' ? (
+          <RolesPanel />
+        ) : section === 'base' ? (
+          <DbPrivilegesPanel />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="w-full max-w-3xl px-4 py-6 md:px-8">

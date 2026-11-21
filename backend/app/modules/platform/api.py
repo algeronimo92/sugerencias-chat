@@ -6,6 +6,8 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 """
 
 from __future__ import annotations
+
+import logging
 from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, OrganizationOverview, PlatformEmailStatus, PlatformEmailUpdate)
 
 import base64
@@ -15,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from app.db.models.control import PlatformUser
-from app.modules.auth.public import cookie_is_secure, hash_password
+from app.modules.auth.public import cookie_is_secure, hash_password, sync_db_privileges
 from app.modules.auth.public import LoginThrottledError, clear_account_attempts, reserve_login_attempt
 from app.modules.platform import branding as branding_service
 from app.modules.platform import knowledge_templates
@@ -52,6 +54,7 @@ from app.modules.platform.platform_auth import (
     get_current_platform_user,
     revoke_platform_session,
 )
+from app.tenancy.context import tenant_context
 from app.tenancy.provisioning import (
     TenantProvisioningError,
     activate_organization,
@@ -61,6 +64,8 @@ from app.tenancy.provisioning import (
     suspend_organization,
 )
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
 protected = [Depends(get_current_platform_user)]
@@ -196,6 +201,13 @@ async def create_organization(body: NewOrganizationBody) -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Los GRANT del schema nuevo según su matriz recién sembrada. Si fallan, el
+    # negocio ya existe y el próximo scripts.migrate los vuelve a aplicar.
+    try:
+        with tenant_context(context):
+            await sync_db_privileges()
+    except Exception:
+        logger.exception("No se pudieron aplicar los privilegios de base del negocio %s", context.organization_id)
     return {
         "id": str(context.organization_id),
         "hostname": context.hostname,

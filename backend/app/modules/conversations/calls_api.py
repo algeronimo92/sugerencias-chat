@@ -12,7 +12,7 @@ import httpx
 from app.core.errors import Forbidden
 from app.integrations.whatsapp.channel import ChannelError
 from app.integrations.whatsapp.connection import active_connection
-from app.modules.auth.public import User, get_current_user
+from app.modules.auth.public import Permission, User, can, require_permission
 from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope, visible_lead_ids
 from app.modules.conversations.application.calls import (
     answer_call,
@@ -37,8 +37,9 @@ from app.modules.conversations.schemas import (
 )
 
 
-async def require_call_agent(user: User = Depends(get_current_user)) -> User:
-    if not user.can_handle_calls or user.role not in ("admin", "vendedor"):
+async def require_call_agent(user: User = Depends(require_permission(Permission.CALLS_HANDLE))) -> User:
+    # El permiso es del rol; ``can_handle_calls`` lo decide el admin por persona.
+    if not user.can_handle_calls:
         raise Forbidden("No tienes permiso para atender llamadas")
     return user
 
@@ -48,7 +49,12 @@ async def require_visible_call(call_id: int, user: User = Depends(require_call_a
         await ensure_lead_visible(user, await call_chat_id(call_id))
 
 
-router = APIRouter(prefix="/api/calls", tags=["calls"], dependencies=[Depends(get_current_user), Depends(require_visible_lead)])
+router = APIRouter(
+    prefix="/api/calls", tags=["calls"],
+    # El historial de llamadas de un chat es parte del chat; atender y llamar
+    # piden además ``calls.handle`` (``require_call_agent``).
+    dependencies=[Depends(require_permission(Permission.CONVERSATIONS_VIEW)), Depends(require_visible_lead)],
+)
 
 
 @router.get("", response_model=list[CallItem])
@@ -127,5 +133,5 @@ async def ignore_call(call_id: int, user: User = Depends(require_call_agent)):
 
 @router.post("/{call_id}/terminate", response_model=CallItem, dependencies=[Depends(require_visible_call)])
 async def terminate_call(call_id: int, body: CallHangUpRequest, user: User = Depends(require_call_agent)):
-    row = await hang_up(call_id, user_id=user.id, is_admin=user.role == "admin", cause=body.cause)
+    row = await hang_up(call_id, user_id=user.id, is_admin=can(user, Permission.TEAM_SUPERVISE), cause=body.cause)
     return public_call(row)

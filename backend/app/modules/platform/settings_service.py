@@ -200,8 +200,8 @@ SETTING_DEFS: list[SettingDef] = [
         "Leads (CRM)",
         secret=False,
     ),
-    # Lo aplica app/modules/leads/visibility.py en listas, rutas por id y
-    # avisos en tiempo real. Apagado (o vacío), todo el equipo ve todo.
+    # Fachada de ``leads.view_all`` del vendedor: settings_api lo lee y lo
+    # escribe sobre la matriz de permisos (ver app/modules/leads/visibility.py).
     SettingDef(
         "sellers_see_only_assigned_leads",
         "Cada vendedor ve solo los leads asignados a él (los administradores ven todos)",

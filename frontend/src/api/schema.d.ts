@@ -811,6 +811,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Roles */
+        get: operations["get_roles_api_roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/roles/{role}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Role Permissions */
+        put: operations["put_role_permissions_api_roles__role__permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/roles/db-privileges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Db Privileges
+         * @description Lo que PostgreSQL tiene aplicado hoy en el schema de este negocio:
+         *     privilegios de sistema y de objeto de cada rol de base. Se lee de
+         *     ``pg_roles`` e ``information_schema``, no de la matriz.
+         */
+        get: operations["get_db_privileges_api_roles_db_privileges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chats": {
         parameters: {
             query?: never;
@@ -995,7 +1051,8 @@ export interface paths {
         /**
          * Delete Chat
          * @description Borra el lead y todo su historial (mensajes, tareas, notas). No se
-         *     puede deshacer: sin soft-delete, es admin-only a propósito.
+         *     puede deshacer: sin soft-delete, es un permiso aparte y solo del admin
+         *     salvo que el negocio lo dé.
          */
         delete: operations["delete_chat_api_chats__chat_id__delete"];
         options?: never;
@@ -3650,8 +3707,8 @@ export interface paths {
         put?: never;
         /**
          * Dismiss Appointment
-         * @description Solo admin: sacar una cita de las cifras de ventas es decidir qué plata
-         *     entró, no algo que haga quien la registró.
+         * @description Sacar una cita de las cifras de ventas es decidir qué plata entró, no
+         *     algo que haga quien la registró: por eso es un permiso aparte.
          */
         post: operations["dismiss_appointment_api_appointments__appointment_id__dismiss_post"];
         delete?: never;
@@ -6410,6 +6467,48 @@ export interface components {
             /** Treatment */
             treatment?: string | null;
         };
+        /** DbObjectPrivileges */
+        DbObjectPrivileges: {
+            /** Object */
+            object: string;
+            /** Privileges */
+            privileges: string[];
+        };
+        /** DbPrivilegesOut */
+        DbPrivilegesOut: {
+            /** Enforcement Active */
+            enforcement_active: boolean;
+            /** Roles */
+            roles: components["schemas"]["DbRolePrivileges"][];
+        };
+        /** DbRolePrivileges */
+        DbRolePrivileges: {
+            /** Db Role */
+            db_role: string;
+            system: components["schemas"]["DbSystemPrivileges"];
+            /** Objects */
+            objects: components["schemas"]["DbObjectPrivileges"][];
+        };
+        /**
+         * DbSystemPrivileges
+         * @description Atributos del rol en PostgreSQL y lo que puede hacer con el schema.
+         */
+        DbSystemPrivileges: {
+            /** Superuser */
+            superuser: boolean;
+            /** Create Db */
+            create_db: boolean;
+            /** Create Role */
+            create_role: boolean;
+            /** Login */
+            login: boolean;
+            /** Bypass Rls */
+            bypass_rls: boolean;
+            /** Schema Usage */
+            schema_usage: boolean;
+            /** Schema Create */
+            schema_create: boolean;
+        };
         /** DomainBody */
         DomainBody: {
             /** Hostname */
@@ -8350,6 +8449,17 @@ export interface components {
             users: number;
             setup: components["schemas"]["OnboardingStatus"];
         };
+        /** PermissionItem */
+        PermissionItem: {
+            /** Key */
+            key: string;
+            /** Group */
+            group: string;
+            /** Label */
+            label: string;
+            /** Admin Only */
+            admin_only: boolean;
+        };
         /** PersonalTemplateCreate */
         PersonalTemplateCreate: {
             /** Name */
@@ -8518,6 +8628,30 @@ export interface components {
         RecoveryCodesOut: {
             /** Recovery Codes */
             recovery_codes: string[];
+        };
+        /** RoleItem */
+        RoleItem: {
+            key: components["schemas"]["UserRole"];
+            /** Name */
+            name: string;
+            /** Editable */
+            editable: boolean;
+            /** Permissions */
+            permissions: string[];
+            /** Active Users */
+            active_users: number;
+        };
+        /** RolePermissionsUpdate */
+        RolePermissionsUpdate: {
+            /** Permissions */
+            permissions: string[];
+        };
+        /** RolesOut */
+        RolesOut: {
+            /** Roles */
+            roles: components["schemas"]["RoleItem"][];
+            /** Permissions */
+            permissions: components["schemas"]["PermissionItem"][];
         };
         /**
          * RowOutcome
@@ -9433,6 +9567,11 @@ export interface components {
              * @default false
              */
             can_handle_calls: boolean;
+            /**
+             * Permissions
+             * @default []
+             */
+            permissions: string[];
         };
         /**
          * UserRole
@@ -11254,6 +11393,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_roles_api_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolesOut"];
+                };
+            };
+        };
+    };
+    put_role_permissions_api_roles__role__permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolePermissionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_db_privileges_api_roles_db_privileges_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbPrivilegesOut"];
                 };
             };
         };

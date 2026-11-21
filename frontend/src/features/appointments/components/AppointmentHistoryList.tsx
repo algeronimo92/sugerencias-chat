@@ -1,5 +1,6 @@
 import { ArchiveX, CalendarClock, ExternalLink, FlaskConical, Loader2, RefreshCw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { can } from '../../../shared/permissions'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -79,7 +80,7 @@ export function AppointmentHistoryList() {
           className="mb-3"
           message="Google Calendar no está conectado: las citas quedan solo en la app y no se pueden sincronizar."
           anchor="calendario"
-          canConnect={me?.role === 'admin'}
+          canConnect={can(me, 'settings.manage')}
         />
       )}
       <div className="relative mb-3">
@@ -245,7 +246,7 @@ export function AppointmentHistoryList() {
                     <ExternalLink className="h-3.5 w-3.5" /> Ver en Calendar
                   </a>
                 )}
-                {me?.role === 'admin' && !item.test_mode && <AppointmentDismissAction item={item} />}
+                {can(me, 'appointments.manage') && !item.test_mode && <AppointmentDismissAction item={item} />}
               </footer>
             </article>
           ))}

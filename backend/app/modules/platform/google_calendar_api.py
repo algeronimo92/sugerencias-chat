@@ -20,7 +20,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from app.core.config import settings
 from app.core.errors import Conflict, Invalid, Unavailable
 from app.integrations import google_calendar as google
-from app.modules.auth.public import User, require_admin
+from app.modules.auth.public import User, Permission, require_permission
 from app.modules.platform.google_oauth_state import (
     InvalidOAuthState,
     OAuthState,
@@ -46,6 +46,8 @@ from app.tenancy.resolver import (
 )
 
 logger = logging.getLogger(__name__)
+
+require_settings_manage = require_permission(Permission.SETTINGS_MANAGE)
 
 router = APIRouter(prefix="/api/settings/google-calendar", tags=["settings"])
 callback_router = APIRouter(tags=["integrations"])
@@ -132,7 +134,7 @@ async def get_google_calendar_status():
 async def post_google_authorize(
     body: GoogleAuthorizeRequest,
     request: Request,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_settings_manage),
 ):
     config = await google.platform_oauth_config()
     if not all(config.values()):

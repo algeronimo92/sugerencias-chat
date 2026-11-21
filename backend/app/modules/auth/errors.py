@@ -10,8 +10,9 @@ class LastAdminError(Exception):
 
 
 class AnalystCannotHandleCallsError(Exception):
-    """El analista solo mira el dashboard: no abre chats ni tiene tiempo real,
-    así que una llamada nunca podría sonarle."""
+    """El rol no tiene ``calls.handle`` (por defecto, el analista): sin ese
+    permiso una llamada nunca podría sonarle. El nombre quedó de cuando solo
+    el analista no atendía."""
 
 
 class LastCallAgentError(Exception):

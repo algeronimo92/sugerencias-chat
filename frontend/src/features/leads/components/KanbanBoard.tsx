@@ -9,6 +9,7 @@ import { displayName } from '../utils/chat'
 import type { Chat } from '../types'
 import { kanbanColumns } from '../domain/leadStageMeta'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import { useLeadStageCatalog } from '../hooks/useLeadStages'
 import { useKanbanSnapshot, useMoveLeadStage } from '../kanban-queries'
 import type { LeadStage } from '../types'
@@ -245,7 +246,7 @@ export function KanbanBoard({ onOpenChat }: KanbanBoardProps) {
         <BulkActionsFooter
           selected={selectedIds}
           onSelectionChange={setSelectedIds}
-          isAdmin={me?.role === 'admin'}
+          isAdmin={can(me, 'leads.assign')}
           noun="lead"
           // En la lista el conteo y "Cancelar" ya están arriba, en la fila de
           // la etapa: la barra queda solo con las acciones.

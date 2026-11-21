@@ -12,9 +12,9 @@ from fastapi.testclient import TestClient
 from app.bootstrap import domain_error_handler
 from app.core.errors import DomainError
 from app.modules.auth.public import get_current_user
-from app.modules.auth.role_policy import route_allowed_for
 from app.modules.conversations import calls_api
 from app.modules.leads import visibility
+from tests.permission_fakes import use_role_matrix
 
 SDP = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\n"
 ROW = {
@@ -36,7 +36,7 @@ def api(monkeypatch):
     monkeypatch.setattr(calls_api, "chat_calls", AsyncMock(return_value=[]))
     monkeypatch.setattr(calls_api, "call_offer", AsyncMock(return_value={"call_id": 7, "sdp": SDP}))
     # Todo el equipo ve todos los leads (el ajuste por defecto).
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=False))
+    use_role_matrix(monkeypatch)
     app = FastAPI()
     app.add_exception_handler(DomainError, domain_error_handler)
     app.include_router(calls_api.router)
@@ -80,9 +80,13 @@ def test_anyone_who_sees_chats_sees_the_calls_of_a_chat(api):
     assert api(_user(can_handle_calls=False)).get("/api/calls", params={"chat_id": "lead-1"}).status_code == 200
 
 
-@pytest.mark.parametrize(("method", "path"), [("GET", "/api/calls"), ("GET", "/api/calls/ringing"), ("POST", "/api/calls/7/accept")])
-def test_the_analyst_cannot_reach_any_call_route(method, path):
-    assert route_allowed_for("analista", method, path) is False
+@pytest.mark.parametrize(("method", "path", "body"), [
+    ("get", "/api/calls", None), ("get", "/api/calls/ringing", None),
+    ("post", "/api/calls/7/accept", {"sdp": SDP, "client_id": "tab"}),
+])
+def test_the_analyst_cannot_reach_any_call_route(api, method, path, body):
+    response = api(_user(role="analista")).request(method, path, json=body, params={"chat_id": "lead-1"})
+    assert response.status_code == 403
 
 
 def test_answering_passes_the_tab_and_the_audio_description(api):
@@ -104,7 +108,7 @@ def test_the_screen_never_receives_the_offer_in_a_call(api):
     ("get", "/api/calls/7/answer", None),
 ])
 def test_restricted_seller_cannot_access_a_foreign_call(api, monkeypatch, method, path, body):
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=True))
+    use_role_matrix(monkeypatch, sellers_see_all=False)
     monkeypatch.setattr(visibility, "fetch_lead_sellers", AsyncMock(return_value={"lead-1": 99}))
     monkeypatch.setattr(calls_api, "call_chat_id", AsyncMock(return_value="lead-1"))
     if path.endswith("ringing"):
@@ -119,7 +123,7 @@ def test_restricted_seller_cannot_access_a_foreign_call(api, monkeypatch, method
 
 
 def test_restricted_seller_cannot_start_a_call_to_a_foreign_lead(api, monkeypatch):
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=True))
+    use_role_matrix(monkeypatch, sellers_see_all=False)
     monkeypatch.setattr(visibility, "fetch_lead_sellers", AsyncMock(return_value={"lead-1": 99}))
     start = AsyncMock(return_value=ROW)
     monkeypatch.setattr(calls_api, "start_call", start)
@@ -130,7 +134,7 @@ def test_restricted_seller_cannot_start_a_call_to_a_foreign_lead(api, monkeypatc
 
 @pytest.mark.parametrize("user", [_user(), _user(role="admin")])
 def test_own_calls_and_admins_still_work_with_the_setting_on(api, monkeypatch, user):
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=True))
+    use_role_matrix(monkeypatch, sellers_see_all=False)
     monkeypatch.setattr(visibility, "fetch_lead_sellers", AsyncMock(return_value={"lead-1": 2}))
     monkeypatch.setattr(calls_api, "call_chat_id", AsyncMock(return_value="lead-1"))
     response = api(user).post("/api/calls/7/accept", json={"sdp": SDP, "client_id": "tab"})

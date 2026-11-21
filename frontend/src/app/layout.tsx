@@ -5,6 +5,7 @@ import { MessageSquareLock, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useBrand } from "../shared/branding";
+import { can } from "../shared/permissions";
 import { Avatar } from "../shared/ui/Avatar";
 import { BrandLogo } from "../shared/ui/BrandLogo";
 import { PageLoader } from "../shared/ui/PageLoader";
@@ -37,10 +38,12 @@ const IssueReportDialog = lazy(() =>
 export function MainLayout() {
   const brand = useBrand();
   const { data: me } = useMe();
-  const isAdmin = me?.role === "admin";
-  // El analista solo mira el dashboard: sin chats no hay no leídos, tiempo
-  // real, notificaciones ni reportes que mostrarle (ver navigation.ts).
-  const isAnalyst = me?.role === "analista";
+  // Primeros pasos e integraciones son de quien configura el negocio.
+  const isAdmin = can(me, "settings.manage");
+  const canOpenSettings = can(me, "settings.manage", "users.manage");
+  // Sin leads no hay no leídos, tiempo real ni notificaciones que mostrarle
+  // (por defecto, el analista, que solo mira el dashboard).
+  const isAnalyst = !can(me, "leads.view");
   const { mutate: logout } = useLogout();
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
   const navigate = useNavigate();
@@ -262,15 +265,15 @@ export function MainLayout() {
       <div className="flex min-h-0 min-w-0 flex-1 bg-canvas">
         {!isMobile && (
           <Sidebar
-            role={me?.role}
+            viewer={me}
             unreadCount={unreadCount}
             brandName={brand.name}
             account={me ? { name: me.name, role: roleLabel(me.role), onOpenSecurity: () => setIsAccountSecurityOpen(true) } : null}
             theme={theme}
             onToggleTheme={toggleTheme}
             onLogout={signOut}
-            onOpenSettings={isAdmin ? () => openSettings("general") : undefined}
-            onOpenIssueReport={isAnalyst ? undefined : () => setIsIssueReportOpen(true)}
+            onOpenSettings={canOpenSettings ? () => openSettings("general") : undefined}
+            onOpenIssueReport={() => setIsIssueReportOpen(true)}
             renderNotifications={(expanded) => notificationCenter(expanded ? "toolbar" : "rail")}
             extras={
               <>
@@ -291,19 +294,19 @@ export function MainLayout() {
       {/* Llamadas de WhatsApp: fuera de cualquier ruta, para que cambiar de
           pantalla no corte una llamada en curso. */}
       <CommandPalette
-        role={me?.role}
-        onOpenSettings={isAdmin ? () => openSettings("general") : undefined}
+        viewer={me}
+        onOpenSettings={canOpenSettings ? () => openSettings("general") : undefined}
       />
 
       {/* Navegación inferior — solo en móvil, y no dentro de una conversación:
           ahí el espacio es para el composer y se vuelve con la flecha. */}
       {isMobile && !chatId && (
         <MobileNavBar
-          role={me?.role}
+          viewer={me}
           unreadCount={unreadCount}
           account={{
-            onOpenSettings: isAdmin ? () => openSettings("general") : undefined,
-            onOpenIssueReport: isAnalyst ? undefined : () => setIsIssueReportOpen(true),
+            onOpenSettings: canOpenSettings ? () => openSettings("general") : undefined,
+            onOpenIssueReport: () => setIsIssueReportOpen(true),
             theme,
             onToggleTheme: toggleTheme,
             onLogout: signOut,

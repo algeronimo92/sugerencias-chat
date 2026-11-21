@@ -1,5 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
+import type { DbPrivileges, RolesMatrix } from './types'
 import type { AppUser, AsistenteNegocio, CallingReadiness, CallingSettings, CallingUpdate, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
@@ -326,4 +327,18 @@ export async function saveKnowledgeTemplate({ id, ...body }: { id: number | null
   return id
     ? (await client.put<ApiResponse<'/api/platform/knowledge-templates/{template_id}', 'put'>>(`/api/platform/knowledge-templates/${id}`, body)).data
     : (await client.post<ApiResponse<'/api/platform/knowledge-templates', 'post'>>('/api/platform/knowledge-templates', body)).data
+}
+
+export async function fetchRoles(): Promise<RolesMatrix> {
+  return (await client.get<ApiResponse<'/api/roles', 'get'>>('/api/roles')).data
+}
+
+export async function updateRolePermissions({ role, permissions }: { role: string; permissions: string[] }): Promise<RolesMatrix> {
+  return (
+    await client.put<ApiResponse<'/api/roles/{role}/permissions', 'put'>>(`/api/roles/${role}/permissions`, { permissions })
+  ).data
+}
+
+export async function fetchDbPrivileges(): Promise<DbPrivileges> {
+  return (await client.get<ApiResponse<'/api/roles/db-privileges', 'get'>>('/api/roles/db-privileges')).data
 }

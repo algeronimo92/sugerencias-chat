@@ -18,6 +18,7 @@ from app.modules.leads.domain.errors import LeadNotFound
 from app.modules.leads.schemas import LeadCreate
 from app.modules.platform import settings_service
 from app.realtime.ws_manager import ConnectionManager
+from tests.permission_fakes import use_role_matrix
 
 ADMIN = SimpleNamespace(id=1, role="admin")
 ANA = SimpleNamespace(id=7, role="vendedor")
@@ -27,7 +28,7 @@ BEA = SimpleNamespace(id=8, role="vendedor")
 @pytest.fixture
 def restricted(monkeypatch):
     """Ajuste encendido; ``sellers`` es el vendedor de cada lead existente."""
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=True))
+    use_role_matrix(monkeypatch, sellers_see_all=False)
     sellers = {"lead-ana": 7, "lead-bea": 8, "lead-libre": None}
 
     async def fetch(lead_ids):
@@ -39,7 +40,7 @@ def restricted(monkeypatch):
 
 @pytest.fixture
 def unrestricted(monkeypatch):
-    monkeypatch.setattr(visibility, "sellers_see_only_assigned_leads", AsyncMock(return_value=False))
+    use_role_matrix(monkeypatch)
     fetch = AsyncMock(side_effect=AssertionError("sin el ajuste no se consulta el lead"))
     monkeypatch.setattr(visibility, "fetch_lead_sellers", fetch)
 
@@ -198,13 +199,29 @@ async def test_mentions_only_reach_people_who_can_open_the_lead(restricted, monk
 async def test_changing_the_setting_refreshes_open_screens(monkeypatch):
     from app.modules.platform import settings_api
     from app.modules.platform.schemas import UpdateSettingsRequest
-    save, notify = AsyncMock(), AsyncMock()
+    save, notify, grant = AsyncMock(), AsyncMock(), AsyncMock()
+    use_role_matrix(monkeypatch)
     monkeypatch.setattr(settings_api, "update_settings", save)
     monkeypatch.setattr(settings_api, "lead_visibility_changed", notify)
+    monkeypatch.setattr(settings_api, "set_role_permission", grant)
     monkeypatch.setattr(settings_api, "list_settings", AsyncMock(return_value=[]))
     for value in ("true", "false"):
         await settings_api.put_settings(UpdateSettingsRequest(values={"sellers_see_only_assigned_leads": value}))
     assert notify.await_count == 2
+    # El interruptor escribe sobre la matriz: encendido le quita al vendedor
+    # ``leads.view_all``, apagado se lo devuelve.
+    assert [call.kwargs["granted"] for call in grant.await_args_list] == [False, True]
+    assert all(call.args == ("vendedor", "leads.view_all") for call in grant.await_args_list)
+
+
+async def test_the_setting_shows_what_the_matrix_says(monkeypatch):
+    from app.modules.platform import settings_api
+    item = {"key": "sellers_see_only_assigned_leads", "value": "false", "configured": False}
+    monkeypatch.setattr(settings_api, "list_settings", AsyncMock(return_value=[item]))
+    use_role_matrix(monkeypatch, sellers_see_all=False)
+    assert (await settings_api.get_settings())[0]["value"] == "true"
+    use_role_matrix(monkeypatch)
+    assert (await settings_api.get_settings())[0]["value"] == "false"
 
 
 async def test_a_reassignment_refreshes_the_previous_seller_without_leaking_the_lead(monkeypatch):

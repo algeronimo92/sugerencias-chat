@@ -10,6 +10,7 @@ import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import { readEditField } from "../../../shared/navigation/editFieldLink";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
+import { can } from '../../../shared/permissions'
 import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
 import { useLayout, useMediaQuery } from "../../../shared/hooks/useBreakpoint";
 import { Button } from "../../../shared/ui/Button";
@@ -134,7 +135,8 @@ function SuggestionsEmptyState() {
 
 export function ChatWorkspace() {
   const { data: me } = useMe();
-  const isAdmin = me?.role === "admin";
+  // Conectar integraciones (WhatsApp, voz) desde los avisos del chat.
+  const isAdmin = can(me, "settings.manage");
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
   const navigate = useNavigate();
   const location = useLocation();
@@ -187,11 +189,11 @@ export function ChatWorkspace() {
   const chats = data?.pages.flatMap((page) => page.items) ?? [];
   const contactsTotal = data?.pages[0]?.total ?? null;
 
-  // Estado de la conexión de WhatsApp. Lo ve todo el equipo (quien atiende
-  // tiene que saber que sus mensajes no salen); conectar es cosa del admin.
-  const { data: whatsappStatus } = useWhatsappStatus({ enabled: me != null });
+  // Estado de la conexión de WhatsApp. Lo ve quien atiende chats (tiene que
+  // saber que sus mensajes no salen); conectar es de quien configura.
+  const { data: whatsappStatus } = useWhatsappStatus({ enabled: can(me, "conversations.view") });
   const showConnectWhatsapp =
-    me?.role === "admin" &&
+    isAdmin &&
     whatsappStatus != null &&
     whatsappStatus.state !== "open";
 
@@ -378,7 +380,7 @@ export function ChatWorkspace() {
               <ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} onStartSelection={() => setSelection(new Set())} />
             )}
             footer={selection && (
-              <BulkActionsFooter selected={selection} onSelectionChange={setSelection} isAdmin={me?.role === "admin"} />
+              <BulkActionsFooter selected={selection} onSelectionChange={setSelection} isAdmin={can(me, "leads.assign")} />
             )}
             selection={selection}
             onToggleSelected={(chatId) => setSelection((current) => {

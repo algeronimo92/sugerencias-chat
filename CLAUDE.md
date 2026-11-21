@@ -81,12 +81,20 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
 - Solo `subscribers.py` habla con el WebSocket. Un módulo usa a otro por `public.py`, `schemas.py` o `ports/<op>.py` con `__all__`.
 - Tablas ajenas solo en `FOREIGN_TABLES`; módulos planos (`catalogs`, `media`, `notifications`, `issue_reports`, `tasks`) sin `service.py` que solo reenvíe.
 - Toda ruta nueva necesita guard o una entrada justificada en `PUBLIC_ROUTES` (`backend/tests/test_route_security.py`).
+- Toda ruta con sesión pide un permiso con `require_permission(Permission.X)` (`app/modules/auth/permissions.py`),
+  salvo las de la propia cuenta en `SELF_SERVICE_ROUTES`. No se compara `user.role` para decidir acceso: `can(user, ...)`.
+- Permisos en dos capas: la matriz de la app (`role_permissions`, editable por negocio en `/api/roles`) y tres roles de
+  PostgreSQL por negocio (`cv_<id>_admin`/`_vendedor`/`_analista`, privilegios solo en su schema) con `GRANT` por tabla (`app/modules/auth/db_privileges.py`,
+  `app/db/privileges.py`). Una tabla nueva va a `TABLE_GROUPS` (lo exige `tests/test_permissions.py`); los `GRANT`
+  los aplica `scripts.migrate` y cada cambio de la matriz. `SET LOCAL ROLE` por petición solo con `DB_ROLE_ENFORCEMENT=true`.
 
 **Frontend — `frontend/src/test/architecture.test.ts`:**
 - `shared/` y `realtime/` no importan `features/` ni `app/`, ni transitivamente; `app/` entra a una feature solo por `index`/`types`/`page`/`public`.
 - `axios` solo en `shared/http/`; HTTP solo en `features/*/api.ts`; respuestas tipadas con `ApiResponse<ruta, método>`.
 - Claves de React Query solo en `keys.ts`. Features en capas ordenadas (`auth` → … → `chats` → `dashboard`): una feature solo importa capas inferiores.
 - Componentes ≤400 líneas salvo los ya listados en `KNOWN_LARGE_COMPONENTS`.
+- Qué se muestra lo decide el permiso, no el rol: `can(me, 'leads.delete')` / `useCan()` (`shared/permissions.ts`),
+  rutas con `RequirePermission` y cada entrada del menú con su `permissions`. El rol solo para mostrarlo o para el 2FA del admin.
 
 ## Convenciones
 

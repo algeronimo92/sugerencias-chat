@@ -1,12 +1,18 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { installFakeApi } from '../../../test/fakeApi'
 import { createTestQueryClient, queryWrapper } from '../../../test/queryWrapper'
 import { SettingsPage } from './SettingsPage'
 
 const api = installFakeApi()
+
+const ADMIN = { id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin', can_handle_calls: false, permissions: [] }
+
+beforeEach(() => {
+  api.current.on('get', '/api/auth/me', { data: ADMIN })
+})
 
 function renderAt(path: string) {
   return render(
@@ -24,7 +30,9 @@ it('es una página con su título y una sección por URL', async () => {
 
   expect(screen.getByRole('heading', { level: 1, name: 'Configuración' })).toBeInTheDocument()
   const nav = screen.getByRole('navigation', { name: 'Secciones de configuración' })
-  expect(within(nav).getByRole('link', { name: 'General' })).toHaveAttribute('aria-current', 'page')
+  expect(await within(nav).findByRole('link', { name: 'General' })).toHaveAttribute('aria-current', 'page')
+  expect(within(nav).getByRole('link', { name: 'Roles y permisos' })).toHaveAttribute('href', '/configuracion/roles')
+  expect(within(nav).getByRole('link', { name: 'Privilegios en la base' })).toHaveAttribute('href', '/configuracion/base')
   expect(within(nav).getByRole('link', { name: 'Usuarios' })).toHaveAttribute('href', '/configuracion/usuarios')
   expect(screen.getByRole('link', { name: 'Integraciones' })).toHaveAttribute('href', '/integraciones')
 })

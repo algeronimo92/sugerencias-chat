@@ -4,7 +4,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { Bug, LogOut, Moon, MoreHorizontal, Settings as SettingsIcon, Sun, type LucideIcon } from 'lucide-react'
 import { Counter } from '../shared/ui/Badge'
 import { isNavItemActive, MOBILE_TAB_PATHS, visibleNavItems } from './navigation'
-import type { NavItem } from './navigation'
+import type { NavItem, Viewer } from './navigation'
 
 /** Lo que en escritorio son íconos de la barra superior. */
 export type MobileAccountActions = {
@@ -16,7 +16,7 @@ export type MobileAccountActions = {
 }
 
 type Props = {
-  role: string | undefined
+  viewer: Viewer
   unreadCount: number
   account: MobileAccountActions
 }
@@ -36,7 +36,7 @@ const tabClass = (active: boolean) =>
  * tema, cerrar sesión): en el celular eran seis íconos de 28 px apretados en
  * la barra superior, que además cortaba el nombre del negocio.
  */
-export function MobileNavBar({ role, unreadCount, account }: Props) {
+export function MobileNavBar({ viewer, unreadCount, account }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [isMoreOpen, setIsMoreOpen] = useState(false)
@@ -52,7 +52,7 @@ export function MobileNavBar({ role, unreadCount, account }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isMoreOpen])
 
-  const items = visibleNavItems(role)
+  const items = visibleNavItems(viewer)
   const primaryItems = MOBILE_TAB_PATHS.flatMap((path) => items.filter((item) => item.path === path))
   const secondaryItems = items.filter((item) => !MOBILE_TAB_PATHS.includes(item.path))
 

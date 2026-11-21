@@ -36,11 +36,6 @@ async def business_timezone() -> tzinfo:
         return ZoneInfo(DEFAULT_BUSINESS_TIMEZONE)
 
 
-async def sellers_see_only_assigned_leads() -> bool:
-    """Si cada vendedor ve solo sus leads asignados (ver leads/visibility.py)."""
-    return (await get_effective("sellers_see_only_assigned_leads")).strip().lower() == "true"
-
-
 async def calls_enabled() -> bool:
     """Si el negocio tiene activas las llamadas de WhatsApp. Lo escribe el
     panel de Integraciones al activarlas o desactivarlas en Meta."""

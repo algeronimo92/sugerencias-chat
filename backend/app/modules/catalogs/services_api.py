@@ -14,7 +14,7 @@ from app.modules.catalogs.schemas import (
     ServiceUsageResponse,
 )
 from app.modules.catalogs.erp_catalog import ErpCatalogError, sync_catalog, sync_status, test_catalog
-from app.modules.auth.public import get_current_user, require_admin
+from app.modules.auth.public import Permission, require_permission
 from app.modules.catalogs.queries import list_lead_services
 from app.modules.catalogs.service import (
     ErpManagedError,
@@ -29,35 +29,39 @@ from app.modules.catalogs.service import (
     update_service_package,
 )
 
+require_catalogs_manage = require_permission(Permission.CATALOGS_MANAGE)
+# El chat y la ficha del lead los listan para elegir.
+require_leads_view = require_permission(Permission.LEADS_VIEW)
+
 router = APIRouter(prefix="/api/services", tags=["lead-services"])
 
 
 @router.get("", response_model=list[LeadServiceItem])
-async def get_services(_user: User = Depends(get_current_user)):
+async def get_services(_user: User = Depends(require_leads_view)):
     return await list_lead_services()
 
 
 @router.get("/all", response_model=list[LeadServiceItem])
-async def get_all_services(_admin: User = Depends(require_admin)):
+async def get_all_services(_admin: User = Depends(require_catalogs_manage)):
     return await list_lead_services(include_inactive=True)
 
 
 # Antes de ``/{service_id}``: FastAPI prueba las rutas en orden y "erp-sync"
 # no es un entero.
 @router.get("/erp-sync", response_model=ErpSyncStatus)
-async def get_erp_sync_status(_admin: User = Depends(require_admin)):
+async def get_erp_sync_status(_admin: User = Depends(require_catalogs_manage)):
     return await sync_status()
 
 
 @router.post("/erp-sync/test", response_model=ErpTestResult)
-async def test_erp_connection(body: ErpTestRequest, _admin: User = Depends(require_admin)):
+async def test_erp_connection(body: ErpTestRequest, _admin: User = Depends(require_catalogs_manage)):
     """Pide el catálogo y lo valida sin guardar nada: para probar una URL
     antes de conectarla."""
     return await test_catalog(body.url)
 
 
 @router.post("/erp-sync", response_model=ErpSyncStatus)
-async def run_erp_sync(_admin: User = Depends(require_admin)):
+async def run_erp_sync(_admin: User = Depends(require_catalogs_manage)):
     """Sincroniza ahora con el ERP. Si falla, el estado queda anotado igual."""
     try:
         return await sync_catalog()
@@ -66,7 +70,7 @@ async def run_erp_sync(_admin: User = Depends(require_admin)):
 
 
 @router.post("", response_model=LeadServiceItem, status_code=201)
-async def post_service(body: LeadServiceCreate, user: User = Depends(get_current_user)):
+async def post_service(body: LeadServiceCreate, user: User = Depends(require_leads_view)):
     name = " ".join(body.name.split())
     if not name:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
@@ -80,7 +84,7 @@ async def post_service(body: LeadServiceCreate, user: User = Depends(get_current
 async def patch_service(
     service_id: int,
     body: LeadServiceUpdate,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_catalogs_manage),
 ):
     values = body.model_dump(exclude_unset=True)
     if "name" in values:
@@ -110,7 +114,7 @@ def _usage_payload(report) -> dict:
 
 
 @router.get("/{service_id}/usage", response_model=ServiceUsageResponse)
-async def get_service_usage(service_id: int, _admin: User = Depends(require_admin)):
+async def get_service_usage(service_id: int, _admin: User = Depends(require_catalogs_manage)):
     """Qué usa al servicio (leads, ventas, plantillas, automatizaciones,
     documentos), con algunos de cada uno para ir a revisarlos: lo muestra el
     cuadro de eliminar antes de intentarlo."""
@@ -127,7 +131,7 @@ def _in_use_message(usages) -> str:
 
 
 @router.delete("/{service_id}", status_code=204)
-async def remove_service(service_id: int, _admin: User = Depends(require_admin)):
+async def remove_service(service_id: int, _admin: User = Depends(require_catalogs_manage)):
     try:
         deleted = await delete_lead_service(service_id)
     except ErpManagedError:
@@ -153,7 +157,7 @@ def _clean_package_values(values: dict) -> dict:
 async def post_service_package(
     service_id: int,
     body: ServicePackageCreate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_catalogs_manage),
 ):
     values = _clean_package_values(body.model_dump())
     try:
@@ -172,7 +176,7 @@ async def patch_service_package(
     service_id: int,
     package_id: int,
     body: ServicePackageUpdate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_catalogs_manage),
 ):
     values = _clean_package_values(body.model_dump(exclude_unset=True))
     if "price" in values and values["price"] is None:

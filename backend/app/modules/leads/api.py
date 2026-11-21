@@ -13,7 +13,7 @@ from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.auth.public import User
 from app.modules.conversations.ports.chat_queries import CHATS_PAGE_SIZE
 from app.modules.leads.kanban_queries import KANBAN_PAGE_SIZE
-from app.modules.auth.public import get_current_user, list_active_sellers, require_admin
+from app.modules.auth.public import Permission, can, get_current_user, list_active_sellers, require_permission
 from app.modules.catalogs.ports.custom_fields import CustomFieldError, normalize_values
 from app.modules.conversations.ports.chat_queries import LeadFilters, fetch_chat, fetch_chats, search_chat_messages
 from app.modules.conversations.ports.inbox_queries import fetch_inbox_counts, fetch_total_unread_chat_count
@@ -47,6 +47,9 @@ from app.modules.platform.public import effective_country_code
 
 # Toda ruta que recibe un lead por id pasa por la visibilidad del vendedor
 # (ver leads/visibility.py); las listas la aplican en sus filtros.
+# La lectura (``leads.view``) la exige bootstrap para todo el router.
+require_leads_edit = require_permission(Permission.LEADS_EDIT)
+
 router = APIRouter(prefix="/api/chats", tags=["chats"], dependencies=[Depends(require_visible_lead)])
 logger = logging.getLogger(__name__)
 
@@ -201,7 +204,9 @@ async def get_kanban_stage(
 
 # Antes de las rutas con `{chat_id}`: "service-interest" no es un lead.
 @router.post("/service-interest/reassign", response_model=ServiceInterestReassignResult)
-async def reassign_service_interest(body: ServiceInterestReassign, admin: User = Depends(require_admin)):
+async def reassign_service_interest(
+    body: ServiceInterestReassign, admin: User = Depends(require_permission(Permission.CATALOGS_MANAGE)),
+):
     """Pasa todos los leads con ``from_service`` como servicio de interés a
     ``to_service`` (otro servicio activo) o los deja sin servicio. Lo usa
     Catálogos para poder eliminar un servicio que usan muchos leads."""
@@ -213,20 +218,20 @@ async def reassign_service_interest(body: ServiceInterestReassign, admin: User =
 
 
 @router.patch("/{chat_id}/stage", response_model=Chat)
-async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(get_current_user)):
+async def move_chat_stage(chat_id: str, body: LeadStageUpdate, user: User = Depends(require_leads_edit)):
     await commands.change_stage(chat_id, body.stage, actor=Actor.user(user.id), lost_reason=body.razon_perdido)
     return await _chat_or_404(chat_id)
 
 
 @router.post("", response_model=Chat, status_code=201)
-async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
+async def create_chat(body: LeadCreate, user: User = Depends(require_leads_edit)):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio")
     digits = await _normalized_phone(body.phone)
 
-    if user.role != "admin" and body.vendedor_id not in (None, user.id):
-        raise HTTPException(status_code=403, detail="Solo un administrador puede asignar otro vendedor")
+    if not can(user, Permission.LEADS_ASSIGN) and body.vendedor_id not in (None, user.id):
+        raise HTTPException(status_code=403, detail="Tu rol no puede asignar el lead a otra persona")
     vendedor_id = body.vendedor_id
     # Si solo ve sus leads, uno que crea sin asignar desaparecería de su lista
     # en cuanto lo guarda.
@@ -256,9 +261,9 @@ async def create_chat(body: LeadCreate, user: User = Depends(get_current_user)):
 
 
 @router.patch("/{chat_id}", response_model=Chat)
-async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(get_current_user)):
-    if "vendedor_id" in body.model_fields_set and user.role != "admin" and body.vendedor_id != user.id:
-        raise HTTPException(status_code=403, detail="Solo un administrador puede reasignar o quitar el vendedor")
+async def update_chat(chat_id: str, body: LeadUpdate, user: User = Depends(require_leads_edit)):
+    if "vendedor_id" in body.model_fields_set and not can(user, Permission.LEADS_ASSIGN) and body.vendedor_id != user.id:
+        raise HTTPException(status_code=403, detail="Tu rol no puede reasignar ni quitar el vendedor")
     values = lead_column_values(body.model_dump(exclude_unset=True))
 
     # El teléfono ya no es la identidad del lead. Al cambiarlo solo se actualiza
@@ -288,34 +293,35 @@ async def get_chat(chat_id: str):
 
 
 @router.post("/{chat_id}/no-show", response_model=Chat)
-async def register_no_show(chat_id: str, user: User = Depends(get_current_user)):
+async def register_no_show(chat_id: str, user: User = Depends(require_leads_edit)):
     """El vendedor confirma que el cliente no llegó a la cita agendada."""
     await commands.register_no_show(chat_id, actor=Actor.user(user.id))
     return await _chat_or_404(chat_id)
 
 
 @router.delete("/{chat_id}", status_code=204)
-async def delete_chat(chat_id: str, admin: User = Depends(require_admin)):
+async def delete_chat(chat_id: str, admin: User = Depends(require_permission(Permission.LEADS_DELETE))):
     """Borra el lead y todo su historial (mensajes, tareas, notas). No se
-    puede deshacer: sin soft-delete, es admin-only a propósito."""
+    puede deshacer: sin soft-delete, es un permiso aparte y solo del admin
+    salvo que el negocio lo dé."""
     await commands.delete_lead(chat_id, actor=Actor.user(admin.id))
 
 
 @router.post("/{chat_id}/merge", response_model=Chat)
-async def merge_chat(chat_id: str, body: LeadMergeRequest, admin: User = Depends(require_admin)):
+async def merge_chat(chat_id: str, body: LeadMergeRequest, admin: User = Depends(require_permission(Permission.LEADS_MERGE))):
     """Fusiona `other_id` (se borra) dentro de `chat_id` (se conserva)."""
     await commands.merge_leads(body.other_id, chat_id, actor=Actor.user(admin.id))
     return await _chat_or_404(chat_id)
 
 
 @router.post("/{chat_id}/tags/{tag_id}", response_model=Chat)
-async def add_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
+async def add_chat_tag(chat_id: str, tag_id: int, user: User = Depends(require_leads_edit)):
     await commands.assign_tag(chat_id, tag_id, actor=Actor.user(user.id))
     return await _chat_or_404(chat_id)
 
 
 @router.delete("/{chat_id}/tags/{tag_id}", response_model=Chat)
-async def delete_chat_tag(chat_id: str, tag_id: int, user: User = Depends(get_current_user)):
+async def delete_chat_tag(chat_id: str, tag_id: int, user: User = Depends(require_leads_edit)):
     await commands.remove_tag(chat_id, tag_id, actor=Actor.user(user.id))
     return await _chat_or_404(chat_id)
 

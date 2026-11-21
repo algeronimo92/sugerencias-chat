@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import type { UserNotification } from '../types'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotificationHistory } from '../hooks/useNotificationHistory'
 import type { NotificationPermissionState } from '../hooks/useNotifications'
@@ -53,7 +54,8 @@ function authorName(notification: UserNotification): string {
 export function NotificationCenter({ browserPermission, onRequestBrowserPermission, onNewNotification, placement = 'header' }: Props) {
   const navigate = useNavigate()
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  // Reintentar un flujo frenado por la ventana de 24 h.
+  const isAdmin = can(me, 'automations.manage')
   const { subscribed: pushSubscribed, subscribe: subscribeToPush } = usePushSubscription()
   const [open, setOpen] = useState(false)
   const [unreadOnly, setUnreadOnly] = useState(false)

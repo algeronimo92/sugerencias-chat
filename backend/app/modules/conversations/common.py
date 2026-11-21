@@ -10,10 +10,13 @@ ROUTER_PREFIX = "/api/chats"
 ROUTER_TAGS = ["chats"]
 
 
-def chats_router() -> APIRouter:
+def chats_router(*dependencies) -> APIRouter:
     """Router de las rutas ``/api/chats/{chat_id}/...``: un vendedor que solo
-    ve sus leads no lee ni escribe en el chat de otro."""
-    return APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS, dependencies=[Depends(require_visible_lead)])
+    ve sus leads no lee ni escribe en el chat de otro. ``dependencies`` suma
+    las del router (el permiso que piden todas sus rutas)."""
+    return APIRouter(
+        prefix=ROUTER_PREFIX, tags=ROUTER_TAGS, dependencies=[Depends(require_visible_lead), *dependencies],
+    )
 
 
 async def _require_existing_lead(chat_id: str) -> None:

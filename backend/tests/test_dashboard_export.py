@@ -55,11 +55,11 @@ async def test_a_seller_exports_nothing_and_an_analyst_only_numbers_without_pers
 
     monkeypatch.setattr(dashboard_router, "build_export", fake_build)
 
-    seller = SimpleNamespace(id=3, role="vendedor")
-    for report in ExportReport:
-        with pytest.raises(HTTPException) as exc:
-            await dashboard_router.export_report(report=report, days=30, user=seller)
-        assert exc.value.status_code == 403
+    import inspect
+    from app.core.errors import Forbidden
+    guard = inspect.signature(dashboard_router.export_report).parameters["user"].default.dependency
+    with pytest.raises(Forbidden):
+        await guard(user=SimpleNamespace(id=3, role="vendedor"))
 
     analyst = SimpleNamespace(id=2, role="analista")
     for report in (ExportReport.LEADS, ExportReport.BACKUP):

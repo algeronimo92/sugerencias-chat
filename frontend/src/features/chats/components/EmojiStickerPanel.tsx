@@ -3,6 +3,7 @@ import { Loader2, Plus, Search, Smile, Sticker } from 'lucide-react'
 import { lazy, Suspense, useRef, useState } from 'react'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import { useMediaLibrary, useUploadMediaAsset } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import { resolveMediaUrl } from '../../whatsapp/public/message'
@@ -121,7 +122,8 @@ function StickerGrid({ onSelect }: { onSelect: (asset: MediaAsset) => void }) {
   const [search, setSearch] = useState('')
   const { data: assets = [], isLoading } = useMediaLibrary(search, 'image')
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  // Guardar stickers en la biblioteca del negocio.
+  const isAdmin = can(me, 'media_library.manage')
   const upload = useUploadMediaAsset()
   const fileRef = useRef<HTMLInputElement>(null)
 

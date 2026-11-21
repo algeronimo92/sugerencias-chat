@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.auth.public import User
 from app.modules.notifications.schemas import NotificationPage
-from app.modules.auth.ports.auth_service import (get_current_user)
+from app.modules.auth.ports.auth_service import (Permission, get_current_user, require_permission)
 from app.modules.notifications.queries import list_notifications
 from app.modules.leads.ports.visibility import seller_scope
 from app.modules.notifications.service import mark_all_notifications_read, mark_notification_read
 
-router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+# Los avisos hablan de leads: los recibe quien puede verlos.
+router = APIRouter(prefix="/api/notifications", tags=["notifications"], dependencies=[Depends(require_permission(Permission.LEADS_VIEW))])
 
 
 @router.get("", response_model=NotificationPage)

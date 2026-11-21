@@ -18,6 +18,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { can } from '../../../shared/permissions'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { IssueReportPriority, IssueReportStatus } from '../types'
@@ -41,7 +42,7 @@ function formatDate(value: string) {
 export function IssueReportsPage({ onCreate }: { onCreate: () => void }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  const isAdmin = can(me, 'issue_reports.manage')
   const [status, setStatus] = useState<IssueReportStatus | ''>('')
   const [priority, setPriority] = useState<IssueReportPriority | ''>('')
   const [search, setSearch] = useState('')

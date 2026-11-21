@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import TemplateCategoryCreate, TemplateCategoryItem, TemplateCategoryUpdate
-from app.modules.auth.public import get_current_user, require_admin
+from app.modules.auth.public import Permission, require_permission
 from app.modules.catalogs.template_categories_queries import list_template_categories
 from app.modules.catalogs.template_categories_service import TemplateCategoryAlreadyExistsError, create_template_category, update_template_category
+
+require_templates_manage = require_permission(Permission.TEMPLATES_MANAGE)
+require_templates_use = require_permission(Permission.TEMPLATES_USE)
 
 router = APIRouter(prefix="/api/template-categories", tags=["template-categories"])
 
@@ -17,17 +20,17 @@ def _name(value: str) -> str:
 
 
 @router.get("", response_model=list[TemplateCategoryItem])
-async def get_categories(_user: User = Depends(get_current_user)):
+async def get_categories(_user: User = Depends(require_templates_use)):
     return await list_template_categories()
 
 
 @router.get("/all", response_model=list[TemplateCategoryItem])
-async def get_all_categories(_admin: User = Depends(require_admin)):
+async def get_all_categories(_admin: User = Depends(require_templates_manage)):
     return await list_template_categories(include_inactive=True)
 
 
 @router.post("", response_model=TemplateCategoryItem, status_code=201)
-async def post_category(body: TemplateCategoryCreate, admin: User = Depends(require_admin)):
+async def post_category(body: TemplateCategoryCreate, admin: User = Depends(require_templates_manage)):
     try:
         return await create_template_category(_name(body.name), admin.id)
     except TemplateCategoryAlreadyExistsError:
@@ -38,7 +41,7 @@ async def post_category(body: TemplateCategoryCreate, admin: User = Depends(requ
 async def patch_category(
     category_id: int,
     body: TemplateCategoryUpdate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_templates_manage),
 ):
     values = body.model_dump(exclude_unset=True)
     if "name" in values:

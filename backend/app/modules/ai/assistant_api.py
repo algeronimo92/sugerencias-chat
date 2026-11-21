@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from app.modules.auth.public import User
 from app.modules.media.schemas import MediaAssetItem
 from app.modules.ai.ai_assistant_service import PROFILE_FIELDS, get_profile, update_profile
-from app.modules.auth.public import require_admin
+from app.modules.auth.public import Permission, require_permission
 from app.modules.ai.knowledge_service import (
     MAX_CONTENT_LENGTH,
     MAX_TITLE_LENGTH,
@@ -34,6 +34,8 @@ from app.modules.ai.knowledge_service import (
 from app.modules.media.ports.media_library_service import (set_media_asset_ai_description)
 from app.modules.ai.providers_service import providers_status, test_provider
 
+require_ai_configure = require_permission(Permission.AI_CONFIGURE)
+
 router = APIRouter(prefix="/api/ai", tags=["ai-assistant"])
 
 
@@ -43,7 +45,7 @@ async def read_profile():
 
 
 @router.put("/profile", response_model=AIProfileItem)
-async def write_profile(body: AIProfileBody, admin: User = Depends(require_admin)):
+async def write_profile(body: AIProfileBody, admin: User = Depends(require_ai_configure)):
     values = body.model_dump(include=set(PROFILE_FIELDS))
     try:
         return await update_profile(values, admin.id)
@@ -133,12 +135,12 @@ async def update_ai_resource(asset_id: int, body: AIResourceBody):
 
 
 @router.get("/providers", response_model=AiProvidersStatus)
-async def get_ai_providers(_admin: User = Depends(require_admin)):
+async def get_ai_providers(_admin: User = Depends(require_ai_configure)):
     return await providers_status()
 
 
 @router.post("/providers/test", response_model=AiProviderTestResult)
-async def post_ai_provider_test(body: AiProviderTestRequest, _admin: User = Depends(require_admin)):
+async def post_ai_provider_test(body: AiProviderTestRequest, _admin: User = Depends(require_ai_configure)):
     """Una llamada mínima al modelo con la clave tipeada (o la guardada):
     comprueba clave y modelo antes de activar el copiloto nativo."""
     return await test_provider(body.provider, api_key=body.api_key, model=body.model)

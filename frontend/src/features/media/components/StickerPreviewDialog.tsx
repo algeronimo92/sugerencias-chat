@@ -1,6 +1,7 @@
 import { Check, Loader2, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { useMe } from '../../../shared/auth'
+import { can } from '../../../shared/permissions'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
 import { useSaveStickerToLibrary } from '../queries'
 
@@ -17,7 +18,7 @@ export function StickerPreviewDialog({
   onClose: () => void
 }) {
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  const isAdmin = can(me, 'media_library.manage')
   const save = useSaveStickerToLibrary()
   const [saved, setSaved] = useState(false)
 

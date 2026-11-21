@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 from app.core.request_metrics import install_db_timing
+from app.db.privileges import set_local_role_sql
 from app.tenancy.context import TenantContext, get_current_tenant, validate_schema_name
 
 _engine: AsyncEngine | None = None
@@ -44,6 +45,12 @@ def _apply_current_tenant_after_begin(session, transaction, connection) -> None:
         text("SELECT set_config('search_path', :search_path, true)"),
         {"search_path": f"{schema_name}, public"},
     )
+    # Dentro de una petición, la transacción corre con el rol de PostgreSQL
+    # del usuario (app/db/privileges.py): la base rechaza por sí misma lo que
+    # ese rol no puede hacer. También es LOCAL: no sobrevive al commit.
+    set_role = set_local_role_sql(schema_name)
+    if set_role:
+        connection.execute(text(set_role))
 
 
 def _to_async_url(url: str) -> str:

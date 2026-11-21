@@ -24,12 +24,17 @@ from app.modules.appointments.schemas import (
     NoticeSettings,
     NoticeSettingsUpdate,
 )
-from app.modules.auth.public import get_current_user, require_admin
+from app.modules.auth.public import Permission, can, require_permission
 from app.modules.media.ports.media_upload import (normalize_media_content_type)
 from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.platform.public import effective_country_code
 from app.modules.auth.public import list_active_sellers
 from app.modules.leads.ports.visibility import ensure_lead_visible, seller_scope
+
+require_appointments_view = require_permission(Permission.APPOINTMENTS_VIEW)
+require_appointments_edit = require_permission(Permission.APPOINTMENTS_EDIT)
+require_appointments_manage = require_permission(Permission.APPOINTMENTS_MANAGE)
+require_appointments_configure = require_permission(Permission.APPOINTMENTS_CONFIGURE)
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 
@@ -42,49 +47,49 @@ async def _active_seller_names() -> set[str]:
 
 
 @router.get("", response_model=list[AppointmentItem])
-async def get_appointments(user: User = Depends(get_current_user)):
+async def get_appointments(user: User = Depends(require_appointments_view)):
     return await list_appointments(owner_id=await seller_scope(user))
 
 
 @router.get("/calendar-template", response_model=CalendarEventTemplate)
-async def get_calendar_template(_user: User = Depends(require_admin)):
+async def get_calendar_template(_user: User = Depends(require_appointments_configure)):
     return await calendar_template.get_template()
 
 
 @router.put("/calendar-template", response_model=CalendarEventTemplate)
-async def put_calendar_template(body: CalendarEventTemplateUpdate, _user: User = Depends(require_admin)):
+async def put_calendar_template(body: CalendarEventTemplateUpdate, _user: User = Depends(require_appointments_configure)):
     return await calendar_template.save_template(body.title_template, body.description_template)
 
 
 @router.get("/notice-sender", response_model=NoticeSender)
-async def get_notice_sender(user: User = Depends(require_admin)):
+async def get_notice_sender(user: User = Depends(require_appointments_configure)):
     return await notice.get_sender(user.id)
 
 
 @router.put("/notice-sender", response_model=NoticeSender)
-async def put_notice_sender(body: NoticeSenderUpdate, user: User = Depends(require_admin)):
+async def put_notice_sender(body: NoticeSenderUpdate, user: User = Depends(require_appointments_configure)):
     return await notice.save_sender(body.phone_number_id, user.id)
 
 
 @router.post("/notice-sender/embedded-signup", response_model=NoticeSender)
-async def post_notice_sender_signup(body: NoticeSenderSignup, user: User = Depends(require_admin)):
+async def post_notice_sender_signup(body: NoticeSenderSignup, user: User = Depends(require_appointments_configure)):
     return await notice.link_sender(body.code, body.waba_id, body.phone_number_id, user.id, mode=body.mode)
 
 
 @router.post("/notice-sender/templates", response_model=NoticeSender)
-async def post_notice_sender_templates(user: User = Depends(require_admin)):
+async def post_notice_sender_templates(user: User = Depends(require_appointments_configure)):
     """Copia a la cuenta del número de avisos las plantillas de los avisos
     que todavía no están ahí."""
     return await notice.copy_templates(user.id)
 
 
 @router.get("/notices/{audience}", response_model=NoticeSettings)
-async def get_notice(audience: Audience, user: User = Depends(require_admin)):
+async def get_notice(audience: Audience, user: User = Depends(require_appointments_configure)):
     return await notice.get_settings(audience, user.id)
 
 
 @router.put("/notices/{audience}", response_model=NoticeSettings)
-async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User = Depends(require_admin)):
+async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User = Depends(require_appointments_configure)):
     return await notice.save_settings(
         audience, enabled=body.enabled, template_id=body.template_id, parameters=body.parameters, user_id=user.id,
     )
@@ -93,7 +98,7 @@ async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User 
 @router.post("/{appointment_id}/sync-calendar", response_model=AppointmentItem)
 async def sync_appointment_calendar(
     appointment_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_appointments_edit),
 ):
     if await seller_scope(user) is not None:
         appointment = await get_appointment(appointment_id)
@@ -107,14 +112,14 @@ async def sync_appointment_calendar(
 
 
 @router.post("/{appointment_id}/dismiss", response_model=AppointmentItem)
-async def dismiss_appointment(appointment_id: int, body: AppointmentDismiss, user: User = Depends(require_admin)):
-    """Solo admin: sacar una cita de las cifras de ventas es decidir qué plata
-    entró, no algo que haga quien la registró."""
+async def dismiss_appointment(appointment_id: int, body: AppointmentDismiss, user: User = Depends(require_appointments_manage)):
+    """Sacar una cita de las cifras de ventas es decidir qué plata entró, no
+    algo que haga quien la registró: por eso es un permiso aparte."""
     return await commands.dismiss(appointment_id, user_id=user.id, reason=body.reason)
 
 
 @router.post("/{appointment_id}/restore", response_model=AppointmentItem)
-async def restore_appointment(appointment_id: int, _user: User = Depends(require_admin)):
+async def restore_appointment(appointment_id: int, _user: User = Depends(require_appointments_manage)):
     return await commands.restore(appointment_id)
 
 
@@ -136,7 +141,7 @@ def _attachment(body: AppointmentCreate):
 
 
 @router.post("", response_model=AppointmentCreated)
-async def post_appointment(body: AppointmentCreate, user: User = Depends(get_current_user)):
+async def post_appointment(body: AppointmentCreate, user: User = Depends(require_appointments_edit)):
     if body.lead_id is not None:
         await ensure_lead_visible(user, body.lead_id)
     elif await seller_scope(user) is not None:
@@ -150,8 +155,8 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(get_cur
         raise HTTPException(400, str(exc)) from exc
     if body.vendedor.strip() not in await _active_seller_names():
         raise HTTPException(400, "Vendedor inválido: elige un usuario activo del equipo")
-    if body.test_mode and user.role != "admin":
-        raise HTTPException(403, "Solo un administrador puede enviar en modo prueba")
+    if body.test_mode and not can(user, Permission.APPOINTMENTS_MANAGE):
+        raise HTTPException(403, "Tu rol no puede enviar citas en modo prueba")
     try:
         custom_fields = await normalize_values("appointment", body.custom_fields, require_required=True)
     except CustomFieldError as exc:

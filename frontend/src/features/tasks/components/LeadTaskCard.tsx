@@ -7,6 +7,7 @@ import { PanelSection, PanelSectionAction } from '../../../shared/ui/PanelSectio
 import { Tooltip } from '../../../shared/ui/Tooltip'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import { TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskStatusValue, TaskTypeValue, isTaskPriority, isTaskType } from '../domain/taskCatalog'
 import { QUICK_FOLLOW_UPS, quickFollowUpDue, type QuickFollowUp } from '../domain/quickFollowUps'
 import type { Chat } from '../../leads/types'
@@ -22,7 +23,7 @@ const localInputValue = (date: Date) => {
 
 export function LeadTaskCard({ chat }: { chat: Chat }) {
   const { data: me } = useMe()
-  const { data = [] } = useTasks('pending', chat.chat_id, undefined, me?.role === 'admin')
+  const { data = [] } = useTasks('pending', chat.chat_id, undefined, can(me, 'team.supervise'))
   const next = data[0]
   const { mutate: create, isPending: isCreating } = useCreateTask()
   const { mutate: update, isPending: isCompleting } = useUpdateTask()

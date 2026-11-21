@@ -1,6 +1,7 @@
 import { CalendarDays, CalendarPlus, Check, CheckCircle2, FlaskConical, History, Info, Loader2 } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useMe } from '../../../shared/auth'
+import { can } from '../../../shared/permissions'
 import { Button } from '../../../shared/ui/Button'
 import { submitLabel } from '../domain/submitLabel'
 import { DEPOSIT_FIELD_KEY, appointmentResultMessage, loadAppointmentDraft, useAppointmentForm } from '../hooks/useAppointmentForm'
@@ -20,7 +21,8 @@ const DRAFT_KEY = 'nueva-cita-draft-v2'
 
 export function NewAppointmentPage() {
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  // Enviar en modo prueba (por defecto, solo el admin).
+  const isAdmin = can(me, 'appointments.manage')
   const { data: calendar } = useGoogleCalendarStatus()
   const state = useAppointmentForm(DRAFT_KEY)
   const currency = useBusinessCurrency()
@@ -65,7 +67,7 @@ export function NewAppointmentPage() {
                 <IntegrationNotice
                   message="Google Calendar no está conectado: la cita se guardará en la app, pero no aparecerá en el calendario del negocio."
                   anchor="calendario"
-                  canConnect={me?.role === 'admin'}
+                  canConnect={can(me, 'settings.manage')}
                 />
               )}
               {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.tone === 'info' ? 'border-amber-400/40 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300' : 'border-green-500/30 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300'}`}><CheckCircle2 className="mr-2 inline h-4 w-4" />{feedback.text}</div>}

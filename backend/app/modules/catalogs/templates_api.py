@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, MetaTemplateRaw, TemplateAttachmentOrder, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
-from app.modules.auth.ports.auth_service import (get_current_user, require_admin)
+from app.modules.auth.ports.auth_service import (Permission, can, require_permission)
 from app.modules.catalogs.queries import get_lead_service_by_name
 from app.modules.catalogs.template_service import (
     add_template_attachment,
@@ -44,6 +44,9 @@ from app.modules.catalogs.template_validation import (
 )
 
 logger = logging.getLogger(__name__)
+require_templates_manage = require_permission(Permission.TEMPLATES_MANAGE)
+require_templates_use = require_permission(Permission.TEMPLATES_USE)
+
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
 TEMPLATE_ERROR_STATUS: dict[type[Exception], int] = {
@@ -70,12 +73,12 @@ async def _canonical_service(value: str | None) -> str | None:
 
 
 @router.get("", response_model=list[TemplateItem])
-async def get_templates(include_inactive: bool = False, user: User = Depends(get_current_user)):
-    return await list_templates(user.id, include_inactive and user.role == "admin")
+async def get_templates(include_inactive: bool = False, user: User = Depends(require_templates_use)):
+    return await list_templates(user.id, include_inactive and can(user, Permission.TEMPLATES_MANAGE))
 
 
 @router.get("/meta", response_model=list[MetaTemplateRaw])
-async def get_meta_templates(_admin: User = Depends(require_admin)):
+async def get_meta_templates(_admin: User = Depends(require_templates_manage)):
     """Lista tal cual las devuelve Meta (`GET /{waba_id}/message_templates`),
     sin pasar por las plantillas guardadas en la BD -- sirve para ver el
     estado real de la WABA, por ejemplo plantillas creadas desde el WhatsApp
@@ -87,7 +90,7 @@ async def get_meta_templates(_admin: User = Depends(require_admin)):
 
 
 @router.get("/meta/{meta_template_id}", response_model=MetaTemplateRaw)
-async def get_meta_template_detail(meta_template_id: str, _admin: User = Depends(require_admin)):
+async def get_meta_template_detail(meta_template_id: str, _admin: User = Depends(require_templates_manage)):
     """Detalle completo (con `components`) de una plantilla puntual de Meta --
     lo que necesita el diálogo de importación para mostrar cuántas variables
     tiene el body antes de pedirle al admin sus valores por defecto."""
@@ -184,7 +187,7 @@ async def _parse_meta_template(remote: dict, admin_id: int) -> dict:
 
 @router.post("/meta/{meta_template_id}/import", response_model=TemplateItem, status_code=201)
 async def post_import_meta_template(
-    meta_template_id: str, body: TemplateMetaImport, admin: User = Depends(require_admin),
+    meta_template_id: str, body: TemplateMetaImport, admin: User = Depends(require_templates_manage),
 ):
     """Vincula a la app una plantilla que ya existe (y está aprobada o en
     revisión) del lado de Meta -- por ejemplo, creada desde el WhatsApp
@@ -235,12 +238,12 @@ async def post_import_meta_template(
 
 
 @router.get("/capabilities", response_model=TemplateCapabilities)
-async def get_capabilities(_user: User = Depends(get_current_user)):
+async def get_capabilities(_user: User = Depends(require_templates_use)):
     return await get_whatsapp_capabilities()
 
 
 @router.post("", response_model=TemplateItem, status_code=201)
-async def post_template(body: TemplateCreate, admin: User = Depends(require_admin)):
+async def post_template(body: TemplateCreate, admin: User = Depends(require_templates_manage)):
     values = body.model_dump()
     with _template_errors():
         values = await validate_template_values(values)
@@ -269,7 +272,7 @@ async def post_template(body: TemplateCreate, admin: User = Depends(require_admi
 
 
 @router.post("/personal", response_model=TemplateItem, status_code=201)
-async def post_personal_template(body: PersonalTemplateCreate, user: User = Depends(get_current_user)):
+async def post_personal_template(body: PersonalTemplateCreate, user: User = Depends(require_templates_use)):
     values = {
         "name": body.name,
         "content": body.content,
@@ -289,21 +292,21 @@ async def post_personal_template(body: PersonalTemplateCreate, user: User = Depe
 
 
 @router.put("/{template_id}/favorite")
-async def put_favorite(template_id: int, body: TemplateFavoriteUpdate, user: User = Depends(get_current_user)):
+async def put_favorite(template_id: int, body: TemplateFavoriteUpdate, user: User = Depends(require_templates_use)):
     if not await set_template_favorite(template_id, user.id, body.is_favorite):
         raise HTTPException(404, "Plantilla no encontrada")
     return {"status": "ok"}
 
 
 @router.post("/{template_id}/use")
-async def post_template_use(template_id: int, user: User = Depends(get_current_user)):
+async def post_template_use(template_id: int, user: User = Depends(require_templates_use)):
     if not await record_template_use(template_id, user.id):
         raise HTTPException(404, "Plantilla no encontrada")
     return {"status": "ok"}
 
 
 @router.post("/{template_id}/attachments", response_model=TemplateAttachmentItem, status_code=201)
-async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admin: User = Depends(require_admin)):
+async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admin: User = Depends(require_templates_manage)):
     content_type = normalize_media_content_type(body.content_type, body.filename)
     try:
         media_url = await asyncio.to_thread(
@@ -359,7 +362,7 @@ async def post_attachment(template_id: int, body: TemplateAttachmentCreate, admi
 async def post_library_attachment(
     template_id: int,
     body: TemplateLibraryAttachmentCreate,
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_templates_manage),
 ):
     asset = await get_media_asset(body.asset_id)
     if asset is None:
@@ -380,7 +383,7 @@ async def post_library_attachment(
 
 
 @router.put("/{template_id}/attachments/order", response_model=list[TemplateAttachmentItem])
-async def put_attachment_order(template_id: int, body: TemplateAttachmentOrder, _admin: User = Depends(require_admin)):
+async def put_attachment_order(template_id: int, body: TemplateAttachmentOrder, _admin: User = Depends(require_templates_manage)):
     """El orden de los adjuntos: el texto de la plantilla va como pie del
     primero que lo admite, así que elegir cuál va primero cambia el mensaje."""
     with _template_errors():
@@ -391,7 +394,7 @@ async def put_attachment_order(template_id: int, body: TemplateAttachmentOrder, 
 
 
 @router.delete("/attachments/{attachment_id}")
-async def delete_attachment(attachment_id: int, _admin: User = Depends(require_admin)):
+async def delete_attachment(attachment_id: int, _admin: User = Depends(require_templates_manage)):
     attachment = await remove_template_attachment(attachment_id)
     if attachment is None:
         raise HTTPException(404, "Adjunto no encontrado")
@@ -404,7 +407,7 @@ async def delete_attachment(attachment_id: int, _admin: User = Depends(require_a
 
 
 @router.patch("/{template_id}", response_model=TemplateItem)
-async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = Depends(require_admin)):
+async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = Depends(require_templates_manage)):
     values = body.model_dump(exclude_unset=True)
     current = next((item for item in await list_templates(_admin.id, True) if item["id"] == template_id), None)
     if current is None:
@@ -486,7 +489,7 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
 
 
 @router.delete("/{template_id}")
-async def delete_template(template_id: int, _admin: User = Depends(require_admin)):
+async def delete_template(template_id: int, _admin: User = Depends(require_templates_manage)):
     try:
         deleted = await delete_template_record(template_id)
     except ValueError as exc:
@@ -506,7 +509,7 @@ async def delete_template(template_id: int, _admin: User = Depends(require_admin
 
 
 @router.post("/{template_id}/sync", response_model=TemplateItem)
-async def post_sync_template(template_id: int, admin: User = Depends(require_admin)):
+async def post_sync_template(template_id: int, admin: User = Depends(require_templates_manage)):
     """Reemplaza los campos administrados por Meta con su version vigente."""
     current = next((item for item in await list_templates(admin.id, True) if item["id"] == template_id), None)
     if current is None:

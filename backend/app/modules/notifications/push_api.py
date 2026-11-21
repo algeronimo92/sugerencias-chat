@@ -3,10 +3,11 @@ from fastapi import APIRouter, Depends, Request
 from app.core.config import settings
 from app.modules.auth.public import User
 from app.modules.notifications.schemas import PushSubscribeRequest, PushUnsubscribeRequest, VapidPublicKeyResponse
-from app.modules.auth.ports.auth_service import (get_current_user)
+from app.modules.auth.ports.auth_service import (Permission, get_current_user, require_permission)
 from app.modules.notifications.push_service import delete_subscription, save_subscription
 
-router = APIRouter(prefix="/api/push", tags=["push"])
+# Los avisos hablan de leads: los recibe quien puede verlos.
+router = APIRouter(prefix="/api/push", tags=["push"], dependencies=[Depends(require_permission(Permission.LEADS_VIEW))])
 
 
 @router.get("/vapid-public-key", response_model=VapidPublicKeyResponse)

@@ -17,7 +17,7 @@ from app.modules.conversations.schemas import ScheduledMessageCreate
 from app.modules.conversations.ports.types import ScheduledMessageStatus
 
 LEAD_ID = "1fbbc88a-3cd3-5ae2-9b58-9772fc53bab6"
-SELLER = SimpleNamespace(id=4, role="seller")
+SELLER = SimpleNamespace(id=4, role="vendedor")
 
 
 async def test_schedule_route_trims_text_and_announces_it(in_memory_conversations):

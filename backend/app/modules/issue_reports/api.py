@@ -16,7 +16,7 @@ from app.modules.issue_reports.schemas import (
     IssueReportUpdate,
 )
 from app.modules.media.ports.media_upload import (normalize_media_content_type, save_media_file)
-from app.modules.auth.public import get_current_user
+from app.modules.auth.public import Permission, can, get_current_user
 from app.modules.issue_reports.queries import get_issue_report, get_issue_report_detail, list_issue_reports
 from app.modules.issue_reports.service import (
     InvalidReportContextError,
@@ -46,7 +46,7 @@ async def get_reports(
     priority: IssueReportPriority | None = None,
     user: User = Depends(get_current_user),
 ):
-    return await list_issue_reports(user.id, user.role == "admin", status, priority)
+    return await list_issue_reports(user.id, can(user, Permission.ISSUE_REPORTS_MANAGE), status, priority)
 
 
 @router.post("", response_model=IssueReportItem, status_code=201)
@@ -121,7 +121,7 @@ async def get_report(report_id: int, user: User = Depends(get_current_user)):
     report = await get_issue_report_detail(report_id)
     if report is None:
         raise HTTPException(404, "Reporte no encontrado")
-    if user.role != "admin" and report["reporter_user_id"] != user.id:
+    if not can(user, Permission.ISSUE_REPORTS_MANAGE) and report["reporter_user_id"] != user.id:
         raise HTTPException(403, "No puedes ver el reporte de otro usuario")
     return report
 
@@ -132,7 +132,7 @@ async def patch_report(
     body: IssueReportUpdate,
     user: User = Depends(get_current_user),
 ):
-    if user.role != "admin":
+    if not can(user, Permission.ISSUE_REPORTS_MANAGE):
         raise HTTPException(403, "Solo un administrador puede cambiar el estado")
     report = await update_issue_report(report_id, body.status, body.priority, user.id)
     if report is None:
@@ -149,12 +149,12 @@ async def post_report_comment(
     report = await get_issue_report(report_id)
     if report is None:
         raise HTTPException(404, "Reporte no encontrado")
-    if user.role != "admin" and report["reporter_user_id"] != user.id:
+    if not can(user, Permission.ISSUE_REPORTS_MANAGE) and report["reporter_user_id"] != user.id:
         raise HTTPException(403, "No puedes comentar el reporte de otro usuario")
     content = body.content.strip()
     if not content:
         raise HTTPException(400, "El comentario no puede estar vacío")
     comment = await comment_issue_report(
-        report, author_id=user.id, author_name=user.name, author_is_admin=user.role == "admin", content=content,
+        report, author_id=user.id, author_name=user.name, author_is_admin=can(user, Permission.ISSUE_REPORTS_MANAGE), content=content,
     )
     return comment
