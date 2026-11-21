@@ -389,7 +389,9 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
         onLoadedMetadataCapture={handleMediaSettled}
         onWheelCapture={releaseAnchor}
         onTouchMoveCapture={releaseAnchor}
-        className="h-full overflow-y-auto px-3 py-4 sm:px-6"
+        // overflow-x-hidden: una burbuja propia deslizada para responder sale
+        // por la derecha y no tiene que abrir un scroll horizontal.
+        className="h-full overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-6"
       >
       {/* El observer mide este div (no el scroller): su alto es el del
           contenido real, que es lo que cambia cuando la media asienta. */}

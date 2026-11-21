@@ -5,6 +5,7 @@ import type { Chat } from '../../leads/types'
 import type { Message, MetaStatus, OutboxStatus } from '../../whatsapp/types'
 import { displayName } from '../../leads/public/chat'
 import { messageAdReferral, metaErrors, parseContent, resolveMediaUrl } from '../../whatsapp/public/message'
+import { useSwipeToReply } from '../hooks/useSwipeToReply'
 import { AdReferralCard } from './AdReferralCard'
 import { MessageActionsMenu, type MessageMenuAction } from './MessageActionsMenu'
 import { MessageAnalysis, MessageBody } from './MessageBody'
@@ -356,6 +357,9 @@ export function MessageBubble({
   const canPin = m.id > 0 && !isDeleted;
   const isPinned = !!m.pinned_at;
   const isForwarded = m.payload?.forwarded === true && !isDeleted;
+  // Deslizar a la derecha para responder, como WhatsApp en el teléfono.
+  const canSwipeReply = canReply && !selectionMode;
+  const swipe = useSwipeToReply({ enabled: canSwipeReply, onReply: onStartReply });
   const actionButtonClass =
     "rounded-full p-1.5 text-wa-muted transition-colors hover:bg-black/5 hover:text-wa-text dark:text-wa-muted-dark dark:hover:bg-white/10 dark:hover:text-wa-text-dark";
 
@@ -429,13 +433,14 @@ export function MessageBubble({
           selectionMode
             ? `-mx-3 select-none px-3 sm:-mx-6 sm:px-6 ${isSelected ? "bg-wa-primary/10 dark:bg-wa-primary/15" : ""} ${canForward ? "cursor-pointer" : "cursor-default"}`
             : ""
-        }`}
+        } ${canSwipeReply ? "touch-pan-y" : ""}`}
         data-message-id={m.id}
-        onPointerDown={startLongPress}
-        onPointerMove={trackLongPress}
-        onPointerUp={cancelLongPress}
-        onPointerCancel={cancelLongPress}
+        onPointerDown={(event) => { startLongPress(event); swipe.handlers.onPointerDown(event); }}
+        onPointerMove={(event) => { trackLongPress(event); swipe.handlers.onPointerMove(event); }}
+        onPointerUp={(event) => { cancelLongPress(); swipe.handlers.onPointerUp(event); }}
+        onPointerCancel={() => { cancelLongPress(); swipe.handlers.onPointerCancel(); }}
         onPointerLeave={cancelLongPress}
+        onClickCapture={swipe.handlers.onClickCapture}
         onClick={canForward ? handleRowClick : undefined}
         onKeyDown={
           selectionMode && canForward
@@ -474,7 +479,17 @@ export function MessageBubble({
           en WhatsApp.
           85% en móvil, como WhatsApp: al 75% de una pantalla de
           360px los mensajes se parten en demasiadas líneas. */}
-        <div className="flex max-w-[85%] flex-col sm:max-w-[75%]">
+        <div ref={swipe.targetRef} className="relative flex max-w-[85%] flex-col sm:max-w-[75%]">
+          {canSwipeReply && (
+            <span
+              ref={swipe.iconRef}
+              aria-hidden="true"
+              data-testid="swipe-reply-icon"
+              className="pointer-events-none absolute right-full top-1/2 mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/10 text-wa-text opacity-0 dark:bg-white/15 dark:text-wa-text-dark"
+            >
+              <CornerUpLeft className="h-4 w-4" />
+            </span>
+          )}
           <div
             className={`relative rounded-bubble text-sm shadow-sm transition-all duration-700 text-fg ${isVisualMedia ? "p-1.5" : "px-3.5 py-2"} ${
               isVendedor
