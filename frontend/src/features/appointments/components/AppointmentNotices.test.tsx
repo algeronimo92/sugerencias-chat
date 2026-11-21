@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AppointmentNotice } from '../types'
 import { AppointmentNotices } from './AppointmentNotices'
 
@@ -24,6 +24,23 @@ describe('AppointmentNotices', () => {
     expect(screen.getByRole('img', { name: 'Rosa: No enviado' })).toBeInTheDocument()
     expect(screen.getByText('Sin WhatsApp cargado en Usuarios')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Grecia: Enviado' })).toBeInTheDocument()
+  })
+
+  it('ofrece reenviar los fallidos, no los que no se mandaron por falta de datos', () => {
+    const onRetry = vi.fn()
+    const withUndelivered: AppointmentNotice[] = [
+      ...notices,
+      { ...base, id: 6, audience: 'client', recipient_name: 'Zarela', status: 'sent', delivery_status: 'failed' },
+    ]
+    render(<MemoryRouter><AppointmentNotices notices={withUndelivered} leadId="lead-1" onRetry={onRetry} /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reenviar 2 avisos fallidos' }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('sin permiso para reenviar no muestra el botón', () => {
+    render(<MemoryRouter><AppointmentNotices notices={notices} leadId="lead-1" /></MemoryRouter>)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('no muestra nada si la cita no generó avisos', () => {

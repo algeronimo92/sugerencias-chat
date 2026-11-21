@@ -182,7 +182,20 @@ class FakeNotices:
     deliveries: list[dict] = field(default_factory=list)
 
     async def record(self, appointment_id: int, notices: list[dict]) -> None:
-        self.rows.extend({"appointment_id": appointment_id, **notice} for notice in notices)
+        for notice in notices:
+            self.rows.append({"id": len(self.rows) + 1, "appointment_id": appointment_id, **notice})
+
+    async def failed(self, appointment_id: int) -> list[dict]:
+        return [
+            dict(row) for row in self.rows
+            if row["appointment_id"] == appointment_id
+            and (row["status"] == "failed" or row.get("delivery_status") == "failed")
+        ]
+
+    async def record_retries(self, appointment_id: int, attempts: list[tuple[int, dict]]) -> None:
+        for notice_id, notice in attempts:
+            index = next(i for i, row in enumerate(self.rows) if row["id"] == notice_id)
+            self.rows[index] = {"id": notice_id, "appointment_id": appointment_id, **notice}
 
     async def record_delivery(self, **values) -> int:
         self.deliveries.append(values)

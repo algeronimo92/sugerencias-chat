@@ -493,6 +493,82 @@ async def test_a_failed_send_from_the_notice_number_is_recorded(stored, in_memor
     assert (row["status"], row["reason"]) == ("failed", "Meta rechazó el número")
 
 
+async def test_failed_notices_can_be_sent_again(stored, in_memory_appointments):
+    # Pasó con el número de avisos desconectado: todos los avisos del día
+    # fallaron y había que mandarlos sin volver a cargar las citas.
+    await notice.save_settings(Audience.CLIENT, enabled=True, template_id=7, parameters=CLIENT_FIELDS, user_id=1)
+    await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
+    await notice.save_sender("AVISOS_ID", 1)
+    world = in_memory_appointments
+    world.staff.team = [
+        {"id": 1, "name": "Admin", "phone": "51900000001"},
+        {"id": 5, "name": "Grecia", "phone": "51900000002"},
+        {"id": 6, "name": "Sin número", "phone": None},
+    ]
+    world.messenger.error = RuntimeError("Object with ID 'AVISOS_ID' does not exist")
+    world.messenger.failing_phones = {"51900000001", "51900000002"}
+    appointment_id = await _appointment(world)
+    await notice.send_client_notice(appointment_id)
+    await notice.send_staff_notice(appointment_id)
+    assert [row["status"] for row in world.notices.rows] == ["failed", "failed", "failed", "skipped"]
+
+    world.messenger.error = None
+    # Grecia corrigió su número en Usuarios después del fallo.
+    world.staff.team[1] = {"id": 5, "name": "Grecia", "phone": "51900000009"}
+
+    assert await notice.retry_failed_notices(appointment_id) == {"retried": 3, "sent": 3}
+
+    # Cada reintento reemplaza al fallido: el sin número no se toca.
+    rows = [(row["id"], row["recipient_name"], row["status"]) for row in world.notices.rows]
+    assert rows == [(1, "AYME", "sent"), (2, "Admin", "sent"), (3, "Grecia", "sent"), (4, "Sin número", "skipped")]
+    assert world.messenger.from_sender[0]["sender"] == "AVISOS_ID"
+    assert [item["phone"] for item in world.messenger.to_phones] == ["51900000001", "51900000009"]
+    # Sin nada fallido no se manda nada más.
+    assert await notice.retry_failed_notices(appointment_id) == {"retried": 0, "sent": 0}
+
+
+async def test_a_retry_through_the_crm_chat_is_a_new_send(stored, in_memory_appointments):
+    # El outbox descarta lo que ya tiene con la misma clave: el reintento
+    # necesita una propia.
+    await notice.save_settings(Audience.CLIENT, enabled=True, template_id=7, parameters=CLIENT_FIELDS, user_id=1)
+    world = in_memory_appointments
+    world.messenger.error = NoticeNotSent("Meta no respondió")
+    appointment_id = await _appointment(world)
+    await notice.send_client_notice(appointment_id)
+
+    world.messenger.error = None
+    assert await notice.retry_failed_notices(appointment_id) == {"retried": 1, "sent": 1}
+
+    [sent] = world.messenger.sent
+    assert sent["dedupe_key"].startswith(f"appointment-client-notice:{appointment_id}:retry:1:")
+    [row] = world.notices.rows
+    assert (row["status"], row["wsp_message_id"]) == ("sent", 9001)
+
+
+async def test_a_retry_with_a_stale_template_stays_failed(stored, in_memory_appointments):
+    await notice.save_settings(Audience.STAFF, enabled=True, template_id=12, parameters=STAFF_FIELDS, user_id=1)
+    world = in_memory_appointments
+    world.staff.team = [{"id": 1, "name": "Admin", "phone": "51900000001"}]
+    world.messenger.error = NoticeNotSent("Meta rechazó")
+    world.messenger.failing_phones = {"51900000001"}
+    appointment_id = await _appointment(world)
+    await notice.send_staff_notice(appointment_id)
+    notice.list_templates.return_value = [APPROVED]
+
+    assert await notice.retry_failed_notices(appointment_id) == {"retried": 1, "sent": 0}
+    [row] = world.notices.rows
+    assert (row["status"], row["reason"]) == ("failed", notice._STALE_TEMPLATE)
+
+
+async def test_a_test_appointment_has_nothing_to_retry(stored, in_memory_appointments):
+    from app.modules.appointments.domain.errors import AppointmentNotFound
+
+    appointment_id = await _appointment(in_memory_appointments, test_mode=True)
+
+    with pytest.raises(AppointmentNotFound):
+        await notice.retry_failed_notices(appointment_id)
+
+
 async def test_with_a_notice_number_the_team_can_use_a_template_with_image(stored, in_memory_appointments):
     # Desde el número del CRM la imagen del encabezado la sube el outbox de
     # los chats, que no interviene en el aviso al equipo; desde el número de

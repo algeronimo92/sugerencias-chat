@@ -15,6 +15,12 @@ export function noticeState(notice: AppointmentNotice): { label: string; tone: N
   }
 }
 
+/** Un aviso que se puede reenviar: Meta no lo aceptó o informó que no llegó.
+ *  El "no enviado" (sin lead o sin número) no se arregla reenviando. */
+export function isFailedNotice(notice: AppointmentNotice): boolean {
+  return notice.status === 'failed' || notice.delivery_status === 'failed'
+}
+
 export function noticeRecipient(notice: AppointmentNotice): string {
   return notice.audience === 'client' ? `Cliente · ${notice.recipient_name}` : notice.recipient_name
 }

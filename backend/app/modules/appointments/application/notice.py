@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from uuid import uuid4
 
 from app.db.uow import collect, unit_of_work
 from app.modules.appointments.application.ports import appointment_ports
 from app.modules.appointments.domain.events import NoticeTemplatesChanged
 from app.modules.appointments.domain.calendar_event import BUILTIN_FIELDS, CUSTOM_PREFIX
-from app.modules.appointments.domain.errors import NoticeAccountUnavailable
+from app.modules.appointments.domain.errors import AppointmentNotFound, NoticeAccountUnavailable
 from app.modules.appointments.domain.notice import (
     FORMATTED_FIELDS,
     LEAD_CUSTOM_PREFIX,
@@ -203,60 +204,79 @@ async def send_client_notice(appointment_id: int) -> str:
     appointment = await _appointment(appointment_id)
     if appointment is None:
         return "skipped"
+    result = await _client_attempt(appointment, config, dedupe_key=f"appointment-client-notice:{appointment_id}")
+    await appointment_ports().notices.record(appointment_id, [result])
+    return "no_lead" if result["status"] == "skipped" else result["status"]
+
+
+_STALE_TEMPLATE = "La plantilla ya no es una plantilla oficial aprobada y global"
+
+
+async def _client_attempt(appointment: dict, config: NoticeConfig, *, dedupe_key: str) -> dict:
+    """Manda el aviso al cliente y devuelve el registro de cómo salió, sin
+    guardarlo. Nunca levanta: un fallo queda como ``failed`` con su motivo."""
     ports = appointment_ports()
+    appointment_id = appointment["id"]
     notice = {
         "audience": Audience.CLIENT.value, "recipient_name": appointment.get("nombre_completo") or "Cliente",
         "phone": appointment.get("telefono") or None, "template_id": config.template_id,
     }
     if not appointment.get("lead_id"):
-        await ports.notices.record(appointment_id, [{
-            **notice, "status": "skipped", "reason": "La cita no está vinculada a un lead",
-        }])
-        return "no_lead"
+        return {**notice, "status": "skipped", "reason": "La cita no está vinculada a un lead"}
     lead = await ports.leads.snapshot(appointment["lead_id"])
     parameters = parameter_values(appointment, config.parameters, lead)
     sender = await _sender()
     if sender is not None:
-        return await _send_client_from(appointment, config.template_id, parameters, sender, notice)
+        # Desde el número de avisos: directo a su WhatsApp, fuera de su chat.
+        # Su estado de entrega se reconoce por el id de Meta.
+        template = await _template(config.template_id, appointment["created_by_user_id"], Audience.CLIENT)
+        if template is None:
+            return {**notice, "status": "failed", "reason": _STALE_TEMPLATE}
+        try:
+            provider_id = await ports.messenger.send_to_lead_from(
+                chat_id=appointment["lead_id"], template=template, parameters=parameters, sender=sender,
+            )
+        except Exception as exc:
+            # Cualquier error, también al leer la imagen del encabezado: el aviso
+            # queda registrado como fallido en vez de perderse en el log.
+            logger.warning("No se pudo avisar al cliente de la cita %s", appointment_id, exc_info=True)
+            return {**notice, "status": "failed", "reason": _short(exc)}
+        return {**notice, "status": "sent", "provider_message_id": provider_id}
     try:
         message_id = await ports.messenger.send_to_lead(
             chat_id=appointment["lead_id"], template_id=config.template_id,
-            parameters=parameters,
-            user_id=appointment["created_by_user_id"], dedupe_key=f"appointment-client-notice:{appointment_id}",
+            parameters=parameters, user_id=appointment["created_by_user_id"], dedupe_key=dedupe_key,
         )
     except Exception as exc:
         logger.warning("No se pudo encolar el aviso al cliente de la cita %s", appointment_id, exc_info=True)
-        await ports.notices.record(appointment_id, [{**notice, "status": "failed", "reason": _short(exc)}])
-        return "failed"
-    await ports.notices.record(appointment_id, [{**notice, "status": "sent", "wsp_message_id": message_id}])
-    return "sent"
+        return {**notice, "status": "failed", "reason": _short(exc)}
+    return {**notice, "status": "sent", "wsp_message_id": message_id}
 
 
-async def _send_client_from(
-    appointment: dict, template_id: int, parameters: list[str], sender: str, notice: dict,
-) -> str:
-    """El aviso al cliente desde el número de avisos: directo a su WhatsApp,
-    fuera de su chat. Su estado de entrega se reconoce por el id de Meta."""
-    ports = appointment_ports()
-    appointment_id = appointment["id"]
-    template = await _template(template_id, appointment["created_by_user_id"], Audience.CLIENT)
-    if template is None:
-        await ports.notices.record(appointment_id, [{
-            **notice, "status": "failed", "reason": "La plantilla ya no es una plantilla oficial aprobada y global",
-        }])
-        return "failed"
+async def _staff_attempt(
+    appointment_id: int, recipient: dict, template: dict, parameters: list[str], sender: str | None,
+) -> dict:
+    """Manda el aviso a alguien del equipo y devuelve el registro de cómo
+    salió, sin guardarlo. Nunca levanta."""
+    notice = {
+        "audience": Audience.STAFF.value, "recipient_name": recipient["name"], "user_id": recipient["id"],
+        "phone": recipient["phone"], "template_id": template["id"],
+    }
+    if not recipient["phone"]:
+        return {**notice, "status": "skipped", "reason": "Sin WhatsApp cargado en Usuarios"}
     try:
-        provider_id = await ports.messenger.send_to_lead_from(
-            chat_id=appointment["lead_id"], template=template, parameters=parameters, sender=sender,
+        provider_id = await appointment_ports().messenger.send_to_phone(
+            phone=recipient["phone"], template=template, parameters=parameters, sender=sender,
         )
     except Exception as exc:
-        # Cualquier error, también al leer la imagen del encabezado: el aviso
-        # queda registrado como fallido en vez de perderse en el log.
-        logger.warning("No se pudo avisar al cliente de la cita %s", appointment_id, exc_info=True)
-        await ports.notices.record(appointment_id, [{**notice, "status": "failed", "reason": _short(exc)}])
-        return "failed"
-    await ports.notices.record(appointment_id, [{**notice, "status": "sent", "provider_message_id": provider_id}])
-    return "sent"
+        # Cualquier error, no solo los esperados: en la cita 359 uno
+        # inesperado con el primer destinatario cortó el envío y el resto
+        # del equipo se quedó sin aviso.
+        logger.warning(
+            "No se pudo avisar al usuario %s de la cita %s", recipient["id"], appointment_id, exc_info=True,
+        )
+        return {**notice, "status": "failed", "reason": _short(exc)}
+    return {**notice, "status": "sent", "provider_message_id": provider_id}
 
 
 async def send_staff_notice(appointment_id: int) -> dict[int, str]:
@@ -280,32 +300,89 @@ async def send_staff_notice(appointment_id: int) -> dict[int, str]:
     results: dict[int, str] = {}
     notices: list[dict] = []
     for recipient in await ports.staff.recipients(appointment.get("vendedor") or ""):
-        notice = {
-            "audience": Audience.STAFF.value, "recipient_name": recipient["name"], "user_id": recipient["id"],
-            "phone": recipient["phone"], "template_id": config.template_id,
-        }
-        if not recipient["phone"]:
-            notices.append({**notice, "status": "skipped", "reason": "Sin WhatsApp cargado en Usuarios"})
-            results[recipient["id"]] = "skipped"
-            continue
-        try:
-            provider_id = await ports.messenger.send_to_phone(
-                phone=recipient["phone"], template=template, parameters=parameters, sender=sender,
-            )
-            notices.append({**notice, "status": "sent", "provider_message_id": provider_id})
-            results[recipient["id"]] = "sent"
-        except Exception as exc:
-            # Cualquier error, no solo los esperados: en la cita 359 uno
-            # inesperado con el primer destinatario cortó el envío y el resto
-            # del equipo se quedó sin aviso.
-            logger.warning(
-                "No se pudo avisar al usuario %s de la cita %s", recipient["id"], appointment_id, exc_info=True,
-            )
-            notices.append({**notice, "status": "failed", "reason": _short(exc)})
-            results[recipient["id"]] = "failed"
+        result = await _staff_attempt(appointment_id, recipient, template, parameters, sender)
+        notices.append(result)
+        results[recipient["id"]] = result["status"]
     if notices:
         await ports.notices.record(appointment_id, notices)
     return results
+
+
+async def retry_failed_notices(appointment_id: int) -> dict[str, int]:
+    """Vuelve a mandar los avisos de la cita que fallaron (Meta no los aceptó
+    o después informó que no llegaron), con la plantilla y las variables que
+    están configuradas hoy. Cada intento reemplaza al fallido en la cita: el
+    historial muestra cómo quedó cada destinatario, no cada intento.
+
+    Pasó con el número de avisos desconectado: todos los avisos del día
+    fallaron y no había forma de mandarlos sin volver a cargar las citas.
+    Se reintenta aunque el aviso esté apagado: es un pedido explícito sobre
+    avisos que ya se habían decidido mandar."""
+    appointment = await _appointment(appointment_id)
+    if appointment is None:
+        raise AppointmentNotFound()
+    ports = appointment_ports()
+    failed = await ports.notices.failed(appointment_id)
+    if not failed:
+        return {"retried": 0, "sent": 0}
+    attempts: list[tuple[int, dict]] = []
+    staff = await _staff_retry_context(appointment, [old for old in failed if old["audience"] == Audience.STAFF.value])
+    client_config = await _config(Audience.CLIENT)
+    # Cada reintento es un envío nuevo para el outbox del chat: con la clave
+    # del primer envío lo daría por ya encolado y no mandaría nada.
+    attempt_key = uuid4().hex
+    for old in failed:
+        if old["audience"] == Audience.CLIENT.value:
+            if client_config.template_id is None:
+                attempts.append((old["id"], _still_failed(old, "El aviso al cliente no tiene plantilla elegida")))
+                continue
+            attempts.append((old["id"], await _client_attempt(
+                appointment, client_config,
+                dedupe_key=f"appointment-client-notice:{appointment_id}:retry:{old['id']}:{attempt_key}",
+            )))
+            continue
+        if staff is None:
+            attempts.append((old["id"], _still_failed(old, _STALE_TEMPLATE)))
+            continue
+        template, parameters, sender, phones = staff
+        recipient = {
+            "id": old.get("user_id"), "name": old["recipient_name"],
+            # El número de hoy en Usuarios, por si lo corrigieron después del fallo.
+            "phone": phones.get(old.get("user_id"), old.get("phone")),
+        }
+        attempts.append((old["id"], await _staff_attempt(appointment_id, recipient, template, parameters, sender)))
+    await ports.notices.record_retries(appointment_id, attempts)
+    return {"retried": len(attempts), "sent": sum(1 for _id, item in attempts if item["status"] == "sent")}
+
+
+def _still_failed(old: dict, reason: str) -> dict:
+    keys = ("audience", "recipient_name", "user_id", "phone", "template_id")
+    return {**{key: old.get(key) for key in keys}, "status": "failed", "reason": reason}
+
+
+async def _staff_retry_context(
+    appointment: dict, failed: list[dict],
+) -> tuple[dict, list[str], str | None, dict[int, str | None]] | None:
+    """Lo que comparte el reintento a cada persona del equipo: la plantilla,
+    las variables, el número de avisos y los teléfonos actuales del equipo
+    por id de usuario. ``None`` si no hay a quién reintentar o la plantilla
+    ya no es enviable."""
+    if not failed:
+        return None
+    config = await _config(Audience.STAFF)
+    template = (
+        await _template(config.template_id, appointment["created_by_user_id"], Audience.STAFF)
+        if config.template_id is not None else None
+    )
+    if template is None:
+        return None
+    ports = appointment_ports()
+    lead = await ports.leads.snapshot(appointment["lead_id"]) if appointment.get("lead_id") else None
+    phones = {
+        member["id"]: member["phone"]
+        for member in await ports.staff.recipients(appointment.get("vendedor") or "")
+    }
+    return template, parameter_values(appointment, config.parameters, lead), await _sender(), phones
 
 
 async def _sender_account() -> str | None:

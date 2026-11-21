@@ -18,6 +18,7 @@ from app.modules.appointments.schemas import (
     AppointmentItem,
     CalendarEventTemplate,
     CalendarEventTemplateUpdate,
+    NoticeRetryResult,
     NoticeSender,
     NoticeSenderSignup,
     NoticeSenderUpdate,
@@ -100,15 +101,30 @@ async def sync_appointment_calendar(
     appointment_id: int,
     user: User = Depends(require_appointments_edit),
 ):
-    if await seller_scope(user) is not None:
-        appointment = await get_appointment(appointment_id)
-        if appointment is None:
-            raise HTTPException(404, "Cita no encontrada")
-        if appointment["lead_id"] is not None:
-            await ensure_lead_visible(user, appointment["lead_id"])
-        elif appointment["created_by_user_id"] != user.id:
-            raise HTTPException(404, "Cita no encontrada")
+    await _ensure_appointment_visible(user, appointment_id)
     return await commands.sync_calendar(appointment_id)
+
+
+@router.post("/{appointment_id}/notices/retry", response_model=NoticeRetryResult)
+async def retry_appointment_notices(
+    appointment_id: int,
+    user: User = Depends(require_appointments_edit),
+):
+    """Vuelve a mandar los avisos de WhatsApp de la cita que fallaron."""
+    await _ensure_appointment_visible(user, appointment_id)
+    return await notice.retry_failed_notices(appointment_id)
+
+
+async def _ensure_appointment_visible(user: User, appointment_id: int) -> None:
+    if await seller_scope(user) is None:
+        return
+    appointment = await get_appointment(appointment_id)
+    if appointment is None:
+        raise HTTPException(404, "Cita no encontrada")
+    if appointment["lead_id"] is not None:
+        await ensure_lead_visible(user, appointment["lead_id"])
+    elif appointment["created_by_user_id"] != user.id:
+        raise HTTPException(404, "Cita no encontrada")
 
 
 @router.post("/{appointment_id}/dismiss", response_model=AppointmentItem)
