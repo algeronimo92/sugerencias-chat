@@ -8,6 +8,15 @@ from app.integrations.whatsapp.identity import Destination
 from app.integrations.whatsapp.channel import describe_send_failure
 
 
+@pytest.fixture(autouse=True)
+def _no_stored_settings(monkeypatch):
+    """Negocio sin nada guardado. Cada respuesta de Meta consulta si había una
+    desconexión registrada: sin esto, los tests irían a buscarla a la base."""
+    monkeypatch.setattr(meta_service, "get_effective_many", AsyncMock(
+        side_effect=lambda keys: {key: "" for key in keys},
+    ))
+
+
 @pytest.mark.asyncio
 async def test_config_loads_all_meta_values_together(monkeypatch):
     load_values = AsyncMock(return_value={
