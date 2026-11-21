@@ -1,7 +1,7 @@
 /**
  * Smoke test del botón "Iniciar flujo" del chat: que liste los flujos
  * manuales disponibles, que el estado vacío se vea cuando no hay ninguno, y
- * que elegir uno dispare la mutación con el rule_id y el chat correctos.
+ * que elegir uno solo lo entregue para confirmar, sin iniciarlo.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,13 +13,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { FlowPicker } from './FlowPicker'
 import type { AutomationRule } from '../types'
 
-const mutate = vi.fn()
+const onChoose = vi.fn()
 const CHAT_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
 
 vi.mock('../queries', () => ({
   useManualFlows: vi.fn(),
   useAutomationExecutions: vi.fn(),
-  useStartManualFlow: () => ({ mutate, isPending: false }),
 }))
 
 import { useAutomationExecutions, useManualFlows } from '../queries'
@@ -57,29 +56,27 @@ describe('FlowPicker', () => {
     vi.mocked(useManualFlows).mockReturnValue({ data: [], isLoading: false } as never)
     vi.mocked(useAutomationExecutions).mockReturnValue({ data: [] } as never)
     const user = userEvent.setup()
-    render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
+    render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
     await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
 
     expect(screen.getByText(/No hay flujos disponibles/)).toBeInTheDocument()
   })
 
-  it('lista los flujos y dispara la mutación al elegir uno', async () => {
+  it('lista los flujos y al elegir uno lo entrega para confirmar', async () => {
     vi.mocked(useManualFlows).mockReturnValue({
       data: [flow({ id: 9, name: 'Bienvenida guiada' })],
       isLoading: false,
     } as never)
     vi.mocked(useAutomationExecutions).mockReturnValue({ data: [] } as never)
     const user = userEvent.setup()
-    render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
+    render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
     await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
     await user.click(screen.getByText('Bienvenida guiada'))
 
-    expect(mutate).toHaveBeenCalledWith(
-      { ruleId: 9, chatId: CHAT_ID },
-      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
-    )
+    expect(onChoose).toHaveBeenCalledWith({ id: 9, name: 'Bienvenida guiada' })
+    expect(screen.queryByText('Bienvenida guiada')).not.toBeInTheDocument()
   })
 
   it('deshabilita un flujo que ya tiene una ejecución manual activa', async () => {
@@ -91,7 +88,7 @@ describe('FlowPicker', () => {
       data: [{ id: 1, rule_id: 9, start_source: 'manual', status: 'running' }],
     } as never)
     const user = userEvent.setup()
-    render(<FlowPicker chatId={CHAT_ID} />, { wrapper })
+    render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
     await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
 

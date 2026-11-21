@@ -16,7 +16,7 @@ import type { Chat } from '../../leads/types'
 import type { MessageTemplate } from '../../templates/types'
 import { displayName } from '../../leads/public/chat'
 import { renderTemplate } from '../../templates/public/templates'
-import { FlowPicker } from '../../automations/public/FlowPicker'
+import { FlowPicker, FlowStartConfirmation, type ChosenFlow } from '../../automations/public/FlowPicker'
 import { AttachMenu } from './AttachMenu'
 import { EmojiStickerPanel } from './EmojiStickerPanel'
 import { NativeInteractiveDialog } from './NativeInteractiveDialog'
@@ -127,6 +127,10 @@ export function ChatComposer({
   const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
   const [isInteractiveDialogOpen, setIsInteractiveDialogOpen] = useState(false)
+  // El flujo elegido espera confirmación; se guarda con su chat para que no
+  // aparezca la pregunta en otro chat si el vendedor cambia antes de responder.
+  const [chosenFlow, setChosenFlow] = useState<(ChosenFlow & { chatId: string }) | null>(null)
+  const confirmingFlow = chosenFlow?.chatId === chat.chat_id ? chosenFlow : null
   const { data: capabilities } = useTemplateCapabilities()
   const canSendNativeInteractive = availableNativeInteractives(capabilities).length > 0
   const [isCameraOpen, setIsCameraOpen] = useState(false)
@@ -505,14 +509,23 @@ export function ChatComposer({
         className="relative border-t border-wa-border dark:border-wa-border-dark bg-wa-head dark:bg-wa-head-dark px-3 pt-3 pb-safe-3"
       >
         <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>
-          <button
-            type="button"
-            onClick={onSwitchToNote}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-          >
-            <MessageSquareLock className="h-3.5 w-3.5" /> Cambiar a nota interna
-          </button>
+          {/* En el celular la franja no da para las tres cosas: mientras se
+              confirma un flujo, la pregunta la ocupa entera. */}
+          {!(isMobile && confirmingFlow) && (
+            <span className="shrink-0 text-[11px] font-medium text-wa-primary-strong dark:text-wa-primary">Mensaje de WhatsApp</span>
+          )}
+          {confirmingFlow && (
+            <FlowStartConfirmation chatId={chat.chat_id} flow={confirmingFlow} onClose={() => setChosenFlow(null)} />
+          )}
+          {!(isMobile && confirmingFlow) && (
+            <button
+              type="button"
+              onClick={onSwitchToNote}
+              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+            >
+              <MessageSquareLock className="h-3.5 w-3.5" /> Cambiar a nota interna
+            </button>
+          )}
         </div>
         {sendError && (
           <p className="text-xs text-red-500 dark:text-red-400 mb-2">{extractErrorMessage(sendError)}</p>
@@ -636,7 +649,7 @@ export function ChatComposer({
                         con su propio color: ya hubo quien lanzó un flujo
                         creyendo que mandaba una plantilla (ver FlowPicker). */}
                     <span className="mx-0.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />
-                    <FlowPicker chatId={chat.chat_id} />
+                    <FlowPicker chatId={chat.chat_id} onChoose={(flow) => setChosenFlow({ ...flow, chatId: chat.chat_id })} />
                   </>
                 )}
               </div>

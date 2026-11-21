@@ -1,14 +1,16 @@
 import { Loader2, Workflow } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
 import { Tooltip } from '../../../shared/ui/Tooltip'
-import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useAutomationExecutions, useManualFlows, useStartManualFlow } from '../queries'
+import { useAutomationExecutions, useManualFlows } from '../queries'
 import type { AutomationExecution } from '../types'
+import type { ChosenFlow } from './FlowStartConfirmation'
 
 interface Props {
   chatId: string
+  /** Elegir no inicia nada: quien monta el picker pide la confirmación
+   *  (FlowStartConfirmation) y recién ahí se lanza. */
+  onChoose: (flow: ChosenFlow) => void
 }
 
 /** Flujos del vendedor que todavía corren sobre el lead. La lista trae también
@@ -39,22 +41,12 @@ function activeSellerRuleIds(executions: AutomationExecution[]): Set<number> {
  * de los demás), nombre accesible, tooltip y un separador antes; quien lo
  * monte en el compositor tiene que respetar ese separador.
  */
-export function FlowPicker({ chatId }: Props) {
+export function FlowPicker({ chatId, onChoose }: Props) {
   const [open, setOpen] = useState(false)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
-  // La mutación vive acá y no en la lista: la lista se desmonta al elegir, y
-  // React Query no corre los callbacks de un mutate cuyo componente ya no está
-  // (se perdía el aviso "Flujo iniciado").
-  const startFlow = useStartManualFlow()
 
-  function choose(ruleId: number, name: string) {
-    startFlow.mutate(
-      { ruleId, chatId },
-      {
-        onSuccess: () => toast.success(`Flujo "${name}" iniciado`),
-        onError: (error) => toast.error(extractErrorMessage(error)),
-      }
-    )
+  function choose(flow: ChosenFlow) {
+    onChoose(flow)
     setOpen(false)
   }
 
@@ -74,17 +66,16 @@ export function FlowPicker({ chatId }: Props) {
           <Workflow className="h-4.5 w-4.5" aria-hidden="true" />
         </button>
       </Tooltip>
-      {open && <FlowList chatId={chatId} isStarting={startFlow.isPending} onChoose={choose} />}
+      {open && <FlowList chatId={chatId} onChoose={choose} />}
     </div>
   )
 }
 
 /** Montada solo con el menú abierto: la lista no hace falta hasta que el
  *  vendedor la pide, y el picker vive en el compositor de cada chat. */
-function FlowList({ chatId, isStarting, onChoose }: {
+function FlowList({ chatId, onChoose }: {
   chatId: string
-  isStarting: boolean
-  onChoose: (ruleId: number, name: string) => void
+  onChoose: (flow: ChosenFlow) => void
 }) {
   const { data: flows = [], isPending: isLoading } = useManualFlows(chatId, { enabled: true })
   // Mismo hook que LeadAutomationPanel: react-query cachea por chatId y no
@@ -110,9 +101,9 @@ function FlowList({ chatId, isStarting, onChoose }: {
             <button
               key={flow.id}
               type="button"
-              disabled={isStarting || alreadyRunning}
-              onClick={() => onChoose(flow.id, flow.name)}
-              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-50"
+              disabled={alreadyRunning}
+              onClick={() => onChoose({ id: flow.id, name: flow.name })}
+              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Workflow className="h-4 w-4 shrink-0 text-accent-strong" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{flow.name}</span>
