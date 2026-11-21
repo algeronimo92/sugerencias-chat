@@ -321,7 +321,10 @@ async def set_business_login(session: AsyncSession, schema: str, login: str, pas
         "        WHERE a.member = pg_roles.oid AND r.rolname <> :business) AS other "
         "FROM pg_roles WHERE rolname = :login"
     ), {"login": login, "business": business_role})).mappings().one_or_none()
-    verifier = scram_verifier(password)
+    # El verificador lleva ":" (iteraciones:sal, clave:clave) y text() toma
+    # cada ":palabra" como parámetro: se escapan. El CI lo atrapó con el test
+    # que inicia sesión de verdad (2026-11-21).
+    verifier = scram_verifier(password).replace(":", r"\:")
     if current is None:
         await session.execute(text(
             f"CREATE ROLE {_ident(login)} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS "
