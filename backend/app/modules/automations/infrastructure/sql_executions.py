@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, and_, cast, exists, func, literal, not_, or_, select, text, update
+from sqlalchemy import DateTime, String, and_, cast, exists, func, literal, not_, or_, select, update
 from sqlalchemy.orm import aliased
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 
@@ -232,9 +232,9 @@ class SqlExecutionStore:
             # Dos réplicas del worker (blue-green) no deben reclamar a la vez
             # dos ejecuciones del mismo lead: ninguna vería la otra sin
             # confirmar. El reclamo es corto, así que se serializa por negocio.
-            await session.execute(text(
-                "SELECT pg_advisory_xact_lock(hashtext(current_schema() || ':automation_claim'))"
-            ))
+            await session.execute(select(func.pg_advisory_xact_lock(
+                func.hashtext(func.concat(func.current_schema(), literal(".automation_claim")))
+            )))
             rows = (await session.execute(
                 select(candidate.id, candidate.lead_id).where(
                     candidate.status == AutomationExecutionStatus.SCHEDULED,
