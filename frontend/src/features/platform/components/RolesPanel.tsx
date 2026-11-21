@@ -75,6 +75,10 @@ export function RolesPanel() {
     setSaveError(null)
     try {
       for (const role of changed) {
+        // Uno por vez a propósito: cada guardado reaplica REVOKE/GRANT sobre las
+        // mismas tablas del negocio, y dos a la vez chocan en PostgreSQL
+        // ("tuple concurrently updated"). Son a lo sumo dos roles.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await save({ role: role.key, permissions: [...draft[role.key]].sort() })
       }
       setDraft({})

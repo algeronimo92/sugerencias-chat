@@ -44,8 +44,8 @@ export type Viewer = Who | null | undefined
 export function can(user: Viewer, ...permissions: Permission[]): boolean {
   if (!user) return false
   if (user.role === 'admin') return true
-  const granted: readonly string[] = user.permissions ?? DEFAULT_PERMISSIONS[user.role] ?? []
-  return permissions.some((permission) => granted.includes(permission))
+  const granted = new Set<string>(user.permissions ?? DEFAULT_PERMISSIONS[user.role] ?? [])
+  return permissions.some((permission) => granted.has(permission))
 }
 
 /** `can` con el usuario de la sesión: `const allowed = useCan(); allowed('leads.delete')`. */

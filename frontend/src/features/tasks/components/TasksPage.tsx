@@ -346,9 +346,10 @@ function TaskRow({ task, bucket, busy, onComplete, onOpenChat }: RowProps) {
 export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void }) {
   const navigate = useNavigate()
   const { data: me } = useMe()
-  // Ver y asignar tareas de otros; la lista de personas sale de Usuarios.
+  // Ver y asignar tareas de otros. La lista de personas sale de Usuarios: se
+  // pide si se puede, y solo se usa con team.supervise.
   const isAdmin = can(me, 'team.supervise')
-  const { data: users = [] } = useUsers(isAdmin && can(me, 'users.manage'))
+  const { data: users = [] } = useUsers(can(me, 'users.manage'))
 
   const [assignee, setAssignee] = useState('mine')
   const [group, setGroup] = useState<GroupKey>('all')

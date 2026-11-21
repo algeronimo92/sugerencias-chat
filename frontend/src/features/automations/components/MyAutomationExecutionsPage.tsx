@@ -359,9 +359,10 @@ export function MyAutomationExecutionsPage() {
   const [group, setGroup] = useState<GroupKey>('all')
 
   const { data: me } = useMe()
-  // Mirar lo que envió otra persona; la lista de personas sale de Usuarios.
+  // Mirar lo que envió otra persona. La lista de personas sale de Usuarios:
+  // se pide si se puede, y solo se usa con team.supervise.
   const isAdmin = can(me, 'team.supervise')
-  const { data: users = [] } = useUsers(isAdmin && can(me, 'users.manage'))
+  const { data: users = [] } = useUsers(can(me, 'users.manage'))
   // El admin arranca en "Todo el equipo": con solo lo suyo veía cero y
   // concluía que ese día no había salido ningún flujo. null = ese default.
   const [senderChoice, setSenderChoice] = useState<SenderKey | null>(null)
