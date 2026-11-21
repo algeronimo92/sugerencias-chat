@@ -3737,6 +3737,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/{appointment_id}/notices/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Appointment Notices
+         * @description Vuelve a mandar los avisos de WhatsApp de la cita que fallaron.
+         */
+        post: operations["retry_appointment_notices_api_appointments__appointment_id__notices_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/{appointment_id}/dismiss": {
         parameters: {
             query?: never;
@@ -8251,6 +8271,16 @@ export interface components {
             values: {
                 [key: string]: string;
             };
+        };
+        /**
+         * NoticeRetryResult
+         * @description Cuántos avisos fallidos se volvieron a intentar y cuántos salieron.
+         */
+        NoticeRetryResult: {
+            /** Retried */
+            retried: number;
+            /** Sent */
+            sent: number;
         };
         /**
          * NoticeSender
@@ -17293,6 +17323,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppointmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_appointment_notices_api_appointments__appointment_id__notices_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeRetryResult"];
                 };
             };
             /** @description Validation Error */

@@ -1,8 +1,8 @@
-import { AlertTriangle, Check, CheckCheck, Clock, MessageCircle, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, Clock, MessageCircle, RefreshCw, XCircle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { cn } from '../../../shared/utils/cn'
-import { noticeRecipient, noticeState, type NoticeTone } from '../domain/noticeStatus'
+import { isFailedNotice, noticeRecipient, noticeState, type NoticeTone } from '../domain/noticeStatus'
 import type { AppointmentNotice } from '../types'
 
 const TONES: Record<NoticeTone, string> = {
@@ -20,15 +20,40 @@ function iconFor(notice: AppointmentNotice): LucideIcon {
   return Clock
 }
 
+type Props = {
+  notices: AppointmentNotice[]
+  leadId: string | null
+  /** Sin él no se ofrece reenviar (quien mira no puede editar la cita). */
+  onRetry?: () => void
+  retrying?: boolean
+  retryError?: string | null
+}
+
 /** Los avisos de WhatsApp de una cita: a quién le llegó y a quién no, con el
- *  motivo. El del cliente lleva al chat del lead, donde está el mensaje. */
-export function AppointmentNotices({ notices, leadId }: { notices: AppointmentNotice[]; leadId: string | null }) {
+ *  motivo. El del cliente lleva al chat del lead, donde está el mensaje. Los
+ *  que fallaron se pueden reenviar (p. ej. tras reconectar el número de avisos). */
+export function AppointmentNotices({ notices, leadId, onRetry, retrying = false, retryError = null }: Props) {
   if (notices.length === 0) return null
+  const failed = notices.filter(isFailedNotice).length
   return (
     <section aria-label="Avisos por WhatsApp" className="mt-2">
-      <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
-        <MessageCircle className="h-3 w-3" aria-hidden="true" /> Avisos por WhatsApp
-      </p>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-wa-muted dark:text-wa-muted-dark">
+          <MessageCircle className="h-3 w-3" aria-hidden="true" /> Avisos por WhatsApp
+        </p>
+        {onRetry && failed > 0 && (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={retrying}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-wa-primary-strong hover:bg-green-50 disabled:opacity-50 dark:text-wa-primary dark:hover:bg-green-950/30"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', retrying && 'animate-spin')} aria-hidden="true" />
+            {failed === 1 ? 'Reenviar aviso fallido' : `Reenviar ${failed} avisos fallidos`}
+          </button>
+        )}
+      </div>
+      {retryError && <p role="alert" className="mb-1 text-xs text-red-600 dark:text-red-400">{retryError}</p>}
       <ul className="flex flex-wrap gap-1.5">
         {notices.map(notice => {
           const state = noticeState(notice)

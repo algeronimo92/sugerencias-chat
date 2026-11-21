@@ -8,7 +8,7 @@ import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
 import { useMe } from '../../../shared/auth'
 import { useGoogleCalendarStatus } from '../../platform/public/useGoogleCalendar'
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS, type AppointmentStatus } from '../constants'
-import { useAppointments, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
+import { useAppointments, useRetryAppointmentNotices, useSyncAppointmentCalendar, type AppointmentListItem } from '../queries'
 import { AppointmentDismissAction } from './AppointmentDismissAction'
 import { AppointmentNotices } from './AppointmentNotices'
 
@@ -37,6 +37,7 @@ export function AppointmentHistoryList() {
   const [hideTestMode, setHideTestMode] = useState(false)
   const [hideDismissed, setHideDismissed] = useState(false)
   const syncCalendar = useSyncAppointmentCalendar()
+  const retryNotices = useRetryAppointmentNotices()
 
   const hidingFailed = FAILED_STATUSES.every(status => !activeStatuses.has(status))
 
@@ -216,7 +217,13 @@ export function AppointmentHistoryList() {
                 </p>
               )}
 
-              <AppointmentNotices notices={item.notices ?? []} leadId={item.lead_id} />
+              <AppointmentNotices
+                notices={item.notices ?? []}
+                leadId={item.lead_id}
+                onRetry={can(me, 'appointments.edit') && !item.test_mode ? () => retryNotices.mutate(item.id) : undefined}
+                retrying={retryNotices.isPending && retryNotices.variables === item.id}
+                retryError={retryNotices.isError && retryNotices.variables === item.id ? extractErrorMessage(retryNotices.error) : null}
+              />
 
               {Object.keys(item.custom_fields).length > 0 && (
                 <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-wa-muted">

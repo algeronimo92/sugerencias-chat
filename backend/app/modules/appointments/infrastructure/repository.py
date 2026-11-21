@@ -167,6 +167,47 @@ class SqlAppointmentNotices:
         async with session_scope() as session:
             await session.execute(insert(AppointmentNotice), rows)
 
+    async def failed(self, appointment_id: int) -> list[dict]:
+        stmt = (
+            select(AppointmentNotice)
+            .where(
+                AppointmentNotice.appointment_id == appointment_id,
+                or_(AppointmentNotice.status == "failed", AppointmentNotice.delivery_status == "failed"),
+            )
+            .order_by(AppointmentNotice.id)
+        )
+        async with session_scope() as session:
+            rows = (await session.execute(stmt)).scalars().all()
+        return [
+            {
+                "id": row.id, "audience": row.audience, "recipient_name": row.recipient_name,
+                "user_id": row.user_id, "phone": row.phone, "template_id": row.template_id,
+            }
+            for row in rows
+        ]
+
+    async def record_retries(self, appointment_id: int, attempts: list[tuple[int, dict]]) -> None:
+        if not attempts:
+            return
+        async with session_scope() as session:
+            for notice_id, notice in attempts:
+                await session.execute(
+                    update(AppointmentNotice)
+                    .where(AppointmentNotice.id == notice_id, AppointmentNotice.appointment_id == appointment_id)
+                    .values(
+                        phone=notice.get("phone"),
+                        template_id=notice.get("template_id"),
+                        status=notice["status"],
+                        reason=notice.get("reason"),
+                        provider_message_id=notice.get("provider_message_id"),
+                        wsp_message_id=notice.get("wsp_message_id"),
+                        delivery_status="sent" if notice["status"] == "sent" else None,
+                        delivered_at=None,
+                        read_at=None,
+                        created_at=func.now(),
+                    )
+                )
+
     async def record_delivery(
         self, *, provider_message_id: str | None, wsp_message_id: int | None, status: str, at: datetime | None,
     ) -> int:

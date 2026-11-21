@@ -83,3 +83,4 @@ export interface AppointmentListItem {
 }
 
 export type AppointmentNotice = Delivered<ApiSchemas['AppointmentNoticeItem']>
+export type NoticeRetryResult = ApiSchemas['NoticeRetryResult']

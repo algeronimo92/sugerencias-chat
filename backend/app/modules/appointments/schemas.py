@@ -104,6 +104,14 @@ class AppointmentNoticeItem(BaseModel):
 
 AppointmentItem.model_rebuild()
 
+
+class NoticeRetryResult(BaseModel):
+    """Cuántos avisos fallidos se volvieron a intentar y cuántos salieron."""
+
+    retried: int
+    sent: int
+
+
 class AppointmentCreated(BaseModel):
     """Resultado de registrar una cita. Lleva además lo que devolvió el
     workflow de n8n (por ejemplo ``citaDuplicada``), que viaja tal cual."""

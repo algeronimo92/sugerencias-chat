@@ -144,6 +144,17 @@ class NoticeLog(Protocol):
     async def record(self, appointment_id: int, notices: list[dict]) -> None:
         """Guarda los avisos que generó la cita (ver ``AppointmentNotice``)."""
 
+    async def failed(self, appointment_id: int) -> list[dict]:
+        """Los avisos de la cita que fallaron al enviarse o que Meta informó
+        como no entregados: ``{id, audience, recipient_name, user_id, phone,
+        template_id}``, en el orden en que se registraron."""
+
+    async def record_retries(self, appointment_id: int, attempts: list[tuple[int, dict]]) -> None:
+        """Deja en cada aviso fallido (por id) el resultado de su reintento,
+        con la fecha del reintento y sin el estado de entrega anterior. Se
+        actualiza en vez de borrar: los roles de base de las citas no tienen
+        ``DELETE``."""
+
     async def record_delivery(
         self, *, provider_message_id: str | None, wsp_message_id: int | None, status: str, at: datetime | None,
     ) -> int:

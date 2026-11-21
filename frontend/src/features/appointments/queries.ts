@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
+import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, retryAppointmentNotices, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
 import type { NoticeAudience, NoticeUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
@@ -42,6 +42,13 @@ export function useCreateAppointment() {
 export function useSyncAppointmentCalendar() {
   return useMutation({
     mutationFn: syncAppointmentCalendar,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
+  })
+}
+
+export function useRetryAppointmentNotices() {
+  return useMutation({
+    mutationFn: retryAppointmentNotices,
     onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
   })
 }
