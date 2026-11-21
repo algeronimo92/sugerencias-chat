@@ -30,7 +30,15 @@ function roleSuffix(dbRole: string) {
   return dbRole.slice(dbRole.lastIndexOf('_') + 1)
 }
 
-const ROLE_NAMES: Record<string, string> = { admin: 'Administrador', vendedor: 'Vendedor', analista: 'Analista' }
+// `negocio` es el dueño de los datos del schema: lo usa el login propio del
+// negocio para entrar directo a la base, nunca la app.
+const ROLE_NAMES: Record<string, string> = {
+  negocio: 'Negocio (acceso directo)',
+  admin: 'Administrador',
+  vendedor: 'Vendedor',
+  analista: 'Analista',
+}
+const ROLE_ORDER = Object.keys(ROLE_NAMES)
 
 function YesNo({ value }: { value: boolean }) {
   return value ? (
@@ -165,7 +173,7 @@ export function DbPrivilegesPanel() {
   const { data, isLoading, error } = useDbPrivileges()
   const [filter, setFilter] = useState('')
   const roles = useMemo(
-    () => [...(data?.roles ?? [])].sort((a, b) => ['admin', 'vendedor', 'analista'].indexOf(roleSuffix(a.db_role)) - ['admin', 'vendedor', 'analista'].indexOf(roleSuffix(b.db_role))),
+    () => [...(data?.roles ?? [])].sort((a, b) => ROLE_ORDER.indexOf(roleSuffix(a.db_role)) - ROLE_ORDER.indexOf(roleSuffix(b.db_role))),
     [data?.roles],
   )
 
