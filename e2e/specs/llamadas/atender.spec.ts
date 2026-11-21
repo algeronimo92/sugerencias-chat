@@ -15,11 +15,17 @@ const ATENDIDA: Call = { ...LLAMADA, status: 'accepted', handled_by_user_id: ADM
 
 // El audio real va contra Meta: acá la conexión se reemplaza por una que
 // "conecta" sola. Lo que se prueba es la pantalla y lo que se le pide al backend.
+// Como el navegador de verdad, avisa la pista del cliente (`track`) al
+// aplicar la oferta: antes de que el CRM reciba la conexión y pueda escuchar.
 const CONEXION_FALSA = `
   class FakeConnection extends EventTarget {
-    connectionState = 'new'; iceGatheringState = 'complete'; localDescription = null
+    connectionState = 'new'; iceGatheringState = 'complete'; localDescription = null; remote = null
     addTrack() {}
-    async setRemoteDescription() {}
+    getReceivers() { return this.remote ? [{ track: this.remote }] : [] }
+    async setRemoteDescription() {
+      this.remote = new AudioContext().createMediaStreamDestination().stream.getAudioTracks()[0]
+      this.dispatchEvent(new Event('track'))
+    }
     async createAnswer() { return { type: 'answer', sdp: 'v=0\\r\\na=setup:active\\r\\n' } }
     async setLocalDescription(description) {
       this.localDescription = description
@@ -57,6 +63,9 @@ test('una llamada entrante suena, se atiende, se silencia y se cuelga', async ({
   await expectFullyOnScreen(enCurso)
   await expect(enCurso.getByRole('button', { name: 'Silenciar' })).toBeEnabled()
   expect(api.calls('post', '/api/calls/{call_id}/accept')[0].body).toMatchObject({ sdp: expect.stringContaining('v=0'), pre_accept: false })
+  // Las primeras llamadas reales conectaban sin que se oyera al cliente: su
+  // audio nunca llegaba al parlante.
+  await expect.poll(() => page.evaluate(() => document.querySelector('audio')?.srcObject instanceof MediaStream)).toBe(true)
 
   await enCurso.getByRole('button', { name: 'Silenciar' }).click()
   await expect(enCurso.getByText('Micrófono apagado')).toBeVisible()
