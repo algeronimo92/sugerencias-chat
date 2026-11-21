@@ -29,7 +29,9 @@ BUSINESS_PORTFOLIO_ID = "900000000000009"
 
 
 def _settings(monkeypatch, **stored):
-    """Ajustes del negocio en memoria: lo que lee y guarda el cliente de Meta."""
+    """Ajustes del negocio en memoria: lo que lee y guarda el cliente de Meta.
+    El número y la WABA del CRM son los de ``_mock_config``."""
+    stored = {"meta_phone_number_id": "PHONE1", "meta_waba_id": "WABA1", **stored}
     saved: list[dict] = []
 
     async def fake_update(values):
@@ -125,7 +127,7 @@ async def test_any_query_about_the_crm_account_that_meta_no_longer_finds_marks_t
     """Tras el primer arreglo, Integraciones siguió diciendo "Conectado": nadie
     había enviado nada, pero abrir la página ya le preguntaba a Meta por el
     número (llamadas) y el worker por la WABA (costos), y Meta los rechazaba."""
-    saved, _alert = _settings(monkeypatch, meta_phone_number_id="PHONE1", meta_waba_id="WABA1")
+    saved, _alert = _settings(monkeypatch)
     _rejecting_client(monkeypatch, NUMBER_GONE)
 
     with pytest.raises(meta_service.MetaApiError):
@@ -137,13 +139,59 @@ async def test_any_query_about_the_crm_account_that_meta_no_longer_finds_marks_t
 @pytest.mark.asyncio
 async def test_another_object_meta_no_longer_finds_says_nothing_about_the_connection(monkeypatch):
     """Una plantilla borrada o la WABA del número de avisos responden igual."""
-    saved, _alert = _settings(monkeypatch, meta_phone_number_id="PHONE1", meta_waba_id="WABA1")
+    saved, _alert = _settings(monkeypatch)
     _rejecting_client(monkeypatch, NUMBER_GONE)
 
     with pytest.raises(meta_service.MetaApiError):
         await meta_service._request("GET", meta_service._graph_url("PLANTILLA_BORRADA"), "token-123", timeout=5.0)
 
     assert saved == []
+
+
+def _answering_client(monkeypatch, payload):
+    client = _FakeGraphClient([_FakeGraphResponse(payload)])
+    monkeypatch.setattr(meta_service, "_client", lambda: client)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_meta_answering_again_for_the_crm_number_closes_the_disconnection(monkeypatch):
+    """Un rechazo mal interpretado no puede dejar "Desconectado" para siempre
+    a un negocio cuya cuenta funciona: manda la última respuesta de Meta."""
+    saved, _alert = _settings(monkeypatch, **{meta_service.DISCONNECTED_AT_KEY: "2026-11-21T03:51:41+00:00"})
+    _answering_client(monkeypatch, {"id": "PHONE1"})
+
+    await meta_service._request("GET", meta_service._graph_url("PHONE1"), "token-123", timeout=5.0)
+
+    assert saved == [{meta_service.DISCONNECTED_AT_KEY: ""}]
+
+
+@pytest.mark.asyncio
+async def test_meta_answering_for_another_object_does_not_close_the_disconnection(monkeypatch):
+    """La WABA del número de avisos sigue respondiendo con el mismo token."""
+    saved, _alert = _settings(monkeypatch, **{meta_service.DISCONNECTED_AT_KEY: "2026-11-21T03:51:41+00:00"})
+    _answering_client(monkeypatch, {"id": "OTRA_WABA"})
+
+    await meta_service._request("GET", meta_service._graph_url("OTRA_WABA"), "token-123", timeout=5.0)
+
+    assert saved == []
+
+
+@pytest.mark.asyncio
+async def test_a_send_meta_accepted_is_never_lost_because_the_connection_state_could_not_be_read(monkeypatch):
+    """Si esto fallara después de que Meta aceptó el mensaje, el outbox lo
+    reintentaría y el cliente lo recibiría dos veces."""
+    _mock_config(monkeypatch)
+    monkeypatch.setattr(meta_service, "get_effective_many", AsyncMock(side_effect=RuntimeError("base caída")))
+    monkeypatch.setattr(
+        meta_service, "resolve_whatsapp_destination",
+        AsyncMock(return_value=Destination(wa_id="51906471403", user_id=None)),
+    )
+    _answering_client(monkeypatch, {"messages": [{"id": "wamid.XYZ"}]})
+
+    result = await meta_service.send_message("lead-1", {"type": "text", "text": {"body": "hola"}})
+
+    assert result["response"]["messages"][0]["id"] == "wamid.XYZ"
 
 
 @pytest.mark.asyncio

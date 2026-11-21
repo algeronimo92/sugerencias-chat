@@ -538,9 +538,10 @@ async def _request(
             # también le preguntan a Meta por el número o la WABA del CRM.
             # Tras el primer arreglo la app siguió diciendo "conectado" hasta
             # el siguiente envío, con Meta rechazando estas consultas.
-            if _object_unavailable(exc.error) and await _is_crm_account(url):
-                await mark_disconnected()
+            if _object_unavailable(exc.error):
+                await _note_crm_account(url, reachable=False)
             raise
+    await _note_crm_account(url, reachable=True)
     return response.json()
 
 
@@ -551,6 +552,29 @@ async def _is_crm_account(url: str) -> bool:
     target = url.removeprefix(_graph_url("")).split("/", 1)[0]
     values = await get_effective_many(("meta_phone_number_id", "meta_waba_id"))
     return bool(target) and target in (values["meta_phone_number_id"], values["meta_waba_id"])
+
+
+async def _note_crm_account(url: str, *, reachable: bool) -> None:
+    """Manda la última respuesta de Meta sobre el número o la WABA del CRM:
+    si dejó de encontrarlos se registra la desconexión, y si vuelve a
+    responder por ellos se cierra. Sin lo segundo, un rechazo mal interpretado
+    dejaría al negocio en "Desconectado" (y sin plantillas) hasta reconectar a
+    mano una cuenta que funciona.
+
+    Nunca cambia el resultado del pedido: si esto fallara después de que Meta
+    aceptó un envío, el outbox lo reintentaría y el cliente lo recibiría dos
+    veces."""
+    try:
+        disconnected = bool((await get_effective_many((DISCONNECTED_AT_KEY,)))[DISCONNECTED_AT_KEY])
+        if disconnected != reachable or not await _is_crm_account(url):
+            return
+        if reachable:
+            await update_settings({DISCONNECTED_AT_KEY: ""})
+            logger.warning("Meta volvió a responder por la cuenta del CRM: se cierra la desconexión")
+        else:
+            await mark_disconnected()
+    except Exception:
+        logger.exception("No se pudo actualizar el estado de la conexión de WhatsApp")
 
 
 async def _recipient(chat_id: str) -> dict[str, str]:
@@ -781,20 +805,15 @@ async def _post_message(
     except _REQUEST_NOT_SENT_ERRORS:
         raise
     except MetaApiError as exc:
+        # El único objeto en la URL de un envío es el número: si Meta dice
+        # que no existe o que el token no lo ve, la cuenta ya no está
+        # vinculada (``_request`` ya lo dejó registrado).
         if sender_phone_number_id in (None, crm_number) and _object_unavailable(exc.error):
-            raise await _disconnected(exc) from exc
+            raise WhatsAppDisconnectedError(error=exc.error, status_code=exc.status_code) from exc
         raise
     except (httpx.TransportError, ValueError) as exc:
         raise DeliveryUnconfirmedError() from exc
     return {"body": body, "response": response}
-
-
-async def _disconnected(exc: MetaApiError) -> WhatsAppDisconnectedError:
-    """El único objeto en la URL de un envío es el número: si Meta dice que no
-    existe o que el token no lo ve, la cuenta ya no está vinculada. Cubre el
-    caso en que el aviso ``account_update`` no llegó (cuenta borrada)."""
-    await mark_disconnected()
-    return WhatsAppDisconnectedError(error=exc.error, status_code=exc.status_code)
 
 
 async def upload_media(
@@ -807,10 +826,11 @@ async def upload_media(
     tiene que subirlo con ese número."""
     token, crm_number, _waba_id = await _config()
     phone_number_id = sender_phone_number_id or crm_number
+    url = _graph_url(f"{phone_number_id}/media")
     started_at = perf_counter()
     try:
         response = await _client().post(
-            _graph_url(f"{phone_number_id}/media"),
+            url,
             headers={"Authorization": f"Bearer {token}"},
             data={"messaging_product": "whatsapp", "type": content_type},
             files={"file": (filename, content, content_type)},
@@ -824,7 +844,8 @@ async def upload_media(
         except MetaApiError as exc:
             # Un mensaje con adjunto falla acá, antes de llegar al envío.
             if sender_phone_number_id in (None, crm_number) and _object_unavailable(exc.error):
-                raise await _disconnected(exc) from exc
+                await _note_crm_account(url, reachable=False)
+                raise WhatsAppDisconnectedError(error=exc.error, status_code=exc.status_code) from exc
             raise
     media_id = response.json().get("id")
     if not media_id:

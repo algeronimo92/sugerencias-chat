@@ -13,6 +13,15 @@ from app.modules.platform import whatsapp_api
 from app.modules.platform.calling_readiness import calling_readiness, messaging_limit_allows_calls
 
 
+@pytest.fixture(autouse=True)
+def _no_stored_settings(monkeypatch):
+    """Negocio sin nada guardado. Cada respuesta de Meta consulta si había una
+    desconexión registrada: sin esto, los tests irían a buscarla a la base."""
+    monkeypatch.setattr(meta_service, "get_effective_many", AsyncMock(
+        side_effect=lambda keys: {key: "" for key in keys},
+    ))
+
+
 @pytest.mark.parametrize(("tier", "expected"), [
     ("TIER_250", False),
     ("TIER_1K", False),
