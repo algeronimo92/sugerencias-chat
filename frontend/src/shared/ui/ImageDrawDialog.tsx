@@ -88,7 +88,9 @@ export function ImageDrawDialog({
   useEffect(() => {
     let cancelled = false
     const image = new Image()
-    image.crossOrigin = 'anonymous'
+    // Solo para una URL de otro origen (para que el canvas se pueda exportar).
+    // Una blob: local es del mismo origen y no lo necesita.
+    if (/^https?:/i.test(imageUrl)) image.crossOrigin = 'anonymous'
     image.onload = () => {
       if (cancelled) return
       const canvas = canvasRef.current

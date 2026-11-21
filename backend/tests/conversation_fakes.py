@@ -129,6 +129,13 @@ class FakeMessages:
         self.stored[values["wa_message_id"]] = message
         return message, True
 
+    async def fill_unavailable(self, message_id, **values):
+        message = next((item for item in self.stored.values() if item["id"] == message_id), None)
+        if message is None or message["message_type"] != "unsupported":
+            return None
+        message.update(values)
+        return message
+
     async def set_media_url(self, message_id, media_url):
         self.media[message_id] = media_url
 

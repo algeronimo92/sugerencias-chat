@@ -87,10 +87,11 @@ class MessageMediaReady(ConversationEvent):
 
 @dataclass(frozen=True, kw_only=True)
 class ProviderMessageChanged(ConversationEvent):
-    """Un mensaje ya guardado se editó o se eliminó desde WhatsApp."""
+    """Un mensaje ya guardado se editó o se eliminó desde WhatsApp, o llegó
+    el contenido del aviso de "mensaje no disponible"."""
 
     message_id: int
-    change: str  # edited | deleted
+    change: str  # edited | deleted | filled
 
 
 @dataclass(frozen=True, kw_only=True)

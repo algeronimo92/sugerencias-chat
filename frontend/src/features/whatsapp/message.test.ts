@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDayLabel, formatMoney, groupByDay, isKnownMessageType, messageAdReferral, messageContacts,
   messageCoords, messageFlowReply, messageOrder, messageProducts, messageReply, messageSystemNotice,
-  highlightSegments, messageUnsupported, metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, searchTerms, splitOnMatch,
+  highlightSegments, isAlbumNotice, messageUnsupported, metaErrors, parseContent, quotePreview, resolveMediaUrl, searchSnippet, searchTerms, splitOnMatch,
   TEMPLATE_FALLBACK_TEXT,
 } from './message'
 
@@ -69,6 +69,20 @@ describe('parseContent', () => {
     const poll = { from: '51911111111', type: 'unsupported', errors: [{ code: 131051 }], unsupported: { type: 'poll_creation' } }
     const parsed = parseContent({ content: null, message_type: 'unsupported', provider_payload: poll })
     expect(parsed.text).toBe('Mensaje de encuesta que WhatsApp no comparte con el CRM')
+  })
+
+  it('el aviso de álbum de Meta se reconoce y no manda a mirar el celular', () => {
+    // Como llega de Meta: las fotos aparte y este aviso, en medio.
+    const album = {
+      from: '51911111111', type: 'unsupported', errors: [{ code: 131051 }],
+      unsupported: { type: 'album', raw_type: 'album' },
+    }
+    const message = { content: null, message_type: 'unsupported', provider_payload: album }
+    expect(isAlbumNotice(message)).toBe(true)
+    expect(parseContent(message).text).toBe('Varias fotos')
+    const poll = { ...album, unsupported: { type: 'poll_creation' } }
+    expect(isAlbumNotice({ message_type: 'unsupported', provider_payload: poll })).toBe(false)
+    expect(isAlbumNotice({ message_type: 'image', provider_payload: null })).toBe(false)
   })
 
   it('el primer mensaje que retiene la coexistencia (131060) manda a mirar el celular', () => {

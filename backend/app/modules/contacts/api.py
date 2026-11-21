@@ -20,6 +20,7 @@ from app.modules.contacts.schemas import (
 )
 from app.modules.contacts.types import ContactOrigin
 from app.modules.leads.ports.visibility import seller_scope
+from app.modules.platform.ports.settings_service import get_effective
 
 require_contacts_view = require_permission(Permission.CONTACTS_VIEW)
 require_contacts_edit = require_permission(Permission.CONTACTS_EDIT)
@@ -142,15 +143,20 @@ async def post_import_discard(batch_id: UUID, _admin: User = Depends(require_con
 
 # --- Sincronización con el celular -----------------------------------------
 
+async def _crm_sync_status() -> dict:
+    """Lo pedido para el número que hoy tiene el CRM, no para los anteriores."""
+    return await whatsapp_sync_status((await get_effective("meta_phone_number_id") or "").strip())
+
+
 @router.get("/whatsapp-sync", response_model=WhatsAppSyncStatus)
 async def get_whatsapp_sync(_admin: User = Depends(require_contacts_import)):
-    return await whatsapp_sync_status()
+    return await _crm_sync_status()
 
 
 @router.put("/whatsapp-sync/settings", response_model=WhatsAppSyncStatus)
 async def put_whatsapp_sync_settings(body: WhatsAppSyncSettings, _admin: User = Depends(require_contacts_import)):
     await sync_service.set_auto_import(body.auto_import)
-    return await whatsapp_sync_status()
+    return await _crm_sync_status()
 
 
 # --- Un contacto -------------------------------------------------------------

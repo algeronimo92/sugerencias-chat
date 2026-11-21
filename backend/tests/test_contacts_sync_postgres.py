@@ -103,6 +103,16 @@ async def test_history_declined_is_reported(tenant):
         assert history["status"] == "declined"
 
 
+async def test_sync_status_shows_only_the_current_number(tenant):
+    # DermicaPro dejó la app del celular: lo pedido para el número anterior
+    # hacía decir que la agenda seguía llegando.
+    with tenant_context(tenant):
+        await sync_service.record_sync_request("PN-VIEJO", "smb_app_state_sync", request_id="r1", error=None)
+        assert (await whatsapp_sync_status("PN-NUEVO"))["syncs"] == []
+        [old] = (await whatsapp_sync_status("PN-VIEJO"))["syncs"]
+        assert old["phone_number_id"] == "PN-VIEJO"
+
+
 async def test_sync_request_records_the_meta_window(tenant):
     with tenant_context(tenant):
         await sync_service.record_sync_request(PN, "smb_app_state_sync", request_id=None, error="Meta dijo no")

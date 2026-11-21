@@ -59,6 +59,19 @@ export function uploadSizeError(file: File): string | null {
   return file.size > MAX_UPLOAD_BYTES ? 'supera el máximo de 25 MB' : null
 }
 
+/** Copia en memoria una foto recién elegida. En Android, una foto de la
+ * galería puede dejar de poder leerse poco después de elegirla: la vista previa
+ * la mostraba, pero dibujar o recortar la volvía a leer y fallaba ("No se pudo
+ * preparar la imagen para dibujar"). Leerla una sola vez, al elegirla, deja
+ * esas pantallas y el envío sobre una copia propia. Los videos no se copian:
+ * pueden pesar 100 MB y no pasan por esas pantallas. Falla si ya no se puede
+ * leer: mejor decirlo al elegir que en medio de la edición. */
+export async function keepImageInMemory(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file
+  const bytes = await file.arrayBuffer()
+  return new File([bytes], file.name, { type: file.type, lastModified: file.lastModified })
+}
+
 /** Comprime una imagen en el navegador antes de subirla, como hace WhatsApp:
  * la reescala a un lado máximo y la re-encoda como JPEG. Evita el error de
  * "archivo demasiado grande" con fotos de celular (3-12 MB → <1 MB) sin pérdida

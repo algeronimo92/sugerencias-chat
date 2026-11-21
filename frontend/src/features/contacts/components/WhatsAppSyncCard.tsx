@@ -27,7 +27,11 @@ function deadline(value: string | null) {
 
 /** Lo que llega de la app WhatsApp Business del celular (coexistencia).
  *  Meta lo manda una sola vez, en las 24 h siguientes a conectar el número;
- *  después solo llegan los cambios de la agenda. */
+ *  después solo llegan los cambios de la agenda.
+ *
+ *  Un número solo en el CRM no tiene pedidos (el backend devuelve solo los del
+ *  número actual): sin pedidos ni contactos esperando, la tarjeta no se muestra.
+ *  Antes, tras mudar el número de DermicaPro, decía que la agenda seguía llegando. */
 export function WhatsAppSyncCard({ onReview }: { onReview: (batchId: string) => void }) {
   const { data: status } = useWhatsAppSync(true)
   const { data: pending } = useImportSummary(status?.open_batch_id ?? null)
@@ -35,6 +39,7 @@ export function WhatsAppSyncCard({ onReview }: { onReview: (batchId: string) => 
   const retry = useRetryWhatsAppSync()
   if (!status) return null
   const waiting = pending?.counts.pending ?? 0
+  if (status.syncs.length === 0 && waiting === 0) return null
   const canRetry = status.syncs.some(sync => sync.can_retry)
 
   function toggleAuto(enabled: boolean) {
@@ -60,9 +65,7 @@ export function WhatsAppSyncCard({ onReview }: { onReview: (batchId: string) => 
             <p className="mt-0.5 text-sm text-wa-muted dark:text-wa-muted-dark">
               {waiting > 0
                 ? `${contactsLabel(waiting)} de la app WhatsApp Business esperan que elijas cuáles importar.`
-                : status.syncs.length > 0
-                  ? 'Los cambios de la agenda del celular llegan solos.'
-                  : 'Al conectar un número con la app WhatsApp Business, su agenda y sus chats recientes aparecen acá.'}
+                : 'Los cambios de la agenda del celular llegan solos.'}
             </p>
             {status.syncs.length > 0 && (
               <ul className="mt-2 flex flex-wrap gap-2">

@@ -3,7 +3,8 @@ function createImage(url: string): Promise<HTMLImageElement> {
     const image = new Image()
     image.addEventListener('load', () => resolve(image))
     image.addEventListener('error', (error) => reject(error))
-    image.crossOrigin = 'anonymous'
+    // Como en ImageDrawDialog: solo una URL de otro origen lo necesita.
+    if (/^https?:/i.test(url)) image.crossOrigin = 'anonymous'
     image.src = url
   })
 }

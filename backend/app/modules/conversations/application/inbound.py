@@ -23,6 +23,17 @@ from app.modules.conversations.domain.events import (
 # Raíces de Meta que no son mensajes del cliente ni del negocio.
 NON_CONVERSATIONAL_TYPES = frozenset({"system"})
 
+# 131060: en coexistencia Meta avisa primero "mensaje no disponible" y, casi
+# siempre segundos después, manda el mismo id con el contenido real.
+UNAVAILABLE_ERROR_CODE = 131060
+
+
+def _is_unavailable_notice(message: dict) -> bool:
+    if message.get("message_type") != "unsupported":
+        return False
+    errors = (message.get("provider_payload") or {}).get("errors") or []
+    return any(isinstance(error, dict) and error.get("code") == UNAVAILABLE_ERROR_CODE for error in errors)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -46,7 +57,13 @@ async def receive_provider_message(
     """Guarda el mensaje si no existe. Devuelve ``(mensaje, creado)``.
 
     ``wa_message_id`` es único: un reintento de Meta encuentra la fila ya
-    guardada y no la duplica ni la modifica.
+    guardada y no la duplica ni la modifica. La excepción es el aviso de
+    "mensaje no disponible" (131060): cuando llega el contenido con el mismo
+    id, reemplaza al aviso y cuenta como creado para quien llama (es la
+    primera vez que se conoce el mensaje: su anuncio, su adjunto). No vuelve a
+    disparar automatizaciones, que ya corrieron con el aviso. Antes se
+    descartaba y el texto quedaba solo en el celular: pasó con el primer
+    mensaje de un anuncio en DermicaPro.
     """
     ports = conversation_ports()
     async with unit_of_work():
@@ -57,6 +74,16 @@ async def receive_provider_message(
             quoted_wa_message_id=quoted_wa_message_id, webhook_event_id=webhook_event_id,
             payload=payload,
         )
+        if not created and message_type != "unsupported" and _is_unavailable_notice(stored):
+            filled = await ports.messages.fill_unavailable(
+                stored["id"], message_type=message_type, message_subtype=message_subtype,
+                provider_payload=provider_payload, content=content,
+                quoted_wa_message_id=quoted_wa_message_id, webhook_event_id=webhook_event_id,
+                payload=payload,
+            )
+            if filled is not None:
+                collect(ProviderMessageChanged(chat_id=filled["chat_id"], message_id=filled["id"], change="filled"))
+                return filled, True
         if created:
             now = _now()
             if sender == "vendedor":

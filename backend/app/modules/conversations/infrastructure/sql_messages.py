@@ -99,6 +99,35 @@ class SqlMessageStore:
             )).scalar_one()
         return serialize_message(row), created
 
+    async def fill_unavailable(
+        self,
+        message_id: int,
+        *,
+        message_type: str | None,
+        message_subtype: str | None,
+        provider_payload: dict,
+        content: str | None,
+        quoted_wa_message_id: str | None,
+        webhook_event_id: str | None,
+        payload: dict | None = None,
+    ) -> dict | None:
+        # Solo si sigue siendo el aviso: dos entregas a la vez no se pisan.
+        row = (await current_session().execute(
+            update(WspMessage)
+            .where(WspMessage.id == message_id, WspMessage.message_type == "unsupported")
+            .values(
+                message_type=message_type,
+                message_subtype=message_subtype,
+                provider_payload=provider_payload,
+                content=content,
+                quoted_wa_message_id=quoted_wa_message_id,
+                webhook_event_id=webhook_event_id,
+                payload=payload,
+            )
+            .returning(WspMessage)
+        )).scalar_one_or_none()
+        return serialize_message(row) if row is not None else None
+
     async def set_media_url(self, message_id: int, media_url: str) -> None:
         await current_session().execute(
             update(WspMessage).where(WspMessage.id == message_id).values(media_url=media_url)

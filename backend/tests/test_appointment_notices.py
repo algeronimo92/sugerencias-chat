@@ -808,6 +808,102 @@ async def test_relinking_the_crm_with_two_numbers_skips_the_notice_number(monkey
     assert saved[0]["meta_phone_number_id"] == "CRM_ID"
 
 
+NOTICE_NUMBER = "appointment_notice_phone_number_id"
+
+
+def _relink_world(monkeypatch, *, stored: dict[str, str], unreachable: set[str] = frozenset(), fail: set[str] = frozenset()):
+    """Reconexión del CRM con un negocio en curso: lo guardado antes, los
+    números que el token nuevo ya no ve y lo que se dio de baja en el ruteo."""
+    from app.integrations.meta import client as meta_client
+    from app.tenancy import provisioning
+    from app.tenancy.context import TenantContext
+    from uuid import uuid4
+
+    saved: list[dict] = []
+    disabled: list[str] = []
+
+    async def fake_request(method, url, token, **_kwargs):
+        target = url.rsplit("/", 1)[-1]
+        if target in unreachable:
+            raise meta_client.MetaApiError(
+                "no existe", error={"code": 100, "error_subcode": 33}, status_code=400,
+            )
+        if target in fail:
+            raise meta_client.MetaApiError("caído", error={"code": 2}, status_code=500)
+        return {"success": True}
+
+    async def fake_update(values):
+        saved.append(values)
+
+    async def fake_disable(_organization_id, *, phone_number_id):
+        disabled.append(phone_number_id)
+
+    monkeypatch.setattr(meta_client, "_exchange_code", AsyncMock(return_value="NUEVO_TOKEN"))
+    monkeypatch.setattr(meta_client, "_request", fake_request)
+    monkeypatch.setattr(meta_client, "update_settings", fake_update)
+    monkeypatch.setattr(meta_client, "get_effective_many", AsyncMock(
+        side_effect=lambda keys: {key: stored.get(key, "") for key in keys},
+    ))
+    organization_id = uuid4()
+    context = TenantContext(organization_id, f"tenant_{organization_id.hex}", "demo.localhost")
+    monkeypatch.setattr(meta_client, "get_current_tenant", lambda: context)
+    monkeypatch.setattr(provisioning, "sync_whatsapp_connection", AsyncMock())
+    monkeypatch.setattr(provisioning, "disable_whatsapp_connection", fake_disable)
+    return meta_client, saved, disabled
+
+
+async def test_moving_the_crm_to_another_number_stops_routing_the_old_one(monkeypatch):
+    # Pasó en DermicaPro al dejar la app del celular: el número viejo seguía activo.
+    meta_client, _saved, disabled = _relink_world(monkeypatch, stored={"meta_phone_number_id": "VIEJO"})
+
+    await meta_client.complete_embedded_signup("CODE", "WABA_NUEVA", "NUEVO", meta_client.CLOUD_API)
+
+    assert disabled == ["VIEJO"]
+
+
+async def test_relinking_the_same_number_keeps_it_routed(monkeypatch):
+    meta_client, _saved, disabled = _relink_world(monkeypatch, stored={"meta_phone_number_id": "MISMO"})
+
+    await meta_client.complete_embedded_signup("CODE", "WABA", "MISMO")
+
+    assert disabled == []
+
+
+async def test_a_notice_number_the_new_connection_cannot_see_goes_back_to_the_crm(monkeypatch):
+    meta_client, saved, disabled = _relink_world(
+        monkeypatch, stored={"meta_phone_number_id": "VIEJO", NOTICE_NUMBER: "AVISOS"},
+        unreachable={"AVISOS"},
+    )
+
+    await meta_client.complete_embedded_signup("CODE", "WABA_NUEVA", "NUEVO", meta_client.CLOUD_API)
+
+    assert {meta_client.NOTICE_NUMBER_KEY: "", meta_client.NOTICE_WABA_KEY: ""} in saved
+    assert disabled == ["VIEJO", "AVISOS"]
+
+
+async def test_a_notice_number_the_new_connection_still_sees_stays(monkeypatch):
+    meta_client, saved, disabled = _relink_world(
+        monkeypatch, stored={"meta_phone_number_id": "NUEVO", NOTICE_NUMBER: "AVISOS"},
+    )
+
+    await meta_client.complete_embedded_signup("CODE", "WABA", "NUEVO")
+
+    assert all(meta_client.NOTICE_NUMBER_KEY not in values for values in saved)
+    assert disabled == []
+
+
+async def test_a_meta_outage_does_not_drop_the_notice_number(monkeypatch):
+    meta_client, saved, disabled = _relink_world(
+        monkeypatch, stored={"meta_phone_number_id": "NUEVO", NOTICE_NUMBER: "AVISOS"},
+        fail={"AVISOS"},
+    )
+
+    await meta_client.complete_embedded_signup("CODE", "WABA", "NUEVO")
+
+    assert all(meta_client.NOTICE_NUMBER_KEY not in values for values in saved)
+    assert disabled == []
+
+
 # --- Número de avisos en su propia WABA (coexistencia) ---------------------
 
 OWN = {"id": "AVISOS_PROPIO", "display_phone_number": "+51 974 637 783", "verified_name": "Avisos",

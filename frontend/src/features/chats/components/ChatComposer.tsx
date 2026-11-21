@@ -5,7 +5,7 @@ import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopov
 import { useLayout } from '../../../shared/hooks/useBreakpoint'
 import { VoiceRecorder } from '../../../shared/ui/VoiceRecorder'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { compressImage, uploadSizeError } from '../../../shared/utils/media'
+import { compressImage, keepImageInMemory, uploadSizeError } from '../../../shared/utils/media'
 import { availableNativeInteractives } from '../domain/nativeInteractive'
 import type { OutboundOf } from '../domain/outbound'
 import { useChatDraft } from '../draftStore'
@@ -371,9 +371,16 @@ export function ChatComposer({
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
+    const picked = Array.from(e.target.files ?? [])
     e.target.value = '' // permite volver a elegir el mismo archivo después
-    if (!files.length) return
+    if (!picked.length) return
+    let files: File[]
+    try {
+      files = await Promise.all(picked.map(keepImageInMemory))
+    } catch {
+      setMediaError('No se pudo leer la foto. Vuelve a elegirla.')
+      return
+    }
 
     // El backend valida el tipo real permitido; acá solo evitamos un
     // roundtrip para el caso obvio de un archivo sin tipo reconocible.
