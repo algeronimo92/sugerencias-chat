@@ -32,7 +32,12 @@ def _has_started(execution):
     # Sin jsonb_array_length: una fila antigua con un escalar ahí haría
     # fallar el reclamo entero, y con él todas las automatizaciones.
     def non_empty_list(value):
-        return and_(func.jsonb_typeof(value) == "array", value != cast(literal("[]"), JSONB))
+        # coalesce: sin la clave, jsonb_typeof da NULL y el NOT de quien
+        # pregunta "¿no empezó?" quedaría en NULL en vez de verdadero.
+        return func.coalesce(
+            and_(func.jsonb_typeof(value) == "array", value != cast(literal("[]"), JSONB)),
+            False,
+        )
 
     return or_(non_empty_list(execution.action_results), non_empty_list(execution.flow_state["path"]))
 
@@ -58,9 +63,11 @@ def _blocking_execution_exists(candidate):
     """
     other = aliased(AutomationExecution)
     same_lead = and_(other.lead_id == candidate.lead_id, other.id != candidate.id)
+    # coalesce: sin padre, ->> da NULL, y NOT (NULL) también es NULL. La
+    # ejecución dejaba de contar como bloqueante justo en el caso común.
     family = or_(
-        other.event_payload["parent_execution_id"].astext == cast(candidate.id, String),
-        candidate.event_payload["parent_execution_id"].astext == cast(other.id, String),
+        func.coalesce(other.event_payload["parent_execution_id"].astext, "") == cast(candidate.id, String),
+        func.coalesce(candidate.event_payload["parent_execution_id"].astext, "") == cast(other.id, String),
     )
     running = exists().where(same_lead, other.status == AutomationExecutionStatus.RUNNING)
     waiting = exists().where(same_lead, not_(family), _started_and_waiting(other))
