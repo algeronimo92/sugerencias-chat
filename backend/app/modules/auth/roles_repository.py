@@ -54,6 +54,11 @@ async def apply_db_grants(
         return await db_privileges.apply_schema_grants(db, schema, grants, control_reads)
 
 
+async def database_can_create_roles() -> bool:
+    async with session_scope() as db:
+        return await db_privileges.can_create_roles(db)
+
+
 async def describe_db_privileges(schema: str) -> list[dict]:
     async with session_scope() as db:
         return await db_privileges.describe_privileges(db, schema)

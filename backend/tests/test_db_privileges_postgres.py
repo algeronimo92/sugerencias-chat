@@ -160,3 +160,20 @@ async def test_postgres_reports_what_is_applied(schema):
     assert objects["leads"] == ["SELECT"]
     assert objects["users"] == ["SELECT"]
     assert objects["users.password_hash"] == ["UPDATE"]
+
+
+async def test_it_tells_whether_the_connection_can_create_the_roles(schema):
+    """Producción no tenía CREATEROLE y la pantalla decía "corre las
+    migraciones", que ya habían corrido. Se pregunta por el usuario de la
+    sesión: con SET ROLE activo, current_user sería el rol del negocio."""
+    engine, name = schema
+    async with AsyncSession(engine) as session, session.begin():
+        assert await db.can_create_roles(session) is True
+        await session.execute(text(f'SET LOCAL ROLE "{db.tenant_db_role(name, "admin")}"'))
+        assert await db.can_create_roles(session) is True
+    async with AsyncSession(engine) as session, session.begin():
+        await session.execute(text(f'SET SESSION AUTHORIZATION "{db.tenant_db_role(name, "vendedor")}"'))
+        try:
+            assert await db.can_create_roles(session) is False
+        finally:
+            await session.execute(text("RESET SESSION AUTHORIZATION"))

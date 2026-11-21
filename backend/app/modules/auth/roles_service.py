@@ -113,6 +113,10 @@ async def sync_db_privileges() -> bool:
     )
 
 
+async def roles_can_be_created() -> bool:
+    return await roles_repository.database_can_create_roles()
+
+
 async def describe_db_privileges() -> list[dict]:
     context = get_current_tenant()
     if context is None:

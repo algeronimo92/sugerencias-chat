@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Database, Info, Minus, Search, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Database, Info, Minus, Search, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Input } from '../../../shared/ui/Input'
 import { useDbPrivileges } from '../hooks/useRoles'
@@ -124,6 +124,37 @@ function RoleCard({ role, filter }: { role: DbRolePrivileges; filter: string }) 
   )
 }
 
+function EnforcementNotice({ active }: { active: boolean }) {
+  return (
+    <p className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${active ? 'bg-success-soft text-success-fg' : 'bg-info-soft text-info-fg'}`}>
+      {active ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+      {active
+        ? 'Activo: cada acción del equipo corre en la base con el rol de quien la hace.'
+        : 'Los privilegios están aplicados, pero las acciones todavía corren con el usuario general de la base (DB_ROLE_ENFORCEMENT apagado).'}
+    </p>
+  )
+}
+
+/** Por qué el negocio no tiene roles. En producción las migraciones ya habían
+ *  corrido y el aviso decía "se crean al correr las migraciones": la causa era
+ *  que el usuario de la base no puede crear roles. */
+function MissingRolesNotice({ canCreateRoles }: { canCreateRoles: boolean }) {
+  return (
+    <div role="status" className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning-fg">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      {canCreateRoles ? (
+        <p>Este negocio todavía no tiene roles en la base. Se crean solos en el próximo despliegue.</p>
+      ) : (
+        <p>
+          Este negocio todavía no tiene roles en la base: el usuario con el que la app se conecta a PostgreSQL no tiene
+          permiso para crear roles (<code className="font-mono">CREATEROLE</code>). Quien administra el servidor tiene que
+          darle ese permiso; los roles se crean en el siguiente despliegue.
+        </p>
+      )}
+    </div>
+  )
+}
+
 /**
  * Lo que PostgreSQL tiene aplicado hoy a los tres roles de base de este
  * negocio, leído de la base (pg_roles e information_schema), no de la matriz:
@@ -149,22 +180,11 @@ export function DbPrivilegesPanel() {
           </span>
         </p>
 
-        {data && (
-          <p className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${data.enforcement_active ? 'bg-success-soft text-success-fg' : 'bg-info-soft text-info-fg'}`}>
-            {data.enforcement_active ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
-            {data.enforcement_active
-              ? 'Activo: cada acción del equipo corre en la base con el rol de quien la hace.'
-              : 'Los privilegios están aplicados, pero las acciones todavía corren con el usuario general de la base (DB_ROLE_ENFORCEMENT apagado).'}
-          </p>
-        )}
+        {data && roles.length > 0 && <EnforcementNotice active={data.enforcement_active} />}
 
         {isLoading && <p className="py-8 text-center text-sm text-fg-muted">Consultando la base…</p>}
         {error && <p role="alert" className="py-8 text-center text-sm text-danger-fg">No se pudieron leer los privilegios de la base.</p>}
-        {data && roles.length === 0 && (
-          <p className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning-fg">
-            Este negocio todavía no tiene roles en la base: se crean al correr las migraciones.
-          </p>
-        )}
+        {data && roles.length === 0 && <MissingRolesNotice canCreateRoles={data.can_create_roles} />}
 
         {roles.length > 0 && (
           <label className="relative block">

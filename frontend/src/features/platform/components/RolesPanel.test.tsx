@@ -78,6 +78,7 @@ it('muestra los privilegios que la base tiene aplicados', async () => {
   api.current.on('get', '/api/roles/db-privileges', {
     data: {
       enforcement_active: false,
+      can_create_roles: true,
       roles: [{
         db_role: `cv_${'a'.repeat(32)}_analista`,
         system: { superuser: false, create_db: false, create_role: false, login: false, bypass_rls: false, schema_usage: true, schema_create: false },
@@ -99,4 +100,18 @@ it('quien no gestiona usuarios no ve las secciones de permisos', async () => {
   renderAt('/configuracion/roles', { role: 'vendedor', permissions: ['settings.manage'] })
   expect(await screen.findByRole('link', { name: 'General' })).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Roles y permisos' })).not.toBeInTheDocument()
+})
+
+it('sin roles, dice si falta el permiso CREATEROLE o solo el próximo despliegue', async () => {
+  api.current.on('get', '/api/roles/db-privileges', { data: { enforcement_active: false, can_create_roles: false, roles: [] } })
+  renderAt('/configuracion/base')
+  expect(await screen.findByText(/no tiene\s+permiso para crear roles/)).toBeInTheDocument()
+  // Sin roles no hay privilegios aplicados que anunciar.
+  expect(screen.queryByText(/Los privilegios están aplicados/)).not.toBeInTheDocument()
+})
+
+it('sin roles pero con permiso, se crean en el próximo despliegue', async () => {
+  api.current.on('get', '/api/roles/db-privileges', { data: { enforcement_active: false, can_create_roles: true, roles: [] } })
+  renderAt('/configuracion/base')
+  expect(await screen.findByText(/Se crean solos en el próximo despliegue/)).toBeInTheDocument()
 })

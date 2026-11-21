@@ -172,6 +172,15 @@ async def apply_schema_grants(
             await session.execute(text(f"SET LOCAL ROLE {_ident(tenant_db_role(schema, previous))}"))
 
 
+async def can_create_roles(session: AsyncSession) -> bool:
+    """Si el usuario de la conexión puede crear los roles de un negocio.
+    ``session_user`` y no ``current_user``: con SET ROLE activo, el segundo es
+    el rol del negocio, que nunca puede."""
+    return bool((await session.execute(
+        text("SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname = session_user")
+    )).scalar_one_or_none())
+
+
 async def describe_privileges(session: AsyncSession, schema: str) -> list[dict]:
     """Lo que PostgreSQL dice hoy de cada rol del negocio: atributos de
     sistema, privilegios sobre el schema y privilegios de objeto (por tabla y
