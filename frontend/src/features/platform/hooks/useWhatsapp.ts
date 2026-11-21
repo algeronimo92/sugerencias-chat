@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { fetchCallingReadiness, fetchCallingSettings, saveCallingSettings, fetchMetaConversionEvents, fetchMetaConversions, fetchStatus, fetchWhatsappCosts, saveMetaConversions, syncWhatsappCosts } from '../api'
 import type { StatusOptions } from '../types'
 import { whatsappKeys } from '../keys'
@@ -34,13 +35,22 @@ export function useWhatsappStatus(options: StatusOptions = {}) {
  *  Meta sube el límite) y nada lo avisa. Un fallo no se reintenta solo:
  *  la pantalla ofrece reintentar. */
 export function useCallingReadiness(enabled = true) {
-  return useQuery({
+  const queryClient = useQueryClient()
+  const query = useQuery({
     queryKey: whatsappKeys.callingReadiness,
     queryFn: fetchCallingReadiness,
     enabled,
     staleTime: 0,
     retry: false,
   })
+  // Esta consulta le pregunta a Meta por el número: si falla, puede ser que
+  // lo hayan desvinculado y el backend acaba de registrarlo. Sin releer el
+  // estado, Integraciones seguiría diciendo "Conectado" hasta el próximo sondeo.
+  const failed = query.isError
+  useEffect(() => {
+    if (failed) void queryClient.invalidateQueries({ queryKey: whatsappKeys.status })
+  }, [failed, queryClient])
+  return query
 }
 
 /** Si las llamadas están activas en el número y su horario, leído de Meta. */

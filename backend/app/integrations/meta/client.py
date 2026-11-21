@@ -532,7 +532,25 @@ async def _request(
                 ),
             )
             raise
+        except MetaApiError as exc:
+            # No hace falta esperar a que alguien mande un mensaje: abrir
+            # Integraciones, marcar un chat como leído o la copia de costos
+            # también le preguntan a Meta por el número o la WABA del CRM.
+            # Tras el primer arreglo la app siguió diciendo "conectado" hasta
+            # el siguiente envío, con Meta rechazando estas consultas.
+            if _object_unavailable(exc.error) and await _is_crm_account(url):
+                await mark_disconnected()
+            raise
     return response.json()
+
+
+async def _is_crm_account(url: str) -> bool:
+    """Si el objeto de la URL es el número o la WABA del CRM. Otro objeto que
+    Meta no encuentre (una plantilla borrada, la WABA del número de avisos)
+    no dice nada de la conexión de los chats."""
+    target = url.removeprefix(_graph_url("")).split("/", 1)[0]
+    values = await get_effective_many(("meta_phone_number_id", "meta_waba_id"))
+    return bool(target) and target in (values["meta_phone_number_id"], values["meta_waba_id"])
 
 
 async def _recipient(chat_id: str) -> dict[str, str]:

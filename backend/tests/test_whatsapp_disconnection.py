@@ -120,6 +120,33 @@ async def test_losing_the_notice_number_does_not_disconnect_the_crm(monkeypatch)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["PHONE1", "WABA1/pricing_analytics"])
+async def test_any_query_about_the_crm_account_that_meta_no_longer_finds_marks_the_disconnection(monkeypatch, path):
+    """Tras el primer arreglo, Integraciones siguió diciendo "Conectado": nadie
+    había enviado nada, pero abrir la página ya le preguntaba a Meta por el
+    número (llamadas) y el worker por la WABA (costos), y Meta los rechazaba."""
+    saved, _alert = _settings(monkeypatch, meta_phone_number_id="PHONE1", meta_waba_id="WABA1")
+    _rejecting_client(monkeypatch, NUMBER_GONE)
+
+    with pytest.raises(meta_service.MetaApiError):
+        await meta_service._request("GET", meta_service._graph_url(path), "token-123", timeout=5.0)
+
+    assert meta_service.DISCONNECTED_AT_KEY in saved[0]
+
+
+@pytest.mark.asyncio
+async def test_another_object_meta_no_longer_finds_says_nothing_about_the_connection(monkeypatch):
+    """Una plantilla borrada o la WABA del número de avisos responden igual."""
+    saved, _alert = _settings(monkeypatch, meta_phone_number_id="PHONE1", meta_waba_id="WABA1")
+    _rejecting_client(monkeypatch, NUMBER_GONE)
+
+    with pytest.raises(meta_service.MetaApiError):
+        await meta_service._request("GET", meta_service._graph_url("PLANTILLA_BORRADA"), "token-123", timeout=5.0)
+
+    assert saved == []
+
+
+@pytest.mark.asyncio
 async def test_the_disconnection_keeps_the_time_of_the_first_notice(monkeypatch):
     first = "2026-11-21T03:51:41+00:00"
     saved, alert = _settings(monkeypatch, **{meta_service.DISCONNECTED_AT_KEY: first})
