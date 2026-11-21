@@ -3,7 +3,10 @@ import { expect, test } from '../../fixtures/test'
 
 for (const restricted of [false, true]) {
   test(`vendedor: Todas respeta el ajuste ${restricted ? 'activado' : 'desactivado'} y permite volver desde Mías`, async ({ page, api, isMobile }) => {
-    const seller = { ...ADMIN, id: 2, role: 'vendedor' as const, name: 'Ana' }
+    const seller = {
+      ...ADMIN, id: 2, role: 'vendedor' as const, name: 'Ana',
+      permissions: ['conversations.view', 'conversations.send', 'leads.view', 'leads.edit', 'tasks.use', 'contacts.view'],
+    }
     const own = chat({ chat_id: '51999000101', name: 'Cliente de Ana', vendedor_id: 2, vendedor: 'Ana' })
     const foreign = chat({ chat_id: '51999000102', name: 'Cliente de Bea', vendedor_id: 3, vendedor: 'Bea' })
     const unassigned = chat({ chat_id: '51999000103', name: 'Cliente sin asignar', vendedor_id: null, vendedor: null })

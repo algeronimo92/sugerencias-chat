@@ -10,6 +10,7 @@ import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import { readEditField } from "../../../shared/navigation/editFieldLink";
 import { toast } from "sonner";
 import { useMe } from "../../../shared/auth";
+import { can } from '../../../shared/permissions'
 import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
 import { useLayout, useMediaQuery } from "../../../shared/hooks/useBreakpoint";
 import { Button } from "../../../shared/ui/Button";
@@ -134,7 +135,8 @@ function SuggestionsEmptyState() {
 
 export function ChatWorkspace() {
   const { data: me } = useMe();
-  const isAdmin = me?.role === "admin";
+  // Conectar integraciones (WhatsApp, voz) desde los avisos del chat.
+  const isAdmin = can(me, "settings.manage");
   const chatId = useMatch("/chat/:chatId")?.params.chatId ?? null;
   const navigate = useNavigate();
   const location = useLocation();
@@ -190,10 +192,10 @@ export function ChatWorkspace() {
   // Estado de la conexión de WhatsApp — solo admin (el endpoint es admin-only).
   // Alimenta el CTA del estado vacío cuando la instancia no está vinculada.
   const { data: whatsappStatus } = useWhatsappStatus({
-    enabled: me?.role === "admin",
+    enabled: isAdmin,
   });
   const showConnectWhatsapp =
-    me?.role === "admin" &&
+    isAdmin &&
     whatsappStatus != null &&
     whatsappStatus.state !== "open";
 
@@ -380,7 +382,7 @@ export function ChatWorkspace() {
               <ChatListToolbar filters={chatFilters} searching={!!debouncedSearch} onStartSelection={() => setSelection(new Set())} />
             )}
             footer={selection && (
-              <BulkActionsFooter selected={selection} onSelectionChange={setSelection} isAdmin={me?.role === "admin"} />
+              <BulkActionsFooter selected={selection} onSelectionChange={setSelection} isAdmin={can(me, "leads.assign")} />
             )}
             selection={selection}
             onToggleSelected={(chatId) => setSelection((current) => {

@@ -93,6 +93,8 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
 - `axios` solo en `shared/http/`; HTTP solo en `features/*/api.ts`; respuestas tipadas con `ApiResponse<ruta, método>`.
 - Claves de React Query solo en `keys.ts`. Features en capas ordenadas (`auth` → … → `chats` → `dashboard`): una feature solo importa capas inferiores.
 - Componentes ≤400 líneas salvo los ya listados en `KNOWN_LARGE_COMPONENTS`.
+- Qué se muestra lo decide el permiso, no el rol: `can(me, 'leads.delete')` / `useCan()` (`shared/permissions.ts`),
+  rutas con `RequirePermission` y cada entrada del menú con su `permissions`. El rol solo para mostrarlo o para el 2FA del admin.
 
 ## Convenciones
 

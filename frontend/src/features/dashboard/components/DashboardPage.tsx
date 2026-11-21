@@ -10,6 +10,7 @@ import { sectionElementId } from './sectionLink'
 import type { DashboardSubject } from './subject'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { Button } from '../../../shared/ui/Button'
+import { can, type Viewer } from '../../../shared/permissions'
 import { Select } from '../../../shared/ui/Input'
 import { ExportMenu } from './ExportMenu'
 import { CallsTab } from './CallsTab'
@@ -42,19 +43,20 @@ function parseView(value: string): DashboardView {
 }
 
 interface Props {
-  /** Rol de la sesión, como lo entrega el backend. */
-  role: string | undefined
+  /** Quién mira: decide si elige a otra persona y qué puede exportar. */
+  viewer: Viewer
   onOpenTasks: () => void
   onOpenFlows: () => void
   onOpenChat: (leadId: string) => void
   onFilterChats: (filters: Partial<ChatFilters>) => void
 }
 
-export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
-  const isAdmin = role === 'admin'
-  // El analista no tiene leads propios ni puede pedir la lista del equipo:
-  // mira siempre el total y no elige a quién mirar.
-  const isAnalyst = role === 'analista'
+export function DashboardPage({ viewer, onOpenTasks, onOpenFlows, onOpenChat, onFilterChats }: Props) {
+  // Elegir a otra persona del equipo (por defecto, solo el admin).
+  const isAdmin = can(viewer, 'dashboard.view_member')
+  // Quien no atiende chats no tiene leads propios: mira siempre el total y no
+  // elige a quién mirar (por defecto, el analista).
+  const isAnalyst = !can(viewer, 'conversations.view')
   const filters = useDashboardFilters(isAdmin || isAnalyst)
   const { tab, setTab, days, setDays, setView } = filters
   const view: DashboardView = isAnalyst ? 'team' : filters.view
@@ -138,7 +140,9 @@ export function DashboardPage({ role, onOpenTasks, onOpenFlows, onOpenChat, onFi
               <option value={30}>Últimos 30 días</option>
               <option value={90}>Últimos 90 días</option>
             </Select>
-            {(isAdmin || isAnalyst) && <ExportMenu isAdmin={isAdmin} days={days} />}
+            {can(viewer, 'dashboard.export', 'dashboard.export_personal_data') && (
+              <ExportMenu isAdmin={can(viewer, 'dashboard.export_personal_data')} days={days} />
+            )}
           </div>
         </div>
 

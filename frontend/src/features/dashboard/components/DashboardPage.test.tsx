@@ -1,3 +1,4 @@
+import type { UserRole } from '../../../shared/types'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
@@ -146,7 +147,7 @@ function CurrentQuery() {
   return <output data-testid="query">{useLocation().search}</output>
 }
 
-function renderDashboard(role = 'vendedor', url = '/dashboard') {
+function renderDashboard(role: UserRole = 'vendedor', url = '/dashboard') {
   requestedScopes.length = 0
   requests.length = 0
   const onOpenFlows = vi.fn()
@@ -155,7 +156,7 @@ function renderDashboard(role = 'vendedor', url = '/dashboard') {
   const view = render(
     <MemoryRouter initialEntries={[url]}>
       <DashboardPage
-        role={role}
+        viewer={{ role }}
         onOpenTasks={vi.fn()}
         onOpenFlows={onOpenFlows}
         onOpenChat={onOpenChat}

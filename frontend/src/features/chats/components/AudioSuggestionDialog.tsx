@@ -6,6 +6,7 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useOutboundMessage } from '../hooks/useOutboundMessage'
 import { useGenerateSpeech, useTtsStatus } from '../../ai/public/useTts'
 import { useMe } from '../../../shared/auth'
+import { can } from '../../../shared/permissions'
 import { IntegrationNotice } from '../../../shared/ui/IntegrationNotice'
 
 interface Props {
@@ -89,7 +90,7 @@ export function AudioSuggestionDialog({ chatId, initialText, onClose }: Props) {
             <IntegrationNotice
               message="ElevenLabs no está conectado: no se pueden generar audios con la voz del negocio."
               anchor="voz"
-              canConnect={me?.role === 'admin'}
+              canConnect={can(me, 'settings.manage')}
               tone="warning"
             />
           )}

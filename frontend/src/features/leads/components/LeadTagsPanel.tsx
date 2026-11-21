@@ -7,6 +7,7 @@ import { Select } from '../../../shared/ui/Input'
 import { PanelSection } from '../../../shared/ui/PanelSection'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import type { Chat } from '../types'
 import { useAssignTag, useRemoveTag } from '../hooks/useLeadMeta'
 import { useCreateTag, useTags } from '../../catalogs/public/useTags'
@@ -95,7 +96,7 @@ export function LeadTagsPanel({ chat }: { chat: Chat }) {
         </div>
       )}
 
-      {me?.role === 'admin' && (
+      {can(me, 'catalogs.manage') && (
         <form onSubmit={handleCreate} className="mt-2 flex items-center gap-1.5">
           <input
             type="color"

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import { useDeleteLead, useMarkNoShow } from '../../leads/public/queries'
 import { displayName } from '../../leads/public/chat'
 import type { Chat } from '../../leads/types'
@@ -38,7 +39,8 @@ export function ChatItemMenu({ chat, position, onPositionChange, onPreview, onMa
   const navigate = useNavigate()
   const { chatId: openChatId } = useParams<{ chatId?: string }>()
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  const canMerge = can(me, 'leads.merge')
+  const canDelete = can(me, 'leads.delete')
   const { mutate: markNoShow, isPending: isMarkingNoShow } = useMarkNoShow(chat.chat_id)
   const { mutate: deleteLead, isPending: isDeleting } = useDeleteLead()
 
@@ -144,13 +146,15 @@ export function ChatItemMenu({ chat, position, onPositionChange, onPreview, onMa
               Marcar no-show
             </button>
           )}
-          {isAdmin && (
+          {(canMerge || canDelete) && (
             <>
               <div className="my-1.5 border-t border-wa-border dark:border-wa-border-dark" />
-              <button type="button" role="menuitem" onClick={() => { close(); setShowMergeDialog(true) }} className={ITEM_CLASS}>
-                <GitMerge className={ICON_CLASS} /> Fusionar con...
-              </button>
-              <button
+              {canMerge && (
+                <button type="button" role="menuitem" onClick={() => { close(); setShowMergeDialog(true) }} className={ITEM_CLASS}>
+                  <GitMerge className={ICON_CLASS} /> Fusionar con...
+                </button>
+              )}
+              {canDelete && <button
                 type="button"
                 role="menuitem"
                 disabled={isDeleting}
@@ -159,7 +163,7 @@ export function ChatItemMenu({ chat, position, onPositionChange, onPreview, onMa
               >
                 {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 Eliminar lead
-              </button>
+              </button>}
             </>
           )}
         </div>,

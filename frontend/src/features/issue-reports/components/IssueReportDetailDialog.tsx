@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import type { IssueReportEvent, IssueReportPriority, IssueReportStatus } from '../types'
 import { useMe } from '../../../shared/auth'
+import { can } from '../../../shared/permissions'
 import { useAddIssueReportComment, useIssueReport, useUpdateIssueReport } from '../queries'
 import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS } from '../constants'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -27,7 +28,7 @@ function eventDescription(event: IssueReportEvent) {
 
 export function IssueReportDetailDialog({ reportId, onClose }: { reportId: number; onClose: () => void }) {
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  const isAdmin = can(me, 'issue_reports.manage')
   const { data: report, isLoading, isError, refetch } = useIssueReport(reportId)
   const updateReport = useUpdateIssueReport()
   const addComment = useAddIssueReportComment()

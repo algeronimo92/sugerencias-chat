@@ -5,6 +5,7 @@ ChevronDown,Clock,FileText,ListTodo,Loader2,MessageCircle,MessageSquare,Phone,Re
 RotateCcw,Search,UserRound,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { can } from '../../../shared/permissions'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '../../../shared/ui/Badge'
@@ -345,8 +346,9 @@ function TaskRow({ task, bucket, busy, onComplete, onOpenChat }: RowProps) {
 export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void }) {
   const navigate = useNavigate()
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
-  const { data: users = [] } = useUsers(!!isAdmin)
+  // Ver y asignar tareas de otros; la lista de personas sale de Usuarios.
+  const isAdmin = can(me, 'team.supervise')
+  const { data: users = [] } = useUsers(isAdmin && can(me, 'users.manage'))
 
   const [assignee, setAssignee] = useState('mine')
   const [group, setGroup] = useState<GroupKey>('all')

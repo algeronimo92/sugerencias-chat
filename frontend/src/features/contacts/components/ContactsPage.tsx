@@ -6,6 +6,7 @@ import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
+import { can } from '../../../shared/permissions'
 import { CONTACTS_PAGE_SIZE } from '../api'
 import { EMPTY_FILTERS, hasActiveFilters } from '../domain/filters'
 import { contactsLabel } from '../domain/selection'
@@ -48,7 +49,7 @@ function ContactsResults({ filters, page, isFiltered, listProps }: {
  *  que entró al embudo; desde acá se pasa con un clic. */
 export function ContactsPage({ onOpenChat }: { onOpenChat: (leadId: string) => void }) {
   const { data: me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  const isAdmin = can(me, 'contacts.import')
   const [filters, setFilters] = useState<ContactFilters>(EMPTY_FILTERS)
   const [page, setPage] = useState(0)
   const [editing, setEditing] = useState<Contact | null | 'new'>(null)
@@ -130,7 +131,7 @@ export function ContactsPage({ onOpenChat }: { onOpenChat: (leadId: string) => v
       </main>
 
       {selection.selected.size > 0 && (
-        <ContactsBulkBar ids={[...selection.selected]} isAdmin={isAdmin} onDone={selection.clear} />
+        <ContactsBulkBar ids={[...selection.selected]} isAdmin={can(me, 'contacts.import', 'contacts.delete')} onDone={selection.clear} />
       )}
       {editing !== null && <ContactFormDialog contact={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {importing && (

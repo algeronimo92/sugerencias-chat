@@ -1,5 +1,6 @@
 import { ChevronDown, Copy, Download, Forward, Loader2, X } from 'lucide-react'
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { can } from '../../../shared/permissions'
 import { toast } from 'sonner'
 import { useActivityHold } from '../../../shared/activity'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -357,7 +358,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
       ) : (
       <ChatThreadHeader
         chat={chat}
-        isAdmin={me?.role === 'admin'}
+        isAdmin={can(me, 'leads.assign')}
         customerWindow={customerWindow}
         isLoadingCustomerWindow={isLoadingCustomerWindow}
         isUpdatingLead={isUpdatingLead}
@@ -439,7 +440,7 @@ export function ChatThread({ chat, highlightMessageId = null, onBack, onOpenSugg
                       <InternalNoteCard
                         chatId={chat.chat_id}
                         note={item.note}
-                        canManage={me?.role === 'admin' || me?.id === item.note.author_user_id}
+                        canManage={can(me, 'team.supervise') || me?.id === item.note.author_user_id}
                       />
                     </div>
                   </Fragment>

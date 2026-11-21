@@ -11,6 +11,12 @@ export const userKeys = {
   sellers: ['sellers'] as const,
 }
 
+export const roleKeys = {
+  all: ['roles'] as const,
+  // Bajo `roles`: guardar la matriz reaplica los GRANT y refresca esta vista.
+  dbPrivileges: ['roles', 'db-privileges'] as const,
+}
+
 export const settingsKeys = {
   all: ['settings'] as const,
   timezones: ['settings', 'timezones'] as const,

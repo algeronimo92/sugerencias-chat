@@ -1,3 +1,4 @@
+import type { UserRole } from '../shared/types'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -5,12 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Sidebar } from './Sidebar'
 
-function renderRail(role: string, path = '/') {
+function renderRail(role: UserRole, path = '/') {
   const handlers = { onToggleTheme: vi.fn(), onLogout: vi.fn(), onOpenSettings: vi.fn(), onOpenSecurity: vi.fn() }
   render(
     <MemoryRouter initialEntries={[path]}>
       <Sidebar
-        role={role}
+        viewer={{ role }}
         unreadCount={128}
         brandName="Clínica Norte"
         account={{ name: 'Ana Torres', role: 'Administrador', onOpenSecurity: handlers.onOpenSecurity }}
