@@ -211,7 +211,7 @@ async def test_a_createrole_owner_that_is_not_superuser_can_set_the_roles_it_cre
     name = f"tenant_{secrets.token_hex(16)}"
     try:
         async with engine.begin() as connection:
-            await connection.execute(text(f'CREATE ROLE "{owner}" NOLOGIN CREATEROLE'))
+            await connection.execute(text(f'CREATE ROLE "{owner}" LOGIN CREATEROLE'))
             await connection.execute(text(f'CREATE SCHEMA "{name}" AUTHORIZATION "{owner}"'))
             await connection.execute(text(f'SET LOCAL ROLE "{owner}"'))
             await connection.execute(text(f'CREATE TABLE "{name}".leads (id serial PRIMARY KEY, nombre text)'))
@@ -222,6 +222,9 @@ async def test_a_createrole_owner_that_is_not_superuser_can_set_the_roles_it_cre
             async with AsyncSession(bind=connection) as session:
                 assert await db.can_create_roles(session) is True
                 assert await db.apply_schema_grants(session, name, DEFAULT_GRANTS) is True
+                # El creador del rol dueño figura como miembro (ADMIN), pero no
+                # es el login del negocio: en producción salía cliniventas_app.
+                assert await db.find_business_login(session, name) is None
                 await session.commit()
             await connection.execute(text(f'SET ROLE "{db.tenant_db_role(name, "vendedor")}"'))
             await connection.execute(text(f'UPDATE "{name}".leads SET nombre = nombre'))
