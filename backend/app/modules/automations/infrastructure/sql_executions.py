@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, func, literal, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import DateTime, String, and_, cast, exists, func, literal, not_, or_, select, update
+from sqlalchemy.orm import aliased
+from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
 from app.db.uow import session_scope
@@ -18,6 +19,59 @@ from app.modules.automations.domain.types import AutomationExecutionStatus
 from app.modules.automations.domain.execution import Execution, Rule, initial_flow_state
 from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION
 from app.modules.automations.queries import get_automation_execution
+
+
+# Cuántas filas mira el reclamo por cada una que puede tomar: las que sobran
+# son de leads que ya tienen otra en el mismo lote.
+CLAIM_SCAN_FACTOR = 5
+
+
+def _has_started(execution):
+    """Ya recorrió algún paso: una espera del flujo la devuelve a la cola sin
+    marca de inicio, pero sigue a medias."""
+    # Sin jsonb_array_length: una fila antigua con un escalar ahí haría
+    # fallar el reclamo entero, y con él todas las automatizaciones.
+    def non_empty_list(value):
+        # coalesce: sin la clave, jsonb_typeof da NULL y el NOT de quien
+        # pregunta "¿no empezó?" quedaría en NULL en vez de verdadero.
+        return func.coalesce(
+            and_(func.jsonb_typeof(value) == "array", value != cast(literal("[]"), JSONB)),
+            False,
+        )
+
+    return or_(non_empty_list(execution.action_results), non_empty_list(execution.flow_state["path"]))
+
+
+def _started_and_waiting(execution):
+    """A medias y fuera del worker: esperando un plazo o una respuesta, o
+    congelada a mano desde el chat."""
+    return and_(
+        execution.status.in_([AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.PAUSED]),
+        _has_started(execution),
+    )
+
+
+def _blocking_execution_exists(candidate):
+    """Otra ejecución del mismo lead impide arrancar ``candidate``.
+
+    Lo que está corriendo bloquea siempre. Lo que quedó a medias (en una
+    espera o pausado) bloquea a las que todavía no empezaron, pero no a otra
+    que también está a medias: si no, dos flujos esperando a la vez se
+    trabarían para siempre. Un flujo hijo puede correr mientras su padre
+    espera, y el padre retomar mientras el hijo espera: «Iniciar otro flujo»
+    no retiene al padre.
+    """
+    other = aliased(AutomationExecution)
+    same_lead = and_(other.lead_id == candidate.lead_id, other.id != candidate.id)
+    # coalesce: sin padre, ->> da NULL, y NOT (NULL) también es NULL. La
+    # ejecución dejaba de contar como bloqueante justo en el caso común.
+    family = or_(
+        func.coalesce(other.event_payload["parent_execution_id"].astext, "") == cast(candidate.id, String),
+        func.coalesce(candidate.event_payload["parent_execution_id"].astext, "") == cast(other.id, String),
+    )
+    running = exists().where(same_lead, other.status == AutomationExecutionStatus.RUNNING)
+    waiting = exists().where(same_lead, not_(family), _started_and_waiting(other))
+    return or_(running, and_(not_(_has_started(candidate)), waiting))
 
 
 def to_rule(row: AutomationRule) -> Rule:
@@ -173,13 +227,38 @@ class SqlExecutionStore:
         # disparadores creen ejecuciones nuevas (ver schedule_in_session). Lo
         # que ya estaba en marcha sigue; quien quiera detenerlo lo pausa o
         # cancela desde su tarjeta en el chat.
+        #
+        # Una sola automatización por lead a la vez: un mensaje entrante
+        # dispara «conversación iniciada», «mensaje recibido» y a veces «lead
+        # nuevo», y el lote las corría en paralelo, así que el cliente recibía
+        # los mensajes de dos flujos intercalados. Lo que llega mientras otra
+        # está en curso queda en cola y sale cuando esa termina.
+        candidate = AutomationExecution
+        blocking = _blocking_execution_exists(candidate)
         async with session_scope() as session:
-            ids = (await session.execute(
-                select(AutomationExecution.id).where(
-                    AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
-                    AutomationExecution.scheduled_for <= now,
-                ).order_by(AutomationExecution.scheduled_for.asc()).limit(limit).with_for_update(skip_locked=True)
-            )).scalars().all()
+            # Dos réplicas del worker (blue-green) no deben reclamar a la vez
+            # dos ejecuciones del mismo lead: ninguna vería la otra sin
+            # confirmar. El reclamo es corto, así que se serializa por negocio.
+            await session.execute(select(func.pg_advisory_xact_lock(
+                func.hashtext(func.concat(func.current_schema(), literal(".automation_claim")))
+            )))
+            rows = (await session.execute(
+                select(candidate.id, candidate.lead_id).where(
+                    candidate.status == AutomationExecutionStatus.SCHEDULED,
+                    candidate.scheduled_for <= now,
+                    not_(blocking),
+                ).order_by(candidate.scheduled_for.asc(), candidate.id.asc()).limit(limit * CLAIM_SCAN_FACTOR)
+            )).all()
+            ids: list[int] = []
+            leads: set[str] = set()
+            for execution_id, lead_id in rows:
+                if lead_id is not None and lead_id in leads:
+                    continue
+                if lead_id is not None:
+                    leads.add(lead_id)
+                ids.append(execution_id)
+                if len(ids) >= limit:
+                    break
             if ids:
                 await session.execute(update(AutomationExecution).where(
                     AutomationExecution.id.in_(ids)
@@ -188,7 +267,17 @@ class SqlExecutionStore:
                     started_at=now,
                     error=None,
                 ))
-        return list(ids)
+        return ids
+
+    async def in_progress_for_lead(self, lead_id: str) -> str | None:
+        other = aliased(AutomationExecution)
+        async with session_scope() as session:
+            return await session.scalar(
+                select(AutomationRule.name).join(other, other.rule_id == AutomationRule.id).where(
+                    other.lead_id == lead_id,
+                    or_(other.status == AutomationExecutionStatus.RUNNING, _started_and_waiting(other)),
+                ).order_by(other.id.asc()).limit(1)
+            )
 
     async def find_by_event_key(self, rule_id: int, event_key: str) -> int | None:
         async with session_scope() as session:

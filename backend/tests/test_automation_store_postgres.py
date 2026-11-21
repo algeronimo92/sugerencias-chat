@@ -84,7 +84,8 @@ async def test_claiming_runs_what_is_due_even_if_the_lead_has_the_bot_off(tenant
         # lo que ya estaba en marcha sigue, sea de sistema o manual.
         paused_lead = await _lead(paused=True)
         system = await _execution(rule_id, paused_lead)
-        manual = await _execution(rule_id, paused_lead, start_source="manual")
+        other_paused_lead = await _lead(paused=True)
+        manual = await _execution(rule_id, other_paused_lead, start_source="manual")
         future = await _execution(rule_id, await _lead(), scheduled_for=NOW + timedelta(hours=1))
 
         claimed = await SqlExecutionStore().claim_due(NOW, limit=50)
@@ -96,6 +97,74 @@ async def test_claiming_runs_what_is_due_even_if_the_lead_has_the_bot_off(tenant
         assert claimed_row.status == AutomationExecutionStatus.RUNNING
         # Reclamar no es recuperar: el contador de intentos no se toca.
         assert claimed_row.attempts == 2
+
+
+async def test_claiming_takes_one_execution_per_lead_and_queues_the_rest(tenant):
+    """Un mensaje entrante dispara varias reglas a la vez; corriendo en
+    paralelo, sus mensajes llegaban intercalados al cliente."""
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        lead = await _lead()
+        first = await _execution(rule_id, lead, scheduled_for=NOW - timedelta(minutes=2))
+        second = await _execution(rule_id, lead)
+        other_lead = await _execution(rule_id, await _lead())
+
+        claimed = await SqlExecutionStore().claim_due(NOW, limit=50)
+
+        assert set(claimed) == {first, other_lead}
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == []
+        await SqlExecutionStore().save(first, status=AutomationExecutionStatus.COMPLETED)
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [second]
+
+
+async def test_a_flow_waiting_halfway_holds_back_new_ones_but_resumes_itself(tenant):
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        lead = await _lead()
+        waiting = await _execution(
+            rule_id, lead, scheduled_for=NOW + timedelta(hours=1),
+            flow_state={"current_node_id": "wait", "path": ["trigger", "send", "wait"]},
+        )
+        new = await _execution(rule_id, lead)
+
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == []
+        assert await SqlExecutionStore().in_progress_for_lead(lead) == "Regla"
+
+        async with session_scope() as session:
+            await session.execute(update(AutomationExecution).where(
+                AutomationExecution.id == waiting
+            ).values(scheduled_for=NOW - timedelta(minutes=5)))
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [waiting]
+        await SqlExecutionStore().save(waiting, status=AutomationExecutionStatus.COMPLETED)
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [new]
+        assert await SqlExecutionStore().in_progress_for_lead(lead) == "Regla"
+
+
+async def test_a_child_flow_runs_while_its_parent_waits(tenant):
+    """«Iniciar otro flujo» no retiene al padre: si el padre sigue con una
+    espera, el hijo no puede quedar en cola detrás de él."""
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        lead = await _lead()
+        parent = await _execution(
+            rule_id, lead, scheduled_for=NOW + timedelta(days=1),
+            flow_state={"current_node_id": "wait", "path": ["trigger", "child", "wait"]},
+        )
+        child = await _execution(
+            rule_id, lead, start_source="flow", event_payload={"parent_execution_id": parent},
+        )
+
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [child]
+
+
+async def test_a_lead_without_automations_in_progress_reports_none(tenant):
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        lead = await _lead()
+        await _execution(rule_id, lead)  # agendada, todavía sin empezar
+        await _execution(rule_id, lead, status=AutomationExecutionStatus.COMPLETED)
+
+        assert await SqlExecutionStore().in_progress_for_lead(lead) is None
 
 
 async def test_a_cancelled_execution_is_never_overwritten_by_the_engine(tenant):
