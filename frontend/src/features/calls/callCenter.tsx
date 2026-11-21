@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } f
 import { useMe } from '../../shared/auth'
 import { acceptCall, confirmCallConnected, dismissCall, fetchCallAnswer, fetchCallOffer, fetchRingingCalls, startCall, terminateCall } from './api'
 import { IDLE, browserCause, reduceSession, type EndReason } from './domain/callSession'
-import { answerOffer, createOffer, type DtlsRole } from './domain/webrtc'
+import { answerOffer, createOffer, onRemoteAudio, type DtlsRole } from './domain/webrtc'
 import { CALL_ENDED_EVENT, CallCenterContext as Context, type CallCenter } from './callCenterContext'
 import { callKeys } from './keys'
 import { startRingtone } from './ringtone'
@@ -97,8 +97,8 @@ export function CallCenterProvider({ children }: { children: ReactNode }) {
         const offer = await fetchCallOffer(call.id)
         const answered = await answerOffer(offer, stream, role)
         connection.current = answered.connection
-        answered.connection.addEventListener('track', (event) => {
-          if (audio.current) audio.current.srcObject = event.streams[0] ?? new MediaStream([event.track])
+        onRemoteAudio(answered.connection, (remote) => {
+          if (audio.current) audio.current.srcObject = remote
         })
         answered.connection.addEventListener('connectionstatechange', () => {
           const state = answered.connection.connectionState
@@ -153,8 +153,8 @@ export function CallCenterProvider({ children }: { children: ReactNode }) {
       try {
         const offered = await createOffer(stream)
         connection.current = offered.connection
-        offered.connection.addEventListener('track', (event) => {
-          if (audio.current) audio.current.srcObject = event.streams[0] ?? new MediaStream([event.track])
+        onRemoteAudio(offered.connection, (remote) => {
+          if (audio.current) audio.current.srcObject = remote
         })
         offered.connection.addEventListener('connectionstatechange', () => {
           const state = offered.connection.connectionState

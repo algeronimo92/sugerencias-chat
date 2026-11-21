@@ -34,6 +34,24 @@ export interface AnsweredOffer {
   sdp: string
 }
 
+/**
+ * Entrega el audio del otro lado, también el que ya estaba en la conexión.
+ *
+ * Al atender, el navegador avisa la pista remota (`track`) mientras se aplica
+ * la oferta de Meta, dentro de `answerOffer`: quien se suscribe después de
+ * recibir la conexión ya se lo perdió. Así fallaron las primeras llamadas
+ * entrantes reales (21-11-2026): conectaban y contaban la duración, pero en
+ * el CRM no se oía al cliente. Las salientes sí, porque ahí la respuesta se
+ * aplica después de suscribirse.
+ */
+export function onRemoteAudio(connection: RTCPeerConnection, play: (stream: MediaStream) => void): void {
+  const tracks = connection.getReceivers().map(receiver => receiver.track).filter(track => track?.kind === 'audio')
+  if (tracks.length) play(new MediaStream(tracks))
+  connection.addEventListener('track', (event) => {
+    play(event.streams[0] ?? new MediaStream([event.track]))
+  })
+}
+
 /** Sin servidores STUN/TURN: Meta publica sus direcciones en la oferta y el
  *  navegador llega solo desde cualquier red doméstica o móvil. */
 export async function answerOffer(offerSdp: string, microphone: MediaStream, role: DtlsRole = 'auto'): Promise<AnsweredOffer> {

@@ -16,6 +16,7 @@ const CONEXION_FALSA = `
   class FakeConnection extends EventTarget {
     connectionState = 'new'; iceGatheringState = 'complete'; localDescription = null
     addTrack() {}
+    getReceivers() { return [] }
     async createOffer() { return { type: 'offer', sdp: 'v=0\\r\\na=setup:actpass\\r\\n' } }
     async setLocalDescription(description) { this.localDescription = description }
     async setRemoteDescription() {
