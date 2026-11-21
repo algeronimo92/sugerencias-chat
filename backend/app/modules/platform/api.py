@@ -8,7 +8,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 from __future__ import annotations
 
 import logging
-from app.modules.platform.schemas import (LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, OrganizationOverview, PlatformEmailStatus, PlatformEmailUpdate)
+from app.modules.platform.schemas import (DbAccessCredentials, DbAccessStatus, NewOrganizationResult, LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, OrganizationOverview, PlatformEmailStatus, PlatformEmailUpdate)
 
 import base64
 import binascii
@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from app.db.models.control import PlatformUser
-from app.modules.auth.public import cookie_is_secure, hash_password, sync_db_privileges
+from app.modules.auth.public import BusinessLoginError, cookie_is_secure, hash_password, reset_business_login, sync_db_privileges
 from app.modules.auth.public import LoginThrottledError, clear_account_attempts, reserve_login_attempt
 from app.modules.platform import branding as branding_service
 from app.modules.platform import knowledge_templates
@@ -26,8 +26,10 @@ from app.modules.platform.platform_organizations import (
     OrganizationNotFoundError,
     apply_organization_starter_pack,
     organization_ai,
+    organization_db_access,
     organization_integrations,
     organization_overview,
+    reset_organization_db_access,
     update_organization_ai,
     update_organization_integrations,
 )
@@ -180,7 +182,7 @@ async def post_platform_email_test(user: PlatformUser = Depends(get_current_plat
     return {"recipient": user.email, "source": transport.source}
 
 
-@router.post("/organizations", dependencies=protected, status_code=201)
+@router.post("/organizations", dependencies=protected, status_code=201, response_model=NewOrganizationResult)
 async def create_organization(body: NewOrganizationBody) -> dict:
     if bool(body.admin_email) != bool(body.admin_password):
         raise HTTPException(
@@ -201,18 +203,23 @@ async def create_organization(body: NewOrganizationBody) -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    # Los GRANT del schema nuevo según su matriz recién sembrada. Si fallan, el
-    # negocio ya existe y el próximo scripts.migrate los vuelve a aplicar.
+    # Los GRANT del schema nuevo según su matriz recién sembrada, y el login
+    # propio del negocio (su contraseña solo sale en esta respuesta). Si algo
+    # falla, el negocio ya existe: los GRANT los reaplica el próximo
+    # scripts.migrate y el login se crea desde el apartado "Base de datos".
+    db_access = None
     try:
         with tenant_context(context):
             await sync_db_privileges()
+            db_access = await reset_business_login()
     except Exception:
-        logger.exception("No se pudieron aplicar los privilegios de base del negocio %s", context.organization_id)
+        logger.exception("No se pudo preparar el acceso a la base del negocio %s", context.organization_id)
     return {
         "id": str(context.organization_id),
         "hostname": context.hostname,
         "schema_name": context.schema_name,
         "storage_prefix": context.storage_path,
+        "db_access": db_access,
     }
 
 
@@ -268,6 +275,35 @@ async def get_organization_overview(organization_id: UUID):
         return await organization_overview(organization_id)
     except OrganizationNotFoundError as exc:
         raise _organization_not_found() from exc
+
+
+@router.get(
+    "/organizations/{organization_id}/db-access",
+    dependencies=protected,
+    response_model=DbAccessStatus,
+)
+async def get_organization_db_access(organization_id: UUID):
+    """El login propio del negocio en la base (sin la contraseña)."""
+    try:
+        return await organization_db_access(organization_id)
+    except OrganizationNotFoundError as exc:
+        raise _organization_not_found() from exc
+
+
+@router.post(
+    "/organizations/{organization_id}/db-access/reset",
+    dependencies=protected,
+    response_model=DbAccessCredentials,
+)
+async def post_organization_db_access_reset(organization_id: UUID):
+    """Crea el login si falta y le da una contraseña nueva: la anterior deja
+    de servir y la nueva solo se muestra en esta respuesta."""
+    try:
+        return await reset_organization_db_access(organization_id)
+    except OrganizationNotFoundError as exc:
+        raise _organization_not_found() from exc
+    except BusinessLoginError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get(

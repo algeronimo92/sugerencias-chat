@@ -589,6 +589,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/organizations/{organization_id}/db-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Organization Db Access
+         * @description El login propio del negocio en la base (sin la contraseña).
+         */
+        get: operations["get_organization_db_access_api_platform_organizations__organization_id__db_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/organizations/{organization_id}/db-access/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Organization Db Access Reset
+         * @description Crea el login si falta y le da una contraseña nueva: la anterior deja
+         *     de servir y la nueva solo se muestra en esta respuesta.
+         */
+        post: operations["post_organization_db_access_reset_api_platform_organizations__organization_id__db_access_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/ai": {
         parameters: {
             query?: never;
@@ -6467,6 +6508,30 @@ export interface components {
             /** Treatment */
             treatment?: string | null;
         };
+        /** DbAccessCredentials */
+        DbAccessCredentials: {
+            /** User */
+            user: string;
+            /** Password */
+            password: string;
+            /** Database */
+            database: string;
+            /** Schema */
+            schema: string;
+        };
+        /**
+         * DbAccessStatus
+         * @description El login propio del negocio en PostgreSQL: administra los datos de su
+         *     schema y nada más (rol ``cv_<id>_negocio``).
+         */
+        DbAccessStatus: {
+            /** User */
+            user: string | null;
+            /** Database */
+            database: string;
+            /** Schema */
+            schema: string;
+        };
         /** DbObjectPrivileges */
         DbObjectPrivileges: {
             /** Object */
@@ -8153,6 +8218,18 @@ export interface components {
              * @default true
              */
             starter_pack: boolean;
+        };
+        /** NewOrganizationResult */
+        NewOrganizationResult: {
+            /** Id */
+            id: string;
+            /** Hostname */
+            hostname: string;
+            /** Schema Name */
+            schema_name: string;
+            /** Storage Prefix */
+            storage_prefix: string;
+            db_access?: components["schemas"]["DbAccessCredentials"] | null;
         };
         /** NoticeField */
         NoticeField: {
@@ -10474,9 +10551,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["NewOrganizationResult"];
                 };
             };
             /** @description Validation Error */
@@ -10791,6 +10866,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_db_access_api_platform_organizations__organization_id__db_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbAccessStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_organization_db_access_reset_api_platform_organizations__organization_id__db_access_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbAccessCredentials"];
                 };
             };
             /** @description Validation Error */

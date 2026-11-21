@@ -47,6 +47,7 @@ export const platformKeys = {
   settings: ['platform', 'settings'] as const,
   email: ['platform', 'email'] as const,
   overview: (organizationId: string) => ['platform', 'organizations', organizationId, 'overview'] as const,
+  dbAccess: (organizationId: string) => ['platform', 'organizations', organizationId, 'db-access'] as const,
   branding: (organizationId: string) => ['platform', 'organizations', organizationId, 'branding'] as const,
   ai: (organizationId: string) => ['platform', 'organizations', organizationId, 'ai'] as const,
   integrations: (organizationId: string) => ['platform', 'organizations', organizationId, 'integrations'] as const,

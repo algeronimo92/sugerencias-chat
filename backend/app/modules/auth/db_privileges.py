@@ -10,6 +10,12 @@ intenta escribir donde ese rol no puede, PostgreSQL lo rechaza igual.
   negocio: la base impide cruzar datos entre clínicas. La conexión del
   backend es miembro de todos y en cada transacción de una petición hace
   ``SET LOCAL ROLE`` según el usuario y el negocio (``app/db/session.py``).
+- Además, un cuarto rol por negocio, ``cv_<id>_negocio``: el dueño de sus datos,
+  con todo el DML de su schema y nada fuera de él. La app no lo usa; es para
+  el login propio del negocio (p. ej. ``dermicapro``), que es miembro de él.
+- Arriba de todo, el administrador del servidor (``cliniventas``, superusuario)
+  y la conexión de la app (``cliniventas_app``): dueña de las tablas y con
+  CREATEROLE, pero no superusuario.
 - Privilegios de sistema: crear, alterar o borrar objetos (``CREATE`` sobre el
   schema, DDL) queda solo para el dueño, que es quien migra. Los roles de la
   app reciben ``USAGE`` sobre el schema y nada más.

@@ -288,6 +288,38 @@ class OnboardingStatus(BaseModel):
     dismissed: bool
 
 
+class DbAccessStatus(BaseModel):
+    """El login propio del negocio en PostgreSQL: administra los datos de su
+    schema y nada más (rol ``cv_<id>_negocio``)."""
+
+    # None mientras el negocio no tenga login.
+    user: str | None
+    database: str
+    schema_name: str = Field(alias="schema")
+
+    model_config = {"populate_by_name": True}
+
+
+class DbAccessCredentials(BaseModel):
+    user: str
+    # Solo sale en esta respuesta: la base guarda su verificador SCRAM.
+    password: str
+    database: str
+    schema_name: str = Field(alias="schema")
+
+    model_config = {"populate_by_name": True}
+
+
+class NewOrganizationResult(BaseModel):
+    id: str
+    hostname: str
+    schema_name: str
+    storage_prefix: str
+    # None si no se pudo crear el login (p. ej. sin CREATEROLE); se crea
+    # después desde el apartado "Base de datos" del negocio.
+    db_access: DbAccessCredentials | None = None
+
+
 class OrganizationOverview(BaseModel):
     """Resumen de un negocio en el panel de plataforma."""
 

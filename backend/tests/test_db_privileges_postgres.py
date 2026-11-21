@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.db import privileges as db
 from app.modules.auth.db_privileges import object_privileges_for
@@ -53,7 +54,7 @@ async def businesses(pg_dsn):
         async with engine.begin() as connection:
             for name in names:
                 await connection.execute(text(f'DROP SCHEMA IF EXISTS "{name}" CASCADE'))
-                for role in db.tenant_db_roles(name).values():
+                for role in db.all_tenant_roles(name):
                     exists = (await connection.execute(
                         text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :r)"), {"r": role},
                     )).scalar_one()
@@ -150,7 +151,7 @@ async def test_postgres_reports_what_is_applied(schema):
     engine, name = schema
     async with AsyncSession(engine) as session, session.begin():
         described = {row["db_role"]: row for row in await db.describe_privileges(session, name)}
-    assert set(described) == set(db.tenant_db_roles(name).values())
+    assert set(described) == set(db.all_tenant_roles(name))
     analyst = described[db.tenant_db_role(name, "analista")]
     assert analyst["system"] == {
         "superuser": False, "create_db": False, "create_role": False, "login": False,
@@ -177,3 +178,114 @@ async def test_it_tells_whether_the_connection_can_create_the_roles(schema):
             assert await db.can_create_roles(session) is False
         finally:
             await session.execute(text("RESET SESSION AUTHORIZATION"))
+
+
+async def test_the_business_role_owns_the_data_of_its_schema_and_nothing_else(businesses):
+    """El login del negocio (p. ej. dermicapro) es miembro de este rol: todo el
+    DML de su schema, nada de DDL y nada de otro negocio."""
+    engine, (own, other) = businesses
+
+    async def as_business(sql: str) -> None:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'SET LOCAL search_path = "{own}"'))
+            await connection.execute(text(f'SET LOCAL ROLE "{db.tenant_business_role(own)}"'))
+            await connection.execute(text(sql))
+
+    await as_business("INSERT INTO leads (nombre) VALUES ('nuevo')")
+    await as_business("UPDATE users SET name = 'Otra'")
+    await as_business("DELETE FROM leads")
+    await as_business("TRUNCATE data_exports")
+    for sql in ("CREATE TABLE intrusa (id int)", "ALTER TABLE leads ADD COLUMN x int", f'SELECT * FROM "{other}".leads'):
+        with pytest.raises(DBAPIError) as raised:
+            await as_business(sql)
+        assert "InsufficientPrivilegeError" in str(raised.value)
+
+
+async def test_a_createrole_owner_that_is_not_superuser_can_set_the_roles_it_creates(pg_dsn):
+    """Producción: la app se conecta con un dueño con CREATEROLE, no con un
+    superusuario. Quien crea un rol así queda miembro con ADMIN pero sin SET;
+    si no se pide SET aparte, SET LOCAL ROLE falla el día que se encienda la
+    barrera."""
+    engine = create_async_engine(pg_dsn, connect_args={"ssl": "disable"}, poolclass=NullPool)
+    owner = f"cv_test_owner_{secrets.token_hex(4)}"
+    name = f"tenant_{secrets.token_hex(16)}"
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'CREATE ROLE "{owner}" NOLOGIN CREATEROLE'))
+            await connection.execute(text(f'CREATE SCHEMA "{name}" AUTHORIZATION "{owner}"'))
+            await connection.execute(text(f'SET LOCAL ROLE "{owner}"'))
+            await connection.execute(text(f'CREATE TABLE "{name}".leads (id serial PRIMARY KEY, nombre text)'))
+            await connection.execute(text(f'CREATE TABLE "{name}".users (id serial PRIMARY KEY, name text, password_hash text)'))
+            await connection.execute(text(f'CREATE TABLE "{name}".data_exports (id serial PRIMARY KEY, report text)'))
+        async with engine.connect() as connection:
+            await connection.execute(text(f'SET SESSION AUTHORIZATION "{owner}"'))
+            async with AsyncSession(bind=connection) as session:
+                assert await db.can_create_roles(session) is True
+                assert await db.apply_schema_grants(session, name, DEFAULT_GRANTS) is True
+                await session.commit()
+            await connection.execute(text(f'SET ROLE "{db.tenant_db_role(name, "vendedor")}"'))
+            await connection.execute(text(f'UPDATE "{name}".leads SET nombre = nombre'))
+            with pytest.raises(DBAPIError):
+                await connection.execute(text(f'DELETE FROM "{name}".leads'))
+            await connection.rollback()
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{name}" CASCADE'))
+            for role in [*db.all_tenant_roles(name), owner]:
+                exists = (await connection.execute(
+                    text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :r)"), {"r": role},
+                )).scalar_one()
+                if exists:
+                    await connection.execute(text(f'DROP OWNED BY "{role}"'))
+                    await connection.execute(text(f'DROP ROLE "{role}"'))
+        await engine.dispose()
+
+
+async def test_the_business_login_signs_in_with_its_password_and_sees_only_its_schema(businesses, pg_dsn):
+    """El login propio del negocio: la contraseña se manda como verificador
+    SCRAM, así que iniciar sesión con ella prueba que se armó bien."""
+    import asyncpg
+    from urllib.parse import urlsplit
+
+    engine, (own, other) = businesses
+    login = f"negocio_{secrets.token_hex(4)}"
+    password = secrets.token_urlsafe(24)
+    async with AsyncSession(engine) as session, session.begin():
+        await db.set_business_login(session, own, login, password)
+        assert await db.find_business_login(session, own) == login
+        # Volver a pedirlo con otra contraseña la reemplaza (no duplica el login).
+        password = secrets.token_urlsafe(24)
+        await db.set_business_login(session, own, login, password)
+    try:
+        url = urlsplit(pg_dsn.replace("postgresql+asyncpg", "postgresql"))
+        connection = await asyncpg.connect(
+            host=url.hostname, port=url.port, database=url.path.lstrip("/"),
+            user=login, password=password, ssl=False,
+        )
+        try:
+            await connection.execute(f'INSERT INTO "{own}".leads (nombre) VALUES ($1)', "desde el login")
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await connection.fetch(f'SELECT * FROM "{other}".leads')
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await connection.execute(f'CREATE TABLE "{own}".intrusa (id int)')
+        finally:
+            await connection.close()
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'DROP OWNED BY "{login}"'))
+            await connection.execute(text(f'DROP ROLE "{login}"'))
+
+
+async def test_a_login_of_another_business_is_never_adopted(businesses):
+    engine, (own, other) = businesses
+    login = f"negocio_{secrets.token_hex(4)}"
+    async with AsyncSession(engine) as session, session.begin():
+        await db.set_business_login(session, other, login, "una-clave-cualquiera")
+    try:
+        with pytest.raises(db.BusinessLoginError):
+            async with AsyncSession(engine) as session, session.begin():
+                await db.set_business_login(session, own, login, "otra-clave")
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text(f'DROP OWNED BY "{login}"'))
+            await connection.execute(text(f'DROP ROLE "{login}"'))

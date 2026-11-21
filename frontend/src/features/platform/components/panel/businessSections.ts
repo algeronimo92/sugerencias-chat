@@ -1,8 +1,9 @@
-import { Globe2, LayoutDashboard, Palette, ServerCog, Sparkles, Workflow, type LucideIcon } from 'lucide-react'
+import { Database, Globe2, LayoutDashboard, Palette, ServerCog, Sparkles, Workflow, type LucideIcon } from 'lucide-react'
 import type { ComponentType } from 'react'
 import type { Organization } from '../../types'
 import { BusinessAssistant } from './sections/BusinessAssistant'
 import { BusinessBranding } from './sections/BusinessBranding'
+import { BusinessDatabase } from './sections/BusinessDatabase'
 import { BusinessDomains } from './sections/BusinessDomains'
 import { BusinessIntegrations } from './sections/BusinessIntegrations'
 import { BusinessOverview } from './sections/BusinessOverview'
@@ -31,6 +32,7 @@ export const APARTADOS_NEGOCIO: ApartadoNegocio[] = [
   { id: 'asistente', label: 'Asistente IA', icon: Sparkles, Component: BusinessAssistant },
   { id: 'integraciones', label: 'Integraciones propias', icon: Workflow, Component: BusinessIntegrations },
   { id: 'marca', label: 'Marca', icon: Palette, Component: BusinessBranding },
+  { id: 'base', label: 'Base de datos', icon: Database, Component: BusinessDatabase },
   { id: 'sistema', label: 'Sistema', icon: ServerCog, Component: BusinessSystem },
 ]
 

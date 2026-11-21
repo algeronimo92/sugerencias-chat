@@ -84,7 +84,7 @@ scripts/generate-api-types.sh && git diff --exit-code -- frontend/src/api/schema
 - Toda ruta con sesión pide un permiso con `require_permission(Permission.X)` (`app/modules/auth/permissions.py`),
   salvo las de la propia cuenta en `SELF_SERVICE_ROUTES`. No se compara `user.role` para decidir acceso: `can(user, ...)`.
 - Permisos en dos capas: la matriz de la app (`role_permissions`, editable por negocio en `/api/roles`) y tres roles de
-  PostgreSQL por negocio (`cv_<id>_admin`/`_vendedor`/`_analista`, privilegios solo en su schema) con `GRANT` por tabla (`app/modules/auth/db_privileges.py`,
+  PostgreSQL por negocio (`cv_<id>_admin`/`_vendedor`/`_analista`, privilegios solo en su schema; más `cv_<id>_negocio`, dueño de los datos, para el login propio del negocio) con `GRANT` por tabla (`app/modules/auth/db_privileges.py`,
   `app/db/privileges.py`). Una tabla nueva va a `TABLE_GROUPS` (lo exige `tests/test_permissions.py`); los `GRANT`
   los aplica `scripts.migrate` y cada cambio de la matriz. `SET LOCAL ROLE` por petición solo con `DB_ROLE_ENFORCEMENT=true`.
 
