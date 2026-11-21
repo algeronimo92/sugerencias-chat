@@ -38,18 +38,25 @@ from app.modules.platform.settings_service import get_effective_many, update_set
 require_settings_manage = require_permission(Permission.SETTINGS_MANAGE)
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
+# Aparte del resto, que es de administración: quien atiende los chats también
+# tiene que ver que WhatsApp se desconectó. Solo dice el estado, sin credenciales.
+status_router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 logger = logging.getLogger(__name__)
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
-@router.get("/status", response_model=WhatsappStatusItem)
+@status_router.get("/status", response_model=WhatsappStatusItem)
 async def whatsapp_status():
-    """Si el número de Meta Cloud API está conectado. No hay ciclo de QR ni
-    desconexión: el número queda vinculado por el Embedded Signup."""
-    if await meta_service.is_configured():
-        return {"state": "open", "instance": None}
-    return {"state": "not_configured", "instance": None}
+    """Si el número de Meta Cloud API está conectado. No hay ciclo de QR: el
+    número queda vinculado por el Embedded Signup hasta que el negocio lo
+    desvincula desde WhatsApp, y eso solo se sabe porque Meta lo avisa."""
+    if not await meta_service.is_configured():
+        return {"state": "not_configured", "instance": None}
+    disconnected_at = await meta_service.disconnected_since()
+    if disconnected_at is not None:
+        return {"state": "disconnected", "instance": None, "disconnected_at": disconnected_at}
+    return {"state": "open", "instance": None}
 
 
 @router.get("/calling-readiness", response_model=WhatsappCallingReadiness)

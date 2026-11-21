@@ -2061,27 +2061,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/whatsapp/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Whatsapp Status
-         * @description Si el número de Meta Cloud API está conectado. No hay ciclo de QR ni
-         *     desconexión: el número queda vinculado por el Embedded Signup.
-         */
-        get: operations["whatsapp_status_api_whatsapp_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/whatsapp/calling-readiness": {
         parameters: {
             query?: never;
@@ -2210,6 +2189,28 @@ export interface paths {
          * @description El historial de eventos informados (o por informar) a Meta, paginado.
          */
         get: operations["whatsapp_conversion_events_api_whatsapp_conversions_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/whatsapp/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Status
+         * @description Si el número de Meta Cloud API está conectado. No hay ciclo de QR: el
+         *     número queda vinculado por el Embedded Signup hasta que el negocio lo
+         *     desvincula desde WhatsApp, y eso solo se sabe porque Meta lo avisa.
+         */
+        get: operations["whatsapp_status_api_whatsapp_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9754,9 +9755,11 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "open" | "not_configured";
+            state: "open" | "disconnected" | "not_configured";
             /** Instance */
             instance?: string | null;
+            /** Disconnected At */
+            disconnected_at?: string | null;
         };
     };
     responses: never;
@@ -13734,26 +13737,6 @@ export interface operations {
             };
         };
     };
-    whatsapp_status_api_whatsapp_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WhatsappStatusItem"];
-                };
-            };
-        };
-    };
     whatsapp_calling_readiness_api_whatsapp_calling_readiness_get: {
         parameters: {
             query?: never;
@@ -13970,6 +13953,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatsapp_status_api_whatsapp_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatsappStatusItem"];
                 };
             };
         };

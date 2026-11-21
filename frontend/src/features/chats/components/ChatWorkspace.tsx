@@ -189,11 +189,9 @@ export function ChatWorkspace() {
   const chats = data?.pages.flatMap((page) => page.items) ?? [];
   const contactsTotal = data?.pages[0]?.total ?? null;
 
-  // Estado de la conexión de WhatsApp — solo admin (el endpoint es admin-only).
-  // Alimenta el CTA del estado vacío cuando la instancia no está vinculada.
-  const { data: whatsappStatus } = useWhatsappStatus({
-    enabled: isAdmin,
-  });
+  // Estado de la conexión de WhatsApp. Lo ve quien atiende chats (tiene que
+  // saber que sus mensajes no salen); conectar es de quien configura.
+  const { data: whatsappStatus } = useWhatsappStatus({ enabled: can(me, "conversations.view") });
   const showConnectWhatsapp =
     isAdmin &&
     whatsappStatus != null &&
@@ -437,7 +435,11 @@ export function ChatWorkspace() {
                   <IntegrationNotice
                     className="m-2 mb-0"
                     tone="warning"
-                    message="WhatsApp no está conectado: lo que escribas acá no se enviará al cliente."
+                    message={
+                      whatsappStatus.state === "disconnected"
+                        ? "WhatsApp se desconectó: los mensajes no salen ni llegan hasta volver a conectarlo."
+                        : "WhatsApp no está conectado: lo que escribas acá no se enviará al cliente."
+                    }
                     anchor="whatsapp"
                     canConnect={isAdmin}
                   />

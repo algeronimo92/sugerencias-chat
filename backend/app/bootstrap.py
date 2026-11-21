@@ -166,6 +166,9 @@ app.include_router(email_settings.callback_router)
 app.include_router(google_calendar.callback_router)
 app.include_router(ai_assistant.router, dependencies=[Depends(require_permission(Permission.AI_CONFIGURE))])
 app.include_router(whatsapp.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
+# Si WhatsApp está conectado lo ve quien atiende chats: tiene que saber que sus
+# mensajes no salen. Conectarlo sigue siendo settings.manage.
+app.include_router(whatsapp.status_router, dependencies=[Depends(require_permission(Permission.CONVERSATIONS_VIEW))])
 app.include_router(onboarding.router, dependencies=[Depends(require_permission(Permission.SETTINGS_MANAGE))])
 app.include_router(tags.router)
 app.include_router(lead_services.router)
