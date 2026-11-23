@@ -18,6 +18,7 @@ vi.mock('../hooks/useTemplates', () => ({
   useSyncTemplate: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../hooks/useTemplateCategories', () => ({ useTemplateCategories: () => ({ data: [] }) }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('./ImportMetaTemplatesDialog', () => ({ ImportMetaTemplatesDialog: () => null }))
 
 function template(overrides: Partial<MessageTemplate>): MessageTemplate {
@@ -75,6 +76,29 @@ describe('TemplatesPage', () => {
 
     await user.click(screen.getByRole('switch', { name: 'slogan hifu12d: plantilla activa' }))
     expect(mocks.update).toHaveBeenCalledWith({ id: 1, is_active: false }, expect.anything())
+  })
+
+  it('marca la plantilla con cambios sin enviar y deja descartarlos', async () => {
+    const user = userEvent.setup()
+    saveTemplateDraft(2, { form: { ...EMPTY_TEMPLATE_FORM, name: 'aviso_cita_cliente', content: 'Texto a medias' }, officialNameEdited: true, savedAt: Date.now() })
+    render(<MemoryRouter><TemplatesPage /></MemoryRouter>)
+
+    expect(within(rows()[1]).getByText('Cambios sin enviar')).toBeInTheDocument()
+    expect(within(rows()[0]).queryByText('Cambios sin enviar')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Más acciones de aviso_cita_cliente' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Descartar los cambios sin enviar' }))
+    expect(screen.queryByText('Cambios sin enviar')).not.toBeInTheDocument()
+  })
+
+  it('dice desde cuándo se puede volver a editar una aprobada con el cupo gastado', () => {
+    mocks.templates = [template({
+      id: 2, name: 'Desde Instagram', template_type: 'official', official_status: 'APPROVED', official_category: 'MARKETING',
+      meta_template_id: '921', official_next_edit_at: new Date(Date.now() + 23 * 3_600_000).toISOString(),
+    })]
+    render(<MemoryRouter><TemplatesPage /></MemoryRouter>)
+
+    expect(within(rows()[0]).getByText(/^Editable desde (hoy|mañana) a las/)).toBeInTheDocument()
   })
 
   it('ofrece retomar un borrador sin terminar', async () => {

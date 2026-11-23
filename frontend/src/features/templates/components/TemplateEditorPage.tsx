@@ -139,6 +139,7 @@ function TemplateEditor({ data }: { data: ReadyData }) {
         saving={saving}
         pendingCount={editor.pendingIssues.length}
         serverError={editor.serverError}
+        saveFailed={editor.saveFailed}
         tab={tab}
         onTab={setTab}
         onLeave={leave}

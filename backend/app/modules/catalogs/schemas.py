@@ -281,6 +281,11 @@ class TemplateItem(BaseModel):
     official_header_media_filename: str | None = None
     official_footer: str | None = None
     official_buttons: list[dict] = Field(default_factory=list)
+    # Cupo de Meta para una aprobada (un cambio cada 24 h, diez cada 30 días):
+    # cuándo se envió el último cambio desde la app y desde cuándo acepta otro.
+    # `official_next_edit_at` nulo = se puede editar ya.
+    official_last_edit_at: str | None = None
+    official_next_edit_at: str | None = None
     interactive_type: Literal["none", "button", "list"] = "none"
     interactive_config: dict = Field(default_factory=dict)
     imported_from_meta: bool = False

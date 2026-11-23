@@ -1,10 +1,12 @@
-import { AlertCircle, Check, Clock3, Copy, MoreVertical, Paperclip, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
+import { AlertCircle, Check, Clock3, Copy, MoreVertical, Paperclip, RefreshCw, Trash2, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../../../shared/ui/Badge'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../../shared/ui/DropdownMenu'
 import { cn } from '../../../shared/utils/cn'
+import { metaEditRules } from '../domain/metaEditRules'
+import { whenLabel } from '../domain/whenLabel'
 import { officialCategoryLabel, officialStatus, rejectedReason, snippet, type StatusTone } from '../domain/templateList'
 import type { MessageTemplate } from '../types'
 
@@ -38,7 +40,7 @@ function rejectionOf(template: MessageTemplate): string | null {
   return officialStatus(template.official_status).kind === 'rejected' ? rejectedReason(template.official_rejected_reason) : null
 }
 
-function RowSummary({ template, editPath }: { template: MessageTemplate; editPath: string }) {
+function RowSummary({ template, editPath, unsent }: { template: MessageTemplate; editPath: string; unsent: boolean }) {
   const details = detailsOf(template)
   const rejection = rejectionOf(template)
   const files = template.attachments.length
@@ -49,6 +51,9 @@ function RowSummary({ template, editPath }: { template: MessageTemplate; editPat
           {template.name.replace(/\s+/g, ' ').trim()}
         </Link>
         {details.length > 0 && <span className="shrink-0 text-xs text-fg-muted">{details.join(' · ')}</span>}
+        {/* Hay cambios escritos en este dispositivo que no llegaron a
+            guardarse: sin la marca, la lista los daba por inexistentes. */}
+        {unsent && <Link to={editPath} className="shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring"><Badge variant="warning" size="md">Cambios sin enviar</Badge></Link>}
       </p>
       {rejection ? (
         <p className="mt-0.5 text-sm text-danger-fg">
@@ -72,6 +77,7 @@ function RowFacts({ template }: { template: MessageTemplate }) {
   const status = template.template_type === 'official' ? officialStatus(template.official_status) : null
   const StatusIcon = status ? STATUS_ICON[status.tone] : null
   const uses = template.use_count
+  const editableFrom = metaEditRules(template).editableFrom
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 md:contents">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:block">
@@ -83,6 +89,7 @@ function RowFacts({ template }: { template: MessageTemplate }) {
         ) : (
           <p className="text-sm text-fg-muted">Interna · lista para usar</p>
         )}
+        {editableFrom !== null && <p className="text-xs text-fg-muted md:mt-1">Editable desde {whenLabel(editableFrom)}</p>}
         {!template.is_active && <p className="text-xs font-medium text-fg-muted md:mt-1">Desactivada</p>}
       </div>
       <p className="text-sm text-fg"><span className="text-fg-muted md:hidden">Categoría: </span>{template.category}</p>
@@ -103,9 +110,11 @@ interface ActionsProps {
   onSync: () => void
   onDuplicate: () => void
   onAskDelete: () => void
+  /** Solo si hay cambios sin enviar en este dispositivo. */
+  onDiscardUnsent?: () => void
 }
 
-function RowActions({ template, editPath, busy, onToggleActive, onSync, onDuplicate, onAskDelete }: ActionsProps) {
+function RowActions({ template, editPath, busy, onToggleActive, onSync, onDuplicate, onAskDelete, onDiscardUnsent }: ActionsProps) {
   const active = template.is_active
   const syncable = template.template_type === 'official' && template.meta_template_id != null
   return (
@@ -136,6 +145,7 @@ function RowActions({ template, editPath, busy, onToggleActive, onSync, onDuplic
       >
         <DropdownMenuItem icon={Copy} onSelect={onDuplicate}>Duplicar</DropdownMenuItem>
         {syncable && <DropdownMenuItem icon={RefreshCw} onSelect={onSync}>Consultar el estado en Meta</DropdownMenuItem>}
+        {onDiscardUnsent && <DropdownMenuItem icon={Undo2} onSelect={onDiscardUnsent}>Descartar los cambios sin enviar</DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem icon={Trash2} danger onSelect={onAskDelete}>Eliminar</DropdownMenuItem>
       </DropdownMenu>
@@ -152,6 +162,9 @@ interface Props {
   onSync: () => void
   onDuplicate: () => void
   onDelete: () => void
+  /** Tiene cambios escritos en este dispositivo que no se guardaron. */
+  unsent: boolean
+  onDiscardUnsent: () => void
 }
 
 /**
@@ -159,7 +172,7 @@ interface Props {
  * (2026-11-23). El estado de Meta va en español y con color e icono; antes
  * era «APPROVED» en azul, igual para una aprobada que para una rechazada.
  */
-export function TemplateListRow({ template, highlighted, busy, onToggleActive, onSync, onDuplicate, onDelete }: Props) {
+export function TemplateListRow({ template, highlighted, busy, onToggleActive, onSync, onDuplicate, onDelete, unsent, onDiscardUnsent }: Props) {
   const row = useRef<HTMLLIElement>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const editPath = `/templates/${template.id}`
@@ -179,7 +192,7 @@ export function TemplateListRow({ template, highlighted, busy, onToggleActive, o
         !template.is_active && 'bg-subtle',
       )}
     >
-      <RowSummary template={template} editPath={editPath} />
+      <RowSummary template={template} editPath={editPath} unsent={unsent} />
       <RowFacts template={template} />
       <RowActions
         template={template}
@@ -189,6 +202,7 @@ export function TemplateListRow({ template, highlighted, busy, onToggleActive, o
         onSync={onSync}
         onDuplicate={onDuplicate}
         onAskDelete={() => setConfirmingDelete(true)}
+        onDiscardUnsent={unsent ? onDiscardUnsent : undefined}
       />
       <ConfirmDialog
         open={confirmingDelete}

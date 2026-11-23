@@ -2,8 +2,14 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from app.core.time_format import iso_utc
+from app.modules.catalogs.template_edit_quota import edits_in_window, next_edit_at
 
 def _template(row, attachments: list[dict] | None = None):
+    now = datetime.now(timezone.utc)
+    edits = edits_in_window(row["official_edit_times"], now)
+    # El cupo es solo de las aprobadas: una rechazada o pausada se corrige
+    # las veces que haga falta.
+    next_edit = next_edit_at(edits, now) if row["official_status"] == "APPROVED" else None
     return {
         "id": row["id"], "name": row["name"], "content": row["content"],
         "shortcut": row["shortcut"], "category": row["category"], "stage": row["stage"],
@@ -23,6 +29,9 @@ def _template(row, attachments: list[dict] | None = None):
         "official_header_media_filename": row["official_header_media_filename"],
         "official_footer": row["official_footer"],
         "official_buttons": row["official_buttons"] or [],
+        "official_edit_times": [iso_utc(moment) for moment in edits],
+        "official_last_edit_at": iso_utc(edits[-1]) if edits else None,
+        "official_next_edit_at": iso_utc(next_edit),
         "interactive_type": row["interactive_type"],
         "interactive_config": row["interactive_config"] or {},
         "imported_from_meta": bool(row["imported_from_meta"]),

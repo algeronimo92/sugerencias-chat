@@ -9,7 +9,7 @@ import { Spinner } from '../../../shared/ui/Spinner'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { defaultCategory } from '../domain/templateDraft'
-import { clearTemplateDraft, elapsedLabel, loadTemplateDraft, type StoredTemplateDraft } from '../domain/templateDraftStorage'
+import { clearTemplateDraft, elapsedLabel, loadTemplateDraft, templateIdsWithDraft, type StoredTemplateDraft } from '../domain/templateDraftStorage'
 import { NO_FILTERS, filterTemplates, hasFilters, officialStatus, rejectedReason, sortByUse, type TemplateListFilters, type TypeFilter } from '../domain/templateList'
 import { useTemplateCategories } from '../hooks/useTemplateCategories'
 import { useDeleteTemplate, useSyncTemplate, useTemplateCapabilities, useTemplates, useUpdateTemplate } from '../hooks/useTemplates'
@@ -81,11 +81,14 @@ interface ListProps {
   templates: MessageTemplate[]
   query: string
   highlightId: number | undefined
+  /** Plantillas con cambios escritos en este dispositivo y sin guardar. */
+  unsentIds: ReadonlySet<number>
   onClearFilters: () => void
   onDuplicate: (template: MessageTemplate) => void
+  onDiscardUnsent: (template: MessageTemplate) => void
 }
 
-function TemplatesTable({ templates, query, highlightId, onClearFilters, onDuplicate }: ListProps) {
+function TemplatesTable({ templates, query, highlightId, unsentIds, onClearFilters, onDuplicate, onDiscardUnsent }: ListProps) {
   const actions = useTemplateRowActions()
   return (
     <section aria-label="Plantillas del equipo" className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -111,6 +114,8 @@ function TemplatesTable({ templates, query, highlightId, onClearFilters, onDupli
               onSync={() => actions.sync(template)}
               onDuplicate={() => onDuplicate(template)}
               onDelete={() => actions.remove(template)}
+              unsent={unsentIds.has(template.id)}
+              onDiscardUnsent={() => onDiscardUnsent(template)}
             />
           ))}
         </ul>
@@ -156,6 +161,7 @@ export function TemplatesPage() {
   const [filters, setFilters] = useState<TemplateListFilters>(NO_FILTERS)
   const [importing, setImporting] = useState(false)
   const [draft, setDraft] = useState(() => loadTemplateDraft(null))
+  const [unsentIds, setUnsentIds] = useState<ReadonlySet<number>>(() => new Set(templateIdsWithDraft()))
   const highlightId = (location.state as { highlightId?: number } | null)?.highlightId
   const visible = sortByUse(filterTemplates(data, filters))
   const counts: Record<TypeFilter, number> = {
@@ -171,6 +177,12 @@ export function TemplatesPage() {
   function discardDraft() {
     clearTemplateDraft(null)
     setDraft(null)
+  }
+
+  function discardUnsent(template: MessageTemplate) {
+    clearTemplateDraft(template.id)
+    setUnsentIds(current => new Set([...current].filter(id => id !== template.id)))
+    toast.success(`Se descartaron los cambios sin enviar de «${template.name}»`)
   }
 
   return (
@@ -202,7 +214,9 @@ export function TemplatesPage() {
                 query={filters.query.trim()}
                 highlightId={highlightId}
                 onClearFilters={() => setFilters(NO_FILTERS)}
+                unsentIds={unsentIds}
                 onDuplicate={template => navigate(NEW_PATH, { state: { copyOf: template.id } })}
+                onDiscardUnsent={discardUnsent}
               />
               <p className="px-1 text-xs text-fg-muted">{summary}, las más usadas primero. El estado de Meta se actualiza solo.</p>
             </>

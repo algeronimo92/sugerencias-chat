@@ -2,8 +2,10 @@ import asyncio
 import base64
 import contextlib
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+
 
 from app.modules.auth.public import User
 from app.modules.catalogs.schemas import PersonalTemplateCreate, TemplateAttachmentCreate, TemplateAttachmentItem, TemplateCapabilities, TemplateCreate, TemplateFavoriteUpdate, TemplateItem, MetaTemplateRaw, TemplateAttachmentOrder, TemplateLibraryAttachmentCreate, TemplateMetaImport, TemplateUpdate
@@ -22,6 +24,7 @@ from app.modules.catalogs.template_service import (
     update_template,
 )
 from app.modules.catalogs.template_categories_queries import get_template_category_by_name
+from app.modules.catalogs.template_edit_quota import next_edit_at, record_edit
 from app.modules.catalogs.template_queries import list_templates
 from app.modules.media.ports.media_upload import (normalize_media_content_type, save_media_file)
 from app.modules.media.ports.media_library_service import (create_media_asset, delete_media_asset, get_media_asset)
@@ -44,6 +47,36 @@ from app.modules.catalogs.template_validation import (
 )
 
 logger = logging.getLogger(__name__)
+
+_EDIT_QUOTA_HINT = (
+    "Meta admite un cambio cada 24 horas y diez cada 30 días en una plantilla aprobada."
+)
+# Sin la fecha: la pantalla la toma de `official_next_edit_at` y la muestra
+# en la hora del equipo.
+_EDIT_QUOTA_MESSAGE = (
+    "Ya enviaste un cambio de esta plantilla a Meta. " + _EDIT_QUOTA_HINT
+    + " Todavía no acepta otro. El nombre, la categoría y el atajo sí se pueden guardar."
+)
+
+
+def _meta_error_summary(exc: MetaApiError) -> dict:
+    """Lo que sirve para diagnosticar un rechazo de Meta, sin datos del negocio."""
+    error = exc.error
+    return {
+        key: error.get(key)
+        for key in ("code", "error_subcode", "type", "message", "error_user_title", "error_user_msg")
+        if error.get(key) is not None
+    }
+
+
+def _edit_rejection_message(exc: MetaApiError, approved: bool) -> str:
+    """El rechazo de Meta al editar, con la causa más probable si la plantilla
+    estaba aprobada: el cupo pudo gastarse desde WhatsApp Manager, que la app
+    no ve."""
+    message = f"Meta no aceptó el cambio: {describe_template_error(exc)}"
+    if not approved:
+        return message
+    return f"{message} {_EDIT_QUOTA_HINT} Si ya la editaron hoy, también desde WhatsApp Manager, hay que esperar."
 require_templates_manage = require_permission(Permission.TEMPLATES_MANAGE)
 require_templates_use = require_permission(Permission.TEMPLATES_USE)
 
@@ -451,6 +484,13 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
             )
         )
         category_changed_meta = merged.get("official_category") != current.get("official_category")
+        approved = current.get("official_status") == "APPROVED"
+        now = datetime.now(timezone.utc)
+        if content_changed and approved:
+            # Se frena antes de llamar a Meta: su rechazo por cupo llega sin
+            # decir desde cuándo se puede volver a intentar.
+            if next_edit_at(current.get("official_edit_times"), now) is not None:
+                raise HTTPException(409, _EDIT_QUOTA_MESSAGE)
         if content_changed or category_changed_meta:
             with _template_errors():
                 components = (await build_meta_components(merged)) if content_changed else None
@@ -461,12 +501,20 @@ async def patch_template(template_id: int, body: TemplateUpdate, _admin: User = 
                     merged["official_category"] if category_changed_meta else None,
                 )
             except MetaApiError as exc:
-                raise HTTPException(502, describe_template_error(exc))
+                # El cuerpo del error no quedaba en ningún lado: el 23-11-2026
+                # hubo que adivinar por qué Meta había respondido 400.
+                logger.warning(
+                    "Meta rechazó el cambio de la plantilla %s (estado %s): %s",
+                    template_id, current.get("official_status"), _meta_error_summary(exc),
+                )
+                raise HTTPException(502, _edit_rejection_message(exc, approved))
             if content_changed:
                 # Meta la vuelve a revisar: hasta que responda, no está
                 # aprobada ni rechazada.
                 merged["official_status"] = "PENDING"
                 values["official_rejected_reason"] = None
+                if approved:
+                    values["official_edit_times"] = record_edit(current.get("official_edit_times"), now)
     for key in ("name", "content", "category", "shortcut", "service"):
         if key in values:
             values[key] = merged[key]

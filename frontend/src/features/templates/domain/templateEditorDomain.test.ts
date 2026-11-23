@@ -5,10 +5,11 @@ import { metaEditBlock, metaEditRules } from './metaEditRules'
 import { insertDataVariable, resizeParameters, singleSource, wrapSelection } from './officialVariables'
 import { preSendChecks } from './preSendChecks'
 import { emptyTemplateForm, nextFreeId, officialNameFrom, payloadFromForm } from './templateDraft'
-import { clearTemplateDraft, elapsedLabel, loadTemplateDraft, saveTemplateDraft } from './templateDraftStorage'
+import { clearTemplateDraft, elapsedLabel, loadTemplateDraft, saveTemplateDraft, templateIdsWithDraft } from './templateDraftStorage'
 import { EMPTY_TEMPLATE_FORM, templateFormIssues, type TemplateFormState } from './templateForm'
 import { NO_FILTERS, filterTemplates, officialStatus, rejectedReason, sortByUse } from './templateList'
 import { internalVariablesIn, previewOf } from './templatePreview'
+import { whenLabel } from './whenLabel'
 
 const LIMITS = {
   text: 4096, body: 1024, title: 60, footer: 60, button_text: 20, button_id: 256, max_buttons: 3,
@@ -197,24 +198,36 @@ describe('lo que Meta deja cambiar en una plantilla ya enviada', () => {
     ({ template_type: 'official', meta_template_id: '900', official_status, ...overrides }) as MessageTemplate
 
   it('una aprobada admite cambios al mensaje, con cupo, pero no de tipo', () => {
-    expect(metaEditRules(sent('APPROVED'))).toEqual({ contentLocked: false, categoryLocked: true, limited: true })
+    expect(metaEditRules(sent('APPROVED'))).toEqual({ contentLocked: false, categoryLocked: true, limited: true, editableFrom: null })
   })
 
   it('en revisión o deshabilitada no admite cambios al mensaje ni al tipo', () => {
-    expect(metaEditRules(sent('PENDING'))).toEqual({ contentLocked: true, categoryLocked: true, limited: false })
+    expect(metaEditRules(sent('PENDING'))).toEqual({ contentLocked: true, categoryLocked: true, limited: false, editableFrom: null })
     expect(metaEditRules(sent('DISABLED'))).toMatchObject({ contentLocked: true, categoryLocked: true })
   })
 
   it('rechazada o pausada se corrige sin restricciones', () => {
-    expect(metaEditRules(sent('REJECTED'))).toEqual({ contentLocked: false, categoryLocked: false, limited: false })
-    expect(metaEditRules(sent('PAUSED'))).toEqual({ contentLocked: false, categoryLocked: false, limited: false })
+    expect(metaEditRules(sent('REJECTED'))).toEqual({ contentLocked: false, categoryLocked: false, limited: false, editableFrom: null })
+    expect(metaEditRules(sent('PAUSED'))).toEqual({ contentLocked: false, categoryLocked: false, limited: false, editableFrom: null })
   })
 
   it('una interna, una nueva o una oficial que Meta todavía no tiene no llevan restricciones', () => {
-    const free = { contentLocked: false, categoryLocked: false, limited: false }
+    const free = { contentLocked: false, categoryLocked: false, limited: false, editableFrom: null }
     expect(metaEditRules(undefined)).toEqual(free)
     expect(metaEditRules(sent('APPROVED', { template_type: 'internal' }))).toEqual(free)
     expect(metaEditRules(sent('APPROVED', { meta_template_id: null }))).toEqual(free)
+  })
+
+  it('una aprobada con el cupo gastado bloquea el mensaje hasta que Meta acepte otro cambio', () => {
+    const now = Date.parse('2026-11-23T18:17:00Z')
+    const next = '2026-11-24T18:12:22Z'
+    const rules = metaEditRules(sent('APPROVED', { official_next_edit_at: next }), now)
+    expect(rules).toEqual({ contentLocked: true, categoryLocked: true, limited: true, editableFrom: Date.parse(next) })
+    expect(metaEditBlock(rules, { content: true, category: false })).toMatch(/todavía no acepta otro cambio/)
+    // Pasada la hora ya no hay que esperar, aunque la lista siga abierta.
+    expect(metaEditRules(sent('APPROVED', { official_next_edit_at: next }), Date.parse(next) + 1).contentLocked).toBe(false)
+    // El cupo es de las aprobadas: una rechazada no espera.
+    expect(metaEditRules(sent('REJECTED', { official_next_edit_at: next }), now).editableFrom).toBeNull()
   })
 
   it('frena el guardado solo si trae un cambio que Meta va a rechazar', () => {
@@ -244,6 +257,21 @@ describe('respaldo local del borrador', () => {
     expect(loadTemplateDraft(null)).toBeNull()
     localStorage.setItem('template-editor-draft:new', JSON.stringify({ version: 0, form: {}, savedAt: 1 }))
     expect(loadTemplateDraft(null)).toBeNull()
+  })
+
+  it('lista las plantillas guardadas que tienen cambios sin enviar', () => {
+    saveTemplateDraft(null, { form: form({ name: 'Nueva' }), officialNameEdited: false, savedAt: 1 })
+    saveTemplateDraft(21, { form: form({ name: 'Desde Instagram' }), officialNameEdited: true, savedAt: 2 })
+    localStorage.setItem('template-editor-draft:9', 'roto')
+    expect(templateIdsWithDraft()).toEqual([21])
+  })
+
+  it('dice un momento como lo diría una persona', () => {
+    const now = new Date(2026, 10, 23, 13, 17).getTime()
+    expect(whenLabel(new Date(2026, 10, 23, 13, 12).getTime(), now)).toBe('hoy a las 13:12')
+    expect(whenLabel(new Date(2026, 10, 24, 13, 12).getTime(), now)).toBe('mañana a las 13:12')
+    expect(whenLabel(new Date(2026, 10, 22, 9, 5).getTime(), now)).toBe('ayer a las 09:05')
+    expect(whenLabel(new Date(2026, 11, 2, 13, 12).getTime(), now)).toBe('el 2 de diciembre a las 13:12')
   })
 
   it('dice de cuándo es', () => {
