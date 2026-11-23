@@ -22,3 +22,14 @@ def test_a_rule_violation_keeps_its_message():
 
     assert caught.value.status_code == 400
     assert "acciones" in caught.value.detail
+
+
+def test_an_unexpected_failure_is_not_shown_raw_in_the_history():
+    """En producción el historial mostró la clave de un KeyError y la consulta
+    de un IntegrityError: texto para soporte, no para la clínica."""
+    from app.modules.automations.application.engine import INTERNAL_ERROR_MESSAGE, _readable_error
+    from app.modules.automations.domain.errors import StepFailed
+
+    assert _readable_error(KeyError(("condition-1", "yes"))) == INTERNAL_ERROR_MESSAGE
+    assert _readable_error(RuntimeError("(sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) ...")) == INTERNAL_ERROR_MESSAGE
+    assert _readable_error(StepFailed("El lead no tiene vendedor")) == "El lead no tiene vendedor"

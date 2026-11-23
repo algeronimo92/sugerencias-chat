@@ -31,7 +31,8 @@ import type {
 AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
-import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus } from '../utils/automationExecutions'
+import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, isManuallyCancelled, readableExecutionError } from '../utils/automationExecutions'
+import { EXECUTIONS_PAGE_LIMIT } from '../api'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
@@ -159,7 +160,7 @@ export function AutomationsPage() {
   // `?tab=history` existe para el enlace "Ver flujos automáticos" de "Flujos
   // enviados": sin él, quien llegaba buscando el historial caía en Reglas.
   const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState<'rules' | 'flows' | 'history'>(() => searchParams.get('tab') === 'history' ? 'history' : 'rules')
+  const [chosenTab, setTab] = useState<'rules' | 'flows' | 'history' | null>(() => searchParams.get('tab') === 'history' ? 'history' : null)
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -183,6 +184,11 @@ export function AutomationsPage() {
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
   // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
   const visualRuleIds = new Set(visualRules.map(rule => rule.id))
+  // Sin elección propia se entra donde hay contenido. DermicaPro tenía 16
+  // flujos y ninguna regla, y la pantalla abría en «Reglas (0)» diciendo
+  // «Todavía no hay automatizaciones» debajo de «Automatizaciones 16».
+  const tab = chosenTab ?? (simpleRules.length === 0 && visualRules.length > 0 ? 'flows' : 'rules')
+  const historyTruncated = executions.length >= EXECUTIONS_PAGE_LIMIT
   const activeRulesCount = rules.filter(rule => rule.is_active).length
   const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
   const today = todayISODate()
@@ -318,6 +324,41 @@ export function AutomationsPage() {
     })
   }
 
+  // Pausar pide confirmación: era un clic a 4 px de «Eliminar» y corta lo que
+  // está en curso (el motor omite la ejecución al despertar si la regla ya no
+  // está activa; en DermicaPro eso ya había cancelado 12). Reanudar no rompe
+  // nada, así que sigue siendo directo.
+  function toggleControl(rule: AutomationRule) {
+    const isUpdating = update.isPending && update.variables?.id === rule.id
+    const label = isUpdating ? 'Actualizando…' : rule.is_active ? 'Pausar' : 'Reanudar'
+    const button = (
+      <button
+        type="button"
+        disabled={update.isPending}
+        aria-busy={isUpdating}
+        aria-label={`${label} ${rule.name}`}
+        title={label}
+        onClick={rule.is_active ? undefined : () => toggleRule(rule)}
+        className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}
+      >
+        {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+      </button>
+    )
+    if (!rule.is_active) return button
+    return (
+      <ConfirmDialog
+        title={`Pausar “${rule.name}”`}
+        description="Dejará de iniciarse. Las conversaciones que la tienen en curso no recibirán los pasos que faltan: se cancelan al llegar a su siguiente paso. Puedes reanudarla cuando quieras."
+        confirmLabel="Pausar"
+        cancelLabel="No pausar"
+        disabled={update.isPending}
+        onConfirm={() => toggleRule(rule)}
+      >
+        {button}
+      </ConfirmDialog>
+    )
+  }
+
   function deleteControl(rule: AutomationRule) {
     const isDeleting = deleteAutomation.isPending && deleteAutomation.variables === rule.id
     return (
@@ -370,17 +411,17 @@ export function AutomationsPage() {
         <nav className="mb-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-wa-border bg-white/75 p-1.5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/75" aria-label="Secciones de automatizaciones">
           <button type="button" onClick={() => setTab('rules')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'rules' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><GitBranch className="h-3.5 w-3.5" />Reglas <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'rules' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{simpleRules.length}</span></button>
           <button type="button" onClick={() => setTab('flows')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'flows' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><Layers3 className="h-3.5 w-3.5" />Flujos visuales <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'flows' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{visualRules.length}</span></button>
-          <button type="button" onClick={() => setTab('history')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'history' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><History className="h-3.5 w-3.5" />Historial <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'history' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{executions.length}</span></button>
+          <button type="button" onClick={() => setTab('history')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'history' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><History className="h-3.5 w-3.5" />Historial</button>
         </nav>
 
         {error && !formOpen && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
         {tab === 'rules' ? (
           isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : simpleRules.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">Todavía no hay automatizaciones</p><p className="mt-1 text-xs text-wa-muted">Crea la primera regla para asignar, notificar o programar seguimientos.</p></div>
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">{visualRules.length ? 'Todavía no hay reglas' : 'Todavía no hay automatizaciones'}</p><p className="mt-1 text-xs text-wa-muted">{visualRules.length ? 'Tus automatizaciones están en «Flujos visuales». Una regla sirve para algo de un solo paso: asignar, notificar o programar un seguimiento.' : 'Crea la primera regla para asignar, notificar o programar seguimientos.'}</p></div>
           ) : <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{simpleRules.map(rule => (
             <article key={rule.id} className={`rounded-2xl border bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-wa-panel-dark/90 ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border opacity-75 dark:border-wa-border-dark'}`}>
-              <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : 'bg-wa-field text-wa-muted dark:bg-wa-head-dark'}`}><Bot className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-xs text-wa-muted">Cuando: {triggerLabel(rule.trigger_type)}{rule.trigger_config.minutes ? ` · ${rule.trigger_config.minutes} min` : ''}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Editar" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button><button type="button" disabled={update.isPending} aria-busy={update.isPending && update.variables?.id === rule.id} onClick={() => toggleRule(rule)} title={update.isPending && update.variables?.id === rule.id ? 'Actualizando…' : rule.is_active ? 'Desactivar' : 'Activar'} className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}>{update.isPending && update.variables?.id === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}</button>{deleteControl(rule)}</div></div>
+              <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : 'bg-wa-field text-wa-muted dark:bg-wa-head-dark'}`}><Bot className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-xs text-wa-muted">Cuando: {triggerLabel(rule.trigger_type)}{rule.trigger_config.minutes ? ` · ${rule.trigger_config.minutes} min` : ''}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Editar" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{toggleControl(rule)}{deleteControl(rule)}</div></div>
                 <div className="mt-3 flex flex-wrap gap-1.5">{rule.actions.map((action, index) => <span key={index} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{index + 1}. {ACTION_LABELS[action.type]}</span>)}{rule.delay_minutes > 0 && <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">Espera {rule.delay_minutes} min</span>}{rule.max_executions_per_hour && <span className="rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Máx. {rule.max_executions_per_hour}/h</span>}</div>
                 <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span>{rule.last_execution_status && <span className={`rounded-full px-2 py-0.5 ${executionTone(rule.last_execution_status)}`}>{executionStatusLabel(rule.last_execution_status)}</span>}</div>
               </div></div>
@@ -391,7 +432,7 @@ export function AutomationsPage() {
             const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
             const hasPublished = !!rule.published_flow_definition
             const hasDraftChanges = hasPublished && !areFlowDefinitionsEqual(rule.flow_definition, rule.published_flow_definition)
-            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} bloques · {triggerLabel(rule.trigger_type)}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creado por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && <button type="button" disabled={update.isPending} aria-busy={update.isPending && update.variables?.id === rule.id} onClick={() => toggleRule(rule)} title={update.isPending && update.variables?.id === rule.id ? 'Actualizando…' : rule.is_active ? 'Pausar' : 'Reanudar'} className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}>{update.isPending && update.variables?.id === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}</button>}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicado · v${rule.flow_version}` : hasPublished ? 'Pausado' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar flujo →</button></div></div></div></article>
+            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} bloques · {triggerLabel(rule.trigger_type)}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creado por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && toggleControl(rule)}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicado · v${rule.flow_version}` : hasPublished ? 'Pausado' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar flujo →</button></div></div></div></article>
           })}</div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark">
@@ -426,16 +467,17 @@ export function AutomationsPage() {
                 Ocultar omitidas
               </label>
               {hasCustomHistoryFilters && <button type="button" onClick={resetHistoryFilters} className="min-h-9 rounded-lg px-3 py-2 text-xs font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/40">Limpiar filtros</button>}
-              <span className="ml-auto flex min-h-9 items-center gap-1.5 text-[11px] text-wa-muted">{executionsFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{executions.length} resultados</span>
+              <span className="ml-auto flex min-h-9 items-center gap-1.5 text-[11px] text-wa-muted">{executionsFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{historyTruncated ? `Las ${EXECUTIONS_PAGE_LIMIT} más recientes` : `${executions.length} resultados`}</span>
             </div>
+            {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />Hay más ejecuciones de las que se muestran: estas son las {EXECUTIONS_PAGE_LIMIT} más recientes. Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.</p>}
             {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
               <details key={execution.id} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
                 <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status, execution.error)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
                 {execution.rule_deleted && <div className="border-t border-wa-border bg-amber-50 px-4 py-2 text-[11px] text-amber-700 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-300">Automatización eliminada · historial conservado solo para auditoría.</div>}
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>
-                  {execution.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/40 dark:text-red-300">{execution.error}</p>}
-                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{stepStatusLabel(result.status)}{result.error ? ` · ${String(result.error)}` : ''}</span>{result.node_id && visualRuleIds.has(execution.rule_id) && <button type="button" onClick={() => ruleUrl.open(execution.rule_id, String(result.node_id))} title="Abre el flujo en el bloque de este paso" className="ml-2 inline-flex items-center gap-1 font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><LocateFixed className="h-3 w-3" aria-hidden="true" />Ver en el flujo</button>}</div>)}</div>
+                  {execution.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/40 dark:text-red-300">{readableExecutionError(execution.error)}</p>}
+                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{stepStatusLabel(result.status)}{result.error ? ` · ${readableExecutionError(String(result.error))}` : ''}</span>{result.node_id && visualRuleIds.has(execution.rule_id) && <button type="button" onClick={() => ruleUrl.open(execution.rule_id, String(result.node_id))} title="Abre el flujo en el bloque de este paso" className="ml-2 inline-flex items-center gap-1 font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><LocateFixed className="h-3 w-3" aria-hidden="true" />Ver en el flujo</button>}</div>)}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {execution.lead_id && <button
                       type="button"
@@ -445,7 +487,7 @@ export function AutomationsPage() {
                       <MessageCircle className="h-3.5 w-3.5" />
                       Ir al chat
                     </button>}
-                    {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Failed || execution.status === AutomationExecutionStatus.Skipped) && <button
+                    {!execution.rule_deleted && !isManuallyCancelled(execution) && (execution.status === AutomationExecutionStatus.Failed || execution.status === AutomationExecutionStatus.Skipped) && <button
                       type="button"
                       disabled={retryExecution.isPending}
                       aria-busy={retryExecution.isPending && retryExecution.variables?.id === execution.id}
@@ -457,31 +499,48 @@ export function AutomationsPage() {
                     </button>}
                     {/* Falló solo por la ventana de 24 h: el admin puede
                         autorizar que esta ejecución la ignore y salga igual. */}
-                    {!execution.rule_deleted && execution.status === AutomationExecutionStatus.Failed && isServiceWindowFailure(execution) && <button
-                      type="button"
+                    {!execution.rule_deleted && execution.status === AutomationExecutionStatus.Failed && isServiceWindowFailure(execution) && <ConfirmDialog
+                      title="Enviar con la ventana de 24 horas cerrada"
+                      description="Pasaron más de 24 horas desde el último mensaje de este cliente. WhatsApp puede rechazar un mensaje que no sea una plantilla aprobada. Quedará registrado que tú lo autorizaste."
+                      confirmLabel="Autorizar y reintentar"
+                      cancelLabel="No enviar"
+                      confirmVariant="primary"
                       disabled={retryExecution.isPending}
-                      onClick={() => { setError(null); retryExecution.mutate({ id: execution.id, ignoreServiceWindow: true }, { onSuccess: () => toast.success('Autorizada: se reintenta ignorando la ventana'), onError: reason => setError(extractErrorMessage(reason)) }) }}
-                      className="flex items-center gap-1.5 rounded-lg border border-amber-500 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 disabled:cursor-wait disabled:opacity-40 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                      onConfirm={() => { setError(null); retryExecution.mutate({ id: execution.id, ignoreServiceWindow: true }, { onSuccess: () => toast.success('Autorizada: se reintenta ignorando la ventana'), onError: reason => setError(extractErrorMessage(reason)) }) }}
                     >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      Autorizar y reintentar
-                    </button>}
+                      <button
+                        type="button"
+                        disabled={retryExecution.isPending}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-500 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 disabled:cursor-wait disabled:opacity-40 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Autorizar y reintentar
+                      </button>
+                    </ConfirmDialog>}
                     {execution.window_override_at && (
                       <span className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
                         <ShieldCheck className="h-3.5 w-3.5" />
                         Autorizada por {execution.window_override_by_name ?? 'un admin'}
                       </span>
                     )}
-                    {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Scheduled || execution.status === AutomationExecutionStatus.Running || execution.status === AutomationExecutionStatus.Paused) && <button
-                      type="button"
+                    {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Scheduled || execution.status === AutomationExecutionStatus.Running || execution.status === AutomationExecutionStatus.Paused) && <ConfirmDialog
+                      title={`Cancelar “${execution.rule_name}”`}
+                      description={`${execution.lead_name || 'Este lead'} no recibirá los pasos que faltan. No se puede deshacer; para repetirla habría que iniciarla de nuevo.`}
+                      confirmLabel="Cancelar ejecución"
+                      cancelLabel="No cancelar"
                       disabled={cancelExecution.isPending}
-                      aria-busy={cancelExecution.isPending && cancelExecution.variables === execution.id}
-                      onClick={() => { setError(null); cancelExecution.mutate(execution.id, { onSuccess: () => toast.success('Ejecución cancelada'), onError: reason => setError(extractErrorMessage(reason)) }) }}
-                      className="flex items-center gap-1.5 rounded-lg border border-red-500 px-3 py-1.5 text-[11px] font-semibold text-red-600 disabled:cursor-wait disabled:opacity-40 dark:text-red-400"
+                      onConfirm={() => { setError(null); cancelExecution.mutate(execution.id, { onSuccess: () => toast.success('Ejecución cancelada'), onError: reason => setError(extractErrorMessage(reason)) }) }}
                     >
-                      {cancelExecution.isPending && cancelExecution.variables === execution.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
-                      {cancelExecution.isPending && cancelExecution.variables === execution.id ? 'Cancelando…' : 'Cancelar'}
-                    </button>}
+                      <button
+                        type="button"
+                        disabled={cancelExecution.isPending}
+                        aria-busy={cancelExecution.isPending && cancelExecution.variables === execution.id}
+                        className="flex items-center gap-1.5 rounded-lg border border-red-500 px-3 py-1.5 text-[11px] font-semibold text-red-600 disabled:cursor-wait disabled:opacity-40 dark:text-red-400"
+                      >
+                        {cancelExecution.isPending && cancelExecution.variables === execution.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                        {cancelExecution.isPending && cancelExecution.variables === execution.id ? 'Cancelando…' : 'Cancelar'}
+                      </button>
+                    </ConfirmDialog>}
                   </div>
                 </div>
               </details>
