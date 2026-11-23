@@ -177,6 +177,9 @@ class MessageTemplate(Base):
     official_header_media_asset_id: Mapped[int | None] = mapped_column(ForeignKey("media_assets.id", ondelete="SET NULL"))
     official_footer: Mapped[str | None] = mapped_column(Text)
     official_buttons: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    # Fechas (ISO, UTC) de los cambios de mensaje que Meta aceptó estando
+    # aprobada, para calcular su cupo: ver catalogs/template_edit_quota.py.
+    official_edit_times: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     interactive_type: Mapped[str] = mapped_column(Text, default="none", server_default="none")
     interactive_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     imported_from_meta: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -26,6 +26,7 @@ async def list_templates(user_id: int, include_inactive=False):
             MediaAsset.filename.label("official_header_media_filename"),
             MessageTemplate.official_footer,
             MessageTemplate.official_buttons,
+            MessageTemplate.official_edit_times,
             MessageTemplate.interactive_type, MessageTemplate.interactive_config,
             MessageTemplate.imported_from_meta,
             MessageTemplate.created_by_user_id, User.name.label("created_by_name"),

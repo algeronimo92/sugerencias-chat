@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { queryClient } from '../../../shared/queryClient'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { attachmentsChanged, draftFromSaved, type DraftAttachment } from '../domain/attachmentDraft'
 import { metaEditBlock, metaEditRules } from '../domain/metaEditRules'
@@ -6,6 +7,7 @@ import { resizeParameters } from '../domain/officialVariables'
 import { emptyTemplateForm, formFromTemplate, officialNameFrom, payloadFromForm, sameForm } from '../domain/templateDraft'
 import { clearTemplateDraft, loadTemplateDraft, saveTemplateDraft } from '../domain/templateDraftStorage'
 import { templateFormIssues, type TemplateField, type TemplateFormState } from '../domain/templateForm'
+import { templateKeys } from '../keys'
 import type { InteractiveLimits, MessageTemplate, TemplateCategory } from '../types'
 import { useApplyAttachmentDraft } from './useApplyAttachmentDraft'
 import { useCreateTemplate, useUpdateTemplate } from './useTemplates'
@@ -58,6 +60,8 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
   const [submitted, setSubmitted] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // El último intento de guardar falló: lo escrito sigue solo en este dispositivo.
+  const [saveFailed, setSaveFailed] = useState(false)
   const [backedUp, setBackedUp] = useState(false)
   // Ya guardada: el respaldo local se borró y no tiene que volver a escribirse.
   const finished = useRef(false)
@@ -107,6 +111,7 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
       return next
     })
     setServerError(null)
+    setSaveFailed(false)
   }
 
   function setOfficialName(value: string) {
@@ -146,6 +151,11 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
         : await createTemplate.mutateAsync({ ...changes, template_type: templateType, service })
     } catch (reason) {
       setServerError(extractErrorMessage(reason))
+      setSaveFailed(true)
+      // El rechazo puede venir de un estado que cambió (otra persona la
+      // editó, Meta la pasó a revisión): se vuelve a leer para que el editor
+      // muestre el bloqueo y su explicación.
+      void queryClient.invalidateQueries({ queryKey: templateKeys.all })
       return null
     }
   }
@@ -172,10 +182,12 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
     const blocked = metaLocked ? metaEditBlock(metaRules, metaChanges) : null
     if (blocked) {
       setServerError(blocked)
+      setSaveFailed(false)
       return
     }
     setSaving(true)
     setServerError(null)
+    setSaveFailed(false)
     // En `finally`: pase lo que pase al guardar, el botón no puede quedar
     // girando ni deshabilitado.
     try {
@@ -214,6 +226,7 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
     errorsFor,
     pendingIssues: submitted ? issues : [],
     serverError,
+    saveFailed,
     setServerError,
     saving: saving || applyAttachments.pending,
     dirty,

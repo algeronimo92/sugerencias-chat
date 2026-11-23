@@ -22,6 +22,8 @@ interface Props {
   /** Cuántos puntos faltan corregir tras intentar guardar. */
   pendingCount: number
   serverError: string | null
+  /** El error vino de un guardado que no llegó a hacerse. */
+  saveFailed: boolean
   tab: EditorTab
   onTab: (tab: EditorTab) => void
   onLeave: () => void
@@ -33,7 +35,7 @@ interface Props {
  * acciones. Guardar vive acá en escritorio y en el pie en el celular, donde
  * la cabecera lleva las pestañas «Editar / Vista previa».
  */
-export function EditorHeader({ listPath, formId, title, subtitle, submitLabel, saving, pendingCount, serverError, tab, onTab, onLeave, onShowPending }: Props) {
+export function EditorHeader({ listPath, formId, title, subtitle, submitLabel, saving, pendingCount, serverError, saveFailed, tab, onTab, onLeave, onShowPending }: Props) {
   return (
     <header className="shrink-0 border-b border-line bg-surface">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 lg:px-8">
@@ -57,7 +59,12 @@ export function EditorHeader({ listPath, formId, title, subtitle, submitLabel, s
       </div>
       {serverError && (
         <div className="px-4 pb-3 lg:px-8">
-          <Notice tone="danger"><p className="whitespace-pre-line font-medium">{serverError}</p></Notice>
+          <Notice tone="danger">
+            <p className="whitespace-pre-line font-medium">{serverError}</p>
+            {/* Sin esto el borrador que queda en el navegador se confundía
+                con un cambio guardado. */}
+            {saveFailed && <p className="mt-1">No se guardó ni se envió a Meta. Lo que escribiste sigue solo en este dispositivo.</p>}
+          </Notice>
         </div>
       )}
       <div role="tablist" aria-label="Editar o ver la vista previa" className="grid grid-cols-2 px-4 lg:hidden">

@@ -1,5 +1,6 @@
 import { Button } from '../../../../shared/ui/Button'
 import { elapsedLabel } from '../../domain/templateDraftStorage'
+import { whenLabel } from '../../domain/whenLabel'
 import { rejectedReason, type OfficialStatus } from '../../domain/templateList'
 import type { TemplateEditorState } from '../../hooks/useTemplateEditor'
 import type { MessageTemplate, TemplateCapabilities } from '../../types'
@@ -16,7 +17,7 @@ function RestoredNotice({ editor }: { editor: TemplateEditorState }) {
         <Button variant="ghost" size="sm" onClick={editor.dismissRestored}>Entendido</Button>
       </div>}
     >
-      <p><strong className="font-semibold">Recuperamos lo que habías escrito</strong> {elapsedLabel(editor.restoredAt)}. Los archivos que hubieras elegido no entran en el respaldo: vuelve a agregarlos.</p>
+      <p><strong className="font-semibold">Recuperamos lo que habías escrito</strong> {elapsedLabel(editor.restoredAt)}. Todavía no está guardado ni enviado a Meta: solo existe en este dispositivo. Los archivos que hubieras elegido no entran en el respaldo.</p>
     </Notice>
   )
 }
@@ -29,6 +30,18 @@ interface MetaNotice {
   tone: 'warning' | 'danger'
   title: string
   body: string
+}
+
+/** El cupo ya se gastó: cuándo fue el último cambio y desde cuándo acepta
+ *  Meta otro. Antes no había forma de saberlo hasta que Meta rechazaba el
+ *  guardado. */
+function quotaNotice(template: MessageTemplate | undefined, editableFrom: number): MetaNotice {
+  const lastEdit = template?.official_last_edit_at ? Date.parse(template.official_last_edit_at) : NaN
+  return {
+    tone: 'warning',
+    title: Number.isFinite(lastEdit) ? `Ya enviaste un cambio a Meta ${whenLabel(lastEdit)}` : 'Ya enviaste un cambio a Meta',
+    body: `Meta acepta el próximo cambio en el mensaje desde ${whenLabel(editableFrom)}: en una aprobada admite uno cada 24 horas y diez cada 30 días. ${FREE_FIELDS}`,
+  }
 }
 
 /**
@@ -63,6 +76,7 @@ function metaNotice(editor: TemplateEditorState, template: MessageTemplate | und
         body: 'Por ahora no se puede enviar. Puedes corregir el mensaje; al guardarlo, Meta la vuelve a revisar.',
       }
     case 'approved':
+      if (editor.metaRules.editableFrom !== null) return quotaNotice(template, editor.metaRules.editableFrom)
       return editor.goesBackToReview
         ? { tone: 'warning', title: 'Al guardar, Meta vuelve a revisarla', body: `Hasta que la apruebe no se podrá enviar, ni desde el chat ni desde las automatizaciones. ${EDIT_CAP}` }
         : { tone: 'warning', title: 'Esta plantilla está aprobada', body: `Si cambias el mensaje, los datos, el encabezado, el pie o los botones, vuelve a revisión y no se podrá enviar hasta que Meta responda. ${EDIT_CAP} ${FREE_FIELDS}` }

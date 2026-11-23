@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { configure, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -73,7 +73,12 @@ const submitButton = (name: string) => screen.getAllByRole('button', { name })[0
 const nameField = () => screen.getByRole('textbox', { name: /^Nombre \(obligatorio\)/ })
 const messageField = () => screen.getByRole('textbox', { name: /^Texto del mensaje/ })
 
-describe('TemplateEditorPage', () => {
+// Estas pruebas recorren el formulario entero (escribir, abrir un menú,
+// subir un archivo, navegar). Con la suite completa en paralelo, el segundo
+// de espera por defecto no alcanzaba y fallaba una distinta en cada corrida.
+configure({ asyncUtilTimeout: 5000 })
+
+describe('TemplateEditorPage', { timeout: 20_000 }, () => {
   beforeEach(() => {
     localStorage.clear()
     mocks.templates = []
@@ -183,6 +188,35 @@ describe('TemplateEditorPage', () => {
     await user.click(submitButton('Guardar cambios'))
 
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ id: 5, name: 'Promo de diciembre', content: 'Este mes tenemos una promoción para ti.' })))
+  })
+
+  it('con el cupo de 24 horas gastado avisa desde cuándo se puede y bloquea el mensaje', () => {
+    const lastEdit = new Date(Date.now() - 5 * 60_000)
+    mocks.templates = [template({
+      template_type: 'official', name: 'Desde Instagram', official_name: 'desde_instagram', official_language: 'es',
+      official_category: 'MARKETING', official_status: 'APPROVED', meta_template_id: '921', content: 'Hola, gracias por escribirnos.',
+      official_last_edit_at: lastEdit.toISOString(), official_next_edit_at: new Date(lastEdit.getTime() + 24 * 3_600_000).toISOString(),
+    })]
+    renderAt('/templates/5')
+
+    expect(screen.getByText(/^Ya enviaste un cambio a Meta hoy a las/)).toBeInTheDocument()
+    expect(screen.getByText(/Meta acepta el próximo cambio en el mensaje desde mañana a las/)).toBeInTheDocument()
+    expect(messageField()).toBeDisabled()
+    expect(nameField()).toBeEnabled()
+  })
+
+  it('si el guardado falla, dice que nada se guardó y que lo escrito sigue en el dispositivo', async () => {
+    const user = userEvent.setup()
+    mocks.templates = [template()]
+    mocks.update.mockRejectedValue(new Error('Meta no aceptó el cambio'))
+    renderAt('/templates/5')
+
+    await user.type(messageField(), ' y algo más')
+    await user.click(submitButton('Guardar cambios'))
+
+    expect(await screen.findByText('Meta no aceptó el cambio')).toBeInTheDocument()
+    expect(screen.getByText(/No se guardó ni se envió a Meta/)).toBeInTheDocument()
+    expect(screen.queryByText('Lista de plantillas')).not.toBeInTheDocument()
   })
 
   it('guardar una rechazada la reenvía a revisión aunque no cambie el mensaje', () => {

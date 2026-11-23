@@ -9494,6 +9494,10 @@ export interface components {
             official_buttons?: {
                 [key: string]: unknown;
             }[];
+            /** Official Last Edit At */
+            official_last_edit_at?: string | null;
+            /** Official Next Edit At */
+            official_next_edit_at?: string | null;
             /**
              * Interactive Type
              * @default none

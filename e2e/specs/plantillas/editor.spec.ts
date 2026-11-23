@@ -9,6 +9,7 @@ function template(overrides: Partial<Template>): Template {
     id: 1, name: 'Saludo', content: 'Hola {{nombre}}', shortcut: null, category: 'ventas', stage: null, task_type: null, service: null,
     is_active: true, visibility: 'global', template_type: 'internal', official_name: null, official_language: null,
     official_category: null, official_status: null, official_rejected_reason: null, official_parameter_values: [], meta_template_id: null,
+    official_last_edit_at: null, official_next_edit_at: null,
     official_header_type: 'none', official_header_text: null, official_header_media_asset_id: null, official_header_media_url: null,
     official_header_media_content_type: null, official_header_media_filename: null, official_footer: null, official_buttons: [],
     interactive_type: 'none', interactive_config: {}, imported_from_meta: false, is_favorite: false, last_used_at: null, use_count: 0,
@@ -144,4 +145,46 @@ test('mientras Meta la revisa, el mensaje queda bloqueado y lo demás se puede g
   await page.getByRole('button', { name: 'Guardar cambios' }).filter({ visible: true }).click()
   await expect(page).toHaveURL(/\/templates$/)
   expect(api.calls('patch', '/api/templates/{template_id}')[0].body).toMatchObject({ name: 'Promo de fin de año', content: 'Este mes tenemos una promoción para ti.' })
+})
+
+test('con el cupo de 24 horas gastado, la lista y el editor dicen desde cuándo se puede volver a editar', async ({ page, api }, info) => {
+  // El caso real del 23-11-2026: editada 13:12 y vuelta a intentar 13:17.
+  const lastEdit = new Date(Date.now() - 5 * 60_000)
+  const edited = template({
+    ...TEMPLATES[1], id: 21, name: 'Desde Instagram', official_name: 'desde_instagram', official_category: 'MARKETING', imported_from_meta: false,
+    content: 'Hola {{1}}, gracias por escribirnos desde Instagram. ¿En qué tratamiento te ayudamos?', official_parameter_values: ['{{nombre}}'],
+    official_last_edit_at: lastEdit.toISOString(), official_next_edit_at: new Date(lastEdit.getTime() + 24 * 3_600_000).toISOString(),
+  })
+  api.on('get', '/api/templates', [edited, ...TEMPLATES])
+
+  await page.goto('/templates')
+  const row = page.getByRole('listitem').filter({ hasText: 'Desde Instagram' })
+  await expect(row).toContainText(/Editable desde mañana a las/)
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/plantillas-cupo-lista-${info.project.name}.png` })
+
+  await row.getByRole('link', { name: 'Editar' }).click()
+  await expect(page.getByText(/^Ya enviaste un cambio a Meta hoy a las/)).toBeVisible()
+  await expect(page.getByText(/Meta acepta el próximo cambio en el mensaje desde mañana a las/)).toBeVisible()
+  await expect(page.getByRole('textbox', { name: /^Nombre \(obligatorio\)/ })).toBeEnabled()
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/plantillas-cupo-editor-${info.project.name}.png` })
+  await expect(page.getByRole('textbox', { name: /^Texto del mensaje/ })).toBeDisabled()
+})
+
+test('si Meta rechaza el guardado, el editor dice que no se envió y la lista marca los cambios sin enviar', async ({ page, api }, info) => {
+  api.fail('patch', '/api/templates/{template_id}', 502, 'Meta no aceptó el cambio: la plantilla ya fue editada hoy.')
+  await page.goto('/templates/2')
+  const message = page.getByRole('textbox', { name: /^Texto del mensaje/ })
+  await message.fill('¡Hola {{1}}! Tu sesión de {{2}} quedó registrada para el {{3}} a las {{4}}. Te esperamos en la clínica.')
+  await page.getByRole('button', { name: 'Enviar a revisión de Meta' }).filter({ visible: true }).click()
+
+  const notice = page.getByText(/No se guardó ni se envió a Meta/)
+  await expectFullyOnScreen(notice)
+  await expect(page.getByText('Meta no aceptó el cambio: la plantilla ya fue editada hoy.')).toBeVisible()
+  await page.screenshot({ path: `test-results/plantillas-no-enviado-${info.project.name}.png` })
+
+  await page.getByRole('link', { name: 'Plantillas' }).first().click()
+  await expect(page.getByRole('listitem').filter({ hasText: 'aviso_cita_cliente' })).toContainText('Cambios sin enviar')
+  await page.screenshot({ path: `test-results/plantillas-sin-enviar-lista-${info.project.name}.png` })
 })

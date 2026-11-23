@@ -53,6 +53,19 @@ export function clearTemplateDraft(templateId: number | null) {
   try { localStorage.removeItem(keyOf(templateId)) } catch { /* sin almacenamiento: nada que borrar */ }
 }
 
+/** Las plantillas ya guardadas que tienen cambios escritos en este
+ *  dispositivo y todavía sin enviar. */
+export function templateIdsWithDraft(): number[] {
+  try {
+    return Object.keys(localStorage)
+      .filter(key => key.startsWith(PREFIX))
+      .map(key => Number(key.slice(PREFIX.length)))
+      .filter(id => Number.isInteger(id) && loadTemplateDraft(id) !== null)
+  } catch {
+    return []
+  }
+}
+
 /** «hace 3 min», para decir de cuándo es un borrador. */
 export function elapsedLabel(since: number, now = Date.now()): string {
   const minutes = Math.max(0, Math.round((now - since) / 60_000))
