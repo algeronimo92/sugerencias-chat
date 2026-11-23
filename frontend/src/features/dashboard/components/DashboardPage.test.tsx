@@ -70,7 +70,7 @@ function metrics(): DashboardMetrics {
     automations: {
       by_flow: [{
         name: 'Recordatorio de Yape', rule_id: 12, trigger_type: 'manual', value: 8,
-        completed: 5, failed: 1, skipped: 1, active: 1, manual: 6, automatic: 2, manual_chained: 1, automatic_chained: 0, last_at: '2026-09-20T15:00:00Z',
+        completed: 4, failed: 1, skipped: 1, cancelled: 1, active: 1, manual: 6, automatic: 2, manual_chained: 1, automatic_chained: 0, last_at: '2026-09-20T15:00:00Z',
       }],
       origin_totals: { manual: 6, automatic: 2, manual_chained: 1, automatic_chained: 0 },
       by_actor: [{ name: 'Antonella', value: 8 }],
@@ -282,9 +282,9 @@ describe('DashboardPage', () => {
     renderDashboard()
     await user.click(screen.getByRole('tab', { name: 'Flujos' }))
 
-    // La leyenda nombra los cuatro estados: el color no puede ser el único
+    // La leyenda nombra los cinco estados: el color no puede ser el único
     // indicio de qué es cada segmento.
-    for (const label of ['Completados', 'Sin terminar', 'Omitidos', 'Fallidos']) {
+    for (const label of ['Completados', 'Sin terminar', 'Cancelados', 'No aplicaron', 'Fallidos']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
     expect(screen.getByText('1 flujo no llegó a enviarse')).toBeInTheDocument()
@@ -308,7 +308,7 @@ describe('DashboardPage', () => {
     expect(row).toHaveTextContent('2 automáticos')
 
     await user.click(panel.getByRole('button', { name: 'Cómo terminaron' }))
-    expect(panel.getByRole('button', { name: /Recordatorio de Yape/ })).toHaveTextContent('5 completados')
+    expect(panel.getByRole('button', { name: /Recordatorio de Yape/ })).toHaveTextContent('4 completados')
     expect(panel.queryByText(/De 8 flujos iniciados/)).not.toBeInTheDocument()
   })
 

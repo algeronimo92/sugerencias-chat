@@ -28,8 +28,8 @@ class ExecutionStore(Protocol):
     async def rule(self, rule_id: int) -> Rule | None: ...
 
     async def save(self, execution_id: int, **values) -> bool:
-        """Escribe el estado de una ejecución salvo que ya esté ``skipped``
-        (alguien la canceló mientras corría). False en ese caso."""
+        """Escribe el estado de una ejecución salvo que ya esté ``cancelled``
+        o ``skipped`` (alguien la canceló mientras corría). False en ese caso."""
 
     async def completed_since(self, rule_id: int, since: datetime) -> int: ...
 
@@ -62,7 +62,8 @@ class ExecutionStore(Protocol):
         """La ejecución tal como la muestra el historial."""
 
     async def requeue(self, execution_id: int, now: datetime, *, override_by_user_id: int | None) -> bool:
-        """Vuelve a la cola una ejecución failed o skipped."""
+        """Vuelve a la cola una ejecución failed o skipped. Una cancelled no:
+        la detuvo una persona y se relanza a propósito, no con un reintento."""
 
     async def resume_lead(self, lead_id: str, now: datetime) -> int:
         """Descongela lo que la regla anterior dejó pausado con el lead

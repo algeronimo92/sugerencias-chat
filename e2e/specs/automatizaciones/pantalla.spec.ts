@@ -62,3 +62,27 @@ test('el historial avisa cuando hay más ejecuciones de las que muestra', async 
   await expect(page.getByText('Las 200 más recientes', { exact: true })).toBeVisible()
   await page.screenshot({ path: `test-results/automatizaciones-historial-${info.project.name}.png` })
 })
+
+test('el historial distingue lo que alguien canceló de lo que no aplicó', async ({ page, api }, info) => {
+  // Las dos se guardaban como «skipped» y se leían «Omitida»: en DermicaPro
+  // 655 de 718 eran cancelaciones, no flujos que no aplicaban.
+  api.on('get', '/api/automations/executions', [
+    execution(FLOWS[0], { id: 2001, status: 'cancelled', error: 'Cancelada manualmente', finished_at: new Date().toISOString() }),
+    execution(FLOWS[1], { id: 2002, status: 'skipped', error: 'El cliente respondió antes del vencimiento', finished_at: new Date().toISOString() }),
+  ])
+
+  await page.goto('/automations?tab=history')
+
+  const cancelled = page.locator('details').filter({ hasText: FLOWS[0].name })
+  const skipped = page.locator('details').filter({ hasText: FLOWS[1].name })
+  await expect(cancelled.getByText('Cancelada', { exact: true })).toBeVisible()
+  await expect(skipped.getByText('No aplicó', { exact: true })).toBeVisible()
+  await cancelled.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `test-results/automatizaciones-estados-${info.project.name}.png` })
+
+  // Reintentar es para lo que falló o no aplicó; lo cancelado se relanza a propósito.
+  await cancelled.locator('summary').click()
+  await skipped.locator('summary').click()
+  await expect(skipped.getByRole('button', { name: 'Reintentar' })).toBeVisible()
+  await expect(cancelled.getByRole('button', { name: 'Reintentar' })).toHaveCount(0)
+})

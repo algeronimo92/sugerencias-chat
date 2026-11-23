@@ -205,7 +205,7 @@ async def post_start_manual_flow(
 async def get_executions(
     rule_id: int | None = None,
     chat_id: str | None = None,
-    status: str | None = Query(default=None, pattern="^(scheduled|running|paused|completed|failed|skipped)$"),
+    status: str | None = Query(default=None, pattern="^(scheduled|running|paused|completed|failed|skipped|cancelled)$"),
     exclude_skipped: bool = False,
     active: bool | None = None,
     date_from: date | None = None,

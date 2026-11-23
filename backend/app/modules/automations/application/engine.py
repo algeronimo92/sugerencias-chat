@@ -61,8 +61,8 @@ async def save_execution(execution_id: int, deps: AutomationDeps, **values) -> b
     Pone finished_at solo cuando el estado es terminal, para que ninguna rama
     se olvide de marcarlo.
 
-    Nunca pisa una fila que ya quedó skipped: eso significa que alguien la
-    canceló mientras este motor la tenía en curso. Devuelve False en ese caso
+    Nunca pisa una fila que ya quedó cancelled o skipped: eso significa que
+    alguien la canceló mientras este motor la tenía en curso. Devuelve False en ese caso
     para que el caller corte el procesamiento en vez de seguir enviando
     acciones de una ejecución cancelada."""
     if values.get("status") in TERMINAL_STATUSES:
@@ -244,7 +244,7 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
     if not rule.is_active:
         await save_execution(
             execution_id, deps,
-            status=AutomationExecutionStatus.SKIPPED, error="La regla fue desactivada",
+            status=AutomationExecutionStatus.CANCELLED, error="La regla fue desactivada",
         )
         return
     if not await _customer_response_deadline_is_current(execution, deps):

@@ -117,6 +117,9 @@ async def _by_flow(scope: DashboardScope) -> list[dict]:
                 func.count(AutomationExecution.id)
                 .filter(status == AutomationExecutionStatus.SKIPPED)
                 .label("skipped"),
+                func.count(AutomationExecution.id)
+                .filter(status == AutomationExecutionStatus.CANCELLED)
+                .label("cancelled"),
                 func.count(AutomationExecution.id).filter(status.in_(ACTIVE_STATUSES)).label("active"),
                 # Mismo corte que "Flujos por día" y el mapa de horas: si cada
                 # panel partiera distinto, "a mano" daría tres cifras en la misma pestaña.
@@ -144,6 +147,7 @@ async def _by_flow(scope: DashboardScope) -> list[dict]:
             "completed": int(row["completed"]),
             "failed": int(row["failed"]),
             "skipped": int(row["skipped"]),
+            "cancelled": int(row["cancelled"]),
             "active": int(row["active"]),
             # "A mano" es el resto, así las dos partes suman el total del flujo.
             "manual": int(row["value"]) - int(row["automatic"]),

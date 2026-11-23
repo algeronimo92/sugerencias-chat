@@ -146,7 +146,9 @@ class SqlExecutionStore:
         async with session_scope() as session:
             result = await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id,
-                AutomationExecution.status != AutomationExecutionStatus.SKIPPED,
+                AutomationExecution.status.not_in([
+                    AutomationExecutionStatus.SKIPPED, AutomationExecutionStatus.CANCELLED,
+                ]),
             ).values(**values))
         return bool(result.rowcount)
 
@@ -355,7 +357,7 @@ class SqlExecutionStore:
                     AutomationExecutionStatus.PAUSED,
                 ]),
             ).values(
-                status=AutomationExecutionStatus.SKIPPED,
+                status=AutomationExecutionStatus.CANCELLED,
                 error="Cancelada manualmente",
                 paused_at=None,
                 pause_scope=None,

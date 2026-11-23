@@ -27,7 +27,8 @@ const STATUS_SEGMENTS: StackSegment[] = [
   // Era "Activos", que en Automatizaciones significa "encendido": acá son los
   // que todavía esperan, corren o están en pausa.
   { key: 'active', label: 'Sin terminar', color: 'bg-viz-active dark:bg-viz-active-dark' },
-  { key: 'skipped', label: 'Omitidos', color: 'bg-viz-idle dark:bg-viz-idle-dark' },
+  { key: 'cancelled', label: 'Cancelados', color: 'bg-viz-3 dark:bg-viz-3-dark' },
+  { key: 'skipped', label: 'No aplicaron', color: 'bg-viz-idle dark:bg-viz-idle-dark' },
   { key: 'failed', label: 'Fallidos', color: 'bg-viz-failed dark:bg-viz-failed-dark' },
 ]
 
@@ -87,7 +88,7 @@ function toRow(flow: DashboardFlowRow) {
       manual_chained: manualChained,
       automatic_direct: (flow.automatic ?? 0) - automaticChained,
       automatic_chained: automaticChained,
-      completed: flow.completed, active: flow.active, skipped: flow.skipped, failed: flow.failed,
+      completed: flow.completed, active: flow.active, cancelled: flow.cancelled, skipped: flow.skipped, failed: flow.failed,
     },
   }
 }

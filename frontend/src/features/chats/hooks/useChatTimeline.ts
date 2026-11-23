@@ -21,9 +21,10 @@ const TIMELINE_ACTIVITY_TYPES: ReadonlySet<string> = new Set(['stage_changed'])
 /** Qué ejecuciones de flujo se ven como evento del hilo: las que alguien
  *  lanzó a propósito sobre este lead (a mano o desde otro flujo). Las de
  *  sistema (bienvenida, seguimiento) ya se explican por sus mensajes, y una
- *  omitida no hizo nada que valga la pena contar. */
+ *  que no aplicó no hizo nada que valga la pena contar. Las canceladas siguen
+ *  fuera, como cuando se guardaban junto a las omitidas. */
 function isFlowEvent(execution: AutomationExecution): boolean {
-  return execution.start_source !== 'system' && execution.status !== 'skipped'
+  return execution.start_source !== 'system' && execution.status !== 'skipped' && execution.status !== 'cancelled'
 }
 
 /** Todo lo que puede aparecer en el hilo. */

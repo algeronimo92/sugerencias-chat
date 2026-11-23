@@ -103,7 +103,14 @@ class AutomationExecutionStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    # No aplicó: el motor decidió no correrla (no cumple las condiciones, el
+    # cliente respondió antes del vencimiento). Nadie la detuvo.
     SKIPPED = "skipped"
+    # Alguien la detuvo: el vendedor la canceló, o pausaron o eliminaron la
+    # automatización con esta ejecución pendiente. Hasta el 2026-11-23 se
+    # guardaba como skipped y solo el texto del error las distinguía: 643 de
+    # las 718 "omitidas" de DermicaPro eran en realidad cancelaciones.
+    CANCELLED = "cancelled"
     # No terminal: la ejecución quedó congelada porque el vendedor la pausó
     # desde el chat (o, antes del 2026-11-09, porque pausó el lead). Conserva
     # scheduled_for y paused_at para que al reanudar se recupere el tiempo

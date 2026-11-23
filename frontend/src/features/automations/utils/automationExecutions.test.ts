@@ -1,24 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { executionStatusLabel, INTERNAL_ERROR_MESSAGE, isManuallyCancelled, MANUAL_CANCEL_ERROR, readableExecutionError, stepStatusLabel } from './automationExecutions'
+import { executionStatusLabel, INTERNAL_ERROR_MESSAGE, readableExecutionError, stepStatusLabel } from './automationExecutions'
 
 describe('executionStatusLabel', () => {
-  it('tells a manual cancel apart from a run that did not apply', () => {
-    expect(executionStatusLabel('skipped', MANUAL_CANCEL_ERROR)).toBe('Cancelada')
-    expect(executionStatusLabel('skipped', 'No cumple las condiciones de entrada')).toBe('Omitida')
-    expect(executionStatusLabel('skipped')).toBe('Omitida')
-    expect(executionStatusLabel('failed', MANUAL_CANCEL_ERROR)).toBe('Fallida')
+  it('tells a cancelled run apart from one that did not apply', () => {
+    expect(executionStatusLabel('cancelled')).toBe('Cancelada')
+    expect(executionStatusLabel('skipped')).toBe('No aplicó')
+    expect(executionStatusLabel('failed')).toBe('Fallida')
   })
 
   it('falls back to the raw status when it is unknown', () => {
     expect(executionStatusLabel('archived')).toBe('archived')
-  })
-})
-
-describe('isManuallyCancelled', () => {
-  it('needs both the skipped status and the cancel marker', () => {
-    expect(isManuallyCancelled({ status: 'skipped', error: MANUAL_CANCEL_ERROR })).toBe(true)
-    expect(isManuallyCancelled({ status: 'skipped', error: null })).toBe(false)
-    expect(isManuallyCancelled({ status: 'completed', error: MANUAL_CANCEL_ERROR })).toBe(false)
   })
 })
 

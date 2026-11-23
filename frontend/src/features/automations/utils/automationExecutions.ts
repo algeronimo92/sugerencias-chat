@@ -19,6 +19,8 @@ export function executionTone(status: string) {
   if (status === AutomationExecutionStatus.Completed) return 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'
   if (status === AutomationExecutionStatus.Failed) return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
   if (status === AutomationExecutionStatus.Skipped) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+  // Neutro: cancelar fue una decisión de alguien, no un problema que atender.
+  if (status === AutomationExecutionStatus.Cancelled) return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
   if (status === AutomationExecutionStatus.Paused) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
   return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
 }
@@ -29,25 +31,17 @@ export const EXECUTION_STATUS_LABELS: Record<AutomationExecutionStatusValue, str
   [AutomationExecutionStatus.Paused]: 'Pausada',
   [AutomationExecutionStatus.Completed]: 'Completada',
   [AutomationExecutionStatus.Failed]: 'Fallida',
-  [AutomationExecutionStatus.Skipped]: 'Omitida',
+  // Era «Omitida», que no decía por qué: son las que el motor descartó porque
+  // el lead no cumplía las condiciones o el cliente respondió antes.
+  [AutomationExecutionStatus.Skipped]: 'No aplicó',
+  [AutomationExecutionStatus.Cancelled]: 'Cancelada',
 }
 
 export function isExecutionStatus(value: string): value is AutomationExecutionStatusValue {
   return Object.values(AutomationExecutionStatus).some(status => status === value)
 }
 
-/** Error con el que el backend guarda una ejecución cancelada a mano: no hay
- *  estado `cancelled`, cancelar la deja en `skipped` con este texto
- *  (sql_executions.py). Sin distinguirla, se leía «Omitida», como si el flujo
- *  no aplicara al lead. */
-export const MANUAL_CANCEL_ERROR = 'Cancelada manualmente'
-
-export function isManuallyCancelled(execution: { status: string; error?: string | null }) {
-  return execution.status === AutomationExecutionStatus.Skipped && execution.error === MANUAL_CANCEL_ERROR
-}
-
-export function executionStatusLabel(status: string, error?: string | null) {
-  if (isManuallyCancelled({ status, error })) return 'Cancelada'
+export function executionStatusLabel(status: string) {
   return isExecutionStatus(status) ? EXECUTION_STATUS_LABELS[status] : status
 }
 
@@ -57,6 +51,7 @@ const STEP_STATUS_LABELS: Record<string, string> = {
   [AutomationExecutionStatus.Completed]: 'Hecho',
   [AutomationExecutionStatus.Failed]: 'Falló',
   [AutomationExecutionStatus.Skipped]: 'Omitido',
+  [AutomationExecutionStatus.Cancelled]: 'Cancelado',
   [AutomationExecutionStatus.Scheduled]: 'Esperando',
   [AutomationExecutionStatus.Running]: 'En curso',
   [AutomationExecutionStatus.Paused]: 'En pausa',
