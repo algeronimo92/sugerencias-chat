@@ -133,6 +133,9 @@ describe('TemplateEditorPage', { timeout: 20_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Insertar dato' }))
     await user.click(await screen.findByRole('menuitem', { name: 'Nombre' }))
     await waitFor(() => expect(messageField()).toHaveValue('Hola {{1}}'))
+    // El menú devuelve el foco al cerrarse: si eso pasa a mitad de la
+    // escritura, se pierden letras. Se espera a que termine de cerrarse.
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
     await user.type(messageField(), ', tu cita quedó registrada.')
 
     expect(screen.getByText('Ana')).toBeInTheDocument()
