@@ -52,10 +52,6 @@ class ExecutionStore(Protocol):
     async def claim_due(self, now: datetime, limit: int) -> list[int]:
         """Reclama lo vencido para correrlo y devuelve sus ids."""
 
-    async def in_progress_for_lead(self, lead_id: str) -> str | None:
-        """El nombre de la automatización que está en curso con el lead
-        (corriendo, esperando a medio flujo o congelada), o None."""
-
     async def find_by_event_key(self, rule_id: int, event_key: str) -> int | None: ...
 
     async def view(self, execution_id: int) -> dict | None:

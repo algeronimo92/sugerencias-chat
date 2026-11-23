@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { executionStatusLabel, INTERNAL_ERROR_MESSAGE, readableExecutionError, stepStatusLabel } from './automationExecutions'
+import type { AutomationExecution } from '../types'
+import { executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, readableExecutionError, stepStatusLabel } from './automationExecutions'
 
 describe('executionStatusLabel', () => {
   it('tells a cancelled run apart from one that did not apply', () => {
@@ -39,5 +40,28 @@ describe('readableExecutionError', () => {
     expect(readableExecutionError(closed)).toBe(closed)
     expect(readableExecutionError('Meta Graph API respondió 500: (#131000) Something went wrong')).toContain('131000')
     expect(readableExecutionError(null)).toBeNull()
+  })
+})
+
+describe('heldByManualFlow', () => {
+  type Row = Pick<AutomationExecution, 'id' | 'status' | 'start_source' | 'parent_execution_id'>
+  const followUp: Row = { id: 1, status: 'scheduled', start_source: 'system', parent_execution_id: null }
+  const manual: Row = { id: 2, status: 'scheduled', start_source: 'manual', parent_execution_id: null }
+
+  it('a follow-up waits for the manual flow launched after it', () => {
+    expect(heldByManualFlow(followUp, [followUp, manual])).toBe(manual)
+    expect(heldByManualFlow(followUp, [followUp, { ...manual, status: 'running' }])?.id).toBe(2)
+  })
+
+  it('the manual flow itself is not held, nor is anything by an older or frozen one', () => {
+    expect(heldByManualFlow(manual, [followUp, manual])).toBeUndefined()
+    expect(heldByManualFlow({ ...followUp, id: 3 }, [manual])).toBeUndefined()
+    expect(heldByManualFlow(followUp, [{ ...manual, status: 'paused' }])).toBeUndefined()
+    expect(heldByManualFlow(followUp, [{ ...manual, start_source: 'system' }])).toBeUndefined()
+  })
+
+  it('parent and child never hold each other', () => {
+    expect(heldByManualFlow({ ...followUp, parent_execution_id: 2 }, [manual])).toBeUndefined()
+    expect(heldByManualFlow(followUp, [{ ...manual, parent_execution_id: 1 }])).toBeUndefined()
   })
 })

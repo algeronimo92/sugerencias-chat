@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
 from app.db.uow import session_scope
-from app.modules.automations.domain.types import AutomationExecutionStatus
+from app.modules.automations.domain.types import AutomationExecutionStatus, ExecutionStartSource
 from app.modules.automations.domain.execution import Execution, Rule, initial_flow_state
 from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION
 from app.modules.automations.queries import get_automation_execution
@@ -60,6 +60,13 @@ def _blocking_execution_exists(candidate):
     trabarían para siempre. Un flujo hijo puede correr mientras su padre
     espera, y el padre retomar mientras el hijo espera: «Iniciar otro flujo»
     no retiene al padre.
+
+    Lo que una persona lanza a mano manda sobre lo que estaba esperando: no
+    hace cola detrás de un seguimiento a medias, y mientras el suyo sigue
+    activo ese seguimiento no retoma. Antes el lanzamiento se rechazaba y la
+    vendedora tenía que cancelar el seguimiento para mandar un precio (643
+    cancelaciones a mano en DermicaPro). El seguimiento vuelve solo cuando el
+    flujo manual termina, con el plazo que ya tenía vencido o por vencer.
     """
     other = aliased(AutomationExecution)
     same_lead = and_(other.lead_id == candidate.lead_id, other.id != candidate.id)
@@ -71,7 +78,21 @@ def _blocking_execution_exists(candidate):
     )
     running = exists().where(same_lead, other.status == AutomationExecutionStatus.RUNNING)
     waiting = exists().where(same_lead, not_(family), _started_and_waiting(other))
-    return or_(running, and_(not_(_has_started(candidate)), waiting))
+    is_manual = candidate.start_source == ExecutionStartSource.MANUAL
+    # Posterior (id mayor): entre dos lanzadas a mano gana la última, y nunca
+    # se esperan una a la otra. Una congelada a mano (paused) no retiene a
+    # nadie: puede quedar así semanas.
+    newer_manual = exists().where(
+        same_lead, not_(family),
+        other.start_source == ExecutionStartSource.MANUAL,
+        other.id > candidate.id,
+        other.status == AutomationExecutionStatus.SCHEDULED,
+    )
+    return or_(
+        running,
+        and_(not_(_has_started(candidate)), not_(is_manual), waiting),
+        newer_manual,
+    )
 
 
 def to_rule(row: AutomationRule) -> Rule:
@@ -270,16 +291,6 @@ class SqlExecutionStore:
                     error=None,
                 ))
         return ids
-
-    async def in_progress_for_lead(self, lead_id: str) -> str | None:
-        other = aliased(AutomationExecution)
-        async with session_scope() as session:
-            return await session.scalar(
-                select(AutomationRule.name).join(other, other.rule_id == AutomationRule.id).where(
-                    other.lead_id == lead_id,
-                    or_(other.status == AutomationExecutionStatus.RUNNING, _started_and_waiting(other)),
-                ).order_by(other.id.asc()).limit(1)
-            )
 
     async def find_by_event_key(self, rule_id: int, event_key: str) -> int | None:
         async with session_scope() as session:

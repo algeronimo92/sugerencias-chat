@@ -128,7 +128,6 @@ async def test_a_flow_waiting_halfway_holds_back_new_ones_but_resumes_itself(ten
         new = await _execution(rule_id, lead)
 
         assert await SqlExecutionStore().claim_due(NOW, limit=50) == []
-        assert await SqlExecutionStore().in_progress_for_lead(lead) == "Regla"
 
         async with session_scope() as session:
             await session.execute(update(AutomationExecution).where(
@@ -137,7 +136,6 @@ async def test_a_flow_waiting_halfway_holds_back_new_ones_but_resumes_itself(ten
         assert await SqlExecutionStore().claim_due(NOW, limit=50) == [waiting]
         await SqlExecutionStore().save(waiting, status=AutomationExecutionStatus.COMPLETED)
         assert await SqlExecutionStore().claim_due(NOW, limit=50) == [new]
-        assert await SqlExecutionStore().in_progress_for_lead(lead) == "Regla"
 
 
 async def test_a_child_flow_runs_while_its_parent_waits(tenant):
@@ -157,14 +155,75 @@ async def test_a_child_flow_runs_while_its_parent_waits(tenant):
         assert await SqlExecutionStore().claim_due(NOW, limit=50) == [child]
 
 
-async def test_a_lead_without_automations_in_progress_reports_none(tenant):
+WAITING = {"current_node_id": "wait", "path": ["trigger", "send", "wait"]}
+
+
+async def test_a_manual_launch_does_not_queue_behind_a_follow_up_that_is_waiting(tenant):
+    """La vendedora tenía que cancelar el seguimiento para mandar un precio:
+    el lanzamiento se rechazaba mientras hubiera otra automatización a medias."""
     with tenant_context(tenant):
         rule_id = await _rule()
         lead = await _lead()
-        await _execution(rule_id, lead)  # agendada, todavía sin empezar
-        await _execution(rule_id, lead, status=AutomationExecutionStatus.COMPLETED)
+        await _execution(rule_id, lead, scheduled_for=NOW + timedelta(hours=1), flow_state=WAITING)
+        system = await _execution(rule_id, lead)
+        manual = await _execution(rule_id, lead, start_source="manual")
 
-        assert await SqlExecutionStore().in_progress_for_lead(lead) is None
+        # Lo de sistema sigue en cola detrás del seguimiento; lo manual, no.
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [manual]
+        assert (await _row(system)).status == AutomationExecutionStatus.SCHEDULED
+
+
+async def test_the_follow_up_resumes_only_after_the_manual_flow_ends(tenant):
+    """Si el seguimiento retomara mientras la secuencia manual espera entre
+    dos pasos, el cliente recibiría los mensajes de las dos intercalados."""
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        other_rule = await _rule()
+        lead = await _lead()
+        follow_up = await _execution(rule_id, lead, flow_state=WAITING)  # su plazo ya venció
+        manual = await _execution(
+            other_rule, lead, start_source="manual", scheduled_for=NOW + timedelta(minutes=30), flow_state=WAITING,
+        )
+
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == []
+
+        await SqlExecutionStore().save(manual, status=AutomationExecutionStatus.COMPLETED)
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [follow_up]
+
+
+async def test_a_manual_flow_frozen_by_hand_does_not_hold_the_follow_up(tenant):
+    # Una pausada puede quedar así semanas: no puede retener al seguimiento.
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        other_rule = await _rule()
+        lead = await _lead()
+        follow_up = await _execution(rule_id, lead, flow_state=WAITING)
+        await _execution(
+            other_rule, lead, start_source="manual", status=AutomationExecutionStatus.PAUSED, flow_state=WAITING,
+        )
+
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [follow_up]
+
+
+async def test_between_two_manual_flows_the_latest_wins_and_neither_deadlocks(tenant):
+    with tenant_context(tenant):
+        lead = await _lead()
+        first = await _execution(await _rule(), lead, start_source="manual", flow_state=WAITING)
+        second = await _execution(await _rule(), lead, start_source="manual")
+
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [second]
+        await SqlExecutionStore().save(second, status=AutomationExecutionStatus.COMPLETED)
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == [first]
+
+
+async def test_a_manual_flow_still_waits_for_what_is_running_right_now(tenant):
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        lead = await _lead()
+        await _execution(rule_id, lead, status=AutomationExecutionStatus.RUNNING)
+        await _execution(await _rule(), lead, start_source="manual")
+
+        assert await SqlExecutionStore().claim_due(NOW, limit=50) == []
 
 
 @pytest.mark.parametrize("stopped", [AutomationExecutionStatus.CANCELLED, AutomationExecutionStatus.SKIPPED])
