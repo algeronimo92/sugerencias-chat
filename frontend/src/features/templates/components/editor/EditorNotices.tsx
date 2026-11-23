@@ -21,24 +21,63 @@ function RestoredNotice({ editor }: { editor: TemplateEditorState }) {
   )
 }
 
-/** Qué implica tocar una plantilla que Meta ya tiene: rechazada, o que
- *  vuelve a revisión si cambia lo que Meta mira. */
-function MetaReviewNotice({ editor, template, status }: { editor: TemplateEditorState; template: MessageTemplate | undefined; status: OfficialStatus | null }) {
-  if (status?.kind === 'rejected') {
-    return (
-      <Notice tone="danger">
-        <p className="font-semibold">Meta la rechazó</p>
-        <p>{rejectedReason(template?.official_rejected_reason) ?? 'Meta no informó el motivo'}. Corrígela y vuelve a enviarla.</p>
-      </Notice>
-    )
+/** El cupo de Meta para cambiar el mensaje de una plantilla aprobada. */
+const EDIT_CAP = 'Meta permite cambiar el mensaje de una aprobada una vez cada 24 horas y diez veces cada 30 días.'
+const FREE_FIELDS = 'El nombre, la categoría del equipo y el atajo se cambian sin revisión.'
+
+interface MetaNotice {
+  tone: 'warning' | 'danger'
+  title: string
+  body: string
+}
+
+/**
+ * Qué implica tocar una plantilla que Meta ya tiene, según su estado. Las
+ * reglas (qué se puede editar, cuántas veces) son las de `metaEditRules`:
+ * acá se le dicen al usuario antes de que choque con ellas al guardar.
+ */
+function metaNotice(editor: TemplateEditorState, template: MessageTemplate | undefined, status: OfficialStatus | null): MetaNotice | null {
+  switch (status?.kind) {
+    case 'rejected':
+      return {
+        tone: 'danger',
+        title: 'Meta la rechazó',
+        body: `${rejectedReason(template?.official_rejected_reason) ?? 'Meta no informó el motivo'}. Corrígela y vuelve a enviarla: una rechazada se puede reenviar las veces que haga falta.`,
+      }
+    case 'review':
+      return {
+        tone: 'warning',
+        title: 'Meta la está revisando',
+        body: `Hasta que responda no acepta cambios en el mensaje ni en el tipo. ${FREE_FIELDS}`,
+      }
+    case 'disabled':
+      return {
+        tone: 'danger',
+        title: 'Meta la deshabilitó',
+        body: 'Ya no se puede enviar ni corregir. Para seguir usándola, duplícala desde la lista y envía la copia a revisión.',
+      }
+    case 'paused':
+      return {
+        tone: 'warning',
+        title: 'Meta la pausó',
+        body: 'Por ahora no se puede enviar. Puedes corregir el mensaje; al guardarlo, Meta la vuelve a revisar.',
+      }
+    case 'approved':
+      return editor.goesBackToReview
+        ? { tone: 'warning', title: 'Al guardar, Meta vuelve a revisarla', body: `Hasta que la apruebe no se podrá enviar, ni desde el chat ni desde las automatizaciones. ${EDIT_CAP}` }
+        : { tone: 'warning', title: 'Esta plantilla está aprobada', body: `Si cambias el mensaje, los datos, el encabezado, el pie o los botones, vuelve a revisión y no se podrá enviar hasta que Meta responda. ${EDIT_CAP} ${FREE_FIELDS}` }
+    default:
+      return null
   }
-  if (!editor.metaLocked) return null
+}
+
+function MetaReviewNotice({ editor, template, status }: { editor: TemplateEditorState; template: MessageTemplate | undefined; status: OfficialStatus | null }) {
+  const notice = editor.metaLocked ? metaNotice(editor, template, status) : null
+  if (!notice) return null
   return (
-    <Notice tone="warning">
-      <p className="font-semibold">{editor.goesBackToReview ? 'Al guardar, Meta vuelve a revisarla' : 'Esta plantilla ya fue enviada a Meta'}</p>
-      <p>{editor.goesBackToReview
-        ? 'Hasta que la apruebe no se podrá enviar, ni desde el chat ni desde las automatizaciones.'
-        : 'Si cambias el mensaje, los datos, el encabezado, el pie o los botones, vuelve a revisión. El nombre, la categoría del equipo y el atajo se cambian sin revisión.'}</p>
+    <Notice tone={notice.tone}>
+      <p className="font-semibold">{notice.title}</p>
+      <p>{notice.body}</p>
     </Notice>
   )
 }

@@ -83,8 +83,9 @@ function LanguageField({ editor }: FieldProps) {
 /** «Aviso» o «Promoción»: las categorías de Meta dichas en palabras del equipo. */
 function MessageKindField({ editor }: FieldProps) {
   const { form, change } = editor
+  const locked = editor.metaRules.categoryLocked
   return (
-    <fieldset>
+    <fieldset disabled={locked} className="min-w-0">
       <legend className="mb-1.5 text-sm font-medium text-fg">Tipo de mensaje para Meta</legend>
       <div className="grid gap-2 sm:grid-cols-2">
         <ChoiceCard
@@ -105,6 +106,7 @@ function MessageKindField({ editor }: FieldProps) {
       {/* «Authentication» ya no se ofrece al crear: exige un formato fijo con
           código de un solo uso que este editor no arma. Una importada que ya
           lo tenga lo conserva. */}
+      {locked && <p className="mt-2 text-xs text-fg-muted">Meta no deja cambiar el tipo de una plantilla que ya aprobó o que está revisando. Si necesitas el otro tipo, duplícala y envía la copia.</p>}
       {form.officialCategory === 'AUTHENTICATION' && (
         <p className="mt-2 text-sm text-fg-muted">Esta plantilla es de código de verificación (Authentication). Si eliges otro tipo, Meta la vuelve a revisar.</p>
       )}

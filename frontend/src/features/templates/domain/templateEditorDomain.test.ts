@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MessageTemplate } from '../types'
 import { TEMPLATE_LIMITS, contentLimit, counterTone } from './fieldLimits'
+import { metaEditBlock, metaEditRules } from './metaEditRules'
 import { insertDataVariable, resizeParameters, singleSource, wrapSelection } from './officialVariables'
 import { preSendChecks } from './preSendChecks'
 import { emptyTemplateForm, nextFreeId, officialNameFrom, payloadFromForm } from './templateDraft'
@@ -188,6 +189,41 @@ describe('lista', () => {
     expect(filterTemplates(all, { ...NO_FILTERS, status: 'inactive' }).map(item => item.id)).toEqual([4])
     expect(filterTemplates(all, { ...NO_FILTERS, type: 'official', category: 'Seguimiento' }).map(item => item.id)).toEqual([2])
     expect(sortByUse(all).map(item => item.id)).toEqual([4, 1, 2, 3])
+  })
+})
+
+describe('lo que Meta deja cambiar en una plantilla ya enviada', () => {
+  const sent = (official_status: string | null, overrides: Partial<MessageTemplate> = {}) =>
+    ({ template_type: 'official', meta_template_id: '900', official_status, ...overrides }) as MessageTemplate
+
+  it('una aprobada admite cambios al mensaje, con cupo, pero no de tipo', () => {
+    expect(metaEditRules(sent('APPROVED'))).toEqual({ contentLocked: false, categoryLocked: true, limited: true })
+  })
+
+  it('en revisión o deshabilitada no admite cambios al mensaje ni al tipo', () => {
+    expect(metaEditRules(sent('PENDING'))).toEqual({ contentLocked: true, categoryLocked: true, limited: false })
+    expect(metaEditRules(sent('DISABLED'))).toMatchObject({ contentLocked: true, categoryLocked: true })
+  })
+
+  it('rechazada o pausada se corrige sin restricciones', () => {
+    expect(metaEditRules(sent('REJECTED'))).toEqual({ contentLocked: false, categoryLocked: false, limited: false })
+    expect(metaEditRules(sent('PAUSED'))).toEqual({ contentLocked: false, categoryLocked: false, limited: false })
+  })
+
+  it('una interna, una nueva o una oficial que Meta todavía no tiene no llevan restricciones', () => {
+    const free = { contentLocked: false, categoryLocked: false, limited: false }
+    expect(metaEditRules(undefined)).toEqual(free)
+    expect(metaEditRules(sent('APPROVED', { template_type: 'internal' }))).toEqual(free)
+    expect(metaEditRules(sent('APPROVED', { meta_template_id: null }))).toEqual(free)
+  })
+
+  it('frena el guardado solo si trae un cambio que Meta va a rechazar', () => {
+    const approved = metaEditRules(sent('APPROVED'))
+    const pending = metaEditRules(sent('PENDING'))
+    expect(metaEditBlock(approved, { content: true, category: false })).toBeNull()
+    expect(metaEditBlock(approved, { content: false, category: true })).toMatch(/tipo de mensaje de una plantilla aprobada/)
+    expect(metaEditBlock(pending, { content: true, category: false })).toMatch(/mientras está en revisión/)
+    expect(metaEditBlock(pending, { content: false, category: false })).toBeNull()
   })
 })
 

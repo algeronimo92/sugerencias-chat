@@ -34,7 +34,8 @@ export function ChoiceCard({ name, checked, onSelect, title, description, disabl
     <label className={cn(
       'flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors',
       checked ? 'border-accent-strong bg-accent-soft ring-1 ring-accent-strong' : 'border-line-control hover:bg-subtle',
-      disabled && 'cursor-not-allowed opacity-60',
+      // `has-[:disabled]`: también cuando lo deshabilita un <fieldset> que lo envuelve.
+      'has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60',
     )}>
       <input type="radio" name={name} checked={checked} onChange={onSelect} disabled={disabled} className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent-fill)]" />
       <span className="min-w-0">
@@ -51,7 +52,8 @@ export function ChoicePill({ name, checked, onSelect, title, disabled }: Omit<Ch
     <label className={cn(
       'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition-colors',
       checked ? 'border-accent-strong bg-accent-soft font-semibold text-fg ring-1 ring-accent-strong' : 'border-line-control text-fg hover:bg-subtle',
-      disabled && 'cursor-not-allowed opacity-60',
+      // `has-[:disabled]`: también cuando lo deshabilita un <fieldset> que lo envuelve.
+      'has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60',
     )}>
       <input type="radio" name={name} checked={checked} onChange={onSelect} disabled={disabled} className="h-4 w-4 shrink-0 accent-[var(--accent-fill)]" />
       {title}

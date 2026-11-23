@@ -153,13 +153,49 @@ describe('TemplateEditorPage', () => {
     })]
     renderAt('/templates/5')
 
-    expect(screen.getByText('Esta plantilla ya fue enviada a Meta')).toBeInTheDocument()
+    expect(screen.getByText('Esta plantilla está aprobada')).toBeInTheDocument()
+    expect(screen.getByText(/una vez cada 24 horas y diez veces cada 30 días/)).toBeInTheDocument()
     expect(submitButton('Guardar cambios')).toBeInTheDocument()
+    // Meta no deja cambiar la categoría de una aprobada.
+    expect(screen.getByRole('radio', { name: /^Promoción/ })).toBeDisabled()
+    expect(messageField()).toBeEnabled()
 
     await user.type(messageField(), ' Gracias.')
 
     expect(screen.getByText('Al guardar, Meta vuelve a revisarla')).toBeInTheDocument()
     expect(submitButton('Enviar a revisión de Meta')).toBeInTheDocument()
+  })
+
+  it('en revisión bloquea el mensaje y el tipo, pero deja guardar el nombre', async () => {
+    const user = userEvent.setup()
+    mocks.templates = [template({
+      template_type: 'official', name: 'Promo', official_name: 'promo', official_language: 'es', official_category: 'MARKETING',
+      official_status: 'PENDING', meta_template_id: '902', content: 'Este mes tenemos una promoción para ti.',
+    })]
+    renderAt('/templates/5')
+
+    expect(screen.getByText('Meta la está revisando')).toBeInTheDocument()
+    expect(messageField()).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Insertar dato' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /^Aviso/ })).toBeDisabled()
+
+    await user.type(nameField(), ' de diciembre')
+    await user.click(submitButton('Guardar cambios'))
+
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ id: 5, name: 'Promo de diciembre', content: 'Este mes tenemos una promoción para ti.' })))
+  })
+
+  it('guardar una rechazada la reenvía a revisión aunque no cambie el mensaje', () => {
+    mocks.templates = [template({
+      template_type: 'official', name: 'Pago', official_name: 'pago', official_language: 'es', official_category: 'UTILITY',
+      official_status: 'REJECTED', official_rejected_reason: 'TAG_CONTENT_MISMATCH', meta_template_id: '901', content: 'Aprovecha 2x1 hoy.',
+    })]
+    renderAt('/templates/5')
+
+    expect(screen.getByText('Meta la rechazó')).toBeInTheDocument()
+    expect(submitButton('Enviar a revisión de Meta')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /^Promoción/ })).toBeEnabled()
+    expect(messageField()).toBeEnabled()
   })
 
   it('recupera el borrador que quedó sin guardar y deja descartarlo', async () => {
