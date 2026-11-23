@@ -112,13 +112,3 @@ class TestStartManualFlowExecution:
         with pytest.raises(ValueError, match="ya está en curso"):
             await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
         assert world.published == []
-
-    async def test_rejects_a_start_while_another_automation_runs_with_the_lead(self, world):
-        """Dos automatizaciones a la vez intercalan sus mensajes en el chat del
-        cliente: el vendedor se entera de cuál está en curso en vez de dejar
-        la suya en una cola que no ve."""
-        world.executions.in_progress[LEAD_ID] = "Seguimiento de cotización"
-
-        with pytest.raises(ValueError, match="«Seguimiento de cotización»"):
-            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
-        assert world.scheduling.scheduled == []

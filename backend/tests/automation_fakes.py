@@ -30,8 +30,6 @@ class InMemoryExecutionStore:
         self.children: list[dict] = []
         self.due: list[int] = []
         self.lead_resumes: list[str] = []
-        # lead_id -> nombre de la automatización en curso con ese lead.
-        self.in_progress: dict[str, str] = {}
         self._ids = itertools.count(1000)
 
     def add(self, execution, rule=None):
@@ -103,9 +101,6 @@ class InMemoryExecutionStore:
     async def claim_due(self, now, limit):
         claimed, self.due = self.due[:limit], self.due[limit:]
         return claimed
-
-    async def in_progress_for_lead(self, lead_id):
-        return self.in_progress.get(lead_id)
 
     async def find_by_event_key(self, rule_id, event_key):
         for execution in self.executions.values():

@@ -310,16 +310,9 @@ async def start_manual_flow_execution(
     if not is_admin and not rule["visible_to_sellers"]:
         raise InvalidAutomation("Este flujo no está disponible para vendedores. Un administrador puede activarlo con «Visible para vendedores».")
 
-    # El worker ya no corre dos a la vez con el mismo lead, pero lanzar un
-    # flujo que quedaría en cola detrás de otro confunde al vendedor: se le
-    # dice ahora, con el nombre del que está en curso.
-    running = await automation_ports().executions.in_progress_for_lead(lead_id)
-    if running is not None:
-        raise InvalidAutomation(
-            f"Este lead ya tiene una automatización en curso («{running}»). "
-            "Espera a que termine o cancélala antes de iniciar otra."
-        )
-
+    # Otra automatización en curso con el lead no impide lanzar: lo manual
+    # tiene prioridad sobre lo que está esperando (ver claim_due), y si algo
+    # está corriendo en este instante sale apenas eso suelta.
     event_key = f"manual:{uuid4()}"
     try:
         created = await schedule_automation_event(

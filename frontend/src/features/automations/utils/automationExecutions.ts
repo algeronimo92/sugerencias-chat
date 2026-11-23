@@ -87,3 +87,24 @@ export function readableExecutionError(error: string | null | undefined): string
   if (!error) return null
   return TECHNICAL_ERROR.test(error) ? INTERNAL_ERROR_MESSAGE : error
 }
+
+/** La ejecución lanzada a mano que está reteniendo a `execution`, si la hay.
+ *
+ *  Lo manual tiene prioridad: mientras una secuencia lanzada después por una
+ *  persona sigue en marcha, el seguimiento que ya estaba esperando no retoma
+ *  (misma regla que `_blocking_execution_exists` en sql_executions.py). Sin
+ *  decirlo, su tarjeta mostraba «Continúa en instantes» durante horas. */
+export function heldByManualFlow<T extends Pick<AutomationExecution, 'id' | 'status' | 'start_source' | 'parent_execution_id'>>(
+  execution: T,
+  others: readonly T[],
+): T | undefined {
+  if (execution.status !== AutomationExecutionStatus.Scheduled) return undefined
+  return others.find(other =>
+    other.id > execution.id
+    && other.start_source === 'manual'
+    && (other.status === AutomationExecutionStatus.Scheduled || other.status === AutomationExecutionStatus.Running)
+    // Padre e hijo no se retienen entre sí.
+    && other.parent_execution_id !== execution.id
+    && execution.parent_execution_id !== other.id,
+  )
+}

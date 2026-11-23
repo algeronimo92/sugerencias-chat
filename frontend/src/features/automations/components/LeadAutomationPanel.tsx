@@ -12,6 +12,7 @@ import {
 useAutomationExecutions,useCancelExecution,usePauseExecution,useResumeExecution,
 } from '../queries'
 import { followedBranchText } from '../domain/flowBranches'
+import { heldByManualFlow } from '../utils/automationExecutions'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 
 interface Props {
@@ -64,8 +65,10 @@ function executionSourceLabel(execution: AutomationExecution) {
 /** Qué le falta a la ejecución para dar su próximo paso, en texto. Con la
  *  ejecución congelada lo que queda no se mide contra ahora sino contra
  *  `paused_at`: ese es justamente el tiempo que la pausa le está guardando. */
-function pendingLabel(execution: AutomationExecution, now: number) {
+function pendingLabel(execution: AutomationExecution, now: number, active: AutomationExecution[]) {
   if (execution.status === AutomationExecutionStatus.Running) return 'Ejecutándose ahora'
+  const holder = heldByManualFlow(execution, active)
+  if (holder) return `Retoma cuando termine «${holder.rule_name}»`
   const target = new Date(execution.scheduled_for).getTime()
   if (execution.status === AutomationExecutionStatus.Paused) {
     const frozen = execution.paused_at ? new Date(execution.paused_at).getTime() : now
@@ -270,7 +273,7 @@ export function LeadAutomationPanel({ chatId, botDisabled = false }: Props) {
                   : execution.status === AutomationExecutionStatus.Paused
                     ? <PauseCircle className="h-3.5 w-3.5 shrink-0" />
                     : <Clock3 className="h-3.5 w-3.5 shrink-0" />}
-                {pendingLabel(execution, now)}
+                {pendingLabel(execution, now, active)}
               </p>
             </article>
           ))}
