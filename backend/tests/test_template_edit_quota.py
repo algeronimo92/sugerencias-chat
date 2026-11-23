@@ -164,17 +164,24 @@ async def test_una_rechazada_no_tiene_cupo_ni_lo_gasta(patched):
 
 
 @pytest.mark.asyncio
-async def test_si_meta_rechaza_el_cambio_el_error_explica_el_cupo_y_queda_registrado(patched, caplog):
+async def test_si_meta_rechaza_el_cambio_el_error_explica_el_cupo_y_queda_registrado(patched, monkeypatch):
     # El cupo también se gasta desde WhatsApp Manager, que la app no ve.
     patched.meta_error = MetaApiError(
         "rechazo", error={"code": 100, "error_subcode": 2388025, "message": "Template can't be edited"}, status_code=400,
     )
 
-    with caplog.at_level("WARNING"), pytest.raises(HTTPException) as raised:
+    # Se mira lo que el módulo manda a registrar, no `caplog`: en la suite
+    # completa la app ya configuró el registro y `caplog` llegaba vacío.
+    logged: list[str] = []
+    monkeypatch.setattr(templates.logger, "warning", lambda message, *args: logged.append(message % args))
+
+    with pytest.raises(HTTPException) as raised:
         await templates.patch_template(21, TemplateUpdate(content="Hola {{1}}, otro texto distinto."), ADMIN)
 
     assert raised.value.status_code == 502
     assert "Template can't be edited" in raised.value.detail
     assert "cada 24 horas" in raised.value.detail
     assert patched.saved == []
-    assert "2388025" in caplog.text
+    [line] = logged
+    assert "plantilla 21" in line
+    assert "2388025" in line
