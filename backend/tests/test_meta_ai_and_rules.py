@@ -1,6 +1,5 @@
 """IA y automatizaciones sobre el contrato Meta (fase 7 del plan)."""
 
-from datetime import datetime, timezone
 
 import pytest
 
@@ -127,7 +126,7 @@ def test_reply_identifier_reads_the_id_the_business_defined(name, expected):
     ({"condition_type": "message_type_equals", "value": "image"}, {"message_type": "text"}, False),
 ])
 def test_flow_conditions_read_the_meta_structure(condition, context, expected):
-    matches, _detail = match_flow_condition(condition, make_chat(), context, now=datetime.now(timezone.utc))
+    matches, _detail = match_flow_condition(condition, make_chat(), context)
     assert matches is expected
 
 
