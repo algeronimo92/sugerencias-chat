@@ -29,11 +29,15 @@ export async function fetchAutomationRules(): Promise<AutomationRule[]> {
   return data.map(toAutomationRule)
 }
 
+/** Cuántas ejecuciones trae el historial de una vez. El backend no informa el
+ *  total: quien lista compara contra este tope para avisar que hay más. */
+export const EXECUTIONS_PAGE_LIMIT = 200
+
 export async function fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters): Promise<AutomationExecution[]> {
   const { data } = await client.get<ApiResponse<'/api/automations/executions', 'get'>>('/api/automations/executions', {
       params: {
         rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, active,
-        date_from: dateFrom, date_to: dateTo, mine, started_by: startedBy, team, limit: 200,
+        date_from: dateFrom, date_to: dateTo, mine, started_by: startedBy, team, limit: EXECUTIONS_PAGE_LIMIT,
       },
     })
   return data.map(toAutomationExecution)

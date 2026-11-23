@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { executionStatusLabel, isManuallyCancelled, MANUAL_CANCEL_ERROR, stepStatusLabel } from './automationExecutions'
+import { executionStatusLabel, INTERNAL_ERROR_MESSAGE, isManuallyCancelled, MANUAL_CANCEL_ERROR, readableExecutionError, stepStatusLabel } from './automationExecutions'
 
 describe('executionStatusLabel', () => {
   it('tells a manual cancel apart from a run that did not apply', () => {
@@ -34,5 +34,19 @@ describe('stepStatusLabel', () => {
   it('keeps the names of real steps', () => {
     expect(stepStatusLabel('completed')).toBe('Hecho')
     expect(stepStatusLabel('scheduled')).toBe('Esperando')
+  })
+})
+
+describe('readableExecutionError', () => {
+  it('hides what only a programmer can read', () => {
+    expect(readableExecutionError("('condition-1785962323144-gf4o', <FlowHandle.YES: 'yes'>)")).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(readableExecutionError('(sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class ...')).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('keeps the messages written for people', () => {
+    const closed = 'No se envió WhatsApp porque la ventana de 24 horas está cerrada'
+    expect(readableExecutionError(closed)).toBe(closed)
+    expect(readableExecutionError('Meta Graph API respondió 500: (#131000) Something went wrong')).toContain('131000')
+    expect(readableExecutionError(null)).toBeNull()
   })
 })

@@ -38,6 +38,22 @@ logger = logging.getLogger(__name__)
 # inesperado, pero igual deja la ejecución en failed.
 EXPECTED_FAILURES: tuple[type[Exception], ...] = (KeyError, ValueError, *SEND_FAILURES)
 
+INTERNAL_ERROR_MESSAGE = "Ocurrió un error interno al ejecutar este paso. Quedó registrado para soporte."
+
+
+def _readable_error(exc: Exception) -> str:
+    """El texto del fallo que ve la clínica en el historial y en el aviso.
+
+    Un fallo esperado ya trae un mensaje escrito para personas. Lo demás no:
+    en producción el historial llegó a mostrar ``('condition-…',
+    <FlowHandle.YES: 'yes'>)`` (un ``KeyError``, cuyo texto es la clave) y un
+    ``IntegrityError`` de SQLAlchemy con la consulta. El detalle técnico va al
+    log, que es donde sirve.
+    """
+    if isinstance(exc, KeyError) or not isinstance(exc, EXPECTED_FAILURES):
+        return INTERNAL_ERROR_MESSAGE
+    return str(exc)
+
 
 async def save_execution(execution_id: int, deps: AutomationDeps, **values) -> bool:
     """Punto de escritura del estado de una ejecución mientras corre.
@@ -181,8 +197,11 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
             return
         raise StepFailed("El flujo excedió el máximo de bloques permitidos")
     except Exception as exc:
-        if not isinstance(exc, EXPECTED_FAILURES):
+        # El KeyError cuenta como esperado para anotar el bloque que falló, pero
+        # su texto no se muestra: sin el log no quedaría rastro de la causa.
+        if isinstance(exc, KeyError) or not isinstance(exc, EXPECTED_FAILURES):
             logger.exception("Error inesperado al ejecutar la automatización visual %s", execution.id)
+        error = _readable_error(exc)
         action_type = (
             flow_node_handler(nodes[current_id]["type"]).failure_type(nodes[current_id])
             if current_id in nodes else "flow"
@@ -192,13 +211,13 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
                 "position": len(results) + 1, "node_id": current_id,
                 "type": action_type,
                 "status": AutomationExecutionStatus.FAILED,
-                "error": str(exc),
+                "error": error,
             })
         await _persist_visual_execution(
-            execution.id, AutomationExecutionStatus.FAILED, results, current_id, path, flow_version, deps, str(exc),
+            execution.id, AutomationExecutionStatus.FAILED, results, current_id, path, flow_version, deps, error,
             error_code=_error_code(exc),
         )
-        await _failed(rule, execution, str(exc), deps, _error_code(exc))
+        await _failed(rule, execution, error, deps, _error_code(exc))
 
 
 async def _rate_limit_reached(rule, deps: AutomationDeps) -> bool:
@@ -285,22 +304,23 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
             if not saved:
                 return  # cancelada externamente: no proceses más acciones
     except Exception as exc:
+        error = _readable_error(exc)
         if isinstance(exc, EXPECTED_FAILURES) and not isinstance(exc, KeyError):
             failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
             results.append({
                 "position": len(results) + 1,
                 "type": failed_type,
                 "status": AutomationExecutionStatus.FAILED,
-                "error": str(exc),
+                "error": error,
             })
         else:
             logger.exception("Error inesperado al ejecutar la automatización %s", execution_id)
         await save_execution(
             execution_id, deps,
-            status=AutomationExecutionStatus.FAILED, action_results=results, error=str(exc),
+            status=AutomationExecutionStatus.FAILED, action_results=results, error=error,
             error_code=_error_code(exc),
         )
-        await _failed(rule, execution, str(exc), deps, _error_code(exc))
+        await _failed(rule, execution, error, deps, _error_code(exc))
     else:
         await save_execution(
             execution_id, deps,

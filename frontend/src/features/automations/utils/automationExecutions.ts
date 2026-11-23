@@ -78,3 +78,17 @@ export function executionActorLabel(execution: AutomationExecution) {
   if (execution.start_source === 'flow') return 'Otro flujo'
   return 'Sistema'
 }
+
+/** Texto con el que el motor guarda hoy un fallo que no tiene mensaje para
+ *  personas (`INTERNAL_ERROR_MESSAGE` en el backend). */
+export const INTERNAL_ERROR_MESSAGE = 'Ocurrió un error interno al ejecutar este paso. Quedó registrado para soporte.'
+
+// Lo que dejó el motor antes de ese cambio: la clave de un KeyError de Python
+// («('condition-…', <FlowHandle.YES: 'yes'>)») o una excepción de SQLAlchemy.
+const TECHNICAL_ERROR = /^\(|sqlalchemy|asyncpg|Traceback|<class |<[A-Za-z]+\.[A-Z_]+: /
+
+/** El error de una ejecución o de un paso, sin texto de programador. */
+export function readableExecutionError(error: string | null | undefined): string | null {
+  if (!error) return null
+  return TECHNICAL_ERROR.test(error) ? INTERNAL_ERROR_MESSAGE : error
+}
