@@ -70,6 +70,8 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
   const filesChanged = attachmentsChanged(savedAttachments, attachments)
   const dirty = formChanged || filesChanged
   const goesBackToReview = metaLocked && form.templateType === 'official' && reviewedByMeta(form) !== reviewedByMeta(initial)
+  // Al guardar, Meta la revisa: es una oficial nueva, o cambió lo que Meta mira.
+  const sendsToReview = form.templateType === 'official' && (!template || goesBackToReview)
 
   useEffect(() => {
     if (finished.current) return
@@ -119,6 +121,37 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
     setBackedUp(false)
   }
 
+  /** Guarda el formulario. `null` si el backend lo rechazó (el error ya quedó
+   *  a la vista). */
+  async function saveForm(): Promise<MessageTemplate | null> {
+    const { template_type: templateType, service, ...changes } = payloadFromForm(form)
+    try {
+      // Botones y listas no admiten archivos: si quedaban de antes, se quitan
+      // primero para que el backend acepte el cambio de formato.
+      if (template && !carriesAttachments && savedAttachments.length > 0) {
+        await applyAttachments.apply(template.id, savedAttachments, [])
+      }
+      return template
+        ? await updateTemplate.mutateAsync({ id: template.id, ...changes })
+        : await createTemplate.mutateAsync({ ...changes, template_type: templateType, service })
+    } catch (reason) {
+      setServerError(extractErrorMessage(reason))
+      return null
+    }
+  }
+
+  /** Sube, quita y ordena los archivos de una plantilla ya guardada. Devuelve
+   *  el motivo si algo falló. */
+  async function saveAttachments(saved: MessageTemplate): Promise<string | null> {
+    if (!carriesAttachments || !filesChanged) return null
+    try {
+      await applyAttachments.apply(saved.id, savedAttachments, attachments)
+      return null
+    } catch (reason) {
+      return extractErrorMessage(reason)
+    }
+  }
+
   async function submit() {
     if (saving) return
     setSubmitted(true)
@@ -128,38 +161,25 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
     }
     setSaving(true)
     setServerError(null)
-    const { template_type: _templateType, service, ...changes } = payloadFromForm(form)
-    let saved: MessageTemplate
+    // En `finally`: pase lo que pase al guardar, el botón no puede quedar
+    // girando ni deshabilitado.
     try {
-      // Botones y listas no admiten archivos: si quedaban de antes, se quitan
-      // primero para que el backend acepte el cambio de formato.
-      if (template && !carriesAttachments && savedAttachments.length > 0) {
-        await applyAttachments.apply(template.id, savedAttachments, [])
+      const saved = await saveForm()
+      if (!saved) return
+      finished.current = true
+      clearTemplateDraft(templateId)
+      const attachmentsError = await saveAttachments(saved)
+      if (attachmentsError) {
+        // El texto ya quedó guardado. Quedarse acá en modo «crear» haría que
+        // el siguiente clic en Guardar creara un duplicado: se sigue desde la
+        // plantilla guardada, con lo que sí llegó a subirse.
+        onAttachmentsFailed(saved, attachmentsError)
+        return
       }
-      saved = template
-        ? await updateTemplate.mutateAsync({ id: template.id, ...changes })
-        : await createTemplate.mutateAsync({ ...changes, template_type: _templateType, service })
-    } catch (reason) {
-      setServerError(extractErrorMessage(reason))
+      onSaved(saved, sendsToReview ? 'sent_to_review' : 'saved')
+    } finally {
       setSaving(false)
-      return
     }
-
-    finished.current = true
-    clearTemplateDraft(templateId)
-    try {
-      if (carriesAttachments && filesChanged) await applyAttachments.apply(saved.id, savedAttachments, attachments)
-    } catch (reason) {
-      // El texto ya quedó guardado. Quedarse acá en modo «crear» haría que el
-      // siguiente clic en Guardar creara un duplicado: se sigue desde la
-      // plantilla guardada, con lo que sí llegó a subirse.
-      setSaving(false)
-      onAttachmentsFailed(saved, extractErrorMessage(reason))
-      return
-    }
-    setSaving(false)
-    const reviewed = form.templateType === 'official' && (!template || goesBackToReview)
-    onSaved(saved, reviewed ? 'sent_to_review' : 'saved')
   }
 
   const errorsFor = (field: TemplateField): string[] =>
@@ -186,6 +206,7 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
     dismissRestored: () => setRestoredAt(null),
     discardChanges,
     goesBackToReview,
+    sendsToReview,
     submit,
   }
 }

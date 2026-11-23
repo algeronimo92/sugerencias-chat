@@ -1,5 +1,4 @@
-import { AlertCircle, ArrowLeft, Info, TriangleAlert } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -7,27 +6,29 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Spinner } from '../../../shared/ui/Spinner'
 import { cn } from '../../../shared/utils/cn'
-import { useMediaLibrary } from '../../media/public/queries'
-import type { MediaAsset } from '../../media/types'
-import { TEMPLATE_LIMITS, fieldId } from '../domain/fieldLimits'
+import { stateLine, submitLabel } from '../domain/editorLabels'
+import { fieldId } from '../domain/fieldLimits'
 import { preSendChecks } from '../domain/preSendChecks'
-import { elapsedLabel } from '../domain/templateDraftStorage'
-import { formFromTemplate, officialNameFrom } from '../domain/templateDraft'
-import type { TemplateField, TemplateFormState } from '../domain/templateForm'
-import { officialStatus, rejectedReason } from '../domain/templateList'
-import { useTemplateCategories } from '../hooks/useTemplateCategories'
-import { useTemplateEditor } from '../hooks/useTemplateEditor'
-import { useTemplateCapabilities, useTemplates } from '../hooks/useTemplates'
-import type { MessageTemplate, TemplateCapabilities, TemplateCategory, TemplateInteractiveType } from '../types'
+import type { TemplateField } from '../domain/templateForm'
+import { officialStatus } from '../domain/templateList'
+import { useTemplateEditor, type SaveOutcome, type TemplateEditorState } from '../hooks/useTemplateEditor'
+import { useTemplateEditorData, type TemplateEditorData } from '../hooks/useTemplateEditorData'
+import type { MessageTemplate, TemplateInteractiveType } from '../types'
+import { EditorHeader, type EditorTab } from './editor/EditorHeader'
+import { EditorNotices } from './editor/EditorNotices'
 import { InternalMessageSection } from './editor/InternalMessageSection'
 import { OfficialMessageSection } from './editor/OfficialMessageSection'
 import { OrganizationSection } from './editor/OrganizationSection'
-import { ChoiceCard, EditorSection } from './editor/parts'
+import { Notice } from './editor/parts'
 import { PreSendChecklist } from './editor/PreSendChecklist'
 import { TemplateDetailsSection } from './editor/TemplateDetailsSection'
 import { TemplatePreview } from './editor/TemplatePreview'
+import { TemplateTypeSection } from './editor/TemplateTypeSection'
 
 const LIST_PATH = '/templates'
+const FORM_ID = 'template-editor-form'
+
+type ReadyData = Extract<TemplateEditorData, { status: 'ready' }>
 
 function focusField(field: TemplateField) {
   // Dos cuadros: el campo puede recién aparecer con el error (el nombre en
@@ -39,73 +40,73 @@ function focusField(field: TemplateField) {
   }))
 }
 
-function Notice({ tone, children, action }: { tone: 'info' | 'warning' | 'danger' | 'accent'; children: ReactNode; action?: ReactNode }) {
-  const Icon = tone === 'danger' ? AlertCircle : tone === 'warning' ? TriangleAlert : Info
-  const toneClass = {
-    info: 'bg-info-soft text-info-fg',
-    warning: 'bg-warning-soft text-warning-fg',
-    danger: 'bg-danger-soft text-danger-fg',
-    accent: 'bg-accent-soft text-accent-deep',
-  }[tone]
+function announceSaved(outcome: SaveOutcome) {
+  if (outcome === 'sent_to_review') {
+    toast.success('Enviada a revisión de Meta', { description: 'Queda «En revisión» en la lista hasta que Meta responda.' })
+  } else {
+    toast.success('Plantilla guardada')
+  }
+}
+
+const editorTitle = (template: MessageTemplate | undefined) => (template ? `Editar «${template.name}»` : 'Nueva plantilla')
+
+const statusOf = (template: MessageTemplate | undefined) =>
+  template?.template_type === 'official' ? officialStatus(template.official_status) : null
+
+/** La columna de la vista previa: el mensaje y, en una oficial, lo que
+ *  conviene revisar antes de enviarla a Meta. */
+function EditorAside({ editor, data, hidden }: { editor: TemplateEditorState; data: ReadyData; hidden: boolean }) {
+  const { form } = editor
+  const official = form.templateType === 'official'
+  const others = data.templates.filter(other => other.template_type === 'official' && other.id !== data.template?.id).map(other => other.content)
   return (
-    <div role={tone === 'danger' ? 'alert' : 'status'} className={cn('flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl px-4 py-3 text-sm', toneClass)}>
-      <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <div className="min-w-0 flex-[1_1_14rem]">{children}</div>
-      {action}
-    </div>
+    <aside className={cn('flex min-w-0 flex-col gap-3 lg:sticky lg:top-6', hidden && 'hidden lg:flex')}>
+      <TemplatePreview form={form} attachments={editor.attachments} mediaAssets={data.mediaAssets} defaultFooter={data.capabilities?.interactive_default_footer} />
+      {official && <PreSendChecklist checks={preSendChecks(form, others)} />}
+      {editor.sendsToReview && (
+        <Notice tone="info">
+          <p className="font-semibold">Qué pasa al enviarla a revisión</p>
+          <p>Meta suele responder en minutos y puede tardar hasta 48 horas. Mientras tanto queda «En revisión» y no se puede enviar a clientes. La lista se actualiza sola cuando Meta responde.</p>
+        </Notice>
+      )}
+    </aside>
   )
 }
 
-interface EditorProps {
-  template: MessageTemplate | undefined
-  seed?: TemplateFormState
-  templates: MessageTemplate[]
-  categories: TemplateCategory[]
-  capabilities: TemplateCapabilities | undefined
-  mediaAssets: MediaAsset[]
-}
-
-function TemplateEditor({ template, seed, templates, categories, capabilities, mediaAssets }: EditorProps) {
+function TemplateEditor({ data }: { data: ReadyData }) {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'edit' | 'preview'>('edit')
+  const [tab, setTab] = useState<EditorTab>('edit')
   const [confirmingLeave, setConfirmingLeave] = useState(false)
   const [pendingFormat, setPendingFormat] = useState<TemplateInteractiveType | null>(null)
+  const { template, capabilities } = data
   const limits = capabilities?.interactive_limits
+
+  function showField(field: TemplateField) {
+    setTab('edit')
+    focusField(field)
+  }
 
   const editor = useTemplateEditor({
     template,
-    seed,
-    categories,
+    seed: data.seed,
+    categories: data.categories,
     limits,
     onSaved: (saved, outcome) => {
-      toast.success(outcome === 'sent_to_review' ? 'Enviada a revisión de Meta' : 'Plantilla guardada', {
-        description: outcome === 'sent_to_review' ? 'Queda «En revisión» en la lista hasta que Meta responda.' : undefined,
-      })
+      announceSaved(outcome)
       navigate(LIST_PATH, { state: { highlightId: saved.id } })
     },
     onAttachmentsFailed: (saved, message) => {
       toast.error('La plantilla se guardó, pero un archivo no se pudo subir', { description: message })
       navigate(`${LIST_PATH}/${saved.id}`, { replace: true, state: { reload: Date.now() } })
     },
-    onInvalid: field => {
-      setTab('edit')
-      focusField(field)
-    },
+    onInvalid: showField,
   })
-  const { form, change, pendingIssues, saving } = editor
+  const { form, change, saving } = editor
   const official = form.templateType === 'official'
-  const status = template?.template_type === 'official' ? officialStatus(template.official_status) : null
-  const sendsToReview = official && (!template || editor.goesBackToReview)
-  const submitLabel = sendsToReview ? 'Enviar a revisión de Meta' : template ? 'Guardar cambios' : 'Guardar plantilla'
-  const checks = official
-    ? preSendChecks(form, templates.filter(other => other.template_type === 'official' && other.id !== template?.id).map(other => other.content))
-    : []
-
-  const stateLine = saving
-    ? 'Guardando…'
-    : editor.backedUp
-      ? 'Cambios sin guardar, respaldados en este dispositivo'
-      : editor.dirty ? 'Cambios sin guardar' : status?.label ?? (template ? 'Sin cambios' : 'Todavía no guardada')
+  const existing = template !== undefined
+  const label = submitLabel({ existing, official, sendsToReview: editor.sendsToReview })
+  const state = stateLine({ saving, backedUp: editor.backedUp, dirty: editor.dirty, existing, status: statusOf(template) })
+  const fileCount = editor.attachments.length
 
   function leave() {
     if (editor.dirty) setConfirmingLeave(true)
@@ -114,147 +115,59 @@ function TemplateEditor({ template, seed, templates, categories, capabilities, m
 
   function changeFormat(format: TemplateInteractiveType) {
     if (format === form.interactiveType) return
-    if (format !== 'none' && editor.attachments.length > 0) setPendingFormat(format)
+    // Botones y listas no llevan archivos: se pregunta antes de quitarlos.
+    if (format !== 'none' && fileCount > 0) setPendingFormat(format)
     else change({ interactiveType: format })
+  }
+
+  function confirmFormat() {
+    if (pendingFormat) {
+      editor.setAttachments([])
+      change({ interactiveType: pendingFormat })
+    }
+    setPendingFormat(null)
   }
 
   return (
     <div className="flex h-full flex-col bg-canvas text-fg">
-      <header className="shrink-0 border-b border-line bg-surface">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 lg:px-8">
-          <Link to={LIST_PATH} className="-ml-2 inline-flex h-10 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-fg-muted outline-none hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring">
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />Plantillas
-          </Link>
-          <div className="min-w-0 flex-[1_1_12rem]">
-            <h1 className="truncate text-xl font-semibold text-fg">{template ? `Editar «${template.name}»` : 'Nueva plantilla'}</h1>
-            <p className="text-sm text-fg-muted">{official ? 'Oficial de Meta' : 'Interna'} · {stateLine}</p>
-          </div>
-          {pendingIssues.length > 0 && (
-            <button type="button" onClick={() => { setTab('edit'); focusField(pendingIssues[0].field) }} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-danger-fg outline-none hover:bg-danger-soft focus-visible:ring-2 focus-visible:ring-ring">
-              <AlertCircle className="h-4 w-4" aria-hidden="true" />
-              {pendingIssues.length === 1 ? 'Falta corregir 1 punto' : `Falta corregir ${pendingIssues.length} puntos`}
-            </button>
-          )}
-          <div className="hidden gap-2 lg:flex">
-            <Button variant="secondary" onClick={leave} disabled={saving}>Cancelar</Button>
-            <Button type="submit" form="template-editor-form" loading={saving}>{submitLabel}</Button>
-          </div>
-        </div>
-        {editor.serverError && (
-          <div className="px-4 pb-3 lg:px-8">
-            <Notice tone="danger"><p className="whitespace-pre-line font-medium">{editor.serverError}</p></Notice>
-          </div>
-        )}
-        <div role="tablist" aria-label="Editar o ver la vista previa" className="grid grid-cols-2 px-4 lg:hidden">
-          {([['edit', 'Editar'], ['preview', 'Vista previa']] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              onClick={() => setTab(value)}
-              className={cn('h-11 border-b-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring', tab === value ? 'border-accent-strong font-semibold text-accent-strong' : 'border-transparent font-medium text-fg-muted')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </header>
+      <EditorHeader
+        listPath={LIST_PATH}
+        formId={FORM_ID}
+        title={editorTitle(template)}
+        subtitle={`${official ? 'Oficial de Meta' : 'Interna'} · ${state}`}
+        submitLabel={label}
+        saving={saving}
+        pendingCount={editor.pendingIssues.length}
+        serverError={editor.serverError}
+        tab={tab}
+        onTab={setTab}
+        onLeave={leave}
+        onShowPending={() => showField(editor.pendingIssues[0].field)}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto grid w-full max-w-[1200px] items-start gap-6 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:px-8 lg:py-6">
           <form
-            id="template-editor-form"
+            id={FORM_ID}
             noValidate
             onSubmit={event => { event.preventDefault(); void editor.submit() }}
             className={cn('flex min-w-0 flex-col gap-4', tab === 'preview' && 'hidden lg:flex')}
           >
-            {editor.restoredAt != null && (
-              <Notice
-                tone="accent"
-                action={<div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={editor.discardChanges}>Descartar</Button>
-                  <Button variant="ghost" size="sm" onClick={editor.dismissRestored}>Entendido</Button>
-                </div>}
-              >
-                <p><strong className="font-semibold">Recuperamos lo que habías escrito</strong> {elapsedLabel(editor.restoredAt)}. Los archivos que hubieras elegido no entran en el respaldo: vuelve a agregarlos.</p>
-              </Notice>
-            )}
-            {status?.kind === 'rejected' && (
-              <Notice tone="danger">
-                <p className="font-semibold">Meta la rechazó</p>
-                <p>{rejectedReason(template?.official_rejected_reason) ?? 'Meta no informó el motivo'}. Corrígela y vuelve a enviarla.</p>
-              </Notice>
-            )}
-            {editor.metaLocked && official && status?.kind !== 'rejected' && (
-              <Notice tone="warning">
-                <p className="font-semibold">{editor.goesBackToReview ? 'Al guardar, Meta vuelve a revisarla' : 'Esta plantilla ya fue enviada a Meta'}</p>
-                <p>{editor.goesBackToReview
-                  ? 'Hasta que la apruebe no se podrá enviar, ni desde el chat ni desde las automatizaciones.'
-                  : 'Si cambias el mensaje, los datos, el encabezado, el pie o los botones, vuelve a revisión. El nombre, la categoría del equipo y el atajo se cambian sin revisión.'}</p>
-              </Notice>
-            )}
-            {official && capabilities && !capabilities.official_sending_supported && (
-              <Notice tone="warning">
-                <p className="font-semibold">WhatsApp no está conectado</p>
-                <p>{capabilities.reason ?? 'Sin la conexión con Meta no se puede enviar la plantilla a revisión.'}</p>
-              </Notice>
-            )}
-
-            {template ? (
-              <section className="rounded-xl border border-line bg-surface px-4 py-3.5 sm:px-5">
-                <h2 className="text-base font-semibold text-fg">{official ? 'Plantilla oficial de Meta' : 'Plantilla interna'}</h2>
-                <p className="mt-0.5 text-sm text-fg-muted">
-                  {official
-                    ? 'Sirve para escribir primero o después de 24 horas sin respuesta.'
-                    : 'Se envía al instante en chats donde el cliente escribió en las últimas 24 horas.'}{' '}
-                  El tipo no se cambia después de crearla.
-                </p>
-              </section>
-            ) : (
-              <EditorSection title="¿Para qué la vas a usar?">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <ChoiceCard
-                    name="template-type"
-                    title="Responder en un chat abierto"
-                    description="Plantilla interna. Se envía al instante, sin aprobación, si el cliente escribió en las últimas 24 horas."
-                    checked={!official}
-                    onSelect={() => change({ templateType: 'internal' })}
-                  />
-                  <ChoiceCard
-                    name="template-type"
-                    title="Escribir primero o después de 24 horas"
-                    description="Plantilla oficial. Meta la revisa antes de que puedas enviarla."
-                    checked={official}
-                    onSelect={() => change({ templateType: 'official' })}
-                  />
-                </div>
-              </EditorSection>
-            )}
-
+            <EditorNotices editor={editor} template={template} status={statusOf(template)} capabilities={capabilities} />
+            <TemplateTypeSection type={form.templateType} locked={existing} onChange={templateType => change({ templateType })} />
             <TemplateDetailsSection editor={editor} />
             {official
-              ? <OfficialMessageSection editor={editor} limits={limits} mediaAssets={mediaAssets} />
+              ? <OfficialMessageSection editor={editor} limits={limits} mediaAssets={data.mediaAssets} />
               : <InternalMessageSection editor={editor} limits={limits} defaultFooter={capabilities?.interactive_default_footer} onFormatChange={changeFormat} />}
-            <OrganizationSection editor={editor} categories={categories} />
+            <OrganizationSection editor={editor} categories={data.categories} />
           </form>
-
-          <aside className={cn('flex min-w-0 flex-col gap-3 lg:sticky lg:top-6', tab === 'edit' && 'hidden lg:flex')}>
-            <TemplatePreview form={form} attachments={editor.attachments} mediaAssets={mediaAssets} defaultFooter={capabilities?.interactive_default_footer} />
-            {official && <PreSendChecklist checks={checks} />}
-            {sendsToReview && (
-              <Notice tone="info">
-                <p className="font-semibold">Qué pasa al enviarla a revisión</p>
-                <p>Meta suele responder en minutos y puede tardar hasta 48 horas. Mientras tanto queda «En revisión» y no se puede enviar a clientes. La lista se actualiza sola cuando Meta responde.</p>
-              </Notice>
-            )}
-          </aside>
+          <EditorAside editor={editor} data={data} hidden={tab === 'edit'} />
         </div>
       </div>
 
       <footer className="flex shrink-0 gap-2 border-t border-line bg-surface px-4 py-3 lg:hidden">
         <Button variant="secondary" size="lg" onClick={leave} disabled={saving}>Cancelar</Button>
-        <Button type="submit" form="template-editor-form" size="lg" className="min-w-0 flex-1" loading={saving}>{submitLabel}</Button>
+        <Button type="submit" form={FORM_ID} size="lg" className="min-w-0 flex-1" loading={saving}>{label}</Button>
       </footer>
 
       <ConfirmDialog
@@ -270,17 +183,11 @@ function TemplateEditor({ template, seed, templates, categories, capabilities, m
         open={pendingFormat != null}
         onOpenChange={open => { if (!open) setPendingFormat(null) }}
         title="Los botones y las listas no admiten archivos"
-        description={`Si cambias de formato se ${editor.attachments.length === 1 ? 'quita el archivo' : `quitan los ${editor.attachments.length} archivos`} de esta plantilla. Lo que esté en tu biblioteca sigue ahí.`}
+        description={`Si cambias de formato se ${fileCount === 1 ? 'quita el archivo' : `quitan los ${fileCount} archivos`} de esta plantilla. Lo que esté en tu biblioteca sigue ahí.`}
         cancelLabel="Dejar como está"
         confirmLabel="Cambiar de formato"
         confirmVariant="primary"
-        onConfirm={() => {
-          if (pendingFormat) {
-            editor.setAttachments([])
-            change({ interactiveType: pendingFormat })
-          }
-          setPendingFormat(null)
-        }}
+        onConfirm={confirmFormat}
       />
     </div>
   )
@@ -300,18 +207,17 @@ function TemplateEditor({ template, seed, templates, categories, capabilities, m
 export function TemplateEditorPage() {
   const { templateId } = useParams()
   const location = useLocation()
-  const templates = useTemplates(true)
-  const categories = useTemplateCategories()
-  const capabilities = useTemplateCapabilities()
-  const { data: mediaAssets = [] } = useMediaLibrary()
-  const id = templateId === undefined ? null : Number(templateId)
   const state = location.state as { reload?: number; copyOf?: number } | null
+  const data = useTemplateEditorData({
+    templateId: templateId === undefined ? null : Number(templateId),
+    copyOf: state?.copyOf,
+    reload: state?.reload,
+  })
 
-  if (templates.isLoading || categories.isLoading || capabilities.isLoading) {
+  if (data.status === 'loading') {
     return <div className="flex h-full items-center justify-center bg-canvas"><Spinner /></div>
   }
-  const template = id == null ? undefined : templates.data?.find(item => item.id === id)
-  if (id != null && !template) {
+  if (data.status === 'missing') {
     return (
       <div className="flex h-full items-center justify-center bg-canvas">
         <EmptyState
@@ -322,23 +228,5 @@ export function TemplateEditorPage() {
       </div>
     )
   }
-  // «Duplicar» abre una plantilla nueva con todo lo de otra salvo lo que
-  // tiene que ser único: el atajo y el nombre con que Meta la registra. Los
-  // archivos no se copian (se eligen de nuevo, desde la biblioteca).
-  const source = id == null && state?.copyOf != null ? templates.data?.find(item => item.id === state.copyOf) : undefined
-  const copyName = source ? `${source.name} (copia)`.slice(0, TEMPLATE_LIMITS.name) : ''
-  const seed: TemplateFormState | undefined = source
-    ? { ...formFromTemplate(source), name: copyName, shortcut: '', officialName: source.template_type === 'official' ? officialNameFrom(copyName) : '' }
-    : undefined
-  return (
-    <TemplateEditor
-      key={`${id ?? (source ? `copy-${source.id}` : 'new')}-${state?.reload ?? ''}`}
-      template={template}
-      seed={seed}
-      templates={templates.data ?? []}
-      categories={categories.data ?? []}
-      capabilities={capabilities.data}
-      mediaAssets={mediaAssets}
-    />
-  )
+  return <TemplateEditor key={data.key} data={data} />
 }

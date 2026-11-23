@@ -1,5 +1,6 @@
 import type { MessageTemplate, TemplateCategory, TemplateInput } from '../types'
 import { fromInteractiveConfig, toInteractiveConfig } from './interactiveConfig'
+import { TEMPLATE_LIMITS } from './fieldLimits'
 import { EMPTY_TEMPLATE_FORM, type TemplateFormState } from './templateForm'
 
 const PREFERRED_CATEGORY = 'Seguimiento'
@@ -101,4 +102,19 @@ export function nextFreeId(prefix: string, taken: Iterable<string>): string {
   let index = 1
   while (used.has(`${prefix}${index}`)) index += 1
   return `${prefix}${index}`
+}
+
+/**
+ * El punto de partida de «Duplicar»: todo lo de otra plantilla salvo lo que
+ * tiene que ser único, el atajo y el nombre con que Meta la registra. Los
+ * archivos no se copian: se eligen de nuevo, desde la biblioteca.
+ */
+export function copyOfTemplate(source: MessageTemplate): TemplateFormState {
+  const name = `${source.name} (copia)`.slice(0, TEMPLATE_LIMITS.name)
+  return {
+    ...formFromTemplate(source),
+    name,
+    shortcut: '',
+    officialName: source.template_type === 'official' ? officialNameFrom(name) : '',
+  }
 }

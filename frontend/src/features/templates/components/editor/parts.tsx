@@ -1,4 +1,4 @@
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Info, TriangleAlert } from 'lucide-react'
 import { useId, type InputHTMLAttributes, type ReactNode, type Ref } from 'react'
 import { fieldClass } from '../../../../shared/ui/Input'
 import { cn } from '../../../../shared/utils/cn'
@@ -144,5 +144,24 @@ export function FieldLabel({ htmlFor, children, optional, required }: { htmlFor?
       {required && <>{' '}<span className="font-normal text-fg-muted">(obligatorio)</span></>}
       {optional && <>{' '}<span className="font-normal text-fg-muted">(opcional)</span></>}
     </Tag>
+  )
+}
+
+const NOTICE = {
+  info: { icon: Info, className: 'bg-info-soft text-info-fg' },
+  accent: { icon: Info, className: 'bg-accent-soft text-accent-deep' },
+  warning: { icon: TriangleAlert, className: 'bg-warning-soft text-warning-fg' },
+  danger: { icon: AlertCircle, className: 'bg-danger-soft text-danger-fg' },
+} as const
+
+/** Un aviso del editor. El de error se anuncia como alerta; el resto, como estado. */
+export function Notice({ tone, children, action }: { tone: keyof typeof NOTICE; children: ReactNode; action?: ReactNode }) {
+  const { icon: Icon, className } = NOTICE[tone]
+  return (
+    <div role={tone === 'danger' ? 'alert' : 'status'} className={cn('flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl px-4 py-3 text-sm', className)}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <div className="min-w-0 flex-[1_1_14rem]">{children}</div>
+      {action}
+    </div>
   )
 }

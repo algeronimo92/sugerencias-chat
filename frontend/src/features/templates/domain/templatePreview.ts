@@ -2,8 +2,21 @@ import { LEAD_SOURCES, sampleOf } from './officialParameters'
 import type { TemplateFormState } from './templateForm'
 
 export interface PreviewButton {
+  /** Estable mientras el botón no cambie: su tipo y texto, y cuál de los
+   *  repetidos es si hay dos iguales a medio escribir. */
+  key: string
   text: string
   kind: 'reply' | 'url' | 'phone' | 'list'
+}
+
+function withKeys(buttons: Omit<PreviewButton, 'key'>[]): PreviewButton[] {
+  const seen = new Map<string, number>()
+  return buttons.map(button => {
+    const base = `${button.kind}:${button.text}`
+    const repeat = seen.get(base) ?? 0
+    seen.set(base, repeat + 1)
+    return { ...button, key: repeat === 0 ? base : `${base}#${repeat}` }
+  })
 }
 
 /** El mensaje como lo recibe el cliente, armado con datos de ejemplo. */
@@ -46,9 +59,9 @@ export function previewOf(
       headerImageAssetId: form.officialHeaderType === 'image' ? form.officialHeaderMediaAssetId : null,
       body: renderOfficial(form.content, form.officialParameterValues),
       footer: form.officialFooter.trim() || null,
-      buttons: form.officialButtons
+      buttons: withKeys(form.officialButtons
         .filter(button => button.text.trim())
-        .map(button => ({ text: button.text.trim(), kind: OFFICIAL_BUTTON_KIND[button.type] })),
+        .map(button => ({ text: button.text.trim(), kind: OFFICIAL_BUTTON_KIND[button.type] }))),
     }
   }
 
@@ -63,9 +76,9 @@ export function previewOf(
     headerImageAssetId: null,
     body,
     footer,
-    buttons: form.interactiveType === 'button'
+    buttons: withKeys(form.interactiveType === 'button'
       ? form.interactiveButtons.filter(button => button.title.trim()).map(button => ({ text: button.title.trim(), kind: 'reply' as const }))
-      : [{ text: form.interactiveButtonText.trim() || 'Ver opciones', kind: 'list' as const }],
+      : [{ text: form.interactiveButtonText.trim() || 'Ver opciones', kind: 'list' as const }]),
   }
 }
 

@@ -22,6 +22,10 @@ interface Props {
 export function OfficialVariablesList({ id, values, onChange, errors }: Props) {
   const [combining, setCombining] = useState(() => values.some(value => value.trim() !== '' && singleSource(value) === null))
 
+  // La variable se llama por su número en el texto (`{{1}}`, `{{2}}`…): ese
+  // nombre es su identidad, y no cambia aunque cambie el dato que lleva.
+  const variables = values.map((value, index) => ({ name: String(index + 1), value }))
+
   if (values.length === 0) {
     return (
       <p className="rounded-lg bg-subtle px-3 py-2.5 text-sm text-fg-muted">
@@ -38,19 +42,19 @@ export function OfficialVariablesList({ id, values, onChange, errors }: Props) {
       </div>
       {combining ? (
         <div className="border-t border-line p-3">
-          <OfficialVariablesSection variables={values.map((_, index) => String(index + 1))} values={values} onChange={onChange} />
+          <OfficialVariablesSection variables={variables.map(variable => variable.name)} values={values} onChange={onChange} />
         </div>
-      ) : values.map((value, index) => {
+      ) : variables.map(({ name, value }) => {
         const source = singleSource(value)
         return (
-          <div key={index} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-3 py-2.5">
-            <code className="w-11 shrink-0 font-mono text-sm text-fg-muted">{`{{${index + 1}}}`}</code>
+          <div key={name} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-3 py-2.5">
+            <code className="w-11 shrink-0 font-mono text-sm text-fg-muted">{`{{${name}}}`}</code>
             <div className="min-w-0 flex-[1_1_14rem]">
               <Select
-                aria-label={`Dato de la variable ${index + 1}`}
+                aria-label={`Dato de la variable ${name}`}
                 aria-invalid={value.trim() === '' && errors.length > 0 ? true : undefined}
                 value={source ?? ''}
-                onChange={event => onChange(values.map((item, itemIndex) => itemIndex === index ? `{{${event.target.value}}}` : item))}
+                onChange={event => onChange(variables.map(item => item.name === name ? `{{${event.target.value}}}` : item.value))}
               >
                 <option value="" disabled>Elige un dato</option>
                 <optgroup label="Del lead">

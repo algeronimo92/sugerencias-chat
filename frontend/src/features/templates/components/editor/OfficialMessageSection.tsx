@@ -1,27 +1,18 @@
-import { Plus, X } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { RefObject } from 'react'
 import { Button } from '../../../../shared/ui/Button'
 import { DropdownMenu, DropdownMenuItem } from '../../../../shared/ui/DropdownMenu'
-import { Select } from '../../../../shared/ui/Input'
 import { MediaAssetField } from '../../../media/public/MediaAssetField'
 import type { MediaAsset } from '../../../media/types'
 import { TEMPLATE_LIMITS, contentLimit, fieldId } from '../../domain/fieldLimits'
 import { APPOINTMENT_SOURCES, LEAD_SOURCES } from '../../domain/officialParameters'
 import { insertDataVariable } from '../../domain/officialVariables'
 import type { TemplateEditorState } from '../../hooks/useTemplateEditor'
-import type { InteractiveLimits, OfficialTemplateButton } from '../../types'
+import type { InteractiveLimits } from '../../types'
 import { MessageField } from './MessageField'
+import { OfficialButtonsEditor } from './OfficialButtonsEditor'
 import { OfficialVariablesList } from './OfficialVariablesList'
 import { ChoicePill, CountedInput, EditorSection, FieldErrors, FieldLabel } from './parts'
-
-type ButtonsKind = 'none' | 'quick' | 'action'
-
-function buttonsKind(buttons: OfficialTemplateButton[]): ButtonsKind {
-  if (buttons.length === 0) return 'none'
-  return buttons.every(button => button.type === 'quick_reply') ? 'quick' : 'action'
-}
-
-const MAX_BUTTONS: Record<Exclude<ButtonsKind, 'none'>, number> = { quick: 3, action: 2 }
 
 interface Props {
   editor: TemplateEditorState
@@ -37,10 +28,8 @@ interface Props {
  */
 export function OfficialMessageSection({ editor, limits, mediaAssets }: Props) {
   const { form, change, errorsFor } = editor
-  const kind = buttonsKind(form.officialButtons)
   const headerErrors = errorsFor('officialHeader')
   const footerErrors = errorsFor('officialFooter')
-  const buttonErrors = errorsFor('officialButtons')
 
   function insertData(sourceKey: string, field: RefObject<HTMLTextAreaElement | null>) {
     const next = insertDataVariable(field.current, form.content, form.officialParameterValues, sourceKey)
@@ -51,19 +40,6 @@ export function OfficialMessageSection({ editor, limits, mediaAssets }: Props) {
       field.current?.focus()
       field.current?.setSelectionRange(next.caret, next.caret)
     })
-  }
-
-  function setButtonsKind(next: ButtonsKind) {
-    if (next === kind) return
-    change({
-      officialButtons: next === 'none' ? [] : [next === 'quick' ? { type: 'quick_reply', text: '' } : { type: 'url', text: '', url: '' }],
-    })
-  }
-
-  function updateButton(index: number, patch: Partial<OfficialTemplateButton>) {
-    change(current => ({
-      officialButtons: current.officialButtons.map((button, buttonIndex) => buttonIndex === index ? { ...button, ...patch } : button),
-    }))
   }
 
   return (
@@ -135,87 +111,7 @@ export function OfficialMessageSection({ editor, limits, mediaAssets }: Props) {
         <div className="mt-1.5"><FieldErrors messages={footerErrors} /></div>
       </div>
 
-      <fieldset id={fieldId('officialButtons')} tabIndex={-1} className="flex flex-col gap-2 outline-none">
-        <legend className="mb-1.5 text-sm font-medium text-fg">Botones <span className="font-normal text-fg-muted">(opcional)</span></legend>
-        {/* Meta no deja mezclar respuestas rápidas con enlaces o llamadas:
-            elegir el grupo primero hace imposible armar esa combinación. */}
-        <div className="flex flex-wrap gap-2">
-          <ChoicePill name="official-buttons" title="Sin botones" checked={kind === 'none'} onSelect={() => setButtonsKind('none')} />
-          <ChoicePill name="official-buttons" title="Respuestas rápidas (hasta 3)" checked={kind === 'quick'} onSelect={() => setButtonsKind('quick')} />
-          <ChoicePill name="official-buttons" title="Enlace o llamada (hasta 2)" checked={kind === 'action'} onSelect={() => setButtonsKind('action')} />
-        </div>
-        {form.officialButtons.map((button, index) => (
-          <div key={index} className="flex flex-wrap items-center gap-2">
-            {kind === 'action' && (
-              <div className="w-full sm:w-36">
-                <Select
-                  aria-label={`Tipo del botón ${index + 1}`}
-                  value={button.type}
-                  onChange={event => updateButton(index, event.target.value === 'url'
-                    ? { type: 'url', url: button.url ?? '', phone_number: undefined }
-                    : { type: 'phone_number', phone_number: button.phone_number ?? '', url: undefined })}
-                >
-                  <option value="url">Enlace</option>
-                  <option value="phone_number">Llamada</option>
-                </Select>
-              </div>
-            )}
-            <CountedInput
-              aria-label={`Texto del botón ${index + 1}`}
-              value={button.text}
-              max={TEMPLATE_LIMITS.officialButtonText}
-              placeholder="Texto del botón"
-              onChange={event => updateButton(index, { text: event.target.value })}
-            />
-            {button.type === 'url' && (
-              <CountedInput
-                aria-label={`Enlace del botón ${index + 1}`}
-                type="url"
-                inputMode="url"
-                quiet
-                value={button.url ?? ''}
-                max={TEMPLATE_LIMITS.officialButtonUrl}
-                placeholder="https://…"
-                onChange={event => updateButton(index, { url: event.target.value })}
-              />
-            )}
-            {button.type === 'phone_number' && (
-              <CountedInput
-                aria-label={`Teléfono del botón ${index + 1}`}
-                type="tel"
-                inputMode="tel"
-                quiet
-                value={button.phone_number ?? ''}
-                max={TEMPLATE_LIMITS.officialButtonPhone}
-                placeholder="+51 987 654 321"
-                onChange={event => updateButton(index, { phone_number: event.target.value })}
-              />
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={`Quitar botón ${index + 1}`}
-              onClick={() => change(current => ({ officialButtons: current.officialButtons.filter((_, buttonIndex) => buttonIndex !== index) }))}
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
-        ))}
-        {kind !== 'none' && form.officialButtons.length < MAX_BUTTONS[kind] && (
-          <div>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => change(current => ({
-                officialButtons: [...current.officialButtons, kind === 'quick' ? { type: 'quick_reply', text: '' } : { type: 'url', text: '', url: '' }],
-              }))}
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />Agregar botón
-            </Button>
-          </div>
-        )}
-        <FieldErrors messages={[...new Set(buttonErrors)]} />
-      </fieldset>
+      <OfficialButtonsEditor editor={editor} />
     </EditorSection>
   )
 }

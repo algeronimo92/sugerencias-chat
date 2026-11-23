@@ -138,7 +138,7 @@ describe('vista previa', () => {
     const preview = previewOf(official({ officialFooter: ' DermicaPro ', officialButtons: [{ type: 'quick_reply', text: 'Confirmar' }, { type: 'quick_reply', text: '' }] }), { withData: true })
     expect(preview.body).toBe('Hola Ana, tu cita quedó registrada.')
     expect(preview.footer).toBe('DermicaPro')
-    expect(preview.buttons).toEqual([{ text: 'Confirmar', kind: 'reply' }])
+    expect(preview.buttons).toEqual([{ key: 'reply:Confirmar', text: 'Confirmar', kind: 'reply' }])
   })
 
   it('sin datos deja el hueco vacío, como le llega a un lead sin nombre', () => {
@@ -146,10 +146,15 @@ describe('vista previa', () => {
     expect(internalVariablesIn('Hola {{nombre}}, sobre {{servicio}}')).toEqual(['Nombre', 'Servicio de interés'])
   })
 
+  it('dos botones iguales a medio escribir no comparten clave', () => {
+    const preview = previewOf(form({ interactiveType: 'button', interactiveButtons: [{ id: 'a', title: 'Sí' }, { id: 'b', title: 'Sí' }] }), { withData: true })
+    expect(preview.buttons.map(button => button.key)).toEqual(['reply:Sí', 'reply:Sí#1'])
+  })
+
   it('con lista usa el pie por defecto del negocio', () => {
     const preview = previewOf(form({ interactiveType: 'list', interactiveButtonText: 'Ver tratamientos' }), { withData: true, defaultFooter: 'DermicaPro' })
     expect(preview.footer).toBe('DermicaPro')
-    expect(preview.buttons).toEqual([{ text: 'Ver tratamientos', kind: 'list' }])
+    expect(preview.buttons).toEqual([{ key: 'list:Ver tratamientos', text: 'Ver tratamientos', kind: 'list' }])
   })
 })
 
