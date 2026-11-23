@@ -20,6 +20,9 @@ interface Props {
   mediaAssets: MediaAsset[]
 }
 
+/** Qué decir cuando Meta no deja tocar el mensaje. */
+const LOCKED_HINT = 'Meta no acepta cambios en el mensaje por ahora. Puedes cambiar el nombre, la categoría del equipo y el atajo.'
+
 /**
  * El mensaje de una plantilla oficial, de arriba abajo como lo ve el
  * cliente: encabezado, texto con sus datos, pie y botones (2026-11-23).
@@ -30,6 +33,7 @@ export function OfficialMessageSection({ editor, limits, mediaAssets }: Props) {
   const { form, change, errorsFor } = editor
   const headerErrors = errorsFor('officialHeader')
   const footerErrors = errorsFor('officialFooter')
+  const locked = editor.metaRules.contentLocked
 
   function insertData(sourceKey: string, field: RefObject<HTMLTextAreaElement | null>) {
     const next = insertDataVariable(field.current, form.content, form.officialParameterValues, sourceKey)
@@ -43,7 +47,11 @@ export function OfficialMessageSection({ editor, limits, mediaAssets }: Props) {
   }
 
   return (
-    <EditorSection title="Mensaje" description="De arriba abajo, en el orden en que lo verá el cliente.">
+    <EditorSection title="Mensaje" description={locked ? LOCKED_HINT : 'De arriba abajo, en el orden en que lo verá el cliente.'}>
+      {/* Un <fieldset> deshabilitado bloquea de una vez todos los campos y
+          botones que contiene, incluidos los que se agreguen después. */}
+      <fieldset disabled={locked} className="min-w-0">
+        <div className="flex flex-col gap-4">
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-sm font-medium text-fg">Encabezado <span className="font-normal text-fg-muted">(opcional)</span></legend>
         <div className="flex flex-wrap gap-2">
@@ -112,6 +120,8 @@ export function OfficialMessageSection({ editor, limits, mediaAssets }: Props) {
       </div>
 
       <OfficialButtonsEditor editor={editor} />
+        </div>
+      </fieldset>
     </EditorSection>
   )
 }

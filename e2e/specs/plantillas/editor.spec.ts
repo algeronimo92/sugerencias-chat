@@ -114,3 +114,34 @@ test('al guardar con errores, el primero queda a la vista junto a su campo', asy
   await expectNoPageOverflow(page)
   await page.screenshot({ path: `test-results/plantillas-errores-${info.project.name}.png` })
 })
+
+test('una aprobada avisa del cupo de ediciones de Meta y no deja cambiar el tipo de mensaje', async ({ page }, info) => {
+  await page.goto('/templates/2')
+
+  await expect(page.getByText('Esta plantilla está aprobada')).toBeVisible()
+  await expect(page.getByText(/una vez cada 24 horas y diez veces cada 30 días/)).toBeVisible()
+  const promotion = page.getByRole('radio', { name: /^Promoción/ })
+  await promotion.scrollIntoViewIfNeeded()
+  await expect(promotion).toBeDisabled()
+  await expect(page.getByRole('textbox', { name: /^Texto del mensaje/ })).toBeEnabled()
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/plantillas-aprobada-${info.project.name}.png` })
+})
+
+test('mientras Meta la revisa, el mensaje queda bloqueado y lo demás se puede guardar', async ({ page, api }, info) => {
+  api.on('patch', '/api/templates/{template_id}', ({ body }) => ({ ...TEMPLATES[3], ...(body as Partial<Template>) }))
+  await page.goto('/templates/4')
+
+  await expect(page.getByText('Meta la está revisando')).toBeVisible()
+  const message = page.getByRole('textbox', { name: /^Texto del mensaje/ })
+  await message.scrollIntoViewIfNeeded()
+  await expect(message).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Insertar dato' })).toBeDisabled()
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/plantillas-en-revision-${info.project.name}.png` })
+
+  await page.getByRole('textbox', { name: /^Nombre \(obligatorio\)/ }).fill('Promo de fin de año')
+  await page.getByRole('button', { name: 'Guardar cambios' }).filter({ visible: true }).click()
+  await expect(page).toHaveURL(/\/templates$/)
+  expect(api.calls('patch', '/api/templates/{template_id}')[0].body).toMatchObject({ name: 'Promo de fin de año', content: 'Este mes tenemos una promoción para ti.' })
+})

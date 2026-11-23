@@ -15,7 +15,7 @@ export const NO_FILTERS: TemplateListFilters = { query: '', type: 'all', status:
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral'
 
 export interface OfficialStatus {
-  kind: 'approved' | 'review' | 'rejected' | 'blocked' | 'unsent'
+  kind: 'approved' | 'review' | 'rejected' | 'paused' | 'disabled' | 'unsent' | 'other'
   label: string
   tone: StatusTone
 }
@@ -31,10 +31,10 @@ export function officialStatus(status: string | null | undefined): OfficialStatu
     case 'PENDING':
     case 'IN_APPEAL': return { kind: 'review', label: 'En revisión', tone: 'warning' }
     case 'REJECTED': return { kind: 'rejected', label: 'Rechazada', tone: 'danger' }
-    case 'PAUSED': return { kind: 'blocked', label: 'Pausada por Meta', tone: 'warning' }
-    case 'DISABLED': return { kind: 'blocked', label: 'Deshabilitada por Meta', tone: 'danger' }
+    case 'PAUSED': return { kind: 'paused', label: 'Pausada por Meta', tone: 'warning' }
+    case 'DISABLED': return { kind: 'disabled', label: 'Deshabilitada por Meta', tone: 'danger' }
     case '': return { kind: 'unsent', label: 'Sin enviar a Meta', tone: 'neutral' }
-    default: return { kind: 'blocked', label: status ?? '', tone: 'neutral' }
+    default: return { kind: 'other', label: status ?? '', tone: 'neutral' }
   }
 }
 

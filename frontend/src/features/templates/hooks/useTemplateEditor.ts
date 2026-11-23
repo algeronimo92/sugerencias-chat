@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { attachmentsChanged, draftFromSaved, type DraftAttachment } from '../domain/attachmentDraft'
+import { metaEditBlock, metaEditRules } from '../domain/metaEditRules'
 import { resizeParameters } from '../domain/officialVariables'
 import { emptyTemplateForm, formFromTemplate, officialNameFrom, payloadFromForm, sameForm } from '../domain/templateDraft'
 import { clearTemplateDraft, loadTemplateDraft, saveTemplateDraft } from '../domain/templateDraftStorage'
@@ -27,10 +28,11 @@ interface Options {
   onInvalid: (field: TemplateField) => void
 }
 
-/** Lo que Meta vuelve a revisar si cambia en una plantilla ya enviada. */
+/** El mensaje tal como lo revisa Meta: si cambia en una plantilla ya enviada,
+ *  vuelve a revisión. */
 function reviewedByMeta(form: TemplateFormState) {
   return JSON.stringify([
-    form.content.trim(), form.officialParameterValues, form.officialCategory, form.officialHeaderType,
+    form.content.trim(), form.officialParameterValues, form.officialHeaderType,
     form.officialHeaderText.trim(), form.officialHeaderMediaAssetId, form.officialFooter.trim(), form.officialButtons,
   ])
 }
@@ -69,7 +71,15 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
   const carriesAttachments = form.templateType === 'internal' && form.interactiveType === 'none'
   const filesChanged = attachmentsChanged(savedAttachments, attachments)
   const dirty = formChanged || filesChanged
-  const goesBackToReview = metaLocked && form.templateType === 'official' && reviewedByMeta(form) !== reviewedByMeta(initial)
+  const metaRules = useMemo(() => metaEditRules(template), [template])
+  const metaChanges = {
+    content: reviewedByMeta(form) !== reviewedByMeta(initial),
+    category: form.officialCategory !== initial.officialCategory,
+  }
+  // El backend reenvía a Meta si cambió el mensaje y siempre que se guarda
+  // una rechazada; un cambio de categoría solo actualiza la categoría.
+  const goesBackToReview = metaLocked && form.templateType === 'official'
+    && (metaChanges.content || template?.official_status === 'REJECTED')
   // Al guardar, Meta la revisa: es una oficial nueva, o cambió lo que Meta mira.
   const sendsToReview = form.templateType === 'official' && (!template || goesBackToReview)
 
@@ -159,6 +169,11 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
       onInvalid(issues[0].field)
       return
     }
+    const blocked = metaLocked ? metaEditBlock(metaRules, metaChanges) : null
+    if (blocked) {
+      setServerError(blocked)
+      return
+    }
     setSaving(true)
     setServerError(null)
     // En `finally`: pase lo que pase al guardar, el botón no puede quedar
@@ -192,6 +207,7 @@ export function useTemplateEditor({ template, seed, categories, limits, onSaved,
     followName,
     officialNameEdited,
     metaLocked,
+    metaRules,
     attachments,
     setAttachments,
     carriesAttachments,
