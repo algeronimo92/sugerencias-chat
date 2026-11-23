@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { saveTemplateDraft } from '../domain/templateDraftStorage'
+import { saveTemplateDraft, templateIdsWithDraft } from '../domain/templateDraftStorage'
 import { EMPTY_TEMPLATE_FORM } from '../domain/templateForm'
 import type { MessageTemplate } from '../types'
 import { TemplateEditorPage } from './TemplateEditorPage'
@@ -206,6 +206,18 @@ describe('TemplateEditorPage', { timeout: 20_000 }, () => {
     expect(screen.getByText(/Meta acepta el próximo cambio en el mensaje desde mañana a las/)).toBeInTheDocument()
     expect(messageField()).toBeDisabled()
     expect(nameField()).toBeEnabled()
+  })
+
+  it('el respaldo local queda escrito en cuanto se cambia algo, sin esperar', async () => {
+    const user = userEvent.setup()
+    mocks.templates = [template()]
+    renderAt('/templates/5')
+
+    await user.type(nameField(), '!')
+
+    // Sin temporizadores de por medio: salir del editor justo después de
+    // escribir no puede perder el borrador.
+    expect(templateIdsWithDraft()).toEqual([5])
   })
 
   it('si el guardado falla, dice que nada se guardó y que lo escrito sigue en el dispositivo', async () => {

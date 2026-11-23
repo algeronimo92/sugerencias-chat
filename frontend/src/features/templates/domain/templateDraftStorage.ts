@@ -49,6 +49,19 @@ export function saveTemplateDraft(templateId: number | null, draft: StoredTempla
   }
 }
 
+/** Si este navegador deja guardar borradores: el editor lo dice («respaldados
+ *  en este dispositivo») solo cuando es verdad. */
+export function canStoreDrafts(): boolean {
+  const probe = `${PREFIX}probe`
+  try {
+    localStorage.setItem(probe, '1')
+    localStorage.removeItem(probe)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function clearTemplateDraft(templateId: number | null) {
   try { localStorage.removeItem(keyOf(templateId)) } catch { /* sin almacenamiento: nada que borrar */ }
 }
