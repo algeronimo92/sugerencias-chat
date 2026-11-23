@@ -1,4 +1,4 @@
-from app.modules.platform.schemas import (SettingItem, UpdateSettingsRequest, MetaEmbeddedSignupRequest, MetaAppSyncRetry, MetaPublicConfig, BusinessTimezoneItem)
+from app.modules.platform.schemas import (SettingItem, UpdateSettingsRequest, MetaEmbeddedSignupRequest, MetaAppSyncRetry, MetaPublicConfig, BusinessTimezoneItem, BusinessHoursOut, UpdateBusinessHoursRequest)
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -11,8 +11,16 @@ from app.modules.platform.platform_settings import platform_settings_many
 from app.modules.auth.ports.types import UserRole
 from app.modules.auth.public import Permission, roles_with_permission, set_role_permission
 from app.modules.platform.subscribers import lead_visibility_changed
+from app.modules.platform.business_hours import (
+    BUSINESS_HOURS_KEY,
+    DEFAULT_TIMEZONE,
+    days_from_setting,
+    parse_days,
+    serialize_days,
+)
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
+    get_effective_many,
     list_business_timezones,
     list_settings,
     update_settings,
@@ -46,6 +54,45 @@ async def get_settings():
 @router.get("/timezones", response_model=list[BusinessTimezoneItem])
 async def get_timezones():
     return list_business_timezones()
+
+
+# Lo que se muestra en un día cerrado si alguien lo vuelve a abrir.
+_CLOSED_DAY_HOURS = ("09:00", "13:00")
+
+
+async def _business_hours_out() -> dict:
+    values = await get_effective_many((BUSINESS_HOURS_KEY, "business_timezone"))
+    days = days_from_setting(values[BUSINESS_HOURS_KEY])
+    return {
+        "days": [
+            {
+                "weekday": weekday,
+                "open": weekday in days,
+                "start": f"{days[weekday][0]:%H:%M}" if weekday in days else _CLOSED_DAY_HOURS[0],
+                "end": f"{days[weekday][1]:%H:%M}" if weekday in days else _CLOSED_DAY_HOURS[1],
+            }
+            for weekday in range(7)
+        ],
+        "timezone": values["business_timezone"].strip() or DEFAULT_TIMEZONE,
+        "configured": bool(values[BUSINESS_HOURS_KEY].strip()),
+    }
+
+
+@router.get("/business-hours", response_model=BusinessHoursOut)
+async def get_business_hours():
+    return await _business_hours_out()
+
+
+@router.put("/business-hours", response_model=BusinessHoursOut)
+async def put_business_hours(body: UpdateBusinessHoursRequest):
+    if sorted(day.weekday for day in body.days) != list(range(7)):
+        raise HTTPException(status_code=422, detail="El horario debe traer los siete días, una vez cada uno")
+    try:
+        days = parse_days({day.weekday: [day.start, day.end] for day in body.days if day.open})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await update_settings({BUSINESS_HOURS_KEY: serialize_days(days)})
+    return await _business_hours_out()
 
 
 @router.put("", response_model=list[SettingItem])

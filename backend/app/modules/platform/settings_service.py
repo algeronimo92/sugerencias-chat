@@ -305,6 +305,9 @@ SETTING_DEFS: list[SettingDef] = [
         boolean=True,
         hidden=True,
     ),
+    # JSON del horario semanal; lo edita la tarjeta «Horario de atención» por
+    # su propia ruta, que lo valida (app/modules/platform/business_hours.py).
+    SettingDef("business_hours", "Horario de atención", "general", "General", secret=False, hidden=True),
 ]
 # Ajustes por negocio que administra el operador de la plataforma y no el
 # propio negocio (ver app/modules/platform/api.py).
@@ -577,6 +580,15 @@ async def update_settings(values: dict[str, str]) -> None:
         values["business_timezone"] = validate_business_timezone(
             values["business_timezone"]
         )
+    if values.get("business_hours", "").strip():
+        # Import tardío: business_hours.py lee los ajustes con este módulo.
+        from app.modules.platform.business_hours import parse_days, serialize_days
+
+        try:
+            raw_hours = json.loads(values["business_hours"])
+        except ValueError as exc:
+            raise ValueError("El horario de atención no es válido") from exc
+        values["business_hours"] = serialize_days(parse_days(raw_hours))
     if "auto_assign_leads_enabled" in values:
         enabled = values["auto_assign_leads_enabled"].strip().lower()
         if enabled not in {"", "true", "false"}:

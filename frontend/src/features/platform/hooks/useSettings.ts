@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { completeMetaEmbeddedSignup, fetchMetaPublicConfig, fetchSettings, fetchBusinessTimezones, saveSettings } from '../api'
+import { completeMetaEmbeddedSignup, fetchBusinessHours, fetchMetaPublicConfig, fetchSettings, fetchBusinessTimezones, saveBusinessHours, saveSettings } from '../api'
 import { settingsKeys, whatsappKeys } from '../keys'
 
 export function useSettings(enabled: boolean) {
@@ -28,6 +28,18 @@ export function useBusinessTimezones(enabled = true) {
     queryFn: fetchBusinessTimezones,
     enabled,
     staleTime: 60 * 60 * 1000,
+  })
+}
+
+export function useBusinessHours() {
+  return useQuery({ queryKey: settingsKeys.businessHours, queryFn: fetchBusinessHours })
+}
+
+export function useSaveBusinessHours() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: saveBusinessHours,
+    onSuccess: (data) => queryClient.setQueryData(settingsKeys.businessHours, data),
   })
 }
 

@@ -10,7 +10,6 @@ from app.modules.automations.domain.flow_graph import normalize_edges, validate_
 from app.modules.automations.domain.replies import classify_customer_reply
 from app.modules.automations.domain.rules import (
     FLOW_COORDINATE_LIMIT,
-    is_business_hours,
     matches_static_conditions,
     normalize_conditions,
     normalize_flow_position,
@@ -58,19 +57,6 @@ class TestRenderVariables:
     def test_detects_unknown_variables(self):
         assert unknown_variables("{{nombre}} y {{inventada}}") == {"inventada"}
         assert unknown_variables("{{nombre}} {{telefono}}") == set()
-
-
-class TestBusinessHours:
-    @pytest.mark.parametrize("hour,expected", [(7, False), (8, True), (17, True), (18, False)])
-    def test_weekday_boundaries(self, hour, expected):
-        # 2026-07-20 es lunes.
-        assert is_business_hours(datetime(2026, 7, 20, hour, tzinfo=LIMA)) is expected
-
-    def test_weekend_is_always_outside(self):
-        saturday = datetime(2026, 7, 25, 10, tzinfo=LIMA)
-        sunday = datetime(2026, 7, 26, 10, tzinfo=LIMA)
-        assert not is_business_hours(saturday)
-        assert not is_business_hours(sunday)
 
 
 class TestNormalizeConditions:

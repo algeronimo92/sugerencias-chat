@@ -5,7 +5,7 @@ mensaje del cliente, lo que sea que ocurra primero.
 
 import dataclasses
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,6 +16,7 @@ from app.modules.automations.application.engine import run_visual_execution
 from app.modules.automations.domain.replies import match_question_button
 from app.modules.automations.domain.validation import normalize_question, normalize_wait_any_conditions
 from app.modules.automations.infrastructure import worker
+from app.modules.platform.business_hours import BusinessHours
 from tests.conftest import make_chat, make_execution, make_rule
 
 
@@ -224,9 +225,19 @@ class TestRunVisualExecutionWaitAny:
         assert wait_result["branch"] == "timer"
 
 
+def _hours(*, open_now: bool):
+    """Un negocio que atiende siempre o nunca, sin depender del reloj del test."""
+    days = {day: (time.min, time.max) for day in range(7)} if open_now else {}
+
+    async def load():
+        return BusinessHours(timezone=timezone.utc, days=days)
+
+    return load
+
+
 class TestRunVisualExecutionWaitAnyBusinessHours:
-    async def test_overrides_the_natural_branch_when_outside_business_hours(self, deps, executions, monkeypatch):
-        monkeypatch.setattr(flow_nodes, "is_business_hours", lambda now: False)
+    async def test_overrides_the_natural_branch_when_outside_business_hours(self, deps, executions):
+        deps = dataclasses.replace(deps, business_hours=_hours(open_now=False))
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
             {"id": "business_hours", "kind": "business_hours"},
@@ -248,8 +259,8 @@ class TestRunVisualExecutionWaitAnyBusinessHours:
         wait_result = next(r for r in final["action_results"] if r["type"] == "wait_any")
         assert wait_result["branch"] == "business_hours"
 
-    async def test_does_not_override_when_within_business_hours(self, deps, executions, monkeypatch):
-        monkeypatch.setattr(flow_nodes, "is_business_hours", lambda now: True)
+    async def test_does_not_override_when_within_business_hours(self, deps, executions):
+        deps = dataclasses.replace(deps, business_hours=_hours(open_now=True))
         flow = wait_any_flow_with(
             {"id": "timer", "kind": "timer", "seconds": 10},
             {"id": "business_hours", "kind": "business_hours"},

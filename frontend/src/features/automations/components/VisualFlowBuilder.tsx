@@ -1177,7 +1177,7 @@ function EntryConditionsEditor({ conditions, updateConditions, users, tags, high
     </label>
     <div className="space-y-2 rounded-xl border border-wa-border p-3 dark:border-wa-border-dark">
       <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.require_open_window} onChange={event => updateConditions({ ...conditions, require_open_window: event.target.checked })} />Ventana de 24 h abierta (el cliente escribió hace menos de 24 h)</label>
-      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.business_hours_only} onChange={event => updateConditions({ ...conditions, business_hours_only: event.target.checked })} />Horario laboral (lunes a viernes, 08:00–18:00)</label>
+      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.business_hours_only} onChange={event => updateConditions({ ...conditions, business_hours_only: event.target.checked })} />Solo en el horario de atención (el de Configuración)</label>
     </div>
     <label className="grid gap-1 text-[10px] text-wa-muted">No repetir para el mismo lead durante (minutos)
       <input type="number" min={1} max={43200} placeholder="Sin límite" value={conditions.cooldown_minutes ?? ''} onChange={event => updateConditions({ ...conditions, cooldown_minutes: event.target.value ? Number(event.target.value) : null })} className={fieldClass} />
