@@ -52,6 +52,11 @@ const TemplatesPage = lazy(() =>
     default: module.TemplatesPage,
   })),
 );
+const TemplateEditorPage = lazy(() =>
+  import("../features/templates/page").then((module) => ({
+    default: module.TemplateEditorPage,
+  })),
+);
 const DashboardPage = lazy(() =>
   import("../features/dashboard/page").then((module) => ({
     default: module.DashboardPage,
@@ -229,6 +234,8 @@ const crmRoutes = createRoutesFromElements(
       </Route>
       <Route element={<RequirePermission anyOf={["templates.manage"]} />}>
         <Route path="templates" element={<TemplatesPage />} />
+        <Route path="templates/nueva" element={<TemplateEditorPage />} />
+        <Route path="templates/:templateId" element={<TemplateEditorPage />} />
       </Route>
       <Route element={<RequirePermission anyOf={["media_library.manage"]} />}>
         <Route path="media-library" element={<MediaLibraryPage />} />

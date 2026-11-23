@@ -10,7 +10,7 @@ import type { TemplateAttachment } from '../types'
  */
 export const MAX_TEMPLATE_ATTACHMENTS = 10
 /** El mismo tope que `MEDIA_CAPTION_MAX_LENGTH` del backend (contrato de Meta). */
-const CAPTION_MAX_LENGTH = 1024
+export const CAPTION_MAX_LENGTH = 1024
 
 export type DraftAttachment =
   | { key: string; source: 'saved'; attachment: TemplateAttachment }

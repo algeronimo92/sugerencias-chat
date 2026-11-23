@@ -65,15 +65,43 @@ export function templateVariables(...values: string[]) {
   return new Set(values.flatMap(value => Array.from(value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g), match => match[1].trim())))
 }
 
+/**
+ * La parte del formulario a la que pertenece un problema. El editor muestra
+ * cada mensaje junto a su campo: antes salían todos en una lista numerada
+ * arriba del formulario, fuera de la vista de quien acababa de tocar
+ * «Guardar» al final (2026-11-23).
+ */
+export type TemplateField =
+  | 'name'
+  | 'content'
+  | 'category'
+  | 'shortcut'
+  | 'officialName'
+  | 'officialLanguage'
+  | 'officialParameterValues'
+  | 'officialHeader'
+  | 'officialFooter'
+  | 'officialButtons'
+  | 'interactiveTitle'
+  | 'interactiveFooter'
+  | 'interactiveButtonText'
+  | 'interactiveButtons'
+  | 'interactiveSections'
+
+export interface TemplateFieldIssue {
+  field: TemplateField
+  message: string
+}
+
 type Issues = z.RefinementCtx
 
 /** Un problema del formulario, con el mismo texto que ve el usuario. */
-function report(ctx: Issues, message: string) {
-  ctx.addIssue({ code: 'custom', message })
+function report(ctx: Issues, field: TemplateField, message: string) {
+  ctx.addIssue({ code: 'custom', message, path: [field] })
 }
 
-function withinLimit(ctx: Issues, value: string, limit: number | undefined, message: (limit: number) => string) {
-  if (exceedsLimit(value, limit)) report(ctx, message(limit as number))
+function withinLimit(ctx: Issues, field: TemplateField, value: string, limit: number | undefined, message: (limit: number) => string) {
+  if (exceedsLimit(value, limit)) report(ctx, field, message(limit as number))
 }
 
 function templateKind(form: TemplateFormState): 'official' | 'button' | 'list' | 'text' {
@@ -117,67 +145,68 @@ function officialRules(form: TemplateFormState, _limits: InteractiveLimits | und
   const content = form.content.trim()
   const officialName = form.officialName.trim()
   if (!/^[a-z0-9_]+$/.test(officialName) || officialName.length > 512) {
-    report(ctx, 'El nombre oficial admite minúsculas, números y guiones bajos (máximo 512).')
+    report(ctx, 'officialName', 'El nombre oficial admite minúsculas, números y guiones bajos (máximo 512).')
   }
   if (!/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(form.officialLanguage.trim())) {
-    report(ctx, 'El idioma oficial debe tener un formato como es, es_PE o en_US.')
+    report(ctx, 'officialLanguage', 'El idioma oficial debe tener un formato como es, es_PE o en_US.')
   }
 
   const variables = templateVariables(content)
   if ([...variables].some(value => !/^\d+$/.test(value))) {
-    report(ctx, 'El contenido oficial solo admite variables numéricas como {{1}}, {{2}}, ...')
+    report(ctx, 'content', 'El contenido oficial solo admite variables numéricas como {{1}}, {{2}}, ...')
   }
   const positions = [...variables].filter(value => /^\d+$/.test(value)).map(Number).sort((a, b) => a - b)
   const expected = Array.from({ length: positions.at(-1) ?? 0 }, (_, index) => index + 1)
   if (positions.length !== expected.length || positions.some((value, index) => value !== expected[index])) {
-    report(ctx, 'Las variables oficiales deben ser consecutivas: {{1}}, {{2}}, ...')
+    report(ctx, 'content', 'Las variables oficiales deben ser consecutivas: {{1}}, {{2}}, ...')
   }
   if (form.officialParameterValues.length !== expected.length || form.officialParameterValues.some(value => !value.trim())) {
-    report(ctx, 'Configura un valor para cada variable oficial.')
+    report(ctx, 'officialParameterValues', 'Configura un valor para cada variable oficial.')
   }
   const unknownParameters = [...templateVariables(...form.officialParameterValues)]
     .filter(value => !PARAMETER_KEYS.has(value))
   if (unknownParameters.length) {
-    report(ctx, `Variables no reconocidas en los parámetros: ${unknownParameters.map(value => `{{${value}}}`).join(', ')}.`)
+    report(ctx, 'officialParameterValues', `Variables no reconocidas en los parámetros: ${unknownParameters.map(value => `{{${value}}}`).join(', ')}.`)
   }
 
   if (form.officialHeaderType === 'text') {
     const headerText = form.officialHeaderText.trim()
-    if (!headerText) report(ctx, 'El encabezado de texto no puede estar vacío.')
-    else if (headerText.length > 60) report(ctx, 'El encabezado admite máximo 60 caracteres.')
-    if (templateVariables(headerText).size > 0) report(ctx, 'El encabezado no admite variables.')
+    if (!headerText) report(ctx, 'officialHeader', 'El encabezado de texto no puede estar vacío.')
+    else if (headerText.length > 60) report(ctx, 'officialHeader', 'El encabezado admite máximo 60 caracteres.')
+    if (templateVariables(headerText).size > 0) report(ctx, 'officialHeader', 'El encabezado no admite variables.')
   }
   if (form.officialHeaderType === 'image' && form.officialHeaderMediaAssetId == null) {
-    report(ctx, 'Selecciona una imagen para el encabezado.')
+    report(ctx, 'officialHeader', 'Selecciona una imagen para el encabezado.')
   }
 
   const footer = form.officialFooter.trim()
-  if (footer.length > 60) report(ctx, 'El pie admite máximo 60 caracteres.')
-  if (templateVariables(footer).size > 0) report(ctx, 'El pie no admite variables.')
+  if (footer.length > 60) report(ctx, 'officialFooter', 'El pie admite máximo 60 caracteres.')
+  if (templateVariables(footer).size > 0) report(ctx, 'officialFooter', 'El pie no admite variables.')
 
   officialButtonRules(form.officialButtons, ctx)
 }
 
 function officialButtonRules(buttons: TemplateFormState['officialButtons'], ctx: Issues) {
-  if (buttons.length > 3) report(ctx, 'Una plantilla oficial admite como máximo 3 botones.')
+  const field = 'officialButtons'
+  if (buttons.length > 3) report(ctx, field, 'Una plantilla oficial admite como máximo 3 botones.')
   const hasQuickReply = buttons.some(button => button.type === 'quick_reply')
   if (hasQuickReply && buttons.some(button => button.type !== 'quick_reply')) {
-    report(ctx, 'Los botones de respuesta rápida no pueden mezclarse con botones de URL o teléfono.')
+    report(ctx, field, 'Los botones de respuesta rápida no pueden mezclarse con botones de URL o teléfono.')
   }
   if (!hasQuickReply && buttons.length > 2) {
-    report(ctx, 'Una plantilla oficial admite como máximo 2 botones de URL o teléfono.')
+    report(ctx, field, 'Una plantilla oficial admite como máximo 2 botones de URL o teléfono.')
   }
   const seen = new Set<string>()
   for (const button of buttons) {
     const text = button.text.trim()
-    if (!text || seen.has(text.toLowerCase())) report(ctx, 'Cada botón necesita un texto único.')
-    else if (text.length > 25) report(ctx, 'El texto de cada botón admite máximo 25 caracteres.')
+    if (!text || seen.has(text.toLowerCase())) report(ctx, field, 'Cada botón necesita un texto único.')
+    else if (text.length > 25) report(ctx, field, 'El texto de cada botón admite máximo 25 caracteres.')
     seen.add(text.toLowerCase())
     if (button.type === 'url' && !/^https:\/\/\S+$/i.test(button.url?.trim() ?? '')) {
-      report(ctx, 'Las URL de botones deben ser completas y comenzar con https://.')
+      report(ctx, field, 'Las URL de botones deben ser completas y comenzar con https://.')
     }
     if (button.type === 'phone_number' && !/^\+?[1-9]\d{7,14}$/.test((button.phone_number ?? '').replace(/[\s()-]/g, ''))) {
-      report(ctx, 'El teléfono del botón debe incluir código de país y tener entre 8 y 15 dígitos.')
+      report(ctx, field, 'El teléfono del botón debe incluir código de país y tener entre 8 y 15 dígitos.')
     }
   }
 }
@@ -192,48 +221,50 @@ function internalVariableRules(form: TemplateFormState, ctx: Issues) {
   })
   const unknown = [...templateVariables(form.content.trim(), interactiveValues)]
     .filter(value => !ALLOWED_INTERNAL_VARIABLES.has(value))
-  if (unknown.length) report(ctx, `Variables no reconocidas: ${unknown.map(value => `{{${value}}}`).join(', ')}.`)
+  if (unknown.length) report(ctx, 'content', `Variables no reconocidas: ${unknown.map(value => `{{${value}}}`).join(', ')}.`)
 }
 
 function interactiveHeaderRules(form: TemplateFormState, limits: InteractiveLimits | undefined, ctx: Issues) {
   // El encabezado es opcional en Meta: si está, tiene su límite.
-  withinLimit(ctx, form.interactiveTitle.trim(), limits?.title, limit => `El título interactivo admite máximo ${limit} caracteres.`)
-  withinLimit(ctx, form.interactiveFooter.trim(), limits?.footer, limit => `El pie de mensaje admite máximo ${limit} caracteres.`)
+  withinLimit(ctx, 'interactiveTitle', form.interactiveTitle.trim(), limits?.title, limit => `El título interactivo admite máximo ${limit} caracteres.`)
+  withinLimit(ctx, 'interactiveFooter', form.interactiveFooter.trim(), limits?.footer, limit => `El pie de mensaje admite máximo ${limit} caracteres.`)
 }
 
 function buttonsRules(form: TemplateFormState, limits: InteractiveLimits | undefined, ctx: Issues) {
+  const field = 'interactiveButtons'
   internalVariableRules(form, ctx)
   interactiveHeaderRules(form, limits, ctx)
   // Meta solo acepta botones "reply" en un mensaje interactivo suelto: un
   // botón de URL, llamada o copiar código necesita una plantilla oficial.
   const buttons = form.interactiveButtons
   if (buttons.length < 1 || (limits && buttons.length > limits.max_buttons)) {
-    report(ctx, `Configura entre 1 y ${limits?.max_buttons ?? 'el máximo de'} botones.`)
+    report(ctx, field, `Configura entre 1 y ${limits?.max_buttons ?? 'el máximo de'} botones.`)
   }
   const texts = new Set<string>()
   const ids = new Set<string>()
   buttons.forEach((button, index) => {
     const label = button.title.trim()
-    if (!label) report(ctx, `El botón ${index + 1} necesita texto visible.`)
-    else if (exceedsLimit(label, limits?.button_text)) report(ctx, `El texto del botón ${index + 1} admite máximo ${limits?.button_text} caracteres.`)
-    else if (texts.has(label.toLowerCase())) report(ctx, `El texto del botón ${index + 1} está repetido.`)
+    if (!label) report(ctx, field, `El botón ${index + 1} necesita texto visible.`)
+    else if (exceedsLimit(label, limits?.button_text)) report(ctx, field, `El texto del botón ${index + 1} admite máximo ${limits?.button_text} caracteres.`)
+    else if (texts.has(label.toLowerCase())) report(ctx, field, `El texto del botón ${index + 1} está repetido.`)
     texts.add(label.toLowerCase())
     const value = button.id.trim()
-    if (!value) report(ctx, `El botón ${index + 1} necesita un ID.`)
-    withinLimit(ctx, value, limits?.button_id, limit => `El ID del botón ${index + 1} admite máximo ${limit} caracteres.`)
-    if (value && ids.has(value)) report(ctx, `El ID del botón ${index + 1} está repetido.`)
+    if (!value) report(ctx, field, `El botón ${index + 1} necesita un ID.`)
+    withinLimit(ctx, field, value, limits?.button_id, limit => `El ID del botón ${index + 1} admite máximo ${limit} caracteres.`)
+    if (value && ids.has(value)) report(ctx, field, `El ID del botón ${index + 1} está repetido.`)
     ids.add(value)
   })
 }
 
 function listRules(form: TemplateFormState, limits: InteractiveLimits | undefined, ctx: Issues) {
+  const field = 'interactiveSections'
   internalVariableRules(form, ctx)
   interactiveHeaderRules(form, limits, ctx)
   const buttonText = form.interactiveButtonText.trim()
-  if (!buttonText) report(ctx, 'El texto que abre la lista es obligatorio.')
-  else withinLimit(ctx, buttonText, limits?.list_button_text, limit => `El texto que abre la lista admite máximo ${limit} caracteres.`)
+  if (!buttonText) report(ctx, 'interactiveButtonText', 'El texto que abre la lista es obligatorio.')
+  else withinLimit(ctx, 'interactiveButtonText', buttonText, limits?.list_button_text, limit => `El texto que abre la lista admite máximo ${limit} caracteres.`)
   if (!form.interactiveSections.length || (limits && form.interactiveSections.length > limits.max_sections)) {
-    report(ctx, `Configura entre 1 y ${limits?.max_sections ?? 'el máximo de'} secciones.`)
+    report(ctx, field, `Configura entre 1 y ${limits?.max_sections ?? 'el máximo de'} secciones.`)
   }
 
   const sectionTitles = new Set<string>()
@@ -241,26 +272,26 @@ function listRules(form: TemplateFormState, limits: InteractiveLimits | undefine
   let totalRows = 0
   form.interactiveSections.forEach((section, sectionIndex) => {
     const sectionTitle = section.title.trim()
-    if (!sectionTitle) report(ctx, `La sección ${sectionIndex + 1} necesita título.`)
-    else if (exceedsLimit(sectionTitle, limits?.section_title)) report(ctx, `El título de la sección ${sectionIndex + 1} admite máximo ${limits?.section_title} caracteres.`)
-    else if (sectionTitles.has(sectionTitle.toLowerCase())) report(ctx, `El título de la sección ${sectionIndex + 1} está repetido.`)
+    if (!sectionTitle) report(ctx, field, `La sección ${sectionIndex + 1} necesita título.`)
+    else if (exceedsLimit(sectionTitle, limits?.section_title)) report(ctx, field, `El título de la sección ${sectionIndex + 1} admite máximo ${limits?.section_title} caracteres.`)
+    else if (sectionTitles.has(sectionTitle.toLowerCase())) report(ctx, field, `El título de la sección ${sectionIndex + 1} está repetido.`)
     sectionTitles.add(sectionTitle.toLowerCase())
-    if (!section.rows.length) report(ctx, `La sección ${sectionIndex + 1} necesita al menos una opción.`)
+    if (!section.rows.length) report(ctx, field, `La sección ${sectionIndex + 1} necesita al menos una opción.`)
     section.rows.forEach((row, rowIndex) => {
       totalRows += 1
       const prefix = `Opción ${rowIndex + 1} de la sección ${sectionIndex + 1}`
-      if (!row.title.trim()) report(ctx, `${prefix}: el título es obligatorio.`)
-      else withinLimit(ctx, row.title.trim(), limits?.row_title, limit => `${prefix}: el título admite máximo ${limit} caracteres.`)
+      if (!row.title.trim()) report(ctx, field, `${prefix}: el título es obligatorio.`)
+      else withinLimit(ctx, field, row.title.trim(), limits?.row_title, limit => `${prefix}: el título admite máximo ${limit} caracteres.`)
       // La descripción es opcional en Meta.
-      withinLimit(ctx, row.description.trim(), limits?.row_description, limit => `${prefix}: la descripción admite máximo ${limit} caracteres.`)
+      withinLimit(ctx, field, row.description.trim(), limits?.row_description, limit => `${prefix}: la descripción admite máximo ${limit} caracteres.`)
       const rowId = row.id.trim()
-      if (!rowId) report(ctx, `${prefix}: el ID es obligatorio.`)
-      else if (exceedsLimit(rowId, limits?.row_id)) report(ctx, `${prefix}: el ID admite máximo ${limits?.row_id} caracteres.`)
-      else if (rowIds.has(rowId)) report(ctx, `${prefix}: el ID está repetido.`)
+      if (!rowId) report(ctx, field, `${prefix}: el ID es obligatorio.`)
+      else if (exceedsLimit(rowId, limits?.row_id)) report(ctx, field, `${prefix}: el ID admite máximo ${limits?.row_id} caracteres.`)
+      else if (rowIds.has(rowId)) report(ctx, field, `${prefix}: el ID está repetido.`)
       rowIds.add(rowId)
     })
   })
-  if (limits && totalRows > limits.max_rows) report(ctx, `Una lista admite máximo ${limits.max_rows} opciones en total.`)
+  if (limits && totalRows > limits.max_rows) report(ctx, field, `Una lista admite máximo ${limits.max_rows} opciones en total.`)
 }
 
 type TemplateKindRules = (form: TemplateFormState, limits: InteractiveLimits | undefined, ctx: Issues) => void
@@ -280,7 +311,13 @@ export function templateFormSchema(form: TemplateFormState, limits?: Interactive
   })
 }
 
-export function validateTemplateForm(form: TemplateFormState, limits?: InteractiveLimits): string[] {
+/** Los problemas del formulario, cada uno con el campo al que pertenece. */
+export function templateFormIssues(form: TemplateFormState, limits?: InteractiveLimits): TemplateFieldIssue[] {
   const result = templateFormSchema(form, limits).safeParse(form)
-  return result.success ? [] : result.error.issues.map(issue => issue.message)
+  if (result.success) return []
+  return result.error.issues.map(issue => ({ field: issue.path[0] as TemplateField, message: issue.message }))
+}
+
+export function validateTemplateForm(form: TemplateFormState, limits?: InteractiveLimits): string[] {
+  return templateFormIssues(form, limits).map(issue => issue.message)
 }
