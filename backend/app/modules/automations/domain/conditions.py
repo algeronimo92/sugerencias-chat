@@ -6,11 +6,10 @@ y la aplicación lo consulta solo cuando el bloque lo pregunta.
 
 from __future__ import annotations
 
-from datetime import datetime
 
 from app.modules.automations.domain.types import FlowConditionType, FlowHandle
 
-from app.modules.automations.domain.rules import business_timezone, is_business_hours, normalize_reply_text
+from app.modules.automations.domain.rules import normalize_reply_text
 
 _MESSAGE_TEXT_CONDITIONS = {
     FlowConditionType.MESSAGE_CONTAINS,
@@ -34,13 +33,21 @@ def needs_service_window(data: dict) -> bool:
     )
 
 
+def needs_business_hours(data: dict) -> bool:
+    """¿El bloque pregunta por el horario de atención?"""
+    return any(
+        condition.get("condition_type") == FlowConditionType.BUSINESS_HOURS
+        for condition in _conditions_of(data)
+    )
+
+
 def match_flow_condition(
     data: dict,
     chat: dict,
     message_context: dict | None,
     *,
-    now: datetime,
     window_open: bool | None = None,
+    in_business_hours: bool | None = None,
 ) -> tuple[bool, str]:
     """`message_context` es el mensaje del cliente que trajo la ejecución
     hasta acá (ver `execution_message_context`): su texto, su tipo y la
@@ -104,7 +111,9 @@ def match_flow_condition(
     if condition_type == FlowConditionType.WHATSAPP_WINDOW_OPEN:
         matches = bool(window_open)
         return matches, "Ventana de WhatsApp abierta" if matches else "Ventana de WhatsApp cerrada"
-    matches = is_business_hours(now.astimezone(business_timezone()))
+    # El horario es de cada negocio: lo resuelve la capa de aplicación, igual
+    # que la ventana de WhatsApp.
+    matches = bool(in_business_hours)
     return matches, "Dentro del horario laboral" if matches else "Fuera del horario laboral"
 
 
@@ -113,8 +122,8 @@ def match_condition_node(
     chat: dict,
     message_context: dict | None,
     *,
-    now: datetime,
     window_open: bool | None = None,
+    in_business_hours: bool | None = None,
 ) -> tuple[bool, str, str]:
     """OR entre grupos y AND dentro de cada grupo. Devuelve si cumple, la
     salida por la que sigue y el detalle para el historial.
@@ -124,7 +133,9 @@ def match_condition_node(
     """
     groups = data.get("condition_groups")
     if not isinstance(groups, list):
-        matches, detail = match_flow_condition(data, chat, message_context, now=now, window_open=window_open)
+        matches, detail = match_flow_condition(
+            data, chat, message_context, window_open=window_open, in_business_hours=in_business_hours,
+        )
         return matches, (FlowHandle.YES if matches else FlowHandle.NO), detail
     failed_groups: list[str] = []
     for group_position, group in enumerate(groups, start=1):
@@ -132,7 +143,7 @@ def match_condition_node(
         group_matches = True
         for condition in group.get("conditions") or []:
             matches, detail = match_flow_condition(
-                condition, chat, message_context, now=now, window_open=window_open,
+                condition, chat, message_context, window_open=window_open, in_business_hours=in_business_hours,
             )
             details.append(detail)
             if not matches:

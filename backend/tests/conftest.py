@@ -8,6 +8,7 @@ antes obligaba a mandar WhatsApps reales para probar un cambio.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -17,6 +18,7 @@ from tests.conversation_fakes import in_memory_conversations  # noqa: F401  (fix
 from tests.automation_fakes import InMemoryExecutionStore, in_memory_automations  # noqa: F401  (fixture compartido)
 
 from app.modules.automations.application.deps import AutomationDeps
+from app.modules.platform.business_hours import DEFAULT_DAYS, BusinessHours
 
 
 @dataclass
@@ -206,9 +208,14 @@ def deps(
         recorder.reactions.append((chat_id, wa_message_id, emoji, from_me))
         return {"id": 42, "wa_message_id": wa_message_id}
 
+    async def default_business_hours():
+        # El horario de un negocio que no configuró nada.
+        return BusinessHours(timezone=ZoneInfo("America/Lima"), days=dict(DEFAULT_DAYS))
+
     return AutomationDeps(
         executions=executions,
         now=lambda: frozen_now,
+        business_hours=default_business_hours,
         publish=publish,
         fetch_chat=nothing,
         latest_message=nothing,

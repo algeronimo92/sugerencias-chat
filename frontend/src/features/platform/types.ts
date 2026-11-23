@@ -71,6 +71,10 @@ export interface StatusOptions {
   pollUntilConnected?: boolean
 }
 
+/** El horario de un día. `weekday` va de 0 (lunes) a 6 (domingo). */
+export type BusinessDayHours = ApiSchemas['BusinessDayHours']
+export type BusinessHours = ApiSchemas['BusinessHoursOut']
+
 export interface BusinessTimezoneItem {
   id: string
   label: string

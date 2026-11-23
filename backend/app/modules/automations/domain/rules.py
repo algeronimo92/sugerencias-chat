@@ -15,8 +15,6 @@ from app.modules.leads.ports.types import LEAD_STAGE_KEY_PATTERN
 from app.modules.automations.domain.errors import InvalidAutomation
 
 BUSINESS_TIMEZONE_KEY = "America/Lima"
-BUSINESS_START_HOUR = 8
-BUSINESS_END_HOUR = 18
 CRM_VARIABLES = {"nombre", "telefono", "servicio", "vendedor", "fecha_actual"}
 MAX_COOLDOWN_MINUTES = 43200
 
@@ -56,10 +54,6 @@ def render_variables(value: str, chat: dict, now: datetime | None = None) -> str
 
 def unknown_variables(value: str) -> set[str]:
     return set(_VARIABLE_PATTERN.findall(value)) - CRM_VARIABLES
-
-
-def is_business_hours(now: datetime) -> bool:
-    return now.weekday() < 5 and BUSINESS_START_HOUR <= now.hour < BUSINESS_END_HOUR
 
 
 def normalize_conditions(raw_conditions: object) -> dict:

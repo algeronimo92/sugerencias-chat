@@ -22,7 +22,7 @@ from app.modules.automations.application.conditions import matches_condition_nod
 from app.modules.automations.application.deps import AutomationDeps
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.execution import child_flow_payload, require_invocable
-from app.modules.automations.domain.rules import business_timezone, is_business_hours, render_variables, wait_seconds
+from app.modules.automations.domain.rules import render_variables, wait_seconds
 from app.modules.automations.domain.templates import automatic_template_problem, is_official
 from app.modules.automations.domain.errors import StepFailed
 
@@ -245,7 +245,7 @@ class WaitAnyNode(FlowNodeHandler):
         # "Excepto horas laborales" tiene prioridad sobre cualquier otra rama.
         branch = run.state.get("resume_reason") or WaitAnyConditionKind.TIMER
         has_business_hours = any(c["kind"] == WaitAnyConditionKind.BUSINESS_HOURS for c in conditions)
-        if has_business_hours and not is_business_hours(datetime.now(business_timezone())):
+        if has_business_hours and not (await run.deps.business_hours()).contains(run.deps.now()):
             branch = WaitAnyConditionKind.BUSINESS_HOURS
         run.record(node["id"], type=FlowNodeType.WAIT_ANY, status=AutomationExecutionStatus.COMPLETED, branch=branch)
         next_id = run.edges.get((node["id"], branch))

@@ -6,8 +6,8 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.modules.automations.application.deps import AutomationDeps
-from app.modules.automations.domain.conditions import match_condition_node, needs_service_window
-from app.modules.automations.domain.rules import business_timezone, is_business_hours, matches_static_conditions
+from app.modules.automations.domain.conditions import match_condition_node, needs_business_hours, needs_service_window
+from app.modules.automations.domain.rules import matches_static_conditions
 
 
 async def _window_is_open(chat: dict, deps: AutomationDeps) -> bool:
@@ -34,8 +34,10 @@ async def matches_condition_values(
         return False, reason
     if conditions.get("require_open_window") and not await _window_is_open(chat, deps):
         return False, "La ventana de WhatsApp está cerrada"
-    if conditions.get("business_hours_only") and not is_business_hours(deps.now().astimezone(business_timezone())):
-        return False, "Fuera del horario laboral (lunes a viernes, 08:00–18:00)"
+    if conditions.get("business_hours_only"):
+        hours = await deps.business_hours()
+        if not hours.contains(deps.now()):
+            return False, f"Fuera del horario de atención ({hours.describe()})"
     return True, None
 
 
@@ -46,4 +48,9 @@ async def matches_condition_node(
     message_context: dict | None = None,
 ) -> tuple[bool, str, str]:
     window_open = await _window_is_open(chat, deps) if needs_service_window(data) else None
-    return match_condition_node(data, chat, message_context, now=deps.now(), window_open=window_open)
+    in_business_hours = (
+        (await deps.business_hours()).contains(deps.now()) if needs_business_hours(data) else None
+    )
+    return match_condition_node(
+        data, chat, message_context, window_open=window_open, in_business_hours=in_business_hours,
+    )

@@ -14,11 +14,11 @@ NOW = datetime(2026, 7, 20, 15, 0, tzinfo=timezone.utc)
 
 
 def evaluate(data, chat, context):
-    return match_flow_condition(data, chat, context, now=NOW)
+    return match_flow_condition(data, chat, context)
 
 
 def evaluate_node(data, chat, context):
-    return match_condition_node(data, chat, context, now=NOW)
+    return match_condition_node(data, chat, context)
 
 
 class TestNormalizeMessageCondition:

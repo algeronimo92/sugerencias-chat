@@ -131,6 +131,26 @@ class GoogleCalendarItem(BaseModel):
 class GoogleCalendarSelection(BaseModel):
     calendar_id: str
 
+class BusinessDayHours(BaseModel):
+    # 0 = lunes … 6 = domingo, como datetime.weekday().
+    weekday: int = Field(ge=0, le=6)
+    open: bool
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class BusinessHoursOut(BaseModel):
+    # Los siete días, también los cerrados: la pantalla los dibuja todos.
+    days: list[BusinessDayHours]
+    timezone: str
+    # False mientras nadie lo guardó: se está usando el horario de siempre.
+    configured: bool
+
+
+class UpdateBusinessHoursRequest(BaseModel):
+    days: list[BusinessDayHours] = Field(min_length=7, max_length=7)
+
+
 class BusinessTimezoneItem(BaseModel):
     id: str
     label: str

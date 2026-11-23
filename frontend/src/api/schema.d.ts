@@ -1722,6 +1722,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/business-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Business Hours */
+        get: operations["get_business_hours_api_settings_business_hours_get"];
+        /** Put Business Hours */
+        put: operations["put_business_hours_api_settings_business_hours_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/meta/public-config": {
         parameters: {
             query?: never;
@@ -5328,6 +5346,26 @@ export interface components {
         BrandingLogoBody: {
             /** Data Base64 */
             data_base64: string;
+        };
+        /** BusinessDayHours */
+        BusinessDayHours: {
+            /** Weekday */
+            weekday: number;
+            /** Open */
+            open: boolean;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+        };
+        /** BusinessHoursOut */
+        BusinessHoursOut: {
+            /** Days */
+            days: components["schemas"]["BusinessDayHours"][];
+            /** Timezone */
+            timezone: string;
+            /** Configured */
+            configured: boolean;
         };
         /** BusinessTimezoneItem */
         BusinessTimezoneItem: {
@@ -9620,6 +9658,11 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** UpdateBusinessHoursRequest */
+        UpdateBusinessHoursRequest: {
+            /** Days */
+            days: components["schemas"]["BusinessDayHours"][];
+        };
         /** UpdatePlatformSettingsBody */
         UpdatePlatformSettingsBody: {
             /** Values */
@@ -13184,6 +13227,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BusinessTimezoneItem"][];
+                };
+            };
+        };
+    };
+    get_business_hours_api_settings_business_hours_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessHoursOut"];
+                };
+            };
+        };
+    };
+    put_business_hours_api_settings_business_hours_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBusinessHoursRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessHoursOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

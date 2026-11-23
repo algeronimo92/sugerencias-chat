@@ -27,6 +27,7 @@ from app.modules.leads import public as leads
 from app.modules.leads.public import Actor, LeadNotFound, TagNotAvailable
 from app.modules.media.ports.media_library_service import get_media_asset
 from app.modules.notifications.ports.service import create_system_notification
+from app.modules.platform.ports.business_hours import BusinessHours, business_hours
 from app.modules.tasks.ports.repository import create_task
 
 
@@ -95,6 +96,9 @@ class AutomationDeps:
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
+    # El horario de atención del negocio, en su zona horaria. Era una
+    # constante del motor (lunes a viernes 08:00–18:00, Lima).
+    business_hours: Callable[[], Awaitable[BusinessHours]] = business_hours
 
     load_template: Callable[[int], Awaitable[dict | None]] = fetch_template_for_delivery
     # (plantilla oficial, parámetros resueltos) -> ítems de outbox. El mismo

@@ -6,6 +6,7 @@ import { Button } from '../../../shared/ui/Button'
 import { useSettings } from '../hooks/useSettings'
 import { groupSettings, useSettingsDraft } from '../settingsDraft'
 import { SettingField } from './SettingField'
+import { BusinessHoursCard } from './BusinessHoursCard'
 import { DbPrivilegesPanel } from './DbPrivilegesPanel'
 import { RolesPanel } from './RolesPanel'
 import { UsersPanel } from './UsersPanel'
@@ -64,6 +65,8 @@ function GeneralSettings() {
               </div>
             </section>
           ))}
+
+          <BusinessHoursCard />
         </div>
       </div>
 

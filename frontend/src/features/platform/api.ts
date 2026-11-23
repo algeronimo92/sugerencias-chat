@@ -1,7 +1,7 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
 import type { AccesoBase, CredencialesBase, DbPrivileges, RolesMatrix } from './types'
-import type { AppUser, AsistenteNegocio, CallingReadiness, CallingSettings, CallingUpdate, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
+import type { AppUser, AsistenteNegocio, CallingReadiness, CallingSettings, CallingUpdate, BusinessDayHours, BusinessHours, BusinessTimezoneItem, CreateUserPayload, EmailOAuthProvider, EmailSettingsPayload, EmailSettingsStatus, EmailTestResult, GoogleCalendarItem, GoogleCalendarStatus, IntegracionNegocio, InvitationLink, MarcaGuardada, MetaConversionPage, MetaConversionsStatus, MetaConversionsUpdate, MetaEmbeddedSignupPayload, MetaPublicConfig, OnboardingStatus, OperadorActual, Organization, OrganizationList, PlatformEmailPayload, PlatformEmailStatus, PlatformSetting, ResumenNegocio, SellerOption, SettingItem, StarterPackResult, UpdateUserPayload, WhatsappCostsSummary, WhatsappStatus, KnowledgeTemplate, KnowledgeTemplateInput } from './types';
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data } = await client.get<ApiResponse<'/api/users', 'get'>>('/api/users')
@@ -170,6 +170,14 @@ export async function fetchBusinessTimezones(): Promise<BusinessTimezoneItem[]> 
   return (
       await client.get<ApiResponse<'/api/settings/timezones', 'get'>>('/api/settings/timezones')
     ).data
+}
+
+export async function fetchBusinessHours(): Promise<BusinessHours> {
+  return (await client.get<ApiResponse<'/api/settings/business-hours', 'get'>>('/api/settings/business-hours')).data
+}
+
+export async function saveBusinessHours(days: BusinessDayHours[]): Promise<BusinessHours> {
+  return (await client.put<ApiResponse<'/api/settings/business-hours', 'put'>>('/api/settings/business-hours', { days })).data
 }
 
 export async function loginOperator(email: string, password: string) {
