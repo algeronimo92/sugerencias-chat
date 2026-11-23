@@ -51,7 +51,9 @@ export const MOBILE_TAB_PATHS: readonly string[] = ['/', '/tasks', '/contacts']
 /** Los chats tienen su propia ruta de detalle, así que no basta con comparar. */
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
   if (item.path === '/') return pathname === '/' || pathname.startsWith('/chat/')
-  return pathname === item.path
+  // Una sección sigue activa en sus pantallas hijas: el editor de plantillas
+  // vive en /templates/nueva y /templates/:id.
+  return pathname === item.path || pathname.startsWith(`${item.path}/`)
 }
 
 export type { Viewer }

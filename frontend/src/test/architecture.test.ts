@@ -93,7 +93,6 @@ const KNOWN_LARGE_COMPONENTS = [
   'features/chats/components/MessageBubble.tsx',
   'features/chats/components/TemplateSendDialog.tsx',
   'features/leads/components/LeadFormDialog.tsx',
-  'features/templates/components/TemplatesPage.tsx',
 ]
 
 const CONTRACT_TYPES = new Set(['ApiResponse'])
