@@ -276,6 +276,7 @@ class DashboardFlowRow(DashboardMetricItem):
     completed: int
     failed: int
     skipped: int
+    cancelled: int
     active: int
     # Las dos suman `value`.
     manual: int

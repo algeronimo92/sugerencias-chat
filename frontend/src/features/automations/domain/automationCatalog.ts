@@ -250,7 +250,10 @@ export const AutomationExecutionStatus = {
   Paused: 'paused',
   Completed: 'completed',
   Failed: 'failed',
+  // No aplicó: el motor decidió no correrla. Nadie la detuvo.
   Skipped: 'skipped',
+  // Alguien la detuvo: se canceló a mano, o pausaron o eliminaron la automatización.
+  Cancelled: 'cancelled',
 } as const
 export type AutomationExecutionStatusValue = ValueOf<typeof AutomationExecutionStatus>
 

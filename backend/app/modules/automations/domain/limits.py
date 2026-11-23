@@ -13,7 +13,7 @@ TRIGGER_TYPES = frozenset(AutomationTrigger)
 AUTOMATION_POLL_SECONDS = 10
 MAX_ACTIONS = 10
 # Estados no terminales de una ejecución: el flujo sigue "activo" sobre el
-# lead. El resto (completed/failed/skipped) ya terminó.
+# lead. El resto (completed/failed/skipped/cancelled) ya terminó.
 ACTIVE_EXECUTION_STATUSES = {
     AutomationExecutionStatus.SCHEDULED,
     AutomationExecutionStatus.RUNNING,

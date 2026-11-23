@@ -31,7 +31,7 @@ import type {
 AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
-import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, isManuallyCancelled, readableExecutionError } from '../utils/automationExecutions'
+import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, readableExecutionError } from '../utils/automationExecutions'
 import { EXECUTIONS_PAGE_LIMIT } from '../api'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
@@ -464,7 +464,7 @@ export function AutomationsPage() {
               </label>
               <label className={`flex min-h-9 items-center gap-2 rounded-lg border border-wa-border bg-white px-3 py-2 text-xs text-gray-600 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-300 ${historyStatus === AutomationExecutionStatus.Skipped ? 'opacity-50' : ''}`}>
                 <Checkbox checked={excludeSkipped} disabled={historyStatus === AutomationExecutionStatus.Skipped} onChange={event => setHideSkipped(event.target.checked)} />
-                Ocultar omitidas
+                Ocultar las que no aplicaron
               </label>
               {hasCustomHistoryFilters && <button type="button" onClick={resetHistoryFilters} className="min-h-9 rounded-lg px-3 py-2 text-xs font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/40">Limpiar filtros</button>}
               <span className="ml-auto flex min-h-9 items-center gap-1.5 text-[11px] text-wa-muted">{executionsFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{historyTruncated ? `Las ${EXECUTIONS_PAGE_LIMIT} más recientes` : `${executions.length} resultados`}</span>
@@ -472,7 +472,7 @@ export function AutomationsPage() {
             {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />Hay más ejecuciones de las que se muestran: estas son las {EXECUTIONS_PAGE_LIMIT} más recientes. Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.</p>}
             {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
               <details key={execution.id} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status, execution.error)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
                 {execution.rule_deleted && <div className="border-t border-wa-border bg-amber-50 px-4 py-2 text-[11px] text-amber-700 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-300">Automatización eliminada · historial conservado solo para auditoría.</div>}
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>
@@ -487,7 +487,7 @@ export function AutomationsPage() {
                       <MessageCircle className="h-3.5 w-3.5" />
                       Ir al chat
                     </button>}
-                    {!execution.rule_deleted && !isManuallyCancelled(execution) && (execution.status === AutomationExecutionStatus.Failed || execution.status === AutomationExecutionStatus.Skipped) && <button
+                    {!execution.rule_deleted && (execution.status === AutomationExecutionStatus.Failed || execution.status === AutomationExecutionStatus.Skipped) && <button
                       type="button"
                       disabled={retryExecution.isPending}
                       aria-busy={retryExecution.isPending && retryExecution.variables?.id === execution.id}

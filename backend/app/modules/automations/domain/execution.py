@@ -16,6 +16,7 @@ TERMINAL_STATUSES = frozenset({
     AutomationExecutionStatus.COMPLETED,
     AutomationExecutionStatus.FAILED,
     AutomationExecutionStatus.SKIPPED,
+    AutomationExecutionStatus.CANCELLED,
 })
 
 # Más profundo que esto es casi seguro un error de armado, y cada nivel es una

@@ -70,7 +70,7 @@ class SqlRuleStore:
                     AutomationExecutionStatus.PAUSED,
                 ]),
             ).values(
-                status=AutomationExecutionStatus.SKIPPED,
+                status=AutomationExecutionStatus.CANCELLED,
                 error="La automatización fue eliminada",
                 paused_at=None,
                 pause_scope=None,

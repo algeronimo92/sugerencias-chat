@@ -33,6 +33,7 @@ export interface DashboardFlowRow extends DashboardMetricItem {
   completed: number
   failed: number
   skipped: number
+  cancelled: number
   active: number
   /** Las dos suman `value`. Opcionales: una respuesta guardada de la versión
    *  anterior no las trae. */

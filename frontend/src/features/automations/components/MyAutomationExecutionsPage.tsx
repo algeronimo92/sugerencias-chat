@@ -21,7 +21,7 @@ isServiceWindowFailure,type AutomationExecutionStatusValue,
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 import { followedBranchText } from '../domain/flowBranches'
-import { executionStatusLabel, executionTriggerLabel, formatExecutionDate, isManuallyCancelled } from '../utils/automationExecutions'
+import { executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
@@ -39,7 +39,7 @@ import { ExecutionHistoryFilters } from './ExecutionHistoryFilters'
  * ------------------------------------------------------------------------- */
 
 type Tone = StatTone
-type GroupKey = 'all' | 'active' | 'completed' | 'failed' | 'skipped'
+type GroupKey = 'all' | 'active' | 'completed' | 'failed' | 'cancelled' | 'skipped'
 
 interface StatusGroup {
   key: GroupKey
@@ -78,8 +78,14 @@ const STATUS_GROUPS: readonly StatusGroup[] = [
     matches: status => status === AutomationExecutionStatus.Failed,
   },
   {
-    key: 'skipped', label: 'Omitidos', hint: 'El flujo no aplicaba a ese lead.',
-    emptyTitle: 'Ningún envío omitido en este período',
+    key: 'cancelled', label: 'Cancelados', hint: 'Alguien los detuvo antes de terminar.',
+    emptyTitle: 'Ningún envío cancelado en este período',
+    icon: Ban, tone: 'neutral',
+    matches: status => status === AutomationExecutionStatus.Cancelled,
+  },
+  {
+    key: 'skipped', label: 'No aplicaron', hint: 'El flujo no aplicaba a ese lead.',
+    emptyTitle: 'Ningún envío sin aplicar en este período',
     icon: SkipForward, tone: 'warning',
     matches: status => status === AutomationExecutionStatus.Skipped,
   },
@@ -93,6 +99,7 @@ function statusTone(status: AutomationExecutionStatusValue): Tone {
   if (status === AutomationExecutionStatus.Completed) return 'success'
   if (status === AutomationExecutionStatus.Failed) return 'danger'
   if (status === AutomationExecutionStatus.Skipped) return 'warning'
+  if (status === AutomationExecutionStatus.Cancelled) return 'neutral'
   if (status === AutomationExecutionStatus.Paused) return 'warning'
   return 'info'
 }
@@ -101,6 +108,7 @@ function statusIcon(status: AutomationExecutionStatusValue): LucideIcon {
   if (status === AutomationExecutionStatus.Completed) return CheckCircle2
   if (status === AutomationExecutionStatus.Failed) return XCircle
   if (status === AutomationExecutionStatus.Skipped) return SkipForward
+  if (status === AutomationExecutionStatus.Cancelled) return Ban
   if (status === AutomationExecutionStatus.Paused) return PauseCircle
   if (status === AutomationExecutionStatus.Running) return Loader2
   return Clock3
@@ -145,7 +153,7 @@ function rowSummary(execution: AutomationExecution) {
     if (isServiceWindowFailure(execution)) return 'No salió: la ventana de 24 h estaba cerrada'
     return execution.error ?? 'El flujo se cortó antes de terminar'
   }
-  if (isManuallyCancelled(execution)) return 'Se canceló antes de terminar'
+  if (execution.status === AutomationExecutionStatus.Cancelled) return 'Se canceló antes de terminar'
   if (execution.status === AutomationExecutionStatus.Skipped) return 'El flujo no aplicaba a este lead'
   const steps = execution.action_results?.length ?? 0
   const finished = execution.finished_at ? ` · terminó ${timeLabel(execution.finished_at)}` : ''
@@ -228,7 +236,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
         )}
 
         <span className="shrink-0 lg:w-28">
-          <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(execution.status, execution.error)}</Badge>
+          <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(execution.status)}</Badge>
         </span>
 
         <span

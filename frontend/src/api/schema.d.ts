@@ -5127,7 +5127,7 @@ export interface components {
          * AutomationExecutionStatus
          * @enum {string}
          */
-        AutomationExecutionStatus: "scheduled" | "running" | "completed" | "failed" | "skipped" | "paused";
+        AutomationExecutionStatus: "scheduled" | "running" | "completed" | "failed" | "skipped" | "cancelled" | "paused";
         /** AutomationFlowCreate */
         AutomationFlowCreate: {
             /** Name */
@@ -6099,6 +6099,8 @@ export interface components {
             failed: number;
             /** Skipped */
             skipped: number;
+            /** Cancelled */
+            cancelled: number;
             /** Active */
             active: number;
             /** Manual */

@@ -4,6 +4,8 @@ mensajes indefinidamente. Cubre la guarda de estado en cancel/retry y el
 corte del bucle en run_execution/run_visual_execution."""
 
 import dataclasses
+
+import pytest
 from unittest.mock import AsyncMock
 
 from app.modules.automations.ports.types import AutomationExecutionStatus
@@ -49,7 +51,7 @@ async def test_cancel_announces_and_returns_execution_when_applied(in_memory_aut
 
     result = await cancel_automation_execution(5)
 
-    assert result == {"id": 5, "status": AutomationExecutionStatus.SKIPPED}
+    assert result == {"id": 5, "status": AutomationExecutionStatus.CANCELLED}
     assert in_memory_automations.of(AutomationsChanged) == [AutomationsChanged()]
 
 
@@ -66,8 +68,9 @@ async def test_retry_returns_none_when_execution_already_moved_on(in_memory_auto
 
 
 class TestSaveExecution:
-    async def test_returns_false_when_row_already_skipped(self, deps, executions):
-        executions.add(stored_execution(id=1, status=AutomationExecutionStatus.SKIPPED))
+    @pytest.mark.parametrize("stopped", [AutomationExecutionStatus.CANCELLED, AutomationExecutionStatus.SKIPPED])
+    async def test_returns_false_when_row_was_already_stopped(self, deps, executions, stopped):
+        executions.add(stored_execution(id=1, status=stopped))
 
         saved = await save_execution(1, deps, status=AutomationExecutionStatus.RUNNING)
 
@@ -120,3 +123,17 @@ class TestRunVisualExecutionStopsAfterCancellation:
 
         assert recorder.tags_added == [(make_chat()["chat_id"], 1)]
         assert executions.save.await_count == 2
+
+
+async def test_an_execution_of_a_paused_rule_ends_cancelled_not_skipped(deps, executions):
+    """Pausar la automatización la detuvo una persona: no es que el flujo no
+    aplicara al lead. Se guardaba como skipped y el historial las mezclaba."""
+    executions.add(
+        stored_execution(id=1, status=AutomationExecutionStatus.RUNNING),
+        stored_rule(is_active=False),
+    )
+
+    await run_execution(1, deps)
+
+    assert executions.executions[1].status == AutomationExecutionStatus.CANCELLED
+    assert executions.executions[1].error == "La regla fue desactivada"

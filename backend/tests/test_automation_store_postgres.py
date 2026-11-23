@@ -167,14 +167,15 @@ async def test_a_lead_without_automations_in_progress_reports_none(tenant):
         assert await SqlExecutionStore().in_progress_for_lead(lead) is None
 
 
-async def test_a_cancelled_execution_is_never_overwritten_by_the_engine(tenant):
+@pytest.mark.parametrize("stopped", [AutomationExecutionStatus.CANCELLED, AutomationExecutionStatus.SKIPPED])
+async def test_a_stopped_execution_is_never_overwritten_by_the_engine(tenant, stopped):
     with tenant_context(tenant):
-        execution_id = await _execution(await _rule(), await _lead(), status=AutomationExecutionStatus.SKIPPED)
+        execution_id = await _execution(await _rule(), await _lead(), status=stopped)
 
         saved = await SqlExecutionStore().save(execution_id, status=AutomationExecutionStatus.RUNNING)
 
         assert saved is False
-        assert (await _row(execution_id)).status == AutomationExecutionStatus.SKIPPED
+        assert (await _row(execution_id)).status == stopped
 
 
 async def test_retrying_resets_attempts_and_records_the_window_override(tenant):
@@ -282,7 +283,7 @@ async def test_system_triggers_respect_the_lead_pause(tenant):
         assert await scheduling.schedule("message_received", await _lead(), "message:1") == 1
 
 
-async def test_deleting_a_rule_keeps_history_and_skips_what_was_pending(tenant):
+async def test_deleting_a_rule_keeps_history_and_cancels_what_was_pending(tenant):
     with tenant_context(tenant):
         rule_id = await _rule()
         pending = await _execution(rule_id, await _lead())
@@ -293,7 +294,7 @@ async def test_deleting_a_rule_keeps_history_and_skips_what_was_pending(tenant):
             assert await rules.retire(rule_id, NOW) == 1
 
         assert await rules.get(rule_id) is None
-        assert (await _row(pending)).status == AutomationExecutionStatus.SKIPPED
+        assert (await _row(pending)).status == AutomationExecutionStatus.CANCELLED
         async with session_scope() as session:
             assert (await session.scalar(select(AutomationRule.deleted_at).where(AutomationRule.id == rule_id))) is not None
 

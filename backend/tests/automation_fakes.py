@@ -53,7 +53,9 @@ class InMemoryExecutionStore:
         execution = self.executions.get(execution_id)
         if execution is None:
             return True
-        if getattr(execution, "status", None) == AutomationExecutionStatus.SKIPPED:
+        if getattr(execution, "status", None) in {
+            AutomationExecutionStatus.SKIPPED, AutomationExecutionStatus.CANCELLED,
+        }:
             return False
         for name, value in values.items():
             setattr(execution, name, value)
@@ -155,7 +157,7 @@ class InMemoryExecutionStore:
         return self._transition(
             execution_id,
             {AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.RUNNING, AutomationExecutionStatus.PAUSED},
-            status=AutomationExecutionStatus.SKIPPED, error="Cancelada manualmente", finished_at=now,
+            status=AutomationExecutionStatus.CANCELLED, error="Cancelada manualmente", finished_at=now,
         )
 
 
