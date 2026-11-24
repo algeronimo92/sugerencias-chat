@@ -47,6 +47,8 @@ test('la condición de horario muestra cuál es y deja cambiarlo sin salir del e
   await page.getByRole('button', { name: 'Condiciones de entrada' }).click()
 
   await expect(page.getByText('lun a vie 08:00–18:00')).toBeVisible()
+  // Junto al horario, la opción de cortar el seguimiento si una persona toma el chat.
+  await expect(page.getByRole('checkbox', { name: /Detener si alguien del equipo le escribe al cliente/ })).not.toBeChecked()
   await expect(page.getByText('Es el horario por defecto. ¿Es el de tu negocio?')).toBeVisible()
   await page.screenshot({ path: `test-results/horario-editor-aviso-${info.project.name}.png` })
 
