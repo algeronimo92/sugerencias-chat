@@ -30,10 +30,11 @@ import { AttachmentPreview, MediaAssetField } from '../../media/public/MediaAsse
 import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import type { FlowStarter } from '../domain/flowRecipes'
+import { edgesAfterRemovingOutput } from '../domain/positionalOutputs'
 import { useUsers } from '../../platform/public/useUsers'
 import { BusinessHoursHint } from '../../platform/public/BusinessHoursHint'
 import type { AppUser } from '../../platform/types'
-import { AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
+import { AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
@@ -516,27 +517,23 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
 
   /** Mismo saneo que replaceWaitAnyConditions, para cuando se quita un botón
    *  de una Pregunta: "other"/"timeout"/"media" siempre quedan válidos. */
-  function replaceQuestionButtons(node: Extract<AutomationFlowNode, { type: typeof NodeType.Question }>, buttons: QuestionButton[]) {
-    const validHandles = new Set<string>([
-      ...buttons.map(button => button.id),
-      QuestionHandle.Other, QuestionHandle.Timeout, QuestionHandle.Media,
-    ])
+  /** `removedIndex` es el botón que se quitó, si el cambio fue quitar uno:
+   *  las conexiones de los siguientes bajan un número con ellos. */
+  function replaceQuestionButtons(node: Extract<AutomationFlowNode, { type: typeof NodeType.Question }>, buttons: QuestionButton[], removedIndex?: number) {
     setFlow(current => ({
       ...current,
       nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { ...node.data, buttons } } : item),
-      edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
+      edges: removedIndex === undefined ? current.edges : edgesAfterRemovingOutput(current.edges, node.id, 'btn_', removedIndex),
     }), `node:${node.id}`)
   }
 
-  /** Mismo saneo que replaceQuestionButtons: al quitar una salida del reparto
-   *  los ids posteriores corren un lugar, así que se descartan las conexiones
-   *  cuyo handle ya no existe. */
-  function replaceRoundRobinOutputs(node: Extract<AutomationFlowNode, { type: typeof NodeType.RoundRobin }>, outputs: RoundRobinOutput[]) {
-    const validHandles = new Set<string>(outputs.map(output => output.id))
+  /** Igual que replaceQuestionButtons: al quitar una salida del reparto las
+   *  siguientes bajan un número y sus conexiones bajan con ellas. */
+  function replaceRoundRobinOutputs(node: Extract<AutomationFlowNode, { type: typeof NodeType.RoundRobin }>, outputs: RoundRobinOutput[], removedIndex?: number) {
     setFlow(current => ({
       ...current,
       nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: { outputs } } : item),
-      edges: current.edges.filter(edge => edge.source !== node.id || validHandles.has(edge.source_handle)),
+      edges: removedIndex === undefined ? current.edges : edgesAfterRemovingOutput(current.edges, node.id, 'out_', removedIndex),
     }), `node:${node.id}`)
   }
 
@@ -860,11 +857,11 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
             timeoutSeconds={selected.data.timeout_seconds}
             updateText={text => replaceNode({ ...selected, data: { ...selected.data, text } })}
             updateTimeout={timeout_seconds => replaceNode({ ...selected, data: { ...selected.data, timeout_seconds } })}
-            updateButtons={buttons => replaceQuestionButtons(selected, buttons)}
+            updateButtons={(buttons, removedIndex) => replaceQuestionButtons(selected, buttons, removedIndex)}
           />}
           {selected.type === NodeType.RoundRobin && <RoundRobinEditor
             outputs={selected.data.outputs}
-            updateOutputs={outputs => replaceRoundRobinOutputs(selected, outputs)}
+            updateOutputs={(outputs, removedIndex) => replaceRoundRobinOutputs(selected, outputs, removedIndex)}
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo que se inicia<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (pausado)'}</option>)}</Select></label>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Para usar este bloque, primero publica otro flujo visual.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de este final<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span className="text-xs font-semibold">Cerrar conversación al finalizar</span></label></div>}
@@ -1069,9 +1066,8 @@ function WaitAnyEditor({ conditions, onChange }: { conditions: WaitAnyCondition[
 /** El backend reasigna los ids de los botones por posición al publicar
  *  (`btn_1`, `btn_2`, ...) — se deriva igual acá para que el handle que
  *  dibuja el lienzo mientras se edita sea siempre el mismo que va a quedar
- *  publicado. Si se borra un botón del medio, los siguientes corren su id
- *  (igual que sus conexiones): es el mismo comportamiento esperable de
- *  reordenar una lista con salidas propias por posición. */
+ *  publicado. Si se borra un botón del medio, los siguientes corren su id y
+ *  sus conexiones corren con ellos (ver `edgesAfterRemovingOutput`). */
 function withPositionalButtonIds(labels: string[]): QuestionButton[] {
   return labels.map((label, index) => ({ id: `btn_${index + 1}`, label }))
 }
@@ -1082,7 +1078,7 @@ function QuestionEditor({ text, buttons, timeoutSeconds, updateText, updateTimeo
   timeoutSeconds: number
   updateText: (text: string) => void
   updateTimeout: (seconds: number) => void
-  updateButtons: (buttons: QuestionButton[]) => void
+  updateButtons: (buttons: QuestionButton[], removedIndex?: number) => void
 }) {
   return <div className="space-y-3">
     <label className="grid gap-1 text-[10px] text-wa-muted">Mensaje
@@ -1095,7 +1091,7 @@ function QuestionEditor({ text, buttons, timeoutSeconds, updateText, updateTimeo
           onChange={event => updateButtons(withPositionalButtonIds(buttons.map((item, itemIndex) => itemIndex === index ? event.target.value : item.label)))}
           placeholder={`Botón ${index + 1}`} className={fieldClass}
         />
-        <button type="button" disabled={buttons.length === 1} onClick={() => updateButtons(withPositionalButtonIds(buttons.filter((_, itemIndex) => itemIndex !== index).map(item => item.label)))} className="shrink-0 rounded-lg p-2 text-red-500 disabled:opacity-30"><X className="h-3.5 w-3.5" /></button>
+        <button type="button" disabled={buttons.length === 1} onClick={() => updateButtons(withPositionalButtonIds(buttons.filter((_, itemIndex) => itemIndex !== index).map(item => item.label)), index)} className="shrink-0 rounded-lg p-2 text-red-500 disabled:opacity-30"><X className="h-3.5 w-3.5" /></button>
       </div>)}
       <button
         type="button" disabled={buttons.length >= 3}
@@ -1119,7 +1115,7 @@ function withPositionalOutputIds(labels: string[]): RoundRobinOutput[] {
 
 function RoundRobinEditor({ outputs, updateOutputs }: {
   outputs: RoundRobinOutput[]
-  updateOutputs: (outputs: RoundRobinOutput[]) => void
+  updateOutputs: (outputs: RoundRobinOutput[], removedIndex?: number) => void
 }) {
   const labels = outputs.map(output => output.label)
   return <div className="space-y-3">
@@ -1133,7 +1129,7 @@ function RoundRobinEditor({ outputs, updateOutputs }: {
         />
         <button
           type="button" disabled={outputs.length <= 2} title={outputs.length <= 2 ? 'El reparto necesita al menos dos salidas' : 'Quitar salida'}
-          onClick={() => updateOutputs(withPositionalOutputIds(labels.filter((_, labelIndex) => labelIndex !== index)))}
+          onClick={() => updateOutputs(withPositionalOutputIds(labels.filter((_, labelIndex) => labelIndex !== index)), index)}
           className="shrink-0 rounded-lg p-2 text-red-500 disabled:opacity-30"
         ><X className="h-3.5 w-3.5" /></button>
       </div>)}
