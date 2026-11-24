@@ -58,7 +58,9 @@ test('la condición de horario muestra cuál es y deja cambiarlo sin salir del e
   const save = dialog.getByRole('button', { name: 'Guardar horario' })
   await expect(async () => {
     await save.scrollIntoViewIfNeeded()
-    await expect(save).toBeInViewport({ ratio: 1, timeout: 500 })
+    // 0,95 y no 1: desplazado hasta el final, el redondeo de medio píxel de
+    // la pantalla del celular deja el botón al 99,5 % y nunca al 100 %.
+    await expect(save).toBeInViewport({ ratio: 0.95, timeout: 500 })
   }).toPass({ timeout: 10_000 })
   await expect(dialog).toContainText(`Lo usa 1 automatización: «${SEGUIMIENTO.name}».`)
   await dialog.getByRole('checkbox', { name: 'Sábado' }).click()
