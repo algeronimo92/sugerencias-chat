@@ -1,9 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { isoDateOffset, todayISODate } from '../../shared/utils/datetime'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
 import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
+import { AutomationExecutionStatus } from './domain/automationCatalog'
+import { ATTENTION_WINDOW_DAYS, attentionCount, groupAttention } from './utils/attention'
 
 export type { AutomationRuleInput } from './types'
 
@@ -228,4 +232,21 @@ export function useSimulateVisualFlow() {
   return useMutation({
     mutationFn: simulateVisualFlow,
   })
+}
+
+/** Lo que no salió como debía y espera una decisión: los fallos recientes y
+ *  lo que quedó olvidado en pausa, ya agrupado por causa. */
+export function useAttention() {
+  const failed = useAutomationExecutions({
+    status: AutomationExecutionStatus.Failed,
+    dateFrom: isoDateOffset(-ATTENTION_WINDOW_DAYS),
+    dateTo: todayISODate(),
+  })
+  // Sin fechas: una pausa olvidada es justamente la que empezó hace mucho.
+  const paused = useAutomationExecutions({ status: AutomationExecutionStatus.Paused })
+  const groups = useMemo(
+    () => groupAttention([...(failed.data ?? []), ...(paused.data ?? [])], Date.now()),
+    [failed.data, paused.data],
+  )
+  return { groups, count: attentionCount(groups), isLoading: failed.isLoading || paused.isLoading }
 }
