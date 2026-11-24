@@ -56,14 +56,6 @@ class Execution:
     error: str | None = None
 
 
-def resumable_results(results: list[dict]) -> list[dict]:
-    """Lo ya hecho que un reintento conserva: todo salvo lo que falló."""
-    return [
-        result for result in results
-        if result.get("status") != AutomationExecutionStatus.FAILED
-    ]
-
-
 def execution_actor(execution: Any) -> tuple[str, int | None]:
     """Actor humano que originó una acción del motor.
 

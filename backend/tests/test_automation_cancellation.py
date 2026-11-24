@@ -1,7 +1,7 @@
 """Cancelar una ejecución debe frenarla de verdad — antes, el próximo paso
 del motor pisaba el skipped de la cancelación y el flujo seguía mandando
 mensajes indefinidamente. Cubre la guarda de estado en cancel/retry y el
-corte del bucle en run_execution/run_visual_execution."""
+corte del bucle en run_visual_execution."""
 
 import dataclasses
 
@@ -89,26 +89,6 @@ class TestSaveExecution:
         await save_execution(1, deps, status=AutomationExecutionStatus.COMPLETED)
 
         assert executions.executions[1].finished_at == frozen_now
-
-
-class TestRunExecutionStopsAfterCancellation:
-    async def test_does_not_run_the_third_action_once_save_execution_reports_cancelled(
-        self, deps, executions, recorder,
-    ):
-        executions.add(stored_execution(id=1), make_rule(
-            builder_mode="simple", max_executions_per_hour=None,
-            actions=[
-                {"type": "add_tag", "tag_id": 1},
-                {"type": "add_tag", "tag_id": 2},
-                {"type": "add_tag", "tag_id": 3},
-            ],
-        ))
-        executions.save = AsyncMock(side_effect=[True, False])
-        deps = dataclasses.replace(deps, fetch_chat=AsyncMock(return_value=make_chat()))
-
-        await run_execution(1, deps)
-
-        assert [tag for _chat, tag in recorder.tags_added] == [1, 2]
 
 
 class TestRunVisualExecutionStopsAfterCancellation:
@@ -212,3 +192,18 @@ class TestStopWhenTheTeamReplies:
         await subscribers.stop_follow_ups_when_the_team_replies(MessageSent(chat_id="chat-1", message_id=1, **event_values))
 
         assert in_memory_automations.scheduling.team_replies == []
+
+
+async def test_a_leftover_simple_rule_is_closed_saying_why(deps, executions, recorder):
+    """Las reglas simples se retiraron. Si quedara una ejecución de alguna, no
+    corre ninguna acción y el historial dice por qué, sin aviso de fallo."""
+    executions.add(
+        stored_execution(id=1, status=AutomationExecutionStatus.RUNNING),
+        make_rule(builder_mode="simple", actions=[{"type": "add_tag", "tag_id": 1}]),
+    )
+
+    await run_execution(1, deps)
+
+    assert executions.executions[1].status == AutomationExecutionStatus.CANCELLED
+    assert "reglas simples" in executions.executions[1].error
+    assert recorder.tags_added == []

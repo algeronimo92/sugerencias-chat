@@ -430,3 +430,16 @@ def rule(**overrides):
         "created_by_user_id": 10, "deleted_at": None,
     }
     return SimpleNamespace(**{**defaults, **overrides})
+
+
+async def validated_actions(actions: list[dict], references=None) -> list[dict]:
+    """Acciones validadas como las valida un bloque del flujo: primero la
+    forma y después lo que mencionan (etapas, etiquetas, plantillas...)."""
+    from app.modules.automations.application.ports import automation_ports
+    from app.modules.automations.application.validation import verify_references
+    from app.modules.automations.domain.validation import ActionReferences, normalize_actions
+
+    refs = ActionReferences()
+    normalized = normalize_actions(actions, refs)
+    await verify_references(refs, references or automation_ports().references)
+    return normalized

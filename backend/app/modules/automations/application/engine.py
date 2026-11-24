@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, ExecutionErrorCode, FlowNodeType
 
 from app.integrations.whatsapp.channel import SEND_FAILURES
-from app.modules.automations.application.actions import execute_action
 from app.modules.automations.application.conditions import matches_condition_values
 from app.modules.automations.application.deps import AutomationDeps, default_deps
 from app.modules.automations.application.flow_nodes import FlowRun, flow_node_handler
@@ -25,7 +24,6 @@ from app.modules.automations.domain.execution import (
     deadline_already_fired,
     deadline_matches,
     execution_message_context,
-    resumable_results,
 )
 from app.modules.automations.domain.flow_graph import flow_indexes
 from app.modules.automations.domain.limits import MAX_CONCURRENT_EXECUTIONS, MAX_FLOW_NODES, RATE_LIMIT_RETRY_MINUTES
@@ -258,6 +256,16 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
             status=AutomationExecutionStatus.CANCELLED, error="La regla fue desactivada",
         )
         return
+    if rule.builder_mode != AutomationBuilderMode.VISUAL:
+        # Las reglas simples (una lista de acciones, sin bloques) se retiraron
+        # del editor y de la API. Una que quedara de antes se cierra diciendo
+        # por qué, en vez de fallar con «el flujo no tiene versión publicada».
+        await save_execution(
+            execution_id, deps,
+            status=AutomationExecutionStatus.CANCELLED,
+            error="Las reglas simples ya no se ejecutan. Crea un flujo que la reemplace.",
+        )
+        return
     if not await _customer_response_deadline_is_current(execution, deps):
         await save_execution(
             execution_id, deps,
@@ -284,59 +292,7 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
         )
         await _failed(rule, execution, "Lead no encontrado", deps)
         return
-    if rule.builder_mode == AutomationBuilderMode.VISUAL:
-        await run_visual_execution(execution, rule, chat, deps)
-        return
-
-    previous = list(execution.action_results or [])
-    results = resumable_results(previous)
-    if not previous:
-        # Solo se evalúan condiciones en el primer intento: al reanudar una
-        # ejecución interrumpida las acciones ya corridas pudieron cambiar el
-        # estado del lead y un skip aquí dejaría la regla a medias.
-        matches, reason = await matches_condition_values(rule.conditions or {}, chat, rule.id, deps)
-        if not matches:
-            await save_execution(
-                execution_id, deps,
-                status=AutomationExecutionStatus.SKIPPED, error=reason,
-            )
-            return
-    actions = list(rule.actions or [])
-    try:
-        # Reanuda desde la primera acción sin resultado exitoso persistido — un
-        # reintento tras un crash no repite WhatsApps ni tareas ya creadas, pero
-        # sí vuelve a intentar la que quedó fallida.
-        for index in range(len(results), len(actions)):
-            result = await execute_action(
-                actions[index], chat, execution, rule, deps, position=index + 1,
-            )
-            results.append({"position": index + 1, **result})
-            saved = await save_execution(execution_id, deps, action_results=results)
-            if not saved:
-                return  # cancelada externamente: no proceses más acciones
-    except Exception as exc:
-        error = _readable_error(exc)
-        if isinstance(exc, EXPECTED_FAILURES) and not isinstance(exc, KeyError):
-            failed_type = actions[len(results)].get("type") if len(results) < len(actions) else None
-            results.append({
-                "position": len(results) + 1,
-                "type": failed_type,
-                "status": AutomationExecutionStatus.FAILED,
-                "error": error,
-            })
-        else:
-            logger.exception("Error inesperado al ejecutar la automatización %s", execution_id)
-        await save_execution(
-            execution_id, deps,
-            status=AutomationExecutionStatus.FAILED, action_results=results, error=error,
-            error_code=_error_code(exc),
-        )
-        await _failed(rule, execution, error, deps, _error_code(exc))
-    else:
-        await save_execution(
-            execution_id, deps,
-            status=AutomationExecutionStatus.COMPLETED, action_results=results, error=None,
-        )
+    await run_visual_execution(execution, rule, chat, deps)
 
 
 async def process_due_automation_executions(limit: int = 20, deps: AutomationDeps | None = None) -> int:

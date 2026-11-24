@@ -299,8 +299,8 @@ def normalize_flow(name: str, definition: dict) -> NormalizedFlow:
     conditions = normalize_conditions(definition.get("conditions"))
     refs = ActionReferences()
     if facts.action_nodes:
-        # MAX_ACTIONS (10) es el tope del modo simple, una lista plana y
-        # secuencial. Acá se suman los bloques Acción de TODAS las ramas del
+        # MAX_ACTIONS (10) era el tope de las reglas simples, una lista plana
+        # y secuencial. Acá se suman los bloques Acción de TODAS las ramas del
         # grafo aunque una ejecución nunca recorra más de una, así que se
         # acota por MAX_FLOW_NODES (el tope estructural del flujo).
         # De a una por bloque: así el error dice de qué bloque es. En lote
