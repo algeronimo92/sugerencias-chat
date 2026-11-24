@@ -229,11 +229,15 @@ test('una completada cuyo mensaje no salió se lee «No se entregó» y pide ate
   await page.screenshot({ path: `test-results/automatizaciones-entrega-${info.project.name}.png` })
 
   // El filtro trae exactamente lo que la etiqueta muestra.
-  await page.getByLabel('Estado').click()
+  // Por rol: «Estado» también es la etiqueta de las opciones de la lista
+  // mientras se cierra, y getByLabel las alcanzaba a las dos.
+  const statusFilter = page.getByRole('combobox', { name: 'Estado' })
+  await statusFilter.click()
   await page.getByRole('option', { name: 'No se entregó', exact: true }).click()
+  await expect(page.getByRole('option')).toHaveCount(0)
   await expect(row('Carla Méndez')).toBeVisible()
   await expect(row('Ana Torres')).toHaveCount(0)
-  await page.getByLabel('Estado').click()
+  await statusFilter.click()
   await page.getByRole('option', { name: 'Completada', exact: true }).click()
   await expect(row('Ana Torres')).toBeVisible()
   await expect(row('Carla Méndez')).toHaveCount(0)
