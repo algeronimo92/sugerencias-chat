@@ -139,12 +139,22 @@ class BusinessDayHours(BaseModel):
     end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
+class BusinessHoursUser(BaseModel):
+    """Una automatización que pregunta por el horario de atención."""
+
+    id: int
+    name: str
+    is_active: bool
+
+
 class BusinessHoursOut(BaseModel):
     # Los siete días, también los cerrados: la pantalla los dibuja todos.
     days: list[BusinessDayHours]
     timezone: str
     # False mientras nadie lo guardó: se está usando el horario de siempre.
     configured: bool
+    # Qué cambia si se cambia el horario. Vacío: hoy no lo usa ninguna.
+    used_by: list[BusinessHoursUser]
 
 
 class UpdateBusinessHoursRequest(BaseModel):

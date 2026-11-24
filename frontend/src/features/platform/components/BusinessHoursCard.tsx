@@ -6,7 +6,7 @@ import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Input } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useBusinessHours, useSaveBusinessHours } from '../hooks/useSettings'
-import type { BusinessDayHours } from '../types'
+import type { BusinessDayHours, BusinessHours } from '../types'
 
 const DAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
@@ -25,7 +25,26 @@ function firstProblem(days: BusinessDayHours[]): string | null {
  * Tiene su propio «Guardar»: es una decisión aparte del resto de ajustes y no
  * debe viajar con un borrador viejo de la página.
  */
-export function BusinessHoursCard() {
+interface Props {
+  /** Dentro de un diálogo que ya lleva el título: sin marco ni encabezado. */
+  embedded?: boolean
+}
+
+/** Quién usa el horario, para que cambiarlo no sea a ciegas. Solo las
+ *  encendidas cuentan como «lo usan»: una pausada no corre. */
+function usageLine(usedBy: BusinessHours['used_by']): string {
+  const active = usedBy.filter(rule => rule.is_active)
+  if (active.length === 0) {
+    return usedBy.length === 0
+      ? 'Hoy ninguna automatización pregunta por el horario: cambiarlo no altera nada todavía.'
+      : `Hoy no lo usa ninguna automatización encendida (${usedBy.length === 1 ? 'hay 1 pausada que sí' : `hay ${usedBy.length} pausadas que sí`}).`
+  }
+  const names = active.map(rule => `«${rule.name}»`)
+  const list = names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} y ${names.length - 3} más`
+  return `${active.length === 1 ? 'Lo usa 1 automatización' : `Lo usan ${active.length} automatizaciones`}: ${list}.`
+}
+
+export function BusinessHoursCard({ embedded = false }: Props = {}) {
   const { data, isLoading, error } = useBusinessHours()
   const save = useSaveBusinessHours()
   // Null mientras no se toca nada: se muestra lo guardado, y un refresco del
@@ -45,12 +64,13 @@ export function BusinessHoursCard() {
   }
 
   return (
-    <section aria-labelledby="ajustes-horario" className="rounded-xl border border-line bg-surface p-4">
-      <h2 id="ajustes-horario" className="text-sm font-semibold text-fg">Horario de atención</h2>
-      <p className="mt-1 text-sm text-fg-muted">
-        Lo usan las automatizaciones que solo corren en horario laboral.
+    <section aria-labelledby={embedded ? undefined : 'ajustes-horario'} aria-label={embedded ? 'Horario de atención' : undefined} className={embedded ? '' : 'rounded-xl border border-line bg-surface p-4'}>
+      {!embedded && <h2 id="ajustes-horario" className="text-sm font-semibold text-fg">Horario de atención</h2>}
+      <p className={`${embedded ? '' : 'mt-1 '}text-sm text-fg-muted`}>
+        Es lo que consultan las automatizaciones que preguntan si el negocio está atendiendo.
         {data && <> Las horas son de la zona {data.timezone}, que se cambia en{' '}
-          <Link to="/integraciones" className="font-semibold text-accent-strong underline">Integraciones</Link>.</>}
+          {/* Dentro del editor de flujos no se enlaza: salir de ahí pierde lo que se estaba armando. */}
+          {embedded ? 'Integraciones' : <Link to="/integraciones" className="font-semibold text-accent-strong underline">Integraciones</Link>}.</>}
       </p>
 
       {isLoading && <p className="py-4 text-sm text-fg-muted">Cargando horario…</p>}
@@ -58,6 +78,7 @@ export function BusinessHoursCard() {
 
       {data && (
         <>
+          <p className="mt-2 text-sm text-fg-muted">{usageLine(data.used_by)}</p>
           {!data.configured && !draft && (
             <p className="mt-3 rounded-lg bg-subtle px-3 py-2 text-sm text-fg-muted">
               Todavía no lo configuraste: se usa lunes a viernes de 08:00 a 18:00.

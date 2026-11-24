@@ -148,6 +148,9 @@ class TestSettingsRoute:
 
         monkeypatch.setattr(settings_api, "get_effective_many", read)
         monkeypatch.setattr(settings_api, "update_settings", write)
+        monkeypatch.setattr(settings_api, "rules_using_business_hours", AsyncMock(return_value=[
+            {"id": 7, "name": "Bienvenida", "is_active": True},
+        ]))
         return values
 
     async def test_an_unconfigured_business_sees_the_old_hours(self, stored):
@@ -159,6 +162,8 @@ class TestSettingsRoute:
         assert out["timezone"] == "America/Lima"
         assert [day["open"] for day in out["days"]] == [True] * 5 + [False] * 2
         assert out["days"][0] == {"weekday": 0, "open": True, "start": "08:00", "end": "18:00"}
+        # Quien cambia el horario ve qué automatizaciones cambian con él.
+        assert out["used_by"] == [{"id": 7, "name": "Bienvenida", "is_active": True}]
 
     async def test_saving_keeps_only_the_open_days(self, stored):
         from app.modules.platform.schemas import UpdateBusinessHoursRequest

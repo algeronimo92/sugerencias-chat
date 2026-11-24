@@ -10,7 +10,7 @@ describe('flowBranchName', () => {
     expect(flowBranchName(WaitAnyConditionKind.Message)).toBe('Respondió con un mensaje')
     expect(flowBranchName(WaitAnyConditionKind.MediaReceived)).toBe('Mandó una foto o archivo')
     expect(flowBranchName(WaitAnyConditionKind.MediaPlayed)).toBe('Vio o escuchó lo enviado')
-    expect(flowBranchName(WaitAnyConditionKind.BusinessHours)).toBe('Fuera del horario laboral')
+    expect(flowBranchName(WaitAnyConditionKind.BusinessHours)).toBe('Fuera del horario de atención')
     expect(flowBranchName(QuestionHandle.Other)).toBe('Otra respuesta')
     expect(flowBranchName(QuestionHandle.Timeout)).toBe('Sin respuesta')
     expect(flowBranchName(QuestionHandle.Media)).toBe('Mandó una foto')

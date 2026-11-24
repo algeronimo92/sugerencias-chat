@@ -5,6 +5,11 @@ import { expect, test } from '../../fixtures/test'
 const HORARIO_SIN_CONFIGURAR = {
   timezone: 'America/Lima',
   configured: false,
+  used_by: [
+    { id: 1, name: 'Bienvenida', is_active: true },
+    { id: 2, name: 'Seguimiento clientes', is_active: true },
+    { id: 3, name: 'Promo de invierno', is_active: false },
+  ],
   days: Array.from({ length: 7 }, (_, weekday) => (
     weekday < 5
       ? { weekday, open: true, start: '08:00', end: '18:00' }
@@ -65,6 +70,8 @@ test('el negocio define su horario de atención y puede abrir el sábado', async
   const card = page.getByRole('region', { name: 'Horario de atención' })
   await card.scrollIntoViewIfNeeded()
   await expect(card).toContainText('Todavía no lo configuraste')
+  // Quien lo cambia ve qué automatizaciones cambian con él; la pausada no cuenta.
+  await expect(card).toContainText('Lo usan 2 automatizaciones: «Bienvenida», «Seguimiento clientes».')
   const save = card.getByRole('button', { name: 'Guardar horario' })
   // Sin cambios no hay nada que guardar.
   await expect(save).toBeDisabled()

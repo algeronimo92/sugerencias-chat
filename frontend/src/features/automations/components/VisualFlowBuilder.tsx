@@ -31,6 +31,7 @@ import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import type { FlowStarter } from '../domain/flowRecipes'
 import { useUsers } from '../../platform/public/useUsers'
+import { BusinessHoursHint } from '../../platform/public/BusinessHoursHint'
 import type { AppUser } from '../../platform/types'
 import { AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
@@ -973,6 +974,7 @@ function ConditionGroupsEditor({ groups, users, tags, onChange }: ConditionGroup
           <div className="flex items-start gap-1.5">
             <div className="min-w-0 flex-1 space-y-2">
               <Select value={condition.condition_type} onChange={event => { const value = event.target.value; if (isFlowConditionType(value)) changeConditionType(group.id, condition.id, value) }} className={fieldClass}>{Object.entries(CONDITION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+              {condition.condition_type === ConditionType.BusinessHours && <BusinessHoursHint />}
               {condition.condition_type === ConditionType.StageEquals && <Select value={String(condition.value ?? INITIAL_LEAD_STAGE)} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} className={fieldClass}>{conditionStageOptions(stageCatalog, String(condition.value ?? INITIAL_LEAD_STAGE)).map(stage => <option key={stage.key} value={stage.key}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}</Select>}
               {condition.condition_type === ConditionType.OriginContains && <label className="grid gap-1 text-[10px] text-wa-muted">Origen a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Facebook" className={fieldClass} /></label>}
               {condition.condition_type === ConditionType.ServiceContains && <label className="grid gap-1 text-[10px] text-wa-muted">Servicio a buscar<input maxLength={120} value={String(condition.value ?? '')} onChange={event => updateCondition(group.id, condition.id, { value: event.target.value })} placeholder="Ej. Limpieza" className={fieldClass} /></label>}
@@ -1033,9 +1035,17 @@ function WaitAnyEditor({ conditions, onChange }: { conditions: WaitAnyCondition[
     </div>
     {extra.length > 0 && <div className="space-y-1.5">
       {extra.map(condition => (
-        <div key={condition.id} className="flex items-center justify-between rounded-lg border border-wa-border px-2.5 py-2 text-[11px] text-gray-700 dark:border-wa-border-dark dark:text-gray-300">
+        <div key={condition.id} className="space-y-1.5">
+        <div className="flex items-center justify-between rounded-lg border border-wa-border px-2.5 py-2 text-[11px] text-gray-700 dark:border-wa-border-dark dark:text-gray-300">
           <span>{WAIT_ANY_CONDITION_LABELS[condition.kind]}</span>
           <button type="button" onClick={() => toggle(condition.kind as typeof WAIT_ANY_OPTIONAL_KINDS[number])} title="Quitar condición" className="text-wa-muted hover:text-red-500"><X className="h-3.5 w-3.5" /></button>
+        </div>
+        {/* Esta rama no espera al temporizador ni a un mensaje: si al
+            terminar la pausa el negocio está cerrado, el flujo sale por acá. */}
+        {condition.kind === WaitAnyConditionKind.BusinessHours && <>
+          <p className="text-[11px] leading-4 text-wa-muted">Tiene prioridad: si la pausa termina con el negocio cerrado, el flujo sigue por esta salida aunque haya llegado un mensaje o vencido el temporizador.</p>
+          <BusinessHoursHint />
+        </>}
         </div>
       ))}
     </div>}
@@ -1182,7 +1192,8 @@ function EntryConditionsEditor({ conditions, updateConditions, users, tags, high
     </label>
     <div className="space-y-2 rounded-xl border border-wa-border p-3 dark:border-wa-border-dark">
       <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.require_open_window} onChange={event => updateConditions({ ...conditions, require_open_window: event.target.checked })} />Ventana de 24 h abierta (el cliente escribió hace menos de 24 h)</label>
-      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.business_hours_only} onChange={event => updateConditions({ ...conditions, business_hours_only: event.target.checked })} />Solo en el horario de atención (el de Configuración)</label>
+      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.business_hours_only} onChange={event => updateConditions({ ...conditions, business_hours_only: event.target.checked })} />Solo en el horario de atención</label>
+      {conditions.business_hours_only && <BusinessHoursHint />}
     </div>
     <label className="grid gap-1 text-[10px] text-wa-muted">No repetir para el mismo lead durante (minutos)
       <input type="number" min={1} max={43200} placeholder="Sin límite" value={conditions.cooldown_minutes ?? ''} onChange={event => updateConditions({ ...conditions, cooldown_minutes: event.target.value ? Number(event.target.value) : null })} className={fieldClass} />

@@ -176,7 +176,7 @@ export type WaitAnyConditionKindValue = ValueOf<typeof WaitAnyConditionKind>
 export const WAIT_ANY_CONDITION_LABELS = {
   [WaitAnyConditionKind.Timer]: 'Temporizador',
   [WaitAnyConditionKind.Message]: 'Respondió con un mensaje',
-  [WaitAnyConditionKind.BusinessHours]: 'Fuera del horario laboral',
+  [WaitAnyConditionKind.BusinessHours]: 'Fuera del horario de atención',
   [WaitAnyConditionKind.MediaPlayed]: 'Vio o escuchó lo enviado',
   [WaitAnyConditionKind.MediaReceived]: 'Mandó una foto o archivo',
 } satisfies Record<WaitAnyConditionKindValue, string>
@@ -226,7 +226,7 @@ export const FLOW_CONDITION_LABELS = {
   [FlowConditionType.SellerEquals]: 'Vendedor es',
   [FlowConditionType.TagPresent]: 'Tiene etiqueta',
   [FlowConditionType.WhatsAppWindowOpen]: 'Ventana de 24 h abierta',
-  [FlowConditionType.BusinessHours]: 'Está en horario laboral',
+  [FlowConditionType.BusinessHours]: 'Está en el horario de atención',
 } satisfies Record<FlowConditionTypeValue, string>
 
 export const FlowHandle = {
