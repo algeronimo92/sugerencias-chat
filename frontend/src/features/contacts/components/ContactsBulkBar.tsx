@@ -52,10 +52,13 @@ export function ContactsBulkBar({ ids, isAdmin, onDone }: Props) {
   }
 
   return (
-    <div role="region" aria-label="Acciones sobre los seleccionados" className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-4">
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-2 rounded-xl border border-wa-border bg-white p-3 shadow-lg sm:flex-row sm:items-center dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        <span className="text-sm font-medium text-wa-text dark:text-wa-text-dark">{label} seleccionados</span>
-        <form className="flex flex-1 gap-2" onSubmit={event => { event.preventDefault(); addTags() }}>
+    // Sticky dentro de la página y no `fixed` sobre la ventana: con `fixed` se
+    // centraba sobre todo el ancho, se metía bajo la barra lateral y no
+    // quedaba alineada con la cuadrícula de tarjetas.
+    <div role="region" aria-label="Acciones sobre los seleccionados" className="sticky bottom-3 z-30 mt-4">
+      <div className="mx-auto flex flex-col gap-2 rounded-xl lg:w-[70%] border border-wa-border bg-white p-3 shadow-lg sm:flex-row sm:items-center dark:border-wa-border-dark dark:bg-wa-panel-dark">
+        <span className="shrink-0 text-sm font-medium text-wa-text dark:text-wa-text-dark">{label} seleccionados</span>
+        <form className="flex min-w-0 flex-1 gap-2" onSubmit={event => { event.preventDefault(); addTags() }}>
           <Input value={tagText} onChange={event => setTagText(event.target.value)} placeholder="Etiqueta" aria-label="Etiqueta para los seleccionados" className="h-9" />
           <Button type="submit" variant="secondary" disabled={busy || !tagText.trim()}>
             <Tag className="h-4 w-4" aria-hidden="true" />

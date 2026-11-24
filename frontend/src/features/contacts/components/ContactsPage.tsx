@@ -196,7 +196,7 @@ export function ContactsPage({ onOpenChat, AppointmentPanel }: Props) {
   return (
     <div className="h-full overflow-x-hidden overflow-y-auto bg-canvas">
       {/* 1280 y no 1200: deja ~270 px por tarjeta en la cuadrícula de 4. */}
-      <main className="mx-auto w-full max-w-[1280px] px-4 py-4 pb-24 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+      <main className="mx-auto w-full max-w-[1280px] px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <ContactsHeader
           canImport={isAdmin}
           onImport={() => setDialog({ kind: 'import' })}
@@ -208,11 +208,10 @@ export function ContactsPage({ onOpenChat, AppointmentPanel }: Props) {
         <ResultsSummary filters={filters} page={page} onClear={() => patch(EMPTY_FILTERS)} />
         <ContactsResults filters={filters} page={page} isFiltered={hasActiveFilters(filters)} listProps={listProps} />
         <ContactsPager filters={filters} page={page} onChange={setPage} />
+        {selection.selected.size > 0 && (
+          <ContactsBulkBar ids={[...selection.selected]} isAdmin={can(me, 'contacts.import', 'contacts.delete')} onDone={selection.clear} />
+        )}
       </main>
-
-      {selection.selected.size > 0 && (
-        <ContactsBulkBar ids={[...selection.selected]} isAdmin={can(me, 'contacts.import', 'contacts.delete')} onDone={selection.clear} />
-      )}
       <ContactsDialogs dialog={dialog} onChange={setDialog} AppointmentPanel={AppointmentPanel} />
     </div>
   )
