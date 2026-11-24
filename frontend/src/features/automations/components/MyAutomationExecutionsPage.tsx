@@ -443,7 +443,7 @@ export function MyAutomationExecutionsPage() {
     <div className="h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
       <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
-          <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Automatizaciones enviadas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Historial de envíos</h1>
         </header>
 
         <ExecutionHistoryFilters

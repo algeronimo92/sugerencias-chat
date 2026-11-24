@@ -12,7 +12,7 @@ import {
 useAutomationExecutions,useCancelExecution,usePauseExecution,useResumeExecution,
 } from '../queries'
 import { followedBranchText } from '../domain/flowBranches'
-import { heldByManualFlow } from '../utils/automationExecutions'
+import { executionOriginLabel, heldByManualFlow } from '../utils/automationExecutions'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 
 interface Props {
@@ -51,15 +51,12 @@ function triggerLabel(trigger: string) {
   return AUTOMATION_TRIGGERS.find(item => item.value === trigger)?.label ?? trigger
 }
 
+/** Quién la puso en marcha y, solo si empezó sola, con qué. Decía «La lanzó
+ *  Ana · La lanza tu equipo desde el chat»: en una lanzada a mano o por otra
+ *  automatización el inicio repite lo que el origen ya dijo. */
 function executionSourceLabel(execution: AutomationExecution) {
-  if (execution.started_by_name) {
-    return execution.start_source === 'flow'
-      ? `La lanzó ${execution.started_by_name} · desde otra automatización`
-      : `La lanzó ${execution.started_by_name}`
-  }
-  if (execution.start_source === 'manual') return 'La lanzó un usuario eliminado'
-  if (execution.start_source === 'flow') return 'La lanzó otra automatización'
-  return 'Ejecutada por el sistema'
+  const origin = executionOriginLabel(execution)
+  return execution.start_source === 'system' ? `${origin} · ${triggerLabel(execution.trigger_type)}` : origin
 }
 
 /** Qué le falta a la ejecución para dar su próximo paso, en texto. Con la
@@ -222,7 +219,7 @@ export function LeadAutomationPanel({ chatId, botDisabled = false }: Props) {
                     {execution.rule_name}
                   </span>
                   <span className="block truncate text-[10px] text-wa-muted dark:text-wa-muted-dark">
-                    {executionSourceLabel(execution)} · {triggerLabel(execution.trigger_type)}
+                    {executionSourceLabel(execution)}
                   </span>
                 </span>
                 <PauseToggleButton execution={execution} />
