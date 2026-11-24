@@ -18,6 +18,7 @@ from app.db.models.catalogs import LeadService, MessageTemplate, ServicePackage
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.modules.ai.knowledge_service import create_document
+from app.modules.automations.domain.rule_to_flow import flow_from_rule
 from app.modules.catalogs.erp_catalog import apply_catalog, parse_catalog
 from app.modules.catalogs.errors import ErpManagedError, ServiceInUseError
 from app.modules.catalogs.queries import list_lead_services
@@ -47,6 +48,10 @@ async def _lead_interested_in(name: str) -> str:
         # Como lo deja un vendedor: con otras mayúsculas y un espacio de más.
         await session.execute(update(Lead).where(Lead.id == chat_id).values(servicio_interes=f" {name.upper()} "))
     return chat_id
+
+
+def _flow_changing_service(name: str) -> dict:
+    return flow_from_rule({"trigger_type": "manual", "actions": [{"type": "change_service", "service": name}]})
 
 
 async def _usages(service_id: int) -> list[str]:
@@ -82,19 +87,19 @@ async def test_service_in_use_is_kept_and_reports_every_use(tenant) -> None:
             await session.execute(insert(MessageTemplate).values(name="Info peeling", content="Hola", service=name, created_by_user_id=admin_id, created_at=NOW, updated_at=NOW))
             await session.execute(insert(AutomationRule).values(
                 name="Asignar peeling", trigger_type="manual", trigger_config={}, conditions={},
-                actions=[{"type": "change_service", "service": name.upper()}], delay_minutes=0,
+                flow_definition=_flow_changing_service(name.upper()),
                 created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
             ))
             # Solo filtra por el nombre: se avisa, no impide borrarlo.
             await session.execute(insert(AutomationRule).values(
                 name="Seguimiento peeling", trigger_type="manual", trigger_config={},
-                conditions={"service_contains": name.lower()}, actions=[], delay_minutes=0,
+                conditions={"service_contains": name.lower()},
                 created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
             ))
             # Una regla borrada no cuenta.
             await session.execute(insert(AutomationRule).values(
                 name="Vieja", trigger_type="manual", trigger_config={}, conditions={},
-                actions=[{"type": "change_service", "service": name}], delay_minutes=0,
+                flow_definition=_flow_changing_service(name),
                 created_by_user_id=admin_id, created_at=NOW, updated_at=NOW, deleted_at=NOW,
             ))
         await create_document("Ficha del peeling", "Renueva la piel.", "ficha", service_ids=[service_id])
@@ -164,7 +169,7 @@ async def test_a_rule_that_only_filters_by_the_name_does_not_block_deletion(tena
         async with session_scope() as session:
             await session.execute(insert(AutomationRule).values(
                 name="Anuncio peel", trigger_type="manual", trigger_config={},
-                conditions={"service_contains": "hollywood peel"}, actions=[], delay_minutes=0,
+                conditions={"service_contains": "hollywood peel"},
                 created_by_user_id=admin_id, created_at=NOW, updated_at=NOW,
             ))
 

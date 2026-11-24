@@ -143,13 +143,10 @@ export function flow(id: number, name: string): Flow {
     trigger_type: 'manual',
     trigger_config: {},
     conditions: {},
-    actions: [],
-    builder_mode: 'visual',
     flow_definition: MINIMAL_FLOW,
     // Publicado de verdad: el backend nunca manda una versión publicada vacía.
     published_flow_definition: MINIMAL_FLOW,
     flow_version: 1,
-    delay_minutes: 0,
     max_executions_per_hour: null,
     is_active: true,
     visible_to_sellers: true,

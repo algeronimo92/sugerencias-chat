@@ -93,11 +93,6 @@ class FlowHandle(StrEnum):
     NO = "no"
 
 
-class AutomationBuilderMode(StrEnum):
-    SIMPLE = "simple"
-    VISUAL = "visual"
-
-
 class AutomationExecutionStatus(StrEnum):
     SCHEDULED = "scheduled"
     RUNNING = "running"

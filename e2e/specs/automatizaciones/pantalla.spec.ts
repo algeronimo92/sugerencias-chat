@@ -3,7 +3,7 @@ import { expectFullyOnScreen, expectNoPageOverflow } from '../../fixtures/screen
 import { expect, test } from '../../fixtures/test'
 
 // Un negocio como DermicaPro: una automatización que corre sola y varias
-// secuencias que el equipo lanza desde el chat. Ninguna regla simple.
+// secuencias que el equipo lanza desde el chat.
 const BIENVENIDA = { ...flow(20, 'Bienvenida'), trigger_type: 'conversation_started' as const }
 
 /** El backend filtra por `status`; el simulado tiene que hacerlo también, o

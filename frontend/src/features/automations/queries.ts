@@ -23,13 +23,12 @@ export function useAutomationRules() {
 export interface AutomationRuleSummary {
   id: number
   name: string
-  builder_mode: AutomationRule['builder_mode']
   is_active: boolean
   published: boolean
 }
 
 function summarize(rules: AutomationRule[]): AutomationRuleSummary[] {
-  return rules.map(rule => ({ id: rule.id, name: rule.name, builder_mode: rule.builder_mode, is_active: rule.is_active, published: rule.published_flow_definition !== null }))
+  return rules.map(rule => ({ id: rule.id, name: rule.name, is_active: rule.is_active, published: rule.published_flow_definition !== null }))
 }
 
 /**

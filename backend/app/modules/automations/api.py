@@ -2,7 +2,6 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.modules.automations.domain.types import AutomationBuilderMode
 from app.modules.auth.public import User
 from app.modules.automations.schemas import AutomationExecutionCount, AutomationExecutionItem, AutomationExecutionMessageItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
 from app.modules.auth.public import Permission, can, require_permission
@@ -64,7 +63,7 @@ async def patch_flow(
     _admin: User = Depends(require_automations_manage),
 ):
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
+    if current is None:
         raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
     item = await save_visual_flow(
         rule_id, body.name if body.name is not None else current["name"], body.flow_definition
@@ -83,7 +82,7 @@ async def publish_flow(rule_id: int, _admin: User = Depends(require_automations_
 @router.get("/{rule_id}/versions", response_model=list[AutomationFlowVersionItem])
 async def get_flow_versions(rule_id: int, _admin: User = Depends(require_automations_manage)):
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
+    if current is None:
         raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
     return await list_flow_versions(rule_id)
 
@@ -119,35 +118,23 @@ async def patch_rule(
     if current is None:
         raise HTTPException(404, "Automatización no encontrada")
     requested = body.model_dump(exclude_unset=True)
-    if current["builder_mode"] == AutomationBuilderMode.VISUAL:
-        # Una regla visual no tiene actions/conditions propias: mandarla por
-        # la validación de reglas simples fallaría con un error confuso.
-        if not set(requested) <= {"is_active", "name", "max_executions_per_hour", "visible_to_sellers"}:
-            raise HTTPException(400, "Los flujos visuales se editan desde el constructor de flujos")
-        values: dict = {}
-        if "name" in requested:
-            name = str(requested["name"] or "").strip()
-            if not name or len(name) > 120:
-                raise HTTPException(400, "Escribe un nombre para el flujo (hasta 120 caracteres).")
-            values["name"] = name
-        if "max_executions_per_hour" in requested:
-            values["max_executions_per_hour"] = requested["max_executions_per_hour"]
-        if "visible_to_sellers" in requested:
-            values["visible_to_sellers"] = bool(requested["visible_to_sellers"])
-        if "is_active" in requested:
-            if requested["is_active"] and not current["published_flow_definition"]:
-                raise HTTPException(400, "Publica el flujo antes de activarlo")
-            values["is_active"] = requested["is_active"]
-        if not values:
-            raise HTTPException(400, "Nada que actualizar")
-        item = await update_automation_rule(rule_id, values)
-    elif set(requested) == {"is_active"} and requested["is_active"] is False:
-        item = await update_automation_rule(rule_id, requested)
-    else:
-        # Las reglas simples se retiraron: todo se crea y se edita como flujo
-        # visual. A una que quedara de antes solo se la puede pausar o
-        # eliminar; ninguna otra edición tiene ya pantalla que la pida.
-        raise HTTPException(400, "Las reglas simples ya no se editan. Crea un flujo desde una receta y elimina esta.")
+    values: dict = {}
+    if "name" in requested:
+        name = str(requested["name"] or "").strip()
+        if not name or len(name) > 120:
+            raise HTTPException(400, "Escribe un nombre para el flujo (hasta 120 caracteres).")
+        values["name"] = name
+    if "max_executions_per_hour" in requested:
+        values["max_executions_per_hour"] = requested["max_executions_per_hour"]
+    if "visible_to_sellers" in requested:
+        values["visible_to_sellers"] = bool(requested["visible_to_sellers"])
+    if "is_active" in requested:
+        if requested["is_active"] and not current["published_flow_definition"]:
+            raise HTTPException(400, "Publica el flujo antes de activarlo")
+        values["is_active"] = requested["is_active"]
+    if not values:
+        raise HTTPException(400, "Nada que actualizar")
+    item = await update_automation_rule(rule_id, values)
     if item is None:
         raise HTTPException(404, "Automatización no encontrada")
     return item

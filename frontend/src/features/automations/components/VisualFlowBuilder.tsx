@@ -34,7 +34,7 @@ import { edgesAfterRemovingOutput } from '../domain/positionalOutputs'
 import { useUsers } from '../../platform/public/useUsers'
 import { BusinessHoursHint } from '../../platform/public/BusinessHoursHint'
 import type { AppUser } from '../../platform/types'
-import { AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
+import { AutomationActionType as ActionType, assertNever, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
@@ -397,7 +397,6 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
   const activeUsers = users.filter(user => user.is_active)
   const invokableFlows = automationRules.filter(item => (
     item.id !== ruleId
-    && item.builder_mode === AutomationBuilderMode.Visual
     && item.published
   ))
   const automaticTemplates = useMemo(() => templates.filter(isAutomaticTemplate), [templates])

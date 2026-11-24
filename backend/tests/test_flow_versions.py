@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.modules.automations.ports.types import AutomationBuilderMode
 from app.modules.automations import queries
 from app.modules.automations.application import management
 from app.modules.automations.application.management import publish_visual_flow, restore_flow_version
@@ -19,7 +18,6 @@ def visual_rule(**overrides):
     defaults = {
         "id": RULE_ID,
         "name": "Bienvenida",
-        "builder_mode": AutomationBuilderMode.VISUAL,
         "flow_version": 3,
         "flow_definition": {},
         "published_flow_definition": None,
@@ -55,10 +53,6 @@ def _read_side(monkeypatch, rule, rows=()):
 
 
 class TestListFlowVersions:
-    async def test_returns_empty_for_a_rule_that_is_not_visual(self, monkeypatch):
-        _read_side(monkeypatch, visual_rule(builder_mode=AutomationBuilderMode.SIMPLE))
-        assert await queries.list_flow_versions(RULE_ID) == []
-
     async def test_returns_empty_for_a_missing_rule(self, monkeypatch):
         _read_side(monkeypatch, None)
         assert await queries.list_flow_versions(RULE_ID) == []
@@ -87,11 +81,6 @@ class TestRestoreFlowVersion:
     async def test_returns_none_when_the_version_does_not_exist(self, in_memory_automations):
         in_memory_automations.rules.rules[RULE_ID] = visual_rule()
         assert await restore_flow_version(RULE_ID, 99) is None
-
-    async def test_returns_none_for_a_rule_that_is_not_visual(self, in_memory_automations):
-        in_memory_automations.rules.rules[RULE_ID] = visual_rule(builder_mode=AutomationBuilderMode.SIMPLE)
-        in_memory_automations.executions.flow_versions[(RULE_ID, 1)] = definition()
-        assert await restore_flow_version(RULE_ID, 1) is None
 
     async def test_loads_the_version_into_the_draft_without_publishing(self, in_memory_automations):
         """Restaurar no debe tocar published_flow_definition ni is_active: lo

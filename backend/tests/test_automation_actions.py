@@ -706,7 +706,7 @@ class TestResumeDoesNotRepeatEnqueuedActions:
             }],
         )
 
-        await run_visual_execution(execution, make_rule(builder_mode="visual", flow_version=0), make_chat(), deps)
+        await run_visual_execution(execution, make_rule(flow_version=0), make_chat(), deps)
 
         assert [items[0]["content"] for _, items in outbox.enqueued] == ["Segundo"]
 

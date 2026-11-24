@@ -11,7 +11,7 @@ from app.db.models.auth import User
 from app.db.models.automations import AutomationExecution, AutomationExecutionMessage, AutomationFlowVersion, AutomationRule
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationExecutionStatus, AutomationTrigger
 from app.modules.automations.domain.limits import ACTIVE_EXECUTION_STATUSES
 from app.modules.automations.domain.business_hours_usage import uses_business_hours
 from app.modules.automations.domain.delivery import ExecutionDeliveryState
@@ -25,12 +25,9 @@ def _rule_dict(row) -> dict:
         "trigger_type": row["trigger_type"],
         "trigger_config": row["trigger_config"] or {},
         "conditions": row["conditions"] or {},
-        "actions": row["actions"] or [],
-        "builder_mode": row["builder_mode"] or AutomationBuilderMode.SIMPLE,
         "flow_definition": row["flow_definition"] or {},
         "published_flow_definition": row["published_flow_definition"],
         "flow_version": row["flow_version"] or 0,
-        "delay_minutes": row["delay_minutes"],
         "max_executions_per_hour": row["max_executions_per_hour"],
         "is_active": row["is_active"],
         "visible_to_sellers": bool(row["visible_to_sellers"]),
@@ -110,12 +107,9 @@ async def _rules(rule_id: int | None = None) -> list[dict]:
         AutomationRule.trigger_type,
         AutomationRule.trigger_config,
         AutomationRule.conditions,
-        AutomationRule.actions,
-        AutomationRule.builder_mode,
         AutomationRule.flow_definition,
         AutomationRule.published_flow_definition,
         AutomationRule.flow_version,
-        AutomationRule.delay_minutes,
         AutomationRule.max_executions_per_hour,
         AutomationRule.is_active,
         AutomationRule.visible_to_sellers,
@@ -349,8 +343,7 @@ async def list_manual_flows(is_admin: bool) -> list[dict]:
     rules = await list_automation_rules()
     return [
         rule for rule in rules
-        if rule["builder_mode"] == AutomationBuilderMode.VISUAL
-        and rule["trigger_type"] == AutomationTrigger.MANUAL
+        if rule["trigger_type"] == AutomationTrigger.MANUAL
         and (is_admin or (rule["visible_to_sellers"] and rule["is_active"]))
     ]
 
@@ -358,7 +351,7 @@ async def list_manual_flows(is_admin: bool) -> list[dict]:
 async def list_flow_versions(rule_id: int) -> list[dict]:
     """Versiones publicadas de un flujo visual, de la más nueva a la más vieja."""
     current = await get_automation_rule(rule_id)
-    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
+    if current is None:
         return []
     stmt = select(
         AutomationFlowVersion.version,

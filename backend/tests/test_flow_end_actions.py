@@ -43,7 +43,7 @@ async def test_end_node_can_close_the_conversation(deps, recorder):
         "definition": _flow(close_conversation=True),
         "flow_version": 0,
     })
-    rule = make_rule(builder_mode="visual", flow_version=0)
+    rule = make_rule(flow_version=0)
     chat = make_chat(conversacion_abierta=True)
 
     await run_visual_execution(execution, rule, chat, deps)
@@ -59,7 +59,7 @@ async def test_end_node_without_action_leaves_conversation_open(deps, recorder):
         "definition": _flow(close_conversation=False),
         "flow_version": 0,
     })
-    rule = make_rule(builder_mode="visual", flow_version=0)
+    rule = make_rule(flow_version=0)
     chat = make_chat(conversacion_abierta=True)
 
     await run_visual_execution(execution, rule, chat, deps)

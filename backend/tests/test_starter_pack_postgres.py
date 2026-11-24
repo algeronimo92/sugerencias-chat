@@ -73,9 +73,9 @@ async def test_pack_seeds_once_and_never_overwrites(tenant) -> None:
         # ahora, y sin publicar no le escriben a nadie.
         async with session_scope() as session:
             drafts = (await session.execute(select(
-                AutomationRule.builder_mode, AutomationRule.published_flow_definition, AutomationRule.flow_definition,
+                AutomationRule.published_flow_definition, AutomationRule.flow_definition,
             ))).all()
-        assert all(mode == "visual" and published is None and draft["nodes"] for mode, published, draft in drafts)
+        assert all(published is None and draft["nodes"] for published, draft in drafts)
 
 
 async def test_pack_without_admin_leaves_templates_for_later(tenant) -> None:

@@ -7,7 +7,7 @@ Cubre start_manual_flow_execution contra los puertos en memoria. Que el
 
 import pytest
 
-from app.modules.automations.ports.types import AutomationBuilderMode, AutomationTrigger
+from app.modules.automations.ports.types import AutomationTrigger
 from app.modules.automations.application.management import start_manual_flow_execution
 from app.modules.automations.domain.events import AutomationsScheduled
 from tests.automation_fakes import execution
@@ -20,7 +20,6 @@ def manual_rule(**overrides):
     defaults = {
         "id": RULE_ID,
         "name": "Bienvenida guiada",
-        "builder_mode": AutomationBuilderMode.VISUAL,
         "trigger_type": AutomationTrigger.MANUAL,
         "is_active": True,
         "visible_to_sellers": True,
@@ -66,7 +65,6 @@ class TestStartManualFlowExecution:
 
     @pytest.mark.parametrize(("overrides", "is_admin", "message"), [
         ({"visible_to_sellers": False}, False, "no está disponible"),
-        ({"builder_mode": AutomationBuilderMode.SIMPLE}, False, "no se puede iniciar desde el chat"),
         ({"trigger_type": AutomationTrigger.LEAD_CREATED}, False, "no se puede iniciar desde el chat"),
         ({"is_active": False}, True, "pausado o todavía no se publicó"),
     ])

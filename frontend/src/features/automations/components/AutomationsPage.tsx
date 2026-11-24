@@ -14,7 +14,7 @@ import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useTags } from '../../catalogs/public/useTags'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import { useUsers } from '../../platform/public/useUsers'
-import { AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger as TriggerType, automationStepLabel, isServiceWindowFailure } from '../domain/automationCatalog'
+import { AutomationExecutionStatus, AutomationTrigger as TriggerType, automationStepLabel, isServiceWindowFailure } from '../domain/automationCatalog'
 import {
 useAttention,useAutomationExecutions,useAutomationExecutionsCount,useAutomationRules,useCancelExecution,useCreateVisualFlow,
 useDeleteAutomation,useDuplicateAutomation,useRetryExecution,useUpdateAutomation,
@@ -122,14 +122,13 @@ export function AutomationsPage() {
     { id: 'createdAt', accessorFn: execution => execution.created_at },
   ], [])
   const executionTable = useReactTable({ data: executions, columns: historyColumns, getCoreRowModel: getCoreRowModel() })
-  const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
-  // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
-  const visualRuleIds = new Set(visualRules.map(rule => rule.id))
+  // Un flujo borrado ya no está en la lista: "Ver en el flujo" solo va a los que siguen.
+  const visualRuleIds = new Set(rules.map(rule => rule.id))
   // Lo que corre solo y lo que lanza una persona son tareas distintas de
   // gente distinta: se separaban por cómo estaban construidas («Reglas» y
   // «Flujos visuales»), que es un detalle de implementación.
-  const automaticFlows = visualRules.filter(rule => rule.trigger_type !== TriggerType.Manual)
-  const sequenceFlows = visualRules.filter(rule => rule.trigger_type === TriggerType.Manual)
+  const automaticFlows = rules.filter(rule => rule.trigger_type !== TriggerType.Manual)
+  const sequenceFlows = rules.filter(rule => rule.trigger_type === TriggerType.Manual)
   const attention = useAttention()
   // Se entra donde hay algo que decidir: en «Por atender» si hay pendientes
   // y, si no, en lo que más se edita. Se decide una vez, al terminar de
@@ -179,7 +178,7 @@ export function AutomationsPage() {
   if (!isLoading && ruleUrl.key !== shownRule) {
     setShownRule(ruleUrl.key)
     const { rule, highlight, block } = ruleUrl
-    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab(rule.trigger_type === TriggerType.Manual ? 'sequences' : 'automatic'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
+    if (rule) { setTab(rule.trigger_type === TriggerType.Manual ? 'sequences' : 'automatic'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
   }
 
   async function importFlow(flowDefinition: AutomationFlowDefinition, name: string) {

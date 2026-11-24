@@ -89,7 +89,7 @@ class TestRunVisualExecutionRoundRobin:
     async def test_rotates_through_every_output_and_starts_over(self, deps, executions):
         """Cuatro ejecuciones sobre un bloque de tres salidas: 1, 2, 3 y de
         nuevo la 1."""
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
         branches = []
 
         for attempt in range(4):
@@ -111,7 +111,7 @@ class TestRunVisualExecutionRoundRobin:
             "definition": round_robin_flow(2), "flow_version": 0,
             "current_node_id": "rr", "path": ["t"],
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(execution, rule, make_chat(), deps)
 

@@ -2,7 +2,7 @@ import type { AutomationExecutionFilters } from './types'
 import client from "../../shared/http/client";
 import { jsonAs, type ApiResponse } from '../../shared/http/contract'
 import { asPublishedDefinition } from './domain/publishedDefinition'
-import type { ExecutionMessage, AutomationAction, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowSimulationStep, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
+import type { ExecutionMessage, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowSimulationStep, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
 
 /** De lo que entrega el contrato a la regla que usan las pantallas. */
 export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
@@ -10,7 +10,6 @@ export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
     ...rule,
     trigger_config: jsonAs<AutomationRule['trigger_config']>(rule.trigger_config),
     conditions: jsonAs<AutomationConditions>(rule.conditions),
-    actions: rule.actions.map(action => jsonAs<AutomationAction>(action)),
     flow_definition: jsonAs<AutomationRule['flow_definition']>(rule.flow_definition),
     published_flow_definition: asPublishedDefinition(rule.published_flow_definition),
   }

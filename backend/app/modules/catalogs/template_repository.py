@@ -82,7 +82,6 @@ async def delete_template(template_id: int) -> dict | None:
         rules = (await session.execute(select(
             AutomationRule.id,
             AutomationRule.name,
-            AutomationRule.actions,
             AutomationRule.flow_definition,
             AutomationRule.published_flow_definition,
         ).where(AutomationRule.deleted_at.is_(None)))).mappings().all()
@@ -90,7 +89,7 @@ async def delete_template(template_id: int) -> dict | None:
             row["id"]: row["name"]
             for row in rules
             if any(_references_template(value, template_id) for value in (
-                row["actions"], row["flow_definition"], row["published_flow_definition"],
+                row["flow_definition"], row["published_flow_definition"],
             ))
         }
 

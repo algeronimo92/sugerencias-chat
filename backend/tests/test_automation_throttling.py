@@ -79,7 +79,7 @@ class TestRateLimitReschedules:
         """El tope frena el ritmo; el trabajo pendiente no se pierde."""
         completed(executions, frozen_now, count=5)
         executions.add(execution(id=1, rule_id=1, status=AutomationExecutionStatus.RUNNING),
-                       make_rule(max_executions_per_hour=1, builder_mode="visual"))
+                       make_rule(max_executions_per_hour=1))
         deps = dataclasses.replace(deps, fetch_chat=AsyncMock(return_value=make_chat()))
 
         await run_execution(1, deps)

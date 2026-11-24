@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
+from app.modules.automations.domain.types import AutomationExecutionStatus, AutomationRecipient, AutomationTrigger
 from app.modules.automations.domain.errors import StepFailed
 
 TERMINAL_STATUSES = frozenset({
@@ -30,9 +30,7 @@ class Rule:
     name: str
     trigger_type: str
     is_active: bool = True
-    builder_mode: str = AutomationBuilderMode.SIMPLE
     conditions: dict = field(default_factory=dict)
-    actions: list = field(default_factory=list)
     flow_version: int = 0
     published_flow_definition: dict | None = None
     max_executions_per_hour: int | None = None
@@ -126,17 +124,13 @@ def child_flow_payload(parent: Any, flow_rule_id: int) -> dict:
 def require_invocable(target: Any) -> None:
     if target is None or target.deleted_at is not None:
         raise StepFailed("El flujo hijo ya no existe")
-    if target.builder_mode != AutomationBuilderMode.VISUAL:
-        raise StepFailed("El destino ya no es un flujo visual")
     if not target.is_active or not target.published_flow_definition:
         raise StepFailed(f"El flujo hijo {target.name} no está publicado y activo")
 
 
-def initial_flow_state(builder_mode: str, flow_version: int) -> dict:
-    """El estado con el que arranca una ejecución: los flujos visuales fijan
-    la versión publicada que van a recorrer."""
-    if builder_mode != AutomationBuilderMode.VISUAL:
-        return {}
+def initial_flow_state(flow_version: int) -> dict:
+    """El estado con el que arranca una ejecución: fija la versión publicada
+    que va a recorrer."""
     return {"flow_version": flow_version, "current_node_id": None, "path": []}
 
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from app.modules.automations.ports.types import AutomationBuilderMode, AutomationExecutionStatus
+from app.modules.automations.ports.types import AutomationExecutionStatus
 from app.db.base import Base
 
 
@@ -16,12 +16,12 @@ class AutomationRule(Base):
     trigger_type: Mapped[str] = mapped_column(Text)
     trigger_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     conditions: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    # Restos de las reglas simples, que se retiraron: nadie lee ni escribe
+    # ``actions``, ``builder_mode`` ni ``delay_minutes``. Siguen acá hasta la
+    # revisión que los borra, que va en un despliegue aparte: durante el
+    # cambio azul-verde la versión anterior del backend todavía los consulta.
     actions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
-    builder_mode: Mapped[str] = mapped_column(
-        Text,
-        default=AutomationBuilderMode.SIMPLE,
-        server_default=AutomationBuilderMode.SIMPLE.value,
-    )
+    builder_mode: Mapped[str] = mapped_column(Text, server_default="visual")
     flow_definition: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     published_flow_definition: Mapped[dict | None] = mapped_column(JSONB)
     flow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

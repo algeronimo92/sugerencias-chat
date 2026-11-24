@@ -103,7 +103,6 @@ async def stage_usage(session, key: str) -> dict[str, int]:
         await session.execute(
             select(
                 AutomationRule.conditions,
-                AutomationRule.actions,
                 AutomationRule.flow_definition,
                 AutomationRule.published_flow_definition,
             ).where(AutomationRule.deleted_at.is_(None))

@@ -15,7 +15,7 @@ def node(node_type, data):
 
 
 @pytest.mark.parametrize(("conditions", "definition"), [
-    # Regla simple con «solo en el horario de atención».
+    # «Solo en el horario de atención» en las condiciones de entrada del flujo.
     ({"business_hours_only": True}, None),
     # La misma condición de entrada, guardada dentro del flujo.
     ({}, flow(conditions={"business_hours_only": True})),

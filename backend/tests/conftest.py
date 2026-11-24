@@ -82,10 +82,8 @@ def make_rule(**overrides):
         "name": "Regla de prueba",
         "created_by_user_id": 10,
         "conditions": {},
-        "actions": [],
         "is_active": True,
         "max_executions_per_hour": None,
-        "builder_mode": "simple",
         "flow_version": 0,
         "published_flow_definition": None,
     }

@@ -13,7 +13,7 @@ from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationExecutionStatus
 from app.modules.automations.queries import get_automation_rule
 
-_RULE_FIELDS_WITH_SERVICES = ("conditions", "actions", "flow_definition", "published_flow_definition")
+_RULE_FIELDS_WITH_SERVICES = ("conditions", "flow_definition", "published_flow_definition")
 
 
 class SqlRuleStore:
@@ -108,7 +108,6 @@ class SqlRuleStore:
             rows = (await session.execute(select(
                 AutomationRule.id,
                 AutomationRule.name,
-                AutomationRule.builder_mode,
                 AutomationRule.published_flow_definition,
             ).where(AutomationRule.deleted_at.is_(None)))).mappings().all()
         return {row["id"]: dict(row) for row in rows}

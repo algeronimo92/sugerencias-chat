@@ -23,7 +23,7 @@ from app.modules.catalogs import template_policies
         {"nested": {"template_id": "7"}},
     ],
 )
-def test_template_reference_is_found_in_simple_and_visual_definitions(definition):
+def test_template_reference_is_found_wherever_a_definition_names_it(definition):
     assert template_policies._references_template(definition, 7)
     assert not template_policies._references_template(definition, 8)
 

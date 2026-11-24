@@ -97,7 +97,7 @@ class TestRunVisualExecutionStopsAfterCancellation:
     ):
         executions.save = AsyncMock(side_effect=[True, False])
         execution = make_execution(flow_state={"definition": two_actions_flow(), "flow_version": 0})
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(execution, rule, make_chat(), deps)
 
@@ -192,18 +192,3 @@ class TestStopWhenTheTeamReplies:
         await subscribers.stop_follow_ups_when_the_team_replies(MessageSent(chat_id="chat-1", message_id=1, **event_values))
 
         assert in_memory_automations.scheduling.team_replies == []
-
-
-async def test_a_leftover_simple_rule_is_closed_saying_why(deps, executions, recorder):
-    """Las reglas simples se retiraron. Si quedara una ejecución de alguna, no
-    corre ninguna acción y el historial dice por qué, sin aviso de fallo."""
-    executions.add(
-        stored_execution(id=1, status=AutomationExecutionStatus.RUNNING),
-        make_rule(builder_mode="simple", actions=[{"type": "add_tag", "tag_id": 1}]),
-    )
-
-    await run_execution(1, deps)
-
-    assert executions.executions[1].status == AutomationExecutionStatus.CANCELLED
-    assert "reglas simples" in executions.executions[1].error
-    assert recorder.tags_added == []

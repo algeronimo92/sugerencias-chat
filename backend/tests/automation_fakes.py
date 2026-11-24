@@ -219,9 +219,9 @@ class InMemoryRuleStore:
         while rule_id in self.rules:
             rule_id = next(self._ids)
         self.rules[rule_id] = {
-            "id": rule_id, "builder_mode": "simple", "flow_definition": {}, "published_flow_definition": None,
+            "id": rule_id, "flow_definition": {}, "published_flow_definition": None,
             "flow_version": 0, "max_executions_per_hour": None, "visible_to_sellers": False,
-            "conditions": {}, "actions": [], "trigger_config": {}, "delay_minutes": 0,
+            "conditions": {}, "trigger_config": {},
             **values, "created_by_user_id": user_id, "created_at": now, "updated_at": now,
         }
         return rule_id
@@ -255,7 +255,7 @@ class InMemoryRuleStore:
     async def flow_targets(self):
         return {
             rule_id: {
-                "id": rule_id, "name": rule["name"], "builder_mode": rule["builder_mode"],
+                "id": rule_id, "name": rule["name"],
                 "published_flow_definition": rule.get("published_flow_definition"),
             }
             for rule_id, rule in self.rules.items()
@@ -266,7 +266,7 @@ class InMemoryRuleStore:
         self.renames.append((old_name, new_name))
 
     async def rules_referencing_service(self, name, references):
-        fields = ("conditions", "actions", "flow_definition", "published_flow_definition")
+        fields = ("conditions", "flow_definition", "published_flow_definition")
         return [
             (rule_id, rule.get("name")) for rule_id, rule in self.rules.items()
             if not rule.get("deleted_at") and any(references(rule.get(field), name) for field in fields)
@@ -425,7 +425,7 @@ def execution(**overrides):
 def rule(**overrides):
     defaults = {
         "id": 1, "name": "Regla de prueba", "trigger_type": "manual", "is_active": True,
-        "builder_mode": "simple", "conditions": {}, "actions": [], "flow_version": 0,
+        "conditions": {}, "flow_version": 0,
         "published_flow_definition": None, "max_executions_per_hour": None,
         "created_by_user_id": 10, "deleted_at": None,
     }

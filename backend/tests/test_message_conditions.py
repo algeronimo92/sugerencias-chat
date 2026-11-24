@@ -262,7 +262,7 @@ class TestMessageContext:
             event_payload={"message_id": "WA-1", "content": "Quiero HOLLYWOOD PEEL"},
             flow_state={"definition": definition, "flow_version": 0, "current_node_id": None, "path": []},
         )
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(execution, rule, make_chat(), deps)
 
