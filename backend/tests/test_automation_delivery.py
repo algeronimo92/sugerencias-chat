@@ -2,6 +2,7 @@
 sus pasos. Había «completadas» con mensajes que nunca salieron."""
 
 import dataclasses
+from datetime import timedelta
 
 import pytest
 
@@ -226,14 +227,65 @@ class TestDailyCap:
         executions.queued_for_lead["chat-1"] = already
         return dataclasses.replace(deps, enqueue_messages=enqueue, daily_message_cap=daily_cap)
 
-    async def test_at_the_cap_nothing_else_is_queued_and_the_step_says_why(self, deps, executions):
-        from app.modules.automations.domain.errors import StepFailed
+    async def test_at_the_cap_nothing_else_is_queued_and_it_asks_to_come_back_later(self, deps, executions):
+        from app.modules.automations.domain.errors import DailyCapReached
 
         wrapped = with_outbox_dedupe(self._deps(deps, executions, cap=3, already=3), execution_id=5, position=1)
 
-        with pytest.raises(StepFailed, match="máximo de mensajes automáticos de hoy \\(3\\)"):
+        with pytest.raises(DailyCapReached, match="máximo de mensajes automáticos de hoy \\(3\\)") as reached:
             await wrapped.enqueue_messages("chat-1", [{"message": {}}])
         assert executions.messages == {}
+        assert reached.value.retry_at == deps.now() + timedelta(hours=1)
+
+    async def test_a_flow_at_the_cap_waits_on_the_same_block_and_sends_it_later(self, deps, executions, outbox):
+        """Antes la ejecución fallaba y los pasos que faltaban no salían nunca
+        si nadie la reintentaba a mano desde «Por atender»."""
+        from app.modules.automations.application.engine import run_visual_execution
+        from tests.conftest import make_chat, make_execution, make_rule
+
+        flow = {
+            "conditions": {},
+            "nodes": [
+                {"id": "t", "type": "trigger", "position": {"x": 0, "y": 0}, "data": {"trigger_type": "manual"}},
+                {"id": "a", "type": "action", "position": {"x": 0, "y": 0}, "data": {"action": {"type": "send_message", "text": "Hola"}}},
+                {"id": "e", "type": "end", "position": {"x": 0, "y": 0}, "data": {"label": "Fin"}},
+            ],
+            "edges": [
+                {"id": "1", "source": "t", "target": "a", "source_handle": "next"},
+                {"id": "2", "source": "a", "target": "e", "source_handle": "next"},
+            ],
+        }
+        chat = make_chat()
+        execution = make_execution(flow_state={"definition": flow, "flow_version": 0})
+        rule = make_rule(builder_mode="visual", flow_version=0)
+        capped = {"cap": 2}
+
+        async def daily_cap():
+            return capped["cap"]
+
+        deps = dataclasses.replace(deps, daily_message_cap=daily_cap)
+        executions.add(execution)
+        executions.queued_for_lead[chat["chat_id"]] = 2
+
+        await run_visual_execution(execution, rule, chat, deps)
+
+        waiting = [values for _id, values in executions.saves][-1]
+        assert waiting["status"] == "scheduled"
+        assert waiting["scheduled_for"] == deps.now() + timedelta(hours=1)
+        # Queda parado en el bloque que no pudo enviar, sin haberlo recorrido.
+        assert waiting["flow_state"]["current_node_id"] == "a"
+        assert "a" not in waiting["flow_state"]["path"]
+        assert not any(result.get("status") == "failed" for result in waiting["action_results"])
+        assert outbox.enqueued == []
+
+        # Pasó el día: al retomar manda ese mismo paso y termina.
+        executions.queued_for_lead[chat["chat_id"]] = 0
+        execution.flow_state = {"definition": flow, **waiting["flow_state"]}
+        execution.action_results = waiting["action_results"]
+        await run_visual_execution(execution, rule, chat, deps)
+
+        assert [values for _id, values in executions.saves][-1]["status"] == "completed"
+        assert len(outbox.enqueued) == 1
 
     async def test_below_the_cap_or_without_one_messages_go_out(self, deps, executions):
         below = with_outbox_dedupe(self._deps(deps, executions, cap=3, already=2), execution_id=5, position=1)

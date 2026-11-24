@@ -31,7 +31,7 @@ from app.modules.conversations.ports.template_sending import ChatMessagingError
 from app.modules.conversations.ports.message_items import interactive_item, media_item, text_item
 from app.modules.conversations.ports.message_media import mediatype_from_content_type
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_CLOSED_ERROR
-from app.modules.automations.domain.errors import StepFailed
+from app.modules.automations.domain.errors import DailyCapReached, StepFailed
 from app.modules.automations.domain.types import ExecutionErrorCode
 
 
@@ -395,7 +395,9 @@ SERVICE_WINDOW_ACTIONS = frozenset({
 })
 
 
-DAILY_CAP_REACHED = "Este cliente ya recibió el máximo de mensajes automáticos de hoy ({cap}). No se envió nada más."
+DAILY_CAP_REACHED = "Este cliente ya recibió el máximo de mensajes automáticos de hoy ({cap}). El flujo espera y retoma solo."
+# Cada cuánto vuelve a mirar un flujo que quedó esperando por el tope.
+DAILY_CAP_RETRY = timedelta(hours=1)
 
 
 async def _require_under_daily_cap(deps: AutomationDeps, lead_id: str, execution_id: int) -> None:
@@ -413,7 +415,7 @@ async def _require_under_daily_cap(deps: AutomationDeps, lead_id: str, execution
     if sent >= cap:
         own = len((await deps.executions.tracked_message_states([execution_id])).get(execution_id, {}))
         if sent - own >= cap:
-            raise StepFailed(DAILY_CAP_REACHED.format(cap=cap))
+            raise DailyCapReached(DAILY_CAP_REACHED.format(cap=cap), retry_at=deps.now() + DAILY_CAP_RETRY)
 
 
 def with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -> AutomationDeps:

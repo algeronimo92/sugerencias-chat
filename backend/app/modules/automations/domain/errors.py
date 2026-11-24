@@ -39,6 +39,17 @@ class InvalidAutomation(DomainError, ValueError):
         return response
 
 
+class DailyCapReached(Exception):
+    """El cliente ya recibió hoy el máximo de mensajes automáticos. No es un
+    fallo del paso: el flujo espera y vuelve a intentar ese mismo paso más
+    tarde. No hereda de StepFailed a propósito, para que nadie lo trate como
+    un error por descuido."""
+
+    def __init__(self, message: str, *, retry_at) -> None:
+        super().__init__(message)
+        self.retry_at = retry_at
+
+
 class StepFailed(InvalidAutomation):
     """Un paso de la ejecución no pudo completarse."""
 

@@ -29,7 +29,7 @@ from app.modules.automations.domain.execution import (
 )
 from app.modules.automations.domain.flow_graph import flow_indexes
 from app.modules.automations.domain.limits import MAX_CONCURRENT_EXECUTIONS, MAX_FLOW_NODES, RATE_LIMIT_RETRY_MINUTES
-from app.modules.automations.domain.errors import StepFailed
+from app.modules.automations.domain.errors import DailyCapReached, StepFailed
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +196,17 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
             )
             return
         raise StepFailed("El flujo excedió el máximo de bloques permitidos")
+    except DailyCapReached as exc:
+        # No falló nada: el cliente ya recibió hoy su máximo de mensajes
+        # automáticos. El flujo queda esperando en este mismo bloque y lo
+        # vuelve a intentar más tarde. Antes fallaba, y los pasos que
+        # faltaban no salían nunca si nadie lo reintentaba a mano.
+        if path and path[-1] == current_id:
+            path.pop()  # todavía no pasó por este bloque: lo recorre al retomar
+        await _persist_visual_execution(
+            execution.id, AutomationExecutionStatus.SCHEDULED, results, current_id, path, flow_version, deps,
+            error=str(exc), scheduled_for=exc.retry_at,
+        )
     except Exception as exc:
         # El KeyError cuenta como esperado para anotar el bloque que falló, pero
         # su texto no se muestra: sin el log no quedaría rastro de la causa.
