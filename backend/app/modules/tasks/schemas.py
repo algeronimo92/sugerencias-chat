@@ -44,8 +44,10 @@ class TaskItem(BaseModel):
     assigned_user_name: str
     is_overdue: bool
     created_at: str
+    completed_at: str | None = None
 
 TaskBucket = Literal["overdue", "today", "upcoming"]
+TaskStatusFilter = Literal["pending", "completed", "all"]
 
 
 class TaskCounts(BaseModel):
@@ -57,10 +59,10 @@ class TaskCounts(BaseModel):
 
 class TaskPage(BaseModel):
     items: list[TaskItem]
-    # Cuántas hay en el grupo pedido (con la búsqueda aplicada): con esto se
+    # Cuántas hay con el estado, el grupo y la búsqueda pedidos: con esto se
     # calcula el número de páginas.
     total: int
-    # Los contadores de los chips, con la búsqueda aplicada.
+    # Los contadores de los chips (solo pendientes), con la búsqueda aplicada.
     counts: TaskCounts
     # Todas las pendientes del responsable elegido, sin búsqueda ni grupo: es
     # lo que afecta "Completar todas".

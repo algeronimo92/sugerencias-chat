@@ -12,8 +12,8 @@ import { useMe } from '../../auth/public/queries'
 import { TaskStatusValue } from '../domain/taskCatalog'
 import { useUsers } from '../../platform/public/useUsers'
 import { useCompleteAllTasks, useTasksPage, useUpdateTask } from '../hooks/useTasks'
-import type { LeadTask, TaskStatus } from '../types'
-import { TASK_GROUPS, buildSections, pendingSummary, type GroupKey } from './taskListModel'
+import type { LeadTask, TaskStatus, TaskStatusFilter } from '../types'
+import { STATUS_FILTERS, TASK_GROUPS, buildSections, isClosed, pendingSummary, type GroupKey } from './taskListModel'
 import { CompleteAllBar, TaskFilters, TaskGroupChips, TaskListBody } from './TasksPageParts'
 
 function scopeLabelFor(assignee: string, people: { id: number; name: string }[], assignedUserId: number | undefined) {
@@ -40,13 +40,13 @@ const EMPTY_COUNTS: Record<GroupKey, number> = { all: 0, overdue: 0, today: 0, u
 
 /** Búsqueda, grupo y página se resuelven en el servidor: con más de 500
  *  pendientes la lista en memoria dejaba fuera al resto sin avisar. */
-function useTaskView({ search, group, assignedUserId, allUsers }: { search: string; group: GroupKey; assignedUserId: number | undefined; allUsers: boolean }) {
+function useTaskView({ status, search, group, assignedUserId, allUsers }: { status: TaskStatusFilter; search: string; group: GroupKey; assignedUserId: number | undefined; allUsers: boolean }) {
   const [pageSize, setPageSize] = usePageSize('tareas:filas')
   const [requestedPage, setRequestedPage] = useState(0)
   const query = useDeferredValue(search.trim())
   const dayEnd = localDayEnd()
   // Otro filtro es otra lista: se vuelve a la primera página.
-  useEffect(() => setRequestedPage(0), [query, group, assignedUserId, allUsers, pageSize])
+  useEffect(() => setRequestedPage(0), [status, query, group, assignedUserId, allUsers, pageSize])
 
   const [knownTotal, setKnownTotal] = useState(0)
   // Si se completan tareas y la última página deja de existir, se muestra la
@@ -54,7 +54,9 @@ function useTaskView({ search, group, assignedUserId, allUsers }: { search: stri
   const pageCount = Math.max(1, Math.ceil(knownTotal / pageSize))
   const page = Math.min(requestedPage, pageCount - 1)
   const result = useTasksPage({
-    dayEnd, search: query, bucket: group === 'all' ? undefined : group,
+    dayEnd, status, search: query,
+    // Los grupos por vencimiento son de las pendientes: una tarea cerrada no vence.
+    bucket: status !== 'pending' || group === 'all' ? undefined : group,
     assignedUserId, allUsers, offset: page * pageSize, limit: pageSize,
   })
   const total = result.data?.total ?? 0
@@ -102,20 +104,23 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
   const [assignee, setAssignee] = useState('mine')
   const [group, setGroup] = useState<GroupKey>('all')
   const [search, setSearch] = useState('')
+  const [status, setStatusFilter] = useState<TaskStatusFilter>('pending')
 
   const { allUsers, assignedUserId } = assigneeScope(assignee)
   const {
     isLoading, isFetching, isError, error, refetch, query, page, pageSize, total, sections, isEmpty,
     counts, pendingTotal, setPage, setPageSize,
-  } = useTaskView({ search, group, assignedUserId, allUsers })
+  } = useTaskView({ status, search, group, assignedUserId, allUsers })
   const updateTask = useUpdateTask()
   const completeAll = useCompleteAllTasks()
   const activeGroup = TASK_GROUPS.find(item => item.key === group) ?? TASK_GROUPS[0]
   const listRef = useRef<HTMLElement>(null)
 
-  const isFiltered = group !== 'all' || query !== '' || assignee !== 'mine'
+  const isPendingView = status === 'pending'
+  const heading = STATUS_FILTERS.find(item => item.value === status)?.heading ?? 'Pendientes'
+  const isFiltered = (isPendingView && group !== 'all') || query !== '' || assignee !== 'mine' || !isPendingView
   const listReady = !isError && !isLoading
-  const showCompleteAll = pendingTotal > 0 && listReady
+  const showCompleteAll = isPendingView && pendingTotal > 0 && listReady
   const busyId = updateTask.isPending ? updateTask.variables?.id ?? null : null
   const scopeLabel = scopeLabelFor(assignee, users, assignedUserId)
 
@@ -123,6 +128,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
     setGroup('all')
     setSearch('')
     setAssignee('mine')
+    setStatusFilter('pending')
   }
 
   function goToPage(next: number) {
@@ -140,6 +146,10 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
   /** Deshacer en vez de confirmar: completar una tarea es reversible, así que
    *  no vale un modal por delante (Nielsen 3). */
   function handleComplete(task: LeadTask) {
+    if (isClosed(task)) {
+      setStatus(task.id, TaskStatusValue.Pending, () => toast.success('Tarea devuelta a pendientes', { description: task.title }))
+      return
+    }
     setStatus(task.id, TaskStatusValue.Completed, () => {
       toast.success('Tarea completada', {
         description: task.title,
@@ -173,22 +183,23 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
           </p>
         </header>
 
-        {(pendingTotal > 0 || isAdmin) && !isError && (
+        {!isError && (
           <TaskFilters
-            showSearch={pendingTotal > 0} canChooseAssignee={isAdmin}
+            showSearch={pendingTotal > 0 || !isPendingView} canChooseAssignee={isAdmin}
+            status={status} onStatus={setStatusFilter}
             search={search} onSearch={setSearch} assignee={assignee} onAssignee={setAssignee}
             people={users} meId={me?.id}
           />
         )}
 
-        {counts.all > 0 && !isError && <TaskGroupChips group={group} counts={counts} onSelect={setGroup} />}
+        {isPendingView && counts.all > 0 && !isError && <TaskGroupChips group={group} counts={counts} onSelect={setGroup} />}
 
         <section ref={listRef} className="mt-5 scroll-mt-4" aria-busy={isFetching}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
-              <h2 className="text-base font-semibold text-wa-text dark:text-white">Pendientes</h2>
+              <h2 className="text-base font-semibold text-wa-text dark:text-white">{heading}</h2>
               <p aria-live="polite" className="mt-0.5 text-sm text-wa-muted dark:text-wa-muted-dark">
-                {pendingSummary({ isLoading, isError, visible: total, total: pendingTotal, isFiltered, scopeLabel, group: activeGroup })}
+                {pendingSummary({ isLoading, isError, visible: total, total: pendingTotal, isFiltered, scopeLabel, group: activeGroup, status })}
               </p>
             </div>
             <PendingActions isFiltered={isFiltered} isFetching={isFetching} onReset={resetFilters} onRefresh={() => { void refetch() }} />
@@ -201,7 +212,7 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
           <div className="overflow-hidden rounded-xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
             <TaskListBody
               isLoading={isLoading} isError={isError} error={error} sections={sections} isEmpty={isEmpty}
-              isFiltered={isFiltered} query={query} search={search} group={activeGroup} scopeLabel={scopeLabel}
+              isFiltered={isFiltered} query={query} search={search} group={activeGroup} scopeLabel={scopeLabel} status={status}
               busyId={busyId}
               onRetry={() => { void refetch() }} onReset={resetFilters} onGoToChats={() => navigate('/')}
               onComplete={handleComplete} onOpenChat={onOpenChat}

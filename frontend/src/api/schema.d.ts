@@ -2688,7 +2688,7 @@ export interface paths {
         };
         /**
          * Get Pending Tasks Page
-         * @description La bandeja de "Tareas", paginada en el servidor.
+         * @description La bandeja de "Tareas", paginada en el servidor y filtrable por estado.
          */
         get: operations["get_pending_tasks_page_api_tasks_page_get"];
         put?: never;
@@ -9336,6 +9336,8 @@ export interface components {
             is_overdue: boolean;
             /** Created At */
             created_at: string;
+            /** Completed At */
+            completed_at?: string | null;
         };
         /** TaskPage */
         TaskPage: {
@@ -15153,6 +15155,7 @@ export interface operations {
         parameters: {
             query: {
                 day_end: string;
+                status?: "pending" | "completed" | "all";
                 search?: string | null;
                 bucket?: ("overdue" | "today" | "upcoming") | null;
                 assigned_user_id?: number | null;

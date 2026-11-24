@@ -3,7 +3,11 @@ import type { ApiResponse } from '../../shared/http/contract'
 import type { LeadTask, TaskInput, TaskPage, TaskPageQuery, TaskStatus } from './types'
 
 
-export async function fetchTasks(leadId: string | undefined, assignedUserId: number | undefined, allUsers: boolean): Promise<LeadTask[]> {
+// `status` llega como parámetro: sin él, el `status` de abajo era la global
+// `window.status` (siempre "") y el backend devolvía también las completadas y
+// canceladas. Así la bandeja llegó a mostrar 500 "pendientes" que no lo eran y
+// la tarjeta del chat podía proponer como próxima una tarea ya cerrada.
+export async function fetchTasks(status: TaskStatus | undefined, leadId: string | undefined, assignedUserId: number | undefined, allUsers: boolean): Promise<LeadTask[]> {
   return (await client.get<ApiResponse<'/api/tasks', 'get'>>('/api/tasks', {
       params: { status, lead_id: leadId, assigned_user_id: assignedUserId, all_users: allUsers || undefined },
     })).data
@@ -13,6 +17,7 @@ export async function fetchTasksPage(query: TaskPageQuery): Promise<TaskPage> {
   return (await client.get<ApiResponse<'/api/tasks/page', 'get'>>('/api/tasks/page', {
       params: {
         day_end: query.dayEnd,
+        status: query.status,
         search: query.search || undefined,
         bucket: query.bucket,
         assigned_user_id: query.assignedUserId,

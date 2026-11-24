@@ -55,13 +55,15 @@ function task(overrides: Partial<LeadTask> & { id: number }): LeadTask {
 /** El backend en pequeño: búsqueda por título o lead, grupo y página. */
 function serverPage(tasks: LeadTask[], query: TaskPageQuery) {
   const term = query.search.toLowerCase()
-  const searched = tasks.filter(item => !term || [item.title, item.lead_name].some(value => value?.toLowerCase().includes(term)))
-  const counts = { all: searched.length, overdue: 0, today: 0, upcoming: 0 }
-  for (const item of searched) counts[bucketOf(item)] += 1
+  const pending = tasks.filter(item => item.status === 'pending')
+  const byStatus = query.status === 'all' ? tasks : tasks.filter(item => item.status === query.status)
+  const searched = byStatus.filter(item => !term || [item.title, item.lead_name].some(value => value?.toLowerCase().includes(term)))
+  const counts = { all: 0, overdue: 0, today: 0, upcoming: 0 }
+  for (const item of searched.filter(task => task.status === 'pending')) { counts.all += 1; counts[bucketOf(item)] += 1 }
   const inGroup = searched.filter(item => !query.bucket || bucketOf(item) === query.bucket)
   return {
     items: inGroup.slice(query.offset, query.offset + query.limit),
-    total: inGroup.length, counts, pending_total: tasks.length,
+    total: inGroup.length, counts, pending_total: pending.length,
   }
 }
 
@@ -205,5 +207,33 @@ describe('TasksPage', () => {
     expect(mutate).not.toHaveBeenCalled()
     await user.click(within(dialog).getByRole('button', { name: 'Completar todas' }))
     expect(mutate).toHaveBeenCalledWith({ assignedUserId: undefined, allUsers: false }, expect.any(Object))
+  })
+
+  it('filtra por estado y deja devolver una completada a pendientes', async () => {
+    const mutate = vi.fn()
+    mockQuery({ data: [
+      task({ id: 1, title: 'Llamada pendiente' }),
+      task({ id: 2, title: 'Cotización enviada', status: 'completed', completed_at: hoursFromNow(-1) }),
+    ] }, { mutate })
+    const user = userEvent.setup()
+    render(<TasksPage onOpenChat={vi.fn()} />)
+
+    expect(screen.queryByText('Cotización enviada')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }))
+    await user.click(screen.getByRole('option', { name: 'Completadas' }))
+
+    expect(vi.mocked(useTasksPage).mock.calls.at(-1)?.[0]).toMatchObject({ status: 'completed', bucket: undefined })
+    expect(screen.getByRole('heading', { name: 'Completadas', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByText('Llamada pendiente')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /vencidas/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Completar todas' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Devolver "Cotización enviada" a pendientes' }))
+    expect(mutate).toHaveBeenCalledWith({ id: 2, status: 'pending' }, expect.anything())
+
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }))
+    await user.click(screen.getByRole('option', { name: 'Todas' }))
+    expect(screen.getByText('Llamada pendiente')).toBeInTheDocument()
+    expect(screen.getByText('Cotización enviada')).toBeInTheDocument()
   })
 })

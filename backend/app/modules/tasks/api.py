@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.tasks.types import TaskStatus
 from app.modules.auth.public import User
-from app.modules.tasks.schemas import CompletedTasks, TaskBucket, TaskCreate, TaskItem, TaskPage, TaskUpdate
+from app.modules.tasks.schemas import CompletedTasks, TaskBucket, TaskCreate, TaskItem, TaskPage, TaskStatusFilter, TaskUpdate
 from app.modules.auth.public import Permission, can, get_current_user, require_permission
 from app.modules.tasks.queries import get_task, list_pending_page, list_tasks
 from app.modules.tasks.service import MissingTaskReferenceError, complete_pending_tasks, create_task, update_task
@@ -34,6 +34,7 @@ async def get_tasks(
 @router.get("/page", response_model=TaskPage)
 async def get_pending_tasks_page(
     day_end: datetime,
+    status: TaskStatusFilter = "pending",
     search: str | None = None,
     bucket: TaskBucket | None = None,
     assigned_user_id: int | None = None,
@@ -42,13 +43,14 @@ async def get_pending_tasks_page(
     limit: int = Query(default=10, ge=1, le=100),
     user: User = Depends(get_current_user),
 ):
-    """La bandeja de "Tareas", paginada en el servidor."""
+    """La bandeja de "Tareas", paginada en el servidor y filtrable por estado."""
     if not can(user, Permission.TEAM_SUPERVISE) and (assigned_user_id is not None or all_users):
         raise HTTPException(403, "Tu rol no puede consultar tareas de otros usuarios")
     return await list_pending_page(
         user.id,
         can(user, Permission.TEAM_SUPERVISE),
         day_end=day_end,
+        status=status,
         search=search.strip() if search else None,
         bucket=bucket,
         assigned_user_id=assigned_user_id,

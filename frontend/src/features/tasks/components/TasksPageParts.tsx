@@ -7,14 +7,16 @@ import { StatChip } from '../../../shared/ui/StatChip'
 import { STAT_TONE_ICON } from '../../../shared/ui/tones'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import type { LeadTask } from '../types'
+import type { LeadTask, TaskStatusFilter } from '../types'
 import { TaskRow } from './TaskRow'
-import { TASK_GROUPS, bucketOf, type GroupKey, type Section, type TaskGroup } from './taskListModel'
+import { STATUS_FILTERS, TASK_GROUPS, bucketOf, type GroupKey, type Section, type TaskGroup } from './taskListModel'
 
 type Person = { id: number; name: string; is_active: boolean }
 
-export function TaskFilters({ showSearch, canChooseAssignee, search, onSearch, assignee, onAssignee, people, meId }: {
+export function TaskFilters({ showSearch, canChooseAssignee, search, onSearch, assignee, onAssignee, people, meId, status, onStatus }: {
   showSearch: boolean
+  status: TaskStatusFilter
+  onStatus: (value: TaskStatusFilter) => void
   canChooseAssignee: boolean
   search: string
   onSearch: (value: string) => void
@@ -34,6 +36,12 @@ export function TaskFilters({ showSearch, canChooseAssignee, search, onSearch, a
           </span>
         </label>
       )}
+      <label className="block min-w-0 text-sm font-medium text-wa-text dark:text-wa-text-dark sm:w-44">
+        Estado
+        <Select value={status} onChange={event => onStatus(event.target.value as TaskStatusFilter)} className="mt-2 min-h-10 w-full border-wa-muted bg-white shadow-none dark:border-wa-muted-dark dark:bg-wa-head-dark">
+          {STATUS_FILTERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </Select>
+      </label>
       {canChooseAssignee && (
         <label className="block min-w-0 text-sm font-medium text-wa-text dark:text-wa-text-dark sm:w-60">
           Responsable
@@ -123,15 +131,17 @@ function TaskListError({ error, onRetry }: { error: unknown; onRetry: () => void
 }
 
 /** Título del estado vacío: por qué no hay nada que mostrar. */
-function emptyTitle({ isFiltered, query, search, group, scopeLabel }: { isFiltered: boolean; query: string; search: string; group: TaskGroup; scopeLabel: string }) {
+function emptyTitle({ isFiltered, query, search, group, scopeLabel, status }: { isFiltered: boolean; query: string; search: string; group: TaskGroup; scopeLabel: string; status: TaskStatusFilter }) {
   if (!isFiltered) return 'No tienes tareas pendientes'
   if (query) return `Ninguna tarea coincide con “${search.trim()}”`
+  if (status === 'completed') return `Sin tareas completadas de ${scopeLabel.toLowerCase()}`
+  if (status === 'all') return `Sin tareas de ${scopeLabel.toLowerCase()}`
   if (group.key !== 'all') return group.emptyTitle
   return `Sin tareas para ${scopeLabel.toLowerCase()}`
 }
 
-function TaskListEmpty({ isFiltered, query, search, group, scopeLabel, onReset, onGoToChats }: {
-  isFiltered: boolean; query: string; search: string; group: TaskGroup; scopeLabel: string; onReset: () => void; onGoToChats: () => void
+function TaskListEmpty({ isFiltered, query, search, group, scopeLabel, status, onReset, onGoToChats }: {
+  isFiltered: boolean; query: string; search: string; group: TaskGroup; scopeLabel: string; status: TaskStatusFilter; onReset: () => void; onGoToChats: () => void
 }) {
   const GroupIcon = group.icon
   return (
@@ -141,7 +151,7 @@ function TaskListEmpty({ isFiltered, query, search, group, scopeLabel, onReset, 
       </span>
       <div className="min-w-0">
         <h3 className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
-          {emptyTitle({ isFiltered, query, search, group, scopeLabel })}
+          {emptyTitle({ isFiltered, query, search, group, scopeLabel, status })}
         </h3>
         <p className="mt-1 max-w-xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
           {isFiltered ? 'Prueba con otro responsable o grupo, o quita los filtros para ver tus pendientes.' : 'Las tareas se crean desde una conversación. Abre un chat para agendar una llamada, cotización o seguimiento.'}
@@ -208,6 +218,7 @@ export interface TaskListProps {
   search: string
   group: TaskGroup
   scopeLabel: string
+  status: TaskStatusFilter
   busyId: number | null
   onRetry: () => void
   onReset: () => void

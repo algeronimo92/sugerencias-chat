@@ -9,7 +9,7 @@ export type { TaskInput } from '../types'
 export function useTasks(status?: TaskStatus, leadId?: string, assignedUserId?: number, allUsers = false) {
   return useQuery({
     queryKey: taskKeys.list(status, leadId, assignedUserId, allUsers),
-    queryFn: () => fetchTasks(leadId, assignedUserId, allUsers),
+    queryFn: () => fetchTasks(status, leadId, assignedUserId, allUsers),
   })
 }
 
