@@ -4012,8 +4012,7 @@ export interface paths {
         /** Get Rules */
         get: operations["get_rules_api_automations_get"];
         put?: never;
-        /** Post Rule */
-        post: operations["post_rule_api_automations_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5277,41 +5276,6 @@ export interface components {
             edge_count: number;
             /** Is Current */
             is_current: boolean;
-        };
-        /** AutomationRuleCreate */
-        AutomationRuleCreate: {
-            /** Name */
-            name: string;
-            trigger_type: components["schemas"]["AutomationTrigger"];
-            /** Trigger Config */
-            trigger_config?: {
-                [key: string]: unknown;
-            };
-            /** Conditions */
-            conditions?: {
-                [key: string]: unknown;
-            };
-            /** Actions */
-            actions?: {
-                [key: string]: unknown;
-            }[];
-            /**
-             * Delay Minutes
-             * @default 0
-             */
-            delay_minutes: number;
-            /** Max Executions Per Hour */
-            max_executions_per_hour?: number | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Visible To Sellers
-             * @default false
-             */
-            visible_to_sellers: boolean;
         };
         /** AutomationRuleItem */
         AutomationRuleItem: {
@@ -18052,39 +18016,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomationRuleItem"][];
-                };
-            };
-        };
-    };
-    post_rule_api_automations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AutomationRuleCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AutomationRuleItem"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

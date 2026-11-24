@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { isoDateOffset, todayISODate } from '../../shared/utils/datetime'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchExecutionMessages, fetchAutomationRules, cancelExecution, createAutomation, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
+import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchExecutionMessages, fetchAutomationRules, cancelExecution, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
 import { AutomationExecutionStatus } from './domain/automationCatalog'
@@ -122,13 +122,6 @@ function invalidateAutomations() {
     queryClient.invalidateQueries({ queryKey: automationKeys.all }),
     queryClient.invalidateQueries({ queryKey: executionKeys.all }),
   ])
-}
-
-export function useCreateAutomation() {
-  return useMutation({
-    mutationFn: createAutomation,
-    onSuccess: invalidateAutomations,
-  })
 }
 
 export function useUpdateAutomation() {

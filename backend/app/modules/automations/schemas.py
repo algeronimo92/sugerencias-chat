@@ -6,18 +6,6 @@ from pydantic import BaseModel, Field
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, ExecutionErrorCode, ExecutionPauseScope, ExecutionStartSource
 
 
-class AutomationRuleCreate(BaseModel):
-    name: str
-    trigger_type: AutomationTrigger
-    trigger_config: dict = Field(default_factory=dict)
-    conditions: dict = Field(default_factory=dict)
-    actions: list[dict] = Field(default_factory=list)
-    delay_minutes: int = Field(default=0, ge=0, le=10080)
-    max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
-    is_active: bool = True
-    visible_to_sellers: bool = False
-
-
 class AutomationRuleUpdate(BaseModel):
     name: str | None = None
     trigger_type: AutomationTrigger | None = None

@@ -55,12 +55,7 @@ function places(conditions: string | false, count: number, one: string, many: st
   return where.filter(Boolean).join(' y ')
 }
 
-/** Lo que va en el aviso de la regla: dónde está, en palabras; vacío si ya no lo usa. */
-export function ruleServiceSummary(inConditions: boolean, actions: number): string {
-  return places(inConditions && 'las condiciones ("Servicio de interés contiene")', actions, 'la acción', 'acciones')
-}
-
-/** Igual, para un flujo visual. */
+/** Dónde nombra un flujo al servicio, en palabras; vacío si ya no lo usa. */
 export function flowServiceSummary(references: FlowServiceReferences): string {
   return places(references.entryConditions && 'las condiciones de entrada ("Servicio de interés contiene")', references.nodeIds.length, 'el bloque', 'bloques')
 }
