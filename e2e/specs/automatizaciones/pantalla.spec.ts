@@ -107,7 +107,7 @@ test('pausar un flujo pide confirmación y dice qué pasa con lo que está en cu
 
   await page.goto('/automations')
   await page.getByRole('button', { name: /Secuencias del equipo/ }).click()
-  await page.getByRole('button', { name: `Pausar ${target.name}` }).click()
+  await page.getByRole('switch', { name: `Pausar ${target.name}` }).click()
 
   const dialog = page.getByRole('alertdialog', { name: `Pausar “${target.name}”` })
   await expectFullyOnScreen(dialog)
@@ -118,7 +118,7 @@ test('pausar un flujo pide confirmación y dice qué pasa con lo que está en cu
   await dialog.getByRole('button', { name: 'No pausar' }).click()
   expect(api.calls('patch', '/api/automations/{rule_id}')).toEqual([])
 
-  await page.getByRole('button', { name: `Pausar ${target.name}` }).click()
+  await page.getByRole('switch', { name: `Pausar ${target.name}` }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Pausar', exact: true }).click()
   expect(api.calls('patch', '/api/automations/{rule_id}')).toEqual([
     { method: 'patch', path: `/api/automations/${target.id}`, body: { is_active: false } },

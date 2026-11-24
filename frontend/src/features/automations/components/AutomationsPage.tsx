@@ -1,8 +1,8 @@
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import {
 Activity,AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
-FileJson,GitBranch,History,Loader2,LocateFixed,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
-Send,Sparkles,Trash2,XCircle,
+FileJson,GitBranch,History,Loader2,LocateFixed,MessageCircle,Pencil,Plus,RotateCcw,Save,ShieldCheck,
+Send,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -130,6 +130,14 @@ function validateForm(form: RuleForm) {
 
 type AutomationsTab = 'attention' | 'automatic' | 'sequences' | 'activity'
 
+// Qué responde cada sección, en una línea, arriba de su contenido.
+const SECTION_COPY: Record<AutomationsTab, { title: string; hint: string }> = {
+  attention: { title: 'Por atender', hint: 'Lo que no salió como debía y espera una decisión. Cuando esta lista está vacía, todo marcha.' },
+  automatic: { title: 'Automáticas', hint: 'Lo que el sistema hace solo cuando pasa algo: llega un cliente, cambia de etapa, nadie responde.' },
+  sequences: { title: 'Secuencias del equipo', hint: 'Los mensajes ya armados que tu equipo lanza con un toque desde el chat.' },
+  activity: { title: 'Actividad', hint: 'Todo lo que corrió, con su resultado.' },
+}
+
 const TABS: { key: AutomationsTab; label: string; icon: typeof History }[] = [
   { key: 'attention', label: 'Por atender', icon: AlertTriangle },
   { key: 'automatic', label: 'Automáticas', icon: Bot },
@@ -237,8 +245,6 @@ export function AutomationsPage() {
   // la lista llegó llena.
   const historyTruncated = historyTotal !== undefined ? executions.length < historyTotal : executions.length >= historyLimit
   const canLoadMore = historyTruncated && historyLimit < EXECUTIONS_MAX_LIMIT
-  const activeRulesCount = rules.filter(rule => rule.is_active).length
-  const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
   const today = todayISODate()
   const hasCustomHistoryFilters = historyRuleId !== null || historyStatus !== null || !hideSkipped
     || historyActive !== null || historyDateFrom !== today || historyDateTo !== today
@@ -375,17 +381,24 @@ export function AutomationsPage() {
   function toggleControl(rule: AutomationRule) {
     const isUpdating = update.isPending && update.variables?.id === rule.id
     const label = isUpdating ? 'Actualizando…' : rule.is_active ? 'Pausar' : 'Reanudar'
+    // Un interruptor y no un icono de encendido: dice el estado sin tener
+    // que interpretar un color, y es el control que la gente ya asocia a
+    // «prendido / apagado».
     const button = (
       <button
         type="button"
+        role="switch"
+        aria-checked={rule.is_active}
         disabled={update.isPending}
         aria-busy={isUpdating}
         aria-label={`${label} ${rule.name}`}
         title={label}
         onClick={rule.is_active ? undefined : () => toggleRule(rule)}
-        className={`rounded-lg p-2 disabled:cursor-wait disabled:opacity-40 ${rule.is_active ? 'text-wa-primary-strong hover:bg-green-50 dark:hover:bg-green-950' : 'text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark'}`}
+        className={`relative mx-1 inline-flex h-6 w-10 shrink-0 items-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-50 ${rule.is_active ? 'bg-accent-fill' : 'bg-line-control'}`}
       >
-        {isUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+        <span aria-hidden="true" className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white shadow transition-transform ${rule.is_active ? 'translate-x-[18px]' : 'translate-x-0.5'}`}>
+          {isUpdating && <Loader2 className="h-3 w-3 animate-spin text-fg-muted" />}
+        </span>
       </button>
     )
     if (!rule.is_active) return button
@@ -442,43 +455,43 @@ export function AutomationsPage() {
   }
 
   return (
-    <div className="relative h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
-      <main className="relative mx-auto max-w-[1240px] px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
-        <header className="flex flex-col gap-5" style={{ marginBottom: 24 }}>
-          <div className="flex flex-wrap items-end justify-between gap-5">
-            <div>
-              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-wa-primary-strong dark:text-wa-primary">
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-wa-primary/12"><Sparkles className="h-4 w-4" /></span>
-                Centro de automatización
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight text-wa-text dark:text-white">Automatizaciones</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Lo que el sistema hace solo y lo que tu equipo lanza con un toque desde el chat.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(tab === 'automatic' || tab === 'sequences') && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
-              <button type="button" onClick={() => setRecipePickerOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'sequences' ? 'Nueva secuencia' : 'Nueva automatización'}</button>
-            </div>
-          </div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
-            <div className="rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">Automatizaciones</p><p className="mt-1 text-xl font-bold text-wa-text dark:text-white">{rules.length}</p></div>
-            <div className="rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">Activas</p><p className="mt-1 text-xl font-bold text-wa-primary-strong dark:text-wa-primary">{activeRulesCount}</p></div>
-            <div className="rounded-2xl border border-wa-border bg-white/80 px-4 py-3 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/80"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-wa-muted">Ejecuciones históricas</p><p className="mt-1 text-xl font-bold text-wa-text dark:text-white">{totalExecutions.toLocaleString('es-PE')}</p></div>
-          </div>
-        </header>
-
-        <nav className="mb-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-wa-border bg-white/75 p-1.5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/75" aria-label="Secciones de automatizaciones">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas md:flex-row">
+      {/* Secciones en una columna a la izquierda, como Configuración, las
+          bandejas del chat y las etapas del embudo: en el celular pasan a ser
+          una fila arriba que se desliza. Antes eran pestañas debajo de tres
+          contadores que no pedían ninguna acción. */}
+      <aside className="flex shrink-0 flex-col border-b border-line bg-surface px-2 pt-4 md:w-60 md:border-b-0 md:border-r md:py-4 lg:w-64">
+        <div className="px-3 pb-3">
+          <h1 className="text-xl font-semibold text-fg">Automatizaciones</h1>
+          <p className="mt-1 hidden text-sm text-fg-muted md:block">Lo que el sistema hace solo y lo que tu equipo lanza con un toque desde el chat.</p>
+        </div>
+        <nav aria-label="Secciones de automatizaciones" className="flex gap-1 overflow-x-auto pb-2 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0">
           {TABS.map(({ key, label, icon: Icon }) => {
             const count = { attention: attention.count, automatic: simpleRules.length + automaticFlows.length, sequences: sequenceFlows.length, activity: null }[key]
             const selected = !landingUndecided && tab === key
             return (
-              <button key={key} type="button" onClick={() => setTab(key)} aria-current={selected ? 'page' : undefined} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${selected ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>
-                <Icon className="h-3.5 w-3.5" />{label}
+              <button key={key} type="button" onClick={() => setTab(key)} aria-current={selected ? 'page' : undefined} className={`flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-selected font-semibold text-fg' : 'text-fg hover:bg-subtle'}`}>
+                <Icon className="h-4 w-4 shrink-0 text-fg-muted" strokeWidth={1.75} aria-hidden="true" />
+                <span className="flex-1 whitespace-nowrap text-left">{label}</span>
                 {/* Por atender sin pendientes no lleva contador: un «0» ahí se lee como un aviso. */}
-                {count !== null && !(key === 'attention' && count === 0) && <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${key === 'attention' && !selected ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : selected ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{count}</span>}
+                {count !== null && !(key === 'attention' && count === 0) && <span className={`rounded-full px-1.5 py-0.5 text-xs tabular-nums ${key === 'attention' ? 'bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300' : 'text-fg-muted'}`}>{count}</span>}
               </button>
             )
           })}
         </nav>
+      </aside>
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <main className="relative mx-auto max-w-[1100px] px-4 py-6 md:px-8">
+        <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-fg">{SECTION_COPY[tab].title}</h2>
+            <p className="mt-1 max-w-2xl text-sm text-fg-muted">{SECTION_COPY[tab].hint}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+              {(tab === 'automatic' || tab === 'sequences') && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
+              <button type="button" onClick={() => setRecipePickerOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'sequences' ? 'Nueva secuencia' : 'Nueva automatización'}</button>
+          </div>
+        </header>
 
         {error && !formOpen && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
@@ -616,6 +629,7 @@ export function AutomationsPage() {
           </div>
         )}
       </main>
+      </div>
 
       {formOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onMouseDown={event => { if (event.target === event.currentTarget) closeForm() }}><form onSubmit={submit} className="automation-form flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
         <header className="flex items-center justify-between border-b border-wa-border px-5 py-4 dark:border-wa-border-dark"><h2 className="font-semibold text-wa-text dark:text-white">{editingId == null ? 'Nueva automatización' : 'Editar automatización'}</h2><button type="button" onClick={closeForm} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><XCircle className="h-5 w-5" /></button></header>
