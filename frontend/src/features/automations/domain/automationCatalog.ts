@@ -21,7 +21,7 @@ export const AUTOMATION_TRIGGERS = [
   { value: AutomationTrigger.SellerResponseOverdue, label: 'Vendedor sin responder', description: 'El último mensaje es del cliente y vence el tiempo configurado.' },
   { value: AutomationTrigger.CustomerResponseOverdue, label: 'Cliente sin responder', description: 'El último mensaje es del vendedor y vence el tiempo configurado.' },
   { value: AutomationTrigger.TaskDue, label: 'Tarea vencida', description: 'Cuando una tarea pendiente llega a su fecha límite.' },
-  { value: AutomationTrigger.Manual, label: 'Inicio manual (vendedor)', description: 'El vendedor lo inicia con el botón "Iniciar flujo" dentro del chat de un lead.' },
+  { value: AutomationTrigger.Manual, label: 'La lanza tu equipo desde el chat', description: 'Tu equipo la lanza con el botón «Iniciar automatización» dentro del chat de un lead.' },
 ] as const satisfies ReadonlyArray<{
   value: AutomationTriggerValue
   label: string
@@ -116,14 +116,14 @@ export const FlowNodeType = {
 export type FlowNodeTypeValue = ValueOf<typeof FlowNodeType>
 
 export const FLOW_NODE_LABELS = {
-  [FlowNodeType.Trigger]: 'Disparador',
+  [FlowNodeType.Trigger]: 'Cómo empieza',
   [FlowNodeType.Condition]: 'Condición',
   [FlowNodeType.Action]: 'Acción',
-  [FlowNodeType.InvokeFlow]: 'Iniciar otro flujo',
+  [FlowNodeType.InvokeFlow]: 'Iniciar otra automatización',
   // `wait` se conserva únicamente para leer flujos antiguos. En el editor,
-  // ambos formatos se presentan como un único bloque Pausa (`wait_any`).
-  [FlowNodeType.Wait]: 'Pausa',
-  [FlowNodeType.WaitAny]: 'Pausa',
+  // ambos formatos se presentan como un único paso Espera (`wait_any`).
+  [FlowNodeType.Wait]: 'Espera',
+  [FlowNodeType.WaitAny]: 'Espera',
   [FlowNodeType.Question]: 'Pregunta (botones)',
   [FlowNodeType.RoundRobin]: 'Reparto por turnos',
   [FlowNodeType.End]: 'Fin',
@@ -134,7 +134,7 @@ export const FLOW_NODE_LABELS = {
  *  «flow» cuando no puede atribuirlo a un bloque. */
 const STEP_ONLY_LABELS: Record<string, string> = {
   entry_conditions: 'Condiciones de entrada',
-  flow: 'Flujo',
+  flow: 'Automatización',
 }
 
 /** Etiqueta de un paso de `action_results`. Un bloque Acción guarda ahí el

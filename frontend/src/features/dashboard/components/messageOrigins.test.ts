@@ -8,7 +8,7 @@ describe('orígenes de los mensajes', () => {
     const shares = originShares([day(0, 512, 0, 496)])
     expect(shares.map((item) => item.key)).toEqual(['phone', 'automation'])
     expect(originHeadline('1,008', shares)).toBe(
-      '1,008 mensajes del negocio: el 49% salió desde WhatsApp por fuera del CRM y el 51% lo mandaron los flujos automáticos.',
+      '1,008 mensajes del negocio: el 49% salió desde WhatsApp por fuera del CRM y el 51% lo mandaron las automatizaciones.',
     )
   })
 

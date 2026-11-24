@@ -2,12 +2,12 @@ import { CHAT_ID, FLOWS, execution } from '../../fixtures/crm'
 import { expectFullyOnScreen } from '../../fixtures/screen'
 import { expect, test } from '../../fixtures/test'
 
-test('el menú "Iniciar flujo" muestra los nombres completos y lanza el flujo elegido al confirmarlo', async ({ page, api }) => {
+test('el menú "Iniciar automatización" muestra los nombres completos y lanza la elegida al confirmarlo', async ({ page, api }) => {
   const chosen = FLOWS[1]
   api.on('post', '/api/automations/{rule_id}/start', execution(chosen))
 
   await page.goto(`/chat/${CHAT_ID}`)
-  await page.getByRole('button', { name: 'Iniciar un flujo para este lead' }).click()
+  await page.getByRole('button', { name: 'Iniciar una automatización para este lead' }).click()
 
   // En el celular el menú se salía por la izquierda y se leía "videncia HP
   // hombre": cada opción tiene que entrar entera en la pantalla.
@@ -19,7 +19,7 @@ test('el menú "Iniciar flujo" muestra los nombres completos y lanza el flujo el
 
   // Elegir no lanza nada: un flujo le escribe al cliente, así que primero se
   // confirma en la franja de arriba del cuadro de escritura, entera en pantalla.
-  const confirmation = page.getByRole('group', { name: `Confirmar el flujo ${chosen.name}` })
+  const confirmation = page.getByRole('group', { name: `Confirmar la automatización ${chosen.name}` })
   await expectFullyOnScreen(confirmation)
   expect(api.calls('post', '/api/automations/{rule_id}/start')).toEqual([])
   await confirmation.getByRole('button', { name: 'Iniciar' }).click()
@@ -27,18 +27,18 @@ test('el menú "Iniciar flujo" muestra los nombres completos y lanza el flujo el
   expect(api.calls('post', '/api/automations/{rule_id}/start')).toEqual([
     { method: 'post', path: `/api/automations/${chosen.id}/start`, body: { chat_id: CHAT_ID } },
   ])
-  await expect(page.getByText(`Flujo "${chosen.name}" iniciado`)).toBeVisible()
+  await expect(page.getByText(`Automatización «${chosen.name}» iniciada`)).toBeVisible()
 })
 
 test('cancelar la confirmación no lanza el flujo', async ({ page, api }) => {
   const chosen = FLOWS[0]
 
   await page.goto(`/chat/${CHAT_ID}`)
-  await page.getByRole('button', { name: 'Iniciar un flujo para este lead' }).click()
+  await page.getByRole('button', { name: 'Iniciar una automatización para este lead' }).click()
   await page.getByRole('button', { name: chosen.name, exact: true }).click()
-  await page.getByRole('group', { name: `Confirmar el flujo ${chosen.name}` }).getByRole('button', { name: 'Cancelar' }).click()
+  await page.getByRole('group', { name: `Confirmar la automatización ${chosen.name}` }).getByRole('button', { name: 'Cancelar' }).click()
 
-  await expect(page.getByRole('group', { name: `Confirmar el flujo ${chosen.name}` })).toBeHidden()
+  await expect(page.getByRole('group', { name: `Confirmar la automatización ${chosen.name}` })).toBeHidden()
   expect(api.calls('post', '/api/automations/{rule_id}/start')).toEqual([])
 })
 
@@ -74,7 +74,7 @@ test('el menú avisa que el lead ya recibió un flujo y quién lo lanzó', async
   ])
 
   await page.goto(`/chat/${CHAT_ID}`)
-  await page.getByRole('button', { name: 'Iniciar un flujo para este lead' }).click()
+  await page.getByRole('button', { name: 'Iniciar una automatización para este lead' }).click()
 
   const option = page.getByRole('button', { name: new RegExp(sent.name) })
   await expect(option).toContainText('Ya se envió hace 5 min · La lanzó «Bienvenida»')

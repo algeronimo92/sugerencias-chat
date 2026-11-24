@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FlowNodeSearch } from './FlowNodeSearch'
 
 const items = [
-  { id: 'a', number: 1, title: 'Inicio manual (vendedor)', text: '' },
+  { id: 'a', number: 1, title: 'La lanza tu equipo desde el chat', text: '' },
   { id: 'b', number: 12, title: 'Enviar mensaje de texto', text: 'Promoción de verano' },
   { id: 'c', number: 21, title: 'Pregunta', text: '¿Agendamos?' },
 ]
@@ -13,7 +13,7 @@ describe('FlowNodeSearch', () => {
   it('lleva al bloque por número con Enter y limpia la búsqueda', async () => {
     const onGo = vi.fn()
     render(<FlowNodeSearch items={items} onGo={onGo} />)
-    const input = screen.getByRole('combobox', { name: 'Buscar bloque por número o texto' })
+    const input = screen.getByRole('combobox', { name: 'Buscar paso por número o texto' })
 
     await userEvent.type(input, '#12{Enter}')
     expect(onGo).toHaveBeenCalledWith('b')
@@ -26,13 +26,13 @@ describe('FlowNodeSearch', () => {
     const input = screen.getByRole('combobox')
 
     await userEvent.type(input, '1')
-    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['#1Inicio manual (vendedor)', '#12Enviar mensaje de texto'])
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['#1La lanza tu equipo desde el chat', '#12Enviar mensaje de texto'])
     await userEvent.keyboard('{ArrowDown}{Enter}')
     expect(onGo).toHaveBeenCalledWith('b')
 
     await userEvent.type(input, 'verano')
     expect(screen.getByRole('option')).toHaveTextContent('#12')
     await userEvent.type(input, 'zzz')
-    expect(screen.getByText('Ningún bloque coincide.')).toBeInTheDocument()
+    expect(screen.getByText('Ningún paso coincide.')).toBeInTheDocument()
   })
 })

@@ -105,7 +105,7 @@ async def test_engine_runs_until_the_first_timed_wait(engine, deps):
     assert persisted[-1]["results"] == [
         {"node_id": "c", "type": "condition", "status": "completed", "branch": "g1", "detail": "Grupo 1 cumple: "},
         {"node_id": "a", "type": "add_tag", "status": "completed"},
-        {"node_id": "i", "type": "invoke_flow", "status": "completed", "detail": "Flujo hijo iniciado: Hijo"},
+        {"node_id": "i", "type": "invoke_flow", "status": "completed", "detail": "Automatización lanzada: Hijo"},
         {"node_id": "rr", "type": "round_robin", "status": "completed", "branch": "out_1", "detail": "Turno: Uno"},
         {"node_id": "w", "type": "wait", "status": "scheduled", "seconds": 30},
     ]
@@ -125,7 +125,7 @@ async def test_engine_does_not_repeat_a_flow_the_team_just_launched(engine, deps
     assert executions.children == []
     assert persisted[-1]["results"][2] == {
         "node_id": "i", "type": "invoke_flow", "status": "skipped",
-        "detail": "No se repitió «Hijo»: tu equipo ya lo lanzó desde el chat hace menos de 30 minutos",
+        "detail": "No se repitió «Hijo»: tu equipo ya la lanzó desde el chat hace menos de 30 minutos",
     }
 
 
@@ -264,7 +264,7 @@ async def test_simulator_walks_every_node_type(simulator):
         {"node_id": "t", "type": "trigger", "status": "matched"},
         {"node_id": "c", "type": "condition", "status": "evaluated", "branch": "g1", "detail": "Grupo 1 cumple: "},
         {"node_id": "a", "type": "add_tag", "status": "would_run"},
-        {"node_id": "i", "type": "invoke_flow", "status": "would_run", "detail": "Iniciaría el flujo hijo: Hijo"},
+        {"node_id": "i", "type": "invoke_flow", "status": "would_run", "detail": "Lanzaría la automatización: Hijo"},
         {"node_id": "rr", "type": "round_robin", "status": "evaluated", "branch": "out_1", "detail": "Le tocaría el turno a: Uno"},
         {"node_id": "w", "type": "wait", "status": "would_wait", "seconds": 30},
         {"node_id": "wa", "type": "wait_any", "status": "would_wait"},

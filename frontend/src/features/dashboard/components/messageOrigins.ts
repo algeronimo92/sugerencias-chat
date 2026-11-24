@@ -20,8 +20,8 @@ export const MESSAGE_ORIGINS: { key: MessageOrigin; label: string; short: string
     phrase: 'salió desde WhatsApp por fuera del CRM',
   },
   {
-    key: 'automation', label: 'Flujos automáticos', short: 'Flujos', color: 'var(--viz-cat-3)',
-    phrase: 'lo mandaron los flujos automáticos',
+    key: 'automation', label: 'Automatizaciones', short: 'Automatizaciones', color: 'var(--viz-cat-3)',
+    phrase: 'lo mandaron las automatizaciones',
   },
   {
     key: 'scheduled', label: 'Programados en el CRM', short: 'Programados', color: 'var(--viz-cat-4)',

@@ -39,7 +39,7 @@ export function originLabel(origin: MessageOrigin | null | undefined, flowNames:
       return origin.user_name ?? null
     case 'automation': {
       const flowName = origin.execution_id != null ? flowNames.get(origin.execution_id) : undefined
-      return flowName ? `Flujo ${flowName}` : 'Automatización'
+      return flowName ? `Automatización ${flowName}` : 'Automatización'
     }
     case 'scheduled':
       return origin.user_name ? `Programado · ${origin.user_name}` : 'Programado'

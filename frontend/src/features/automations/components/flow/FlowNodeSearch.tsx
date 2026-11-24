@@ -35,19 +35,19 @@ export function FlowNodeSearch({ items, onGo }: { items: FlowNodeSearchItem[]; o
           role="combobox"
           aria-expanded={open}
           aria-controls={listId}
-          aria-label="Buscar bloque por número o texto"
+          aria-label="Buscar paso por número o texto"
           aria-activedescendant={open && results.length ? `${listId}-${Math.min(active, results.length - 1)}` : undefined}
           value={query}
           onChange={event => { setQuery(event.target.value); setActive(0) }}
           onKeyDown={onKeyDown}
-          placeholder="Buscar bloque: 12 o texto…"
+          placeholder="Buscar paso: 12 o texto…"
           className="min-w-0 flex-1 bg-transparent py-2 text-xs text-wa-text outline-none placeholder:text-wa-muted dark:text-white"
         />
         {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda" className="text-wa-muted hover:text-wa-text"><X className="h-3.5 w-3.5" /></button>}
       </div>
       {open && (
-        <ul id={listId} role="listbox" aria-label="Bloques encontrados" className="mt-1 max-h-72 overflow-y-auto rounded-lg border border-wa-border bg-white p-1 shadow-xl dark:border-flow-border-dark dark:bg-flow-panel-dark">
-          {results.length === 0 && <li className="px-2 py-2 text-[11px] text-wa-muted">Ningún bloque coincide.</li>}
+        <ul id={listId} role="listbox" aria-label="Pasos encontrados" className="mt-1 max-h-72 overflow-y-auto rounded-lg border border-wa-border bg-white p-1 shadow-xl dark:border-flow-border-dark dark:bg-flow-panel-dark">
+          {results.length === 0 && <li className="px-2 py-2 text-[11px] text-wa-muted">Ningún paso coincide.</li>}
           {results.map((item, index) => (
             <li
               key={item.id}

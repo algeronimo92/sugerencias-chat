@@ -114,7 +114,7 @@ export const FLOW_RECIPES: FlowRecipe[] = [
     id: 'precios',
     section: 'sequences',
     title: 'Enviar precios',
-    when: 'Cuando la vendedora la lanza desde el chat.',
+    when: 'Cuando tu equipo la lanza desde el chat.',
     does: 'Manda dos mensajes seguidos: el precio y una invitación a agendar.',
     build: () => ({
       name: 'Precio de …',
@@ -129,7 +129,7 @@ export const FLOW_RECIPES: FlowRecipe[] = [
     id: 'ubicacion',
     section: 'sequences',
     title: 'Enviar ubicación e indicaciones',
-    when: 'Cuando la vendedora la lanza desde el chat.',
+    when: 'Cuando tu equipo la lanza desde el chat.',
     does: 'Manda la dirección y cómo llegar, siempre con el mismo texto.',
     build: () => ({
       name: 'Ubicación',

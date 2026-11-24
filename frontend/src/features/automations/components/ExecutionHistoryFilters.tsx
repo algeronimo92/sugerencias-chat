@@ -50,13 +50,13 @@ export function ExecutionHistoryFilters({
         </div>
 
         <label className="block min-w-0 flex-1 lg:max-w-xs">
-          <span className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">Flujo</span>
+          <span className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">Automatización</span>
           <Select
             value={ruleId ?? ''}
             onChange={event => onRuleChange(event.target.value ? Number(event.target.value) : null)}
             className="min-h-10 w-full border-wa-border bg-white shadow-none dark:border-wa-border-dark dark:bg-wa-panel-dark"
           >
-            <option value="">Todos los flujos</option>
+            <option value="">Todas las automatizaciones</option>
             {flows.map(flow => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
           </Select>
         </label>

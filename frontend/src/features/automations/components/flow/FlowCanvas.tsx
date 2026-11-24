@@ -123,8 +123,8 @@ function storedConnectionHighlightPreference(): boolean {
 function nodeKindLabel(type: AutomationFlowNodeType, data: CanvasNodeData): string {
   if (type === FlowNodeType.Question) return 'Pregunta (botones)'
   if (type === FlowNodeType.RoundRobin) return 'Reparto por turnos'
-  if (type === FlowNodeType.InvokeFlow) return 'Iniciar otro flujo'
-  if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Pausa'
+  if (type === FlowNodeType.InvokeFlow) return 'Iniciar otra automatización'
+  if (type === FlowNodeType.Wait || type === FlowNodeType.WaitAny) return 'Espera'
   if (type !== FlowNodeType.Action) return FLOW_NODE_LABELS[type]
   const action = data.action
   if (action?.type === AutomationActionType.ReactToLastCustomerMessage) return 'Reacción'
@@ -183,8 +183,8 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
       {connectionLabel && <span className={`absolute -top-3 left-3 z-20 rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white shadow-sm ${
         data.connectionRole === 'source' ? 'bg-cyan-600' : data.connectionRole === 'target' ? 'bg-violet-600' : 'bg-fuchsia-600'
       }`}>{connectionLabel}</span>}
-      {data.loose && type !== FlowNodeType.Trigger && <span title="Ninguna ruta desde el inicio del flujo llega a este bloque: nunca se ejecutará y no deja publicar. Conéctalo o bórralo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Desconectado</span>}
-      {data.number != null && <span aria-label={`Bloque ${data.number}`} className="flow-number absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
+      {data.loose && type !== FlowNodeType.Trigger && <span title="Ninguna ruta desde el inicio de la automatización llega a este paso: nunca se ejecutará y no deja publicar. Conéctalo o bórralo." className="absolute -bottom-3 left-3 z-20 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">Desconectado</span>}
+      {data.number != null && <span aria-label={`Paso ${data.number}`} className="flow-number absolute -top-3 right-3 z-20 rounded-full border border-wa-border bg-white px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-700 shadow-sm dark:border-flow-border-dark dark:bg-flow-panel-dark dark:text-gray-200">#{data.number}</span>}
       <div className="flex items-start gap-2">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${FLOW_TONES[tone].icon}`} />
         <div className="min-w-0 flex-1">
@@ -194,7 +194,7 @@ function NodeShell({ id, type, data, selected, children }: ShellProps) {
         {type !== FlowNodeType.Trigger && data.onDelete && (
           <button
             type="button"
-            title="Eliminar bloque"
+            title="Eliminar paso"
             onClick={event => { event.stopPropagation(); data.onDelete?.(id) }}
             className="nodrag text-wa-muted hover:text-red-500 dark:text-wa-muted-dark"
           >

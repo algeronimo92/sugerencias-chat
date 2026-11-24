@@ -248,7 +248,7 @@ function nodeIcon(node: AutomationFlowNode) {
 function nodeTitle(node: AutomationFlowNode, rules: ReadonlyArray<{ id: number; name: string }> = []) {
   if (node.type !== NodeType.InvokeFlow) return flowNodeSummary(node.type, node.data)
   const flowRuleId = node.data.flow_rule_id
-  const invokedFlowName = rules.find(item => item.id === flowRuleId)?.name ?? (flowRuleId ? `Flujo #${flowRuleId}` : undefined)
+  const invokedFlowName = rules.find(item => item.id === flowRuleId)?.name ?? (flowRuleId ? `Automatización #${flowRuleId}` : undefined)
   return flowNodeSummary(node.type, { invokedFlowName })
 }
 
@@ -344,7 +344,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
   useEffect(() => {
     if (!initialBlock || openAtBlock || missingBlockWarned.current) return
     missingBlockWarned.current = true
-    toast.info('Ese bloque ya no está en el flujo: se borró después de esa ejecución.')
+    toast.info('Ese paso ya no está en la automatización: se borró después de esa ejecución.')
   }, [initialBlock, openAtBlock])
   // Los errores del servidor pueden decir de qué bloque son (`target`): ese
   // bloque queda elegido y el lienzo lo acerca, así no hay que buscarlo a ojo.
@@ -388,7 +388,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
     const source = flow.nodes.find(item => item.id === edge.source)
     return {
       edgeId: edge.id, nodeId, number: numbers.get(nodeId),
-      title: node ? nodeTitle(node, automationRules) : 'Bloque borrado',
+      title: node ? nodeTitle(node, automationRules) : 'Paso borrado',
       handle: source ? outputHandleLabel(source, edge.source_handle) : edge.source_handle,
     }
   }
@@ -423,7 +423,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
 
   const duplicateNode = useCallback((source: AutomationFlowNode) => {
     if (source.type === NodeType.Trigger) {
-      dispatch({ type: 'fail', message: 'El disparador es único y no se puede copiar.' })
+      dispatch({ type: 'fail', message: 'El inicio es único y no se puede copiar.' })
       return
     }
     const duplicate = {
@@ -452,7 +452,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
       } else if (key === 'c' && selected && selected.type !== NodeType.Trigger) {
         event.preventDefault()
         copiedNodeRef.current = structuredClone(selected)
-        dispatch({ type: 'notify', message: 'Bloque copiado. Pégalo con Cmd+V o Ctrl+V.' })
+        dispatch({ type: 'notify', message: 'Paso copiado. Pégalo con Cmd+V o Ctrl+V.' })
       } else if (key === 'v' && copiedNodeRef.current) {
         event.preventDefault()
         duplicateNode(copiedNodeRef.current)
@@ -542,7 +542,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
 
   const addNode = useCallback((type: AutomationFlowNodeType, position: { x: number; y: number }, from?: { source: string; handle: string }) => {
     if (type === NodeType.Trigger) {
-      dispatch({ type: 'fail', message: 'El flujo solo puede tener un disparador.' })
+      dispatch({ type: 'fail', message: 'La automatización solo puede tener un inicio.' })
       return null
     }
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -585,12 +585,12 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
     )
     if (removable.size === 0) {
       if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
-        dispatch({ type: 'fail', message: 'El disparador no se puede borrar, pero puedes cambiar su evento en el panel derecho.' })
+        dispatch({ type: 'fail', message: 'El inicio no se puede borrar, pero puedes cambiar su evento en el panel derecho.' })
       }
       return
     }
     if (flow.nodes.some(node => requested.has(node.id) && node.type === NodeType.Trigger)) {
-      dispatch({ type: 'fail', message: 'Se borraron los bloques elegidos, menos el disparador, que no se puede borrar.' })
+      dispatch({ type: 'fail', message: 'Se borraron los pasos elegidos, menos el inicio, que no se puede borrar.' })
     } else {
       dispatch({ type: 'clearFeedback' })
     }
@@ -690,7 +690,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
       : await saveFlow.mutateAsync({ id: ruleId, name, flow_definition: flowDefinition })
     applySavedFlow(saved)
     dispatch({ type: 'select', nodeId: null })
-    toast.success('Flujo reemplazado desde JSON.')
+    toast.success('Automatización reemplazada desde JSON.')
   }
 
   // Máximo por hora y "Visible para vendedores" se guardan al instante (no van por
@@ -785,39 +785,39 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
   return <div data-flow-builder className="fixed inset-0 z-[60] flex flex-col bg-wa-field dark:bg-flow-canvas-dark">
     <header className="flex flex-wrap items-center gap-3 border-b border-wa-border bg-white px-4 py-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
       <button type="button" onClick={requestClose} aria-label="Cerrar el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
-      <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => dispatch({ type: 'rename', name: event.target.value })} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Flujo #${ruleId}` : 'Flujo nuevo'}<FlowStatusPill publishedVersion={publishedVersion} hasUnpublishedChanges={hasUnpublishedChanges} isActive={isActive} /></p></div>
+      <div className="min-w-[220px] flex-1"><input value={name} maxLength={120} onChange={event => dispatch({ type: 'rename', name: event.target.value })} className="w-full max-w-md border-0 bg-transparent text-base font-semibold text-wa-text outline-none dark:text-white" /><p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-wa-muted dark:text-wa-muted-dark">{ruleId ? `Automatización #${ruleId}` : 'Automatización nueva'}<FlowStatusPill publishedVersion={publishedVersion} hasUnpublishedChanges={hasUnpublishedChanges} isActive={isActive} /></p></div>
       <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-white/10 dark:bg-white/5" role="group" aria-label="Deshacer y rehacer">
         <button type="button" disabled={!canUndo} onClick={undo} title="Deshacer (Cmd+Z o Ctrl+Z)" aria-label="Deshacer" className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Undo2 className="h-4 w-4" /></button>
         <button type="button" disabled={!canRedo} onClick={redo} title="Rehacer (Cmd+Shift+Z o Ctrl+Y)" aria-label="Rehacer" className="p-2 text-gray-600 hover:bg-wa-field disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><Redo2 className="h-4 w-4" /></button>
       </div>
       <button type="button" onClick={() => dispatch({ type: 'toggleEntryConditions' })} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-emerald-700/50 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-wa-border text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones de entrada{entryConditionCount > 0 && <span className="rounded-full bg-wa-primary px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
-      <label title={ruleId == null ? 'Guarda el borrador primero' : 'Cuántos leads pueden entrar al flujo por hora. Los que pasen el límite entran más tarde. Vacío = sin límite.'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">Máximo por hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => dispatch({ type: 'maxPerHourChanged', value: event.target.value ? Number(event.target.value) : null })} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-white/10 dark:bg-white/10 dark:text-white" /></label>
+      <label title={ruleId == null ? 'Guarda el borrador primero' : 'Cuántos leads pueden entrar a la automatización por hora. Los que pasen el límite entran más tarde. Vacío = sin límite.'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">Máximo por hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => dispatch({ type: 'maxPerHourChanged', value: event.target.value ? Number(event.target.value) : null })} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-white/10 dark:bg-white/10 dark:text-white" /></label>
       {isManualTrigger && !visibleToSellers && ruleId != null && triggerNode && (
         // El ajuste vive en el disparador; acá solo se avisa, porque oculto
         // los vendedores no lo encuentran en el chat.
-        <button type="button" onClick={() => goToNode(triggerNode.id)} title="Ver el ajuste en el disparador" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
-          <EyeOff className="h-4 w-4" aria-hidden="true" />Oculto para vendedores
+        <button type="button" onClick={() => goToNode(triggerNode.id)} title="Ver el ajuste en el inicio" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
+          <EyeOff className="h-4 w-4" aria-hidden="true" />Oculta para tu equipo
         </button>
       )}
-      <button type="button" onClick={autoLayout} title="Acomoda los bloques en columnas según la ruta" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
+      <button type="button" onClick={autoLayout} title="Acomoda los pasos en columnas según la ruta" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
       <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => dispatch({ type: 'openDialog', dialog: 'versions' })} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
       <button type="button" onClick={() => dispatch({ type: 'openDialog', dialog: 'simulation' })} title="Mira qué ruta seguiría un lead, sin enviarle nada" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
-      <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-white/10 dark:bg-white/5" role="group" aria-label="JSON del flujo">
-        <button type="button" title="Ver el flujo en formato JSON (avanzado)" onClick={() => dispatch({ type: 'openDialog', dialog: 'jsonView' })} className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Braces className="h-4 w-4" /></button>
-        <button type="button" title="Importar un JSON y reemplazar todo el flujo (avanzado)" onClick={() => dispatch({ type: 'openDialog', dialog: 'importJson' })} className="p-2 text-gray-600 hover:bg-wa-field dark:text-gray-300 dark:hover:bg-white/10"><Upload className="h-4 w-4" /></button>
+      <div className="flex items-center overflow-hidden rounded-lg border border-wa-border dark:border-white/10 dark:bg-white/5" role="group" aria-label="JSON de la automatización">
+        <button type="button" title="Ver la automatización en formato JSON (avanzado)" onClick={() => dispatch({ type: 'openDialog', dialog: 'jsonView' })} className="border-r border-wa-border p-2 text-gray-600 hover:bg-wa-field dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><Braces className="h-4 w-4" /></button>
+        <button type="button" title="Importar un JSON y reemplazar toda la automatización (avanzado)" onClick={() => dispatch({ type: 'openDialog', dialog: 'importJson' })} className="p-2 text-gray-600 hover:bg-wa-field dark:text-gray-300 dark:hover:bg-white/10"><Upload className="h-4 w-4" /></button>
       </div>
       <button type="button" disabled={isBusy} onClick={() => void persistDraft()} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Save className="h-4 w-4" />Guardar borrador</button>
       <button type="button" disabled={isBusy || !hasUnpublishedChanges} title={!hasUnpublishedChanges ? 'No hay cambios para publicar' : 'Publicar: los leads que entren desde ahora usarán esta versión'} onClick={requestPublish} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Publicar</button>
     </header>
 
-    {highlight && serviceReferences && <div className="border-b border-wa-border px-4 py-2 dark:border-flow-border-dark"><ServiceHighlightNotice highlight={highlight} where={flowServiceSummary(serviceReferences)} doneHint="Publica el flujo (la versión publicada todavía lo usa)">
-      {serviceReferences.nodeIds.map(nodeId => <button key={nodeId} type="button" onClick={() => goToNode(nodeId)} className="rounded-md border border-amber-300 bg-white/70 px-2 py-0.5 font-semibold hover:bg-white dark:border-amber-800 dark:bg-amber-950/60">Ver bloque #{numbers.get(nodeId)}</button>)}
+    {highlight && serviceReferences && <div className="border-b border-wa-border px-4 py-2 dark:border-flow-border-dark"><ServiceHighlightNotice highlight={highlight} where={flowServiceSummary(serviceReferences)} doneHint="Publica la automatización (la versión publicada todavía lo usa)">
+      {serviceReferences.nodeIds.map(nodeId => <button key={nodeId} type="button" onClick={() => goToNode(nodeId)} className="rounded-md border border-amber-300 bg-white/70 px-2 py-0.5 font-semibold hover:bg-white dark:border-amber-800 dark:bg-amber-950/60">Ver paso #{numbers.get(nodeId)}</button>)}
     </ServiceHighlightNotice></div>}
     {(error || notice) && <FeedbackBar error={error} notice={notice} blockNumber={errorTarget ? numbers.get(errorTarget) : undefined} onGoToBlock={errorTarget ? () => goToNode(errorTarget) : undefined} />}
 
     <div className="flex min-h-0 flex-1">
       <aside className="w-56 shrink-0 overflow-y-auto border-r border-wa-border bg-white p-3 dark:border-flow-border-dark dark:bg-flow-panel-dark">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Agregar bloque</p>
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Agregar paso</p>
         {FLOW_PALETTE.map(item => <FlowPaletteButton key={item.type} item={item} onAdd={addFromPalette} />)}
       </aside>
 
@@ -845,7 +845,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
       </main>
 
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Bloque #{numbers.get(selected.id)}</p></div>{selectedHelp.length > 0 && <BlockHelpToggle open={helpOpen} onToggle={() => setHelpOpen(current => !current)} controls="flow-block-help" />}<button type="button" onClick={() => goToNode(selected.id)} title="Acercar la vista a este bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver</button>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar bloque (Cmd+D o Ctrl+D)" aria-label="Duplicar bloque" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
+        {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Paso #{numbers.get(selected.id)}</p></div>{selectedHelp.length > 0 && <BlockHelpToggle open={helpOpen} onToggle={() => setHelpOpen(current => !current)} controls="flow-block-help" />}<button type="button" onClick={() => goToNode(selected.id)} title="Acercar la vista a este paso" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver</button>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar paso (Cmd+D o Ctrl+D)" aria-label="Duplicar paso" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {helpOpen && selectedHelp.length > 0 && <BlockHelpPanel id="flow-block-help" lines={selectedHelp} />}
           {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}{selected.data.trigger_type === TriggerType.Manual && <SellerVisibilityField visible={visibleToSellers} saved={ruleId != null} onChange={commitVisibleToSellers} />}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
@@ -862,7 +862,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
             outputs={selected.data.outputs}
             updateOutputs={(outputs, removedIndex) => replaceRoundRobinOutputs(selected, outputs, removedIndex)}
           />}
-          {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Flujo que se inicia<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona un flujo publicado</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (pausado)'}</option>)}</Select></label>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Para usar este bloque, primero publica otro flujo visual.</p>}</div>}
+          {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Automatización que se inicia<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona una automatización publicada</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (pausada)'}</option>)}</Select></label>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Para usar este paso, primero publica otra automatización.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de este final<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span className="text-xs font-semibold">Cerrar conversación al finalizar</span></label></div>}
           {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.part === 'action' ? highlight.service : undefined} />}
           <FlowNodeConnections incoming={incomingConnections} outgoing={outgoingConnections} onGo={goToNode} onRemove={removeEdge} />
@@ -894,10 +894,10 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
       onClose={() => dispatch({ type: 'closeDialog', dialog: 'jsonView' })}
     />}
     {importJsonOpen && <ImportFlowJsonDialog
-      title="Reemplazar flujo con JSON"
-      description="Pega el JSON de un flujo o sube un archivo .json. Se guarda de inmediato como el borrador de este flujo."
-      confirmLabel="Reemplazar flujo"
-      destructiveNotice="Esto reemplaza todos los bloques y conexiones del flujo por los del JSON. La versión publicada no cambia hasta que publiques."
+      title="Reemplazar automatización con JSON"
+      description="Pega el JSON de una automatización o sube un archivo .json. Se guarda de inmediato como el borrador de esta automatización."
+      confirmLabel="Reemplazar automatización"
+      destructiveNotice="Esto reemplaza todos los pasos y conexiones de la automatización por los del JSON. La versión publicada no cambia hasta que publiques."
       onClose={() => dispatch({ type: 'closeDialog', dialog: 'importJson' })}
       onImport={importFlowJson}
     />}
@@ -1039,7 +1039,7 @@ function WaitAnyEditor({ conditions, onChange }: { conditions: WaitAnyCondition[
         {/* Esta rama no espera al temporizador ni a un mensaje: si al
             terminar la pausa el negocio está cerrado, el flujo sale por acá. */}
         {condition.kind === WaitAnyConditionKind.BusinessHours && <>
-          <p className="text-[11px] leading-4 text-wa-muted">Tiene prioridad: si la pausa termina con el negocio cerrado, el flujo sigue por esta salida aunque haya llegado un mensaje o vencido el temporizador.</p>
+          <p className="text-[11px] leading-4 text-wa-muted">Tiene prioridad: si la espera termina con el negocio cerrado, la automatización sigue por esta salida aunque haya llegado un mensaje o vencido el temporizador.</p>
           <BusinessHoursHint />
         </>}
         </div>
@@ -1189,11 +1189,11 @@ function EntryConditionsEditor({ conditions, updateConditions, users, tags, high
       <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.require_open_window} onChange={event => updateConditions({ ...conditions, require_open_window: event.target.checked })} />Ventana de 24 h abierta (el cliente escribió hace menos de 24 h)</label>
       <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.business_hours_only} onChange={event => updateConditions({ ...conditions, business_hours_only: event.target.checked })} />Solo en el horario de atención</label>
       {conditions.business_hours_only && <BusinessHoursHint />}
-      <label className="flex items-start gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.stop_when_team_replies} onChange={event => updateConditions({ ...conditions, stop_when_team_replies: event.target.checked })} /><span>Detener si alguien del equipo le escribe al cliente<span className="mt-0.5 block text-[10px] text-wa-muted">Los pasos que falten no se envían: la conversación ya la tomó una persona. No aplica cuando el flujo lo lanzó alguien a mano.</span></span></label>
+      <label className="flex items-start gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!conditions.stop_when_team_replies} onChange={event => updateConditions({ ...conditions, stop_when_team_replies: event.target.checked })} /><span>Detener si alguien del equipo le escribe al cliente<span className="mt-0.5 block text-[10px] text-wa-muted">Los pasos que falten no se envían: la conversación ya la tomó una persona. No aplica cuando la automatización la lanzó alguien a mano.</span></span></label>
     </div>
     <label className="grid gap-1 text-[10px] text-wa-muted">No repetir para el mismo lead durante (minutos)
       <input type="number" min={1} max={43200} placeholder="Sin límite" value={conditions.cooldown_minutes ?? ''} onChange={event => updateConditions({ ...conditions, cooldown_minutes: event.target.value ? Number(event.target.value) : null })} className={fieldClass} />
-      <span className="font-normal text-[10px] text-wa-muted">Evita que el flujo se repita para el mismo lead si escribe varias veces seguidas. Muy recomendable en flujos disparados por "Mensaje recibido".</span>
+      <span className="font-normal text-[10px] text-wa-muted">Evita que la automatización se repita para el mismo lead si escribe varias veces seguidas. Muy recomendable en las que empiezan con "Mensaje recibido".</span>
     </label>
     <button type="button" onClick={() => updateConditions({})} className="w-full rounded-lg border border-wa-border px-3 py-2 text-[11px] font-semibold text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:hover:bg-wa-head-dark">Limpiar condiciones</button>
   </div>
@@ -1242,7 +1242,7 @@ function ActionEditor({ action, updateAction, users, tags, leadServices, templat
     {action.type === ActionType.SendTemplate && <>
       <div className="flex items-center gap-1.5">
         <Select value={action.template_id ?? ''} onChange={event => updateAction({ ...action, template_id: Number(event.target.value) || null })} className={fieldClass}><option value="">Selecciona plantilla</option>{templateOptions(templates)}</Select>
-        <button type="button" onClick={() => setCreatingTemplate(true)} title="Crear plantilla nueva sin salir del flujo" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-2 text-[10px] font-semibold text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:hover:bg-wa-head-dark"><Plus className="h-3 w-3" />Nueva</button>
+        <button type="button" onClick={() => setCreatingTemplate(true)} title="Crear plantilla nueva sin salir de la automatización" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-2 text-[10px] font-semibold text-wa-muted hover:bg-wa-hover dark:border-wa-border-dark dark:hover:bg-wa-head-dark"><Plus className="h-3 w-3" />Nueva</button>
       </div>
       {selectedTemplate && <TemplatePreview template={selectedTemplate} />}
       {selectedTemplate && <button type="button" onClick={() => setEditingTemplate(true)} className="flex items-center gap-1 text-[10px] font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><Pencil className="h-3 w-3" />Editar esta plantilla</button>}

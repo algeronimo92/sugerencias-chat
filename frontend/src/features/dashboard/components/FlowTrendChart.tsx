@@ -5,7 +5,7 @@ import { formatDayLabel, formatNumber } from './format'
 const SERIES = [
   { key: 'manual', label: 'A mano', color: 'var(--viz-cat-1)', dash: undefined },
   // Punteada además de otro color: la serie no depende solo del tono.
-  { key: 'automatic', label: 'Automáticos', color: 'var(--viz-cat-2)', dash: '5 3' },
+  { key: 'automatic', label: 'Solas', color: 'var(--viz-cat-2)', dash: '5 3' },
 ] as const
 
 /** "Flujos por día" partido en a mano y automáticos, apilados: la altura total
@@ -26,7 +26,7 @@ export function FlowTrendChart({ manual, automatic }: { manual: DashboardPoint[]
           </li>
         ))}
       </ul>
-      <div className="h-48 w-full" role="img" aria-label={`Flujos por día: ${formatNumber(totals.manual)} a mano y ${formatNumber(totals.automatic)} automáticos en el período`}>
+      <div className="h-48 w-full" role="img" aria-label={`Automatizaciones por día: ${formatNumber(totals.manual)} a mano y ${formatNumber(totals.automatic)} solas en el período`}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 4, left: 8 }} accessibilityLayer>
             <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.08} />

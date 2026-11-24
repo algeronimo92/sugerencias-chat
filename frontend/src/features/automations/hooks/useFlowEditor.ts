@@ -71,7 +71,7 @@ export function initialFlowEditorState(
     savedName: rule?.name ?? null,
     publishedDefinition,
     publishedVersion: publishedDefinition && rule?.flow_version ? rule.flow_version : null,
-    name: rule?.name ?? starterName ?? 'Nuevo flujo visual',
+    name: rule?.name ?? starterName ?? 'Nueva automatización',
     maxPerHour: rule?.max_executions_per_hour ?? null,
     visibleToSellers: rule?.visible_to_sellers ?? false,
     // Con las condiciones de entrada abiertas el panel las muestra a ellas,
@@ -88,9 +88,9 @@ export function initialFlowEditorState(
 }
 
 function publishedNotice(version: number, pausedChoice?: 'resume' | 'keepPaused') {
-  const base = `Flujo publicado · versión ${version}.`
-  if (pausedChoice === 'resume') return `${base} Ya está activo.`
-  if (pausedChoice === 'keepPaused') return `${base} Sigue pausado.`
+  const base = `Automatización publicada · versión ${version}.`
+  if (pausedChoice === 'resume') return `${base} Ya está activa.`
+  if (pausedChoice === 'keepPaused') return `${base} Sigue pausada.`
   return base
 }
 

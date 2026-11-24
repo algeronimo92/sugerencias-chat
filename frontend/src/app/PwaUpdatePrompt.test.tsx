@@ -306,7 +306,7 @@ describe('PwaUpdatePrompt', () => {
       ['adjuntos sin enviar', () => hold('pending-media'), /adjuntos/],
       ['una respuesta a medias', () => hold('reply'), /respuesta/],
       ['mensajes seleccionados', () => hold('selection'), /seleccionados/],
-      ['cambios sin guardar en el editor de flujos', () => hold('flow-editor'), /editor de flujos/],
+      ['cambios sin guardar en el editor de automatizaciones', () => hold('flow-editor'), /editor de automatizaciones/],
     ])('no recarga con %s y lo deja escrito en consola', (_name, block, reason) => {
       mount()
       const release = block()

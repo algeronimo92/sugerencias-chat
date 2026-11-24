@@ -142,7 +142,7 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
     if not nodes:
         await _persist_visual_execution(
             execution.id, AutomationExecutionStatus.FAILED, execution.action_results or [], None, [],
-            flow_version, deps, "El flujo no tiene una versión publicada",
+            flow_version, deps, "La automatización no tiene una versión publicada",
         )
         return
     path = list(state.get("path") or [])
@@ -176,7 +176,7 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
     try:
         for _ in range(MAX_FLOW_NODES + 1):
             if not current_id or current_id not in nodes:
-                raise StepFailed("El flujo perdió la referencia al siguiente bloque")
+                raise StepFailed("La automatización perdió la referencia al siguiente paso")
             node = nodes[current_id]
             path.append(current_id)
             outcome = await flow_node_handler(node["type"]).execute(node, run)
@@ -193,7 +193,7 @@ async def run_visual_execution(execution, rule, chat: dict, deps: AutomationDeps
                 scheduled_for=outcome.scheduled_for, wait_any_state=outcome.wait_state,
             )
             return
-        raise StepFailed("El flujo excedió el máximo de bloques permitidos")
+        raise StepFailed("La automatización excedió el máximo de pasos permitidos")
     except DailyCapReached as exc:
         # No falló nada: el cliente ya recibió hoy su máximo de mensajes
         # automáticos. El flujo queda esperando en este mismo bloque y lo

@@ -64,7 +64,7 @@ async def patch_flow(
 ):
     current = await get_automation_rule(rule_id)
     if current is None:
-        raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
+        raise HTTPException(404, "Esta automatización ya no existe. Puede que la hayan eliminado.")
     item = await save_visual_flow(
         rule_id, body.name if body.name is not None else current["name"], body.flow_definition
     )
@@ -75,7 +75,7 @@ async def patch_flow(
 async def publish_flow(rule_id: int, _admin: User = Depends(require_automations_manage)):
     item = await publish_visual_flow(rule_id)
     if item is None:
-        raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
+        raise HTTPException(404, "Esta automatización ya no existe. Puede que la hayan eliminado.")
     return item
 
 
@@ -83,7 +83,7 @@ async def publish_flow(rule_id: int, _admin: User = Depends(require_automations_
 async def get_flow_versions(rule_id: int, _admin: User = Depends(require_automations_manage)):
     current = await get_automation_rule(rule_id)
     if current is None:
-        raise HTTPException(404, "Este flujo ya no existe. Puede que lo hayan eliminado.")
+        raise HTTPException(404, "Esta automatización ya no existe. Puede que la hayan eliminado.")
     return await list_flow_versions(rule_id)
 
 
@@ -122,7 +122,7 @@ async def patch_rule(
     if "name" in requested:
         name = str(requested["name"] or "").strip()
         if not name or len(name) > 120:
-            raise HTTPException(400, "Escribe un nombre para el flujo (hasta 120 caracteres).")
+            raise HTTPException(400, "Escribe un nombre para la automatización (hasta 120 caracteres).")
         values["name"] = name
     if "max_executions_per_hour" in requested:
         values["max_executions_per_hour"] = requested["max_executions_per_hour"]
@@ -130,7 +130,7 @@ async def patch_rule(
         values["visible_to_sellers"] = bool(requested["visible_to_sellers"])
     if "is_active" in requested:
         if requested["is_active"] and not current["published_flow_definition"]:
-            raise HTTPException(400, "Publica el flujo antes de activarlo")
+            raise HTTPException(400, "Publica la automatización antes de activarla")
         values["is_active"] = requested["is_active"]
     if not values:
         raise HTTPException(400, "Nada que actualizar")
@@ -183,7 +183,7 @@ async def _history_scope(
     filtros. Lo comparten la lista y su total."""
     is_admin = can(user, Permission.TEAM_SUPERVISE)
     if (started_by is not None or team) and not is_admin:
-        raise HTTPException(403, "Tu rol no puede ver los flujos que envió otra persona.")
+        raise HTTPException(403, "Tu rol no puede ver las automatizaciones que lanzó otra persona.")
     # Sin admin y sin chat puntual, jamás se entrega el historial completo de
     # todos los leads: se acota siempre a lo que el propio usuario disparó a
     # mano. Con chat_id, en cambio, el vendedor sigue viendo todo lo que corre
@@ -323,7 +323,7 @@ async def _require_execution_access(execution_id: int, user: User, action: str) 
         return
     execution = await get_automation_execution(execution_id)
     if execution is None or execution["lead_id"] is None:
-        raise HTTPException(403, f"No puedes {action} este flujo porque no está ligado a ningún lead.")
+        raise HTTPException(403, f"No puedes {action} esta automatización porque no está ligada a ningún lead.")
     await ensure_lead_visible(user, execution["lead_id"])
 
 
@@ -353,7 +353,7 @@ async def post_pause_execution(execution_id: int, user: User = Depends(require_a
     if item is None:
         raise HTTPException(
             409,
-            "Solo se puede pausar un flujo que está esperando. Si está haciendo un paso, espera a que llegue a su próxima pausa.",
+            "Solo se puede pausar una automatización que está esperando. Si está haciendo un paso, espera a que llegue a su próxima pausa.",
         )
     return item
 

@@ -35,7 +35,7 @@ describe('riel lateral', () => {
     expect(within(nav).getByRole('link', { name: 'Embudo' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('link', { name: /Chats/ })).not.toHaveAttribute('aria-current')
     expect(within(within(nav).getByRole('group', { name: 'Herramientas' })).getAllByRole('link').map(link => link.textContent))
-      .toEqual(['Flujos enviados', 'Automatizaciones', 'Plantillas'])
+      .toEqual(['Automatizaciones enviadas', 'Automatizaciones', 'Plantillas'])
     expect(within(nav).getByRole('group', { name: 'Configuración' })).toBeInTheDocument()
   })
 

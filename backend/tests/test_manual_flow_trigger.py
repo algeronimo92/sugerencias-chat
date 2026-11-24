@@ -65,8 +65,8 @@ class TestStartManualFlowExecution:
 
     @pytest.mark.parametrize(("overrides", "is_admin", "message"), [
         ({"visible_to_sellers": False}, False, "no está disponible"),
-        ({"trigger_type": AutomationTrigger.LEAD_CREATED}, False, "no se puede iniciar desde el chat"),
-        ({"is_active": False}, True, "pausado o todavía no se publicó"),
+        ({"trigger_type": AutomationTrigger.LEAD_CREATED}, False, "no se puede lanzar desde el chat"),
+        ({"is_active": False}, True, "pausada o todavía no se publicó"),
     ])
     async def test_rejects_flows_that_cannot_be_started(self, world, overrides, is_admin, message):
         world.rules.rules[RULE_ID] = manual_rule(**overrides)
@@ -76,7 +76,7 @@ class TestStartManualFlowExecution:
         assert world.scheduling.scheduled == []
 
     async def test_rejects_a_missing_flow(self, world):
-        with pytest.raises(ValueError, match="Este flujo ya no existe"):
+        with pytest.raises(ValueError, match="Esta automatización ya no existe"):
             await start_manual_flow_execution(999, LEAD_ID, started_by_user_id=7, is_admin=True)
 
     async def test_raises_when_the_lead_does_not_exist_so_no_execution_was_created(self, world):
@@ -85,7 +85,7 @@ class TestStartManualFlowExecution:
         ejecución que nunca se creó."""
         world.scheduling.created_per_call = 0
 
-        with pytest.raises(ValueError, match="No se pudo iniciar"):
+        with pytest.raises(ValueError, match="No se pudo lanzar"):
             await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
 
     async def test_two_consecutive_manual_starts_use_different_event_keys(self, world):

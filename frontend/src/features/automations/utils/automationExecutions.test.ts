@@ -16,7 +16,7 @@ describe('executionStatusLabel', () => {
 
 describe('stepStatusLabel', () => {
   it('names the statuses only a test run (Probar) gives', () => {
-    expect(stepStatusLabel('matched')).toBe('Entra al flujo')
+    expect(stepStatusLabel('matched')).toBe('Entra a la automatización')
     expect(stepStatusLabel('evaluated')).toBe('Revisado')
     expect(stepStatusLabel('would_run')).toBe('Se haría')
     expect(stepStatusLabel('would_wait')).toBe('Esperaría')

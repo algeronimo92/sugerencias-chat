@@ -79,11 +79,11 @@ export function SummaryTab({ data, days, subject, onOpenTasks, onOpenFlows, onOp
           casi dos pantallas antes del primer gráfico. */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Citas registradas" value={summary.appointments_created} hint={period} icon={CalendarCheck} />
-        <MetricCard label={who(subject, { me: 'Flujos que inicié', team: 'Flujos iniciados', seller: (name) => `Flujos que inició ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} sin terminar`} icon={Send} onClick={onOpenFlows} />
+        <MetricCard label={who(subject, { me: 'Automatizaciones que lancé', team: 'Automatizaciones iniciadas', seller: (name) => `Automatizaciones que lanzó ${name}` })} value={summary.flows_started} hint={`${formatNumber(summary.flows_active)} sin terminar`} icon={Send} onClick={onOpenFlows} />
         <MetricCard
           label="Mensajes escritos en el CRM"
           value={summary.messages_sent}
-          hint={`Los envió una persona desde el CRM, no un flujo ni WhatsApp · ${period}`}
+          hint={`Los envió una persona desde el CRM, no una automatización ni WhatsApp · ${period}`}
           icon={MessagesSquare}
         />
         <MetricCard label="Leads etiquetados" value={summary.tagged_leads} hint={data.tags.coverage.rate != null ? `${data.tags.coverage.rate}% de cobertura` : 'Sin leads'} icon={Tag} />

@@ -231,7 +231,7 @@ export function StackedBarList({
   segments: StackSegment[]
   onSelect?: (key: string) => void
 }) {
-  if (rows.length === 0) return <NoData label="Ningún flujo se inició en el período" />
+  if (rows.length === 0) return <NoData label="Ninguna automatización se inició en el período" />
 
   const max = Math.max(...rows.map((row) => row.total), 1)
 

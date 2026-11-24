@@ -54,11 +54,11 @@ function triggerLabel(trigger: string) {
 function executionSourceLabel(execution: AutomationExecution) {
   if (execution.started_by_name) {
     return execution.start_source === 'flow'
-      ? `Iniciada por ${execution.started_by_name} · llamada por otro flujo`
-      : `Iniciada por ${execution.started_by_name}`
+      ? `La lanzó ${execution.started_by_name} · desde otra automatización`
+      : `La lanzó ${execution.started_by_name}`
   }
-  if (execution.start_source === 'manual') return 'Iniciada por un usuario eliminado'
-  if (execution.start_source === 'flow') return 'Llamada por otro flujo'
+  if (execution.start_source === 'manual') return 'La lanzó un usuario eliminado'
+  if (execution.start_source === 'flow') return 'La lanzó otra automatización'
   return 'Ejecutada por el sistema'
 }
 

@@ -198,7 +198,7 @@ class TestValidateGraphTopology:
         nodes, edges = linear_flow()
         nodes.append(node("huerfano", FlowNodeType.ACTION))
         edges.append(edge("huerfano", "e"))
-        with pytest.raises(ValueError, match="Ningún bloque conecta|Ninguna ruta"):
+        with pytest.raises(ValueError, match="Ningún paso conecta|Ninguna ruta"):
             validate_graph_topology(nodes, edges, "t")
 
     def test_end_node_cannot_have_outgoing_edges(self):

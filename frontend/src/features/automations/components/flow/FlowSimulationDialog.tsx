@@ -44,7 +44,7 @@ export function FlowSimulationDialog({ isSimulating, onSimulate, onClose, number
 
   return (
     <Modal
-      title="Probar el flujo"
+      title="Probar la automatización"
       description="Guarda el borrador y muestra la ruta que seguiría un lead con sus datos de hoy. No se le envía nada."
       icon={<Beaker className="h-4 w-4" />}
       size="md"
@@ -106,7 +106,7 @@ export function FlowSimulationDialog({ isSimulating, onSimulate, onClose, number
                       {step.detail ? <span className="block opacity-80">{String(step.detail)}</span> : null}
                     </span>
                     {step.node_id && number != null && (
-                      <Button variant="ghost" size="sm" onClick={() => onGoToNode(step.node_id as string)} aria-label={`Ver bloque #${number}`} className="-my-0.5 h-6 px-1.5">
+                      <Button variant="ghost" size="sm" onClick={() => onGoToNode(step.node_id as string)} aria-label={`Ver paso #${number}`} className="-my-0.5 h-6 px-1.5">
                         <LocateFixed className="h-3 w-3" aria-hidden="true" />Ver
                       </Button>
                     )}
@@ -116,7 +116,7 @@ export function FlowSimulationDialog({ isSimulating, onSimulate, onClose, number
             </ol>
             <p className="flex items-start gap-1.5 text-xs leading-relaxed text-wa-muted dark:text-wa-muted-dark">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              En pausas y preguntas sigue la salida del temporizador o «Sin respuesta»: no puede saber qué responderá el lead.
+              En esperas y preguntas sigue la salida del temporizador o «Sin respuesta»: no puede saber qué responderá el lead.
             </p>
           </section>
         )}

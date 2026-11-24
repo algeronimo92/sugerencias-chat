@@ -37,8 +37,8 @@ export interface HoursGrid {
 
 const UNITS: Record<Exclude<HoursReading, 'engaged'>, [string, string]> = {
   conversations: ['conversación nueva', 'conversaciones nuevas'],
-  flows_manual: ['flujo a mano', 'flujos a mano'],
-  flows_automatic: ['flujo automático', 'flujos automáticos'],
+  flows_manual: ['automatización a mano', 'automatizaciones a mano'],
+  flows_automatic: ['automatización que empezó sola', 'automatizaciones que empezaron solas'],
   messages: ['mensaje escrito en el CRM', 'mensajes escritos en el CRM'],
   phone_messages: ['mensaje desde WhatsApp', 'mensajes desde WhatsApp'],
   separations: ['separación registrada', 'separaciones registradas'],

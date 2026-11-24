@@ -14,39 +14,39 @@ type FlowReading = 'origin' | 'status'
 // "a mano" en la misma pestaña.
 const ORIGIN_SEGMENTS: StackSegment[] = [
   { key: 'manual_direct', label: 'A mano', color: 'bg-[var(--viz-cat-1)]' },
-  { key: 'manual_chained', label: 'A mano, por otro flujo', color: 'bg-[var(--viz-cat-1)]/45' },
-  { key: 'automatic_direct', label: 'Automáticos', color: 'bg-[var(--viz-cat-2)]' },
-  { key: 'automatic_chained', label: 'Automáticos, por otro flujo', color: 'bg-[var(--viz-cat-2)]/45' },
+  { key: 'manual_chained', label: 'A mano, por otra automatización', color: 'bg-[var(--viz-cat-1)]/45' },
+  { key: 'automatic_direct', label: 'Solas', color: 'bg-[var(--viz-cat-2)]' },
+  { key: 'automatic_chained', label: 'Solas, por otra automatización', color: 'bg-[var(--viz-cat-2)]/45' },
 ]
 const CHAINED_KEYS = new Set(['manual_chained', 'automatic_chained'])
 
 // El orden es el del ciclo de vida de un flujo, no el del tamaño: leerlo de
 // izquierda a derecha cuenta qué pasó con los envíos.
 const STATUS_SEGMENTS: StackSegment[] = [
-  { key: 'completed', label: 'Completados', color: 'bg-viz-done dark:bg-viz-done-dark' },
+  { key: 'completed', label: 'Completadas', color: 'bg-viz-done dark:bg-viz-done-dark' },
   // Era "Activos", que en Automatizaciones significa "encendido": acá son los
   // que todavía esperan, corren o están en pausa.
   { key: 'active', label: 'Sin terminar', color: 'bg-viz-active dark:bg-viz-active-dark' },
   // Recorrieron sus pasos pero algún mensaje no le llegó al cliente: antes
-  // se contaban dentro de «Completados».
-  { key: 'undelivered', label: 'No entregados', color: 'bg-viz-2 dark:bg-viz-2-dark' },
-  { key: 'cancelled', label: 'Cancelados', color: 'bg-viz-3 dark:bg-viz-3-dark' },
+  // se contaban dentro de «Completadas».
+  { key: 'undelivered', label: 'No entregadas', color: 'bg-viz-2 dark:bg-viz-2-dark' },
+  { key: 'cancelled', label: 'Canceladas', color: 'bg-viz-3 dark:bg-viz-3-dark' },
   { key: 'skipped', label: 'No aplicaron', color: 'bg-viz-idle dark:bg-viz-idle-dark' },
-  { key: 'failed', label: 'Fallidos', color: 'bg-viz-failed dark:bg-viz-failed-dark' },
+  { key: 'failed', label: 'Fallidas', color: 'bg-viz-failed dark:bg-viz-failed-dark' },
 ]
 
 const READINGS: { key: FlowReading; label: string; hint: string; chainedHint?: string; segments: StackSegment[] }[] = [
   {
     key: 'origin',
-    label: 'A mano o automáticos',
-    hint: 'A mano: alguien lo inició desde un chat. Automáticos: se iniciaron solos, por su disparador.',
-    chainedHint: 'Un flujo iniciado por otro flujo cuenta según cómo empezó el primero.',
+    label: 'A mano o solas',
+    hint: 'A mano: alguien la lanzó desde un chat. Solas: empezaron sin que nadie las lanzara.',
+    chainedHint: 'Una automatización lanzada por otra cuenta según cómo empezó la primera.',
     segments: ORIGIN_SEGMENTS,
   },
   {
     key: 'status',
     label: 'Cómo terminaron',
-    hint: 'En qué quedó cada flujo iniciado en el período.',
+    hint: 'En qué quedó cada automatización iniciada en el período.',
     segments: STATUS_SEGMENTS,
   },
 ]
@@ -64,13 +64,13 @@ function OriginSummary({ totals }: { totals: DashboardFlowOrigins }) {
   const strong = 'font-semibold text-wa-text dark:text-wa-text-dark'
   return (
     <p className="mb-4 text-xs text-gray-600 dark:text-gray-300">
-      De {formatNumber(total)} {total === 1 ? 'flujo iniciado' : 'flujos iniciados'},{' '}
+      De {formatNumber(total)} {total === 1 ? 'automatización iniciada' : 'automatizaciones iniciadas'},{' '}
       <strong className={strong}>{formatNumber(totals.manual)} a mano</strong> ({share(totals.manual, total)}) y{' '}
-      <strong className={strong}>{formatNumber(totals.automatic)} {totals.automatic === 1 ? 'automático' : 'automáticos'}</strong> ({share(totals.automatic, total)}).
+      <strong className={strong}>{formatNumber(totals.automatic)} {totals.automatic === 1 ? 'empezó sola' : 'empezaron solas'}</strong> ({share(totals.automatic, total)}).
       {chained > 0 && (
         <>
-          {' '}De ese total, {formatNumber(chained)} {chained === 1 ? 'lo inició otro flujo' : 'los inició otro flujo'}:{' '}
-          {formatNumber(totals.manual_chained)} a partir de uno a mano y {formatNumber(totals.automatic_chained)} de uno automático.
+          {' '}De ese total, {formatNumber(chained)} {chained === 1 ? 'la lanzó otra automatización' : 'las lanzó otra automatización'}:{' '}
+          {formatNumber(totals.manual_chained)} a partir de una a mano y {formatNumber(totals.automatic_chained)} de una que empezó sola.
         </>
       )}
     </p>
@@ -125,7 +125,7 @@ export function FlowsByFlowPanel({ flows, totals, onSelect }: Props) {
     <div>
       {canSplit && flows.length > 0 && (
         <>
-          <ReadingToggle label="Qué mostrar de cada flujo" options={READINGS} value={reading.key} onChange={setReadingKey} />
+          <ReadingToggle label="Qué mostrar de cada automatización" options={READINGS} value={reading.key} onChange={setReadingKey} />
           <p className="mb-3 text-[11px] text-wa-muted dark:text-wa-muted-dark">{reading.hint}{chained > 0 && reading.chainedHint ? ` ${reading.chainedHint}` : ''}</p>
           {reading.key === 'origin' && totals && <OriginSummary totals={totals} />}
         </>

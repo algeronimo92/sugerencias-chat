@@ -48,7 +48,7 @@ export function ImportFlowJsonDialog({
   async function submit() {
     setError(null)
     if (requireNameField && !name.trim()) {
-      setError('Escribe un nombre para el flujo.')
+      setError('Escribe un nombre para la automatización.')
       return
     }
     let parsed: unknown
@@ -97,13 +97,13 @@ export function ImportFlowJsonDialog({
         )}
         {requireNameField && (
           <div>
-            <label htmlFor="import-flow-name" className={labelClass}>Nombre del flujo</label>
+            <label htmlFor="import-flow-name" className={labelClass}>Nombre de la automatización</label>
             <Input id="import-flow-name" value={name} maxLength={120} onChange={event => setName(event.target.value)} placeholder="Ej. Bienvenida a leads nuevos" />
           </div>
         )}
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
-            <label htmlFor="import-flow-json" className="block text-xs font-medium text-wa-muted dark:text-wa-muted-dark">JSON del flujo</label>
+            <label htmlFor="import-flow-json" className="block text-xs font-medium text-wa-muted dark:text-wa-muted-dark">JSON de la automatización</label>
             <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()}>
               <Upload className="h-3.5 w-3.5" />Subir archivo .json
             </Button>

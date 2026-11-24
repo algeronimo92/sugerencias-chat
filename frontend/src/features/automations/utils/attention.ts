@@ -27,7 +27,7 @@ const GROUPS: Record<AttentionCause, Pick<AttentionGroup, 'title' | 'hint'>> = {
   },
   undelivered: {
     title: 'Mensajes que no se entregaron',
-    hint: 'El flujo recorrió todos sus pasos, pero WhatsApp no entregó algún mensaje. Puedes reenviarlo o abrir el chat para ver cuál fue.',
+    hint: 'La automatización recorrió todos sus pasos, pero WhatsApp no entregó algún mensaje. Puedes reenviarlo o abrir el chat para ver cuál fue.',
   },
   no_seller: {
     title: 'Falta una vendedora',
@@ -35,7 +35,7 @@ const GROUPS: Record<AttentionCause, Pick<AttentionGroup, 'title' | 'hint'>> = {
   },
   failed: {
     title: 'Se cortaron por un error',
-    hint: 'Un paso falló y el flujo no siguió. Reintentar retoma desde ese paso, sin repetir lo ya enviado.',
+    hint: 'Un paso falló y la automatización no siguió. Reintentar retoma desde ese paso, sin repetir lo ya enviado.',
   },
   long_pause: {
     title: `En pausa hace más de ${LONG_PAUSE_DAYS} días`,

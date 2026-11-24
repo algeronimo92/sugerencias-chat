@@ -123,7 +123,7 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
           {chat}
           <ConfirmDialog
             title="Enviar con la ventana de 24 h cerrada"
-            description="El flujo retomará desde el paso que falló y enviará sus mensajes aunque el cliente no haya escrito en las últimas 24 h. WhatsApp puede rechazarlos o cobrarlos. Queda registrado que lo autorizaste."
+            description="La automatización retomará desde el paso que falló y enviará sus mensajes aunque el cliente no haya escrito en las últimas 24 h. WhatsApp puede rechazarlos o cobrarlos. Queda registrado que lo autorizaste."
             confirmLabel="Autorizar y reintentar" disabled={busy}
             onConfirm={() => retry.mutate({ id: execution.id, ignoreServiceWindow: true }, { onSuccess: () => toast.success('Ejecución reprogramada'), onError: fail })}
           >

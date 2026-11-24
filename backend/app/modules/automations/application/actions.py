@@ -395,7 +395,7 @@ SERVICE_WINDOW_ACTIONS = frozenset({
 })
 
 
-DAILY_CAP_REACHED = "Este cliente ya recibió el máximo de mensajes automáticos de hoy ({cap}). El flujo espera y retoma solo."
+DAILY_CAP_REACHED = "Este cliente ya recibió el máximo de mensajes automáticos de hoy ({cap}). La automatización espera y retoma sola."
 # Cada cuánto vuelve a mirar un flujo que quedó esperando por el tope.
 DAILY_CAP_RETRY = timedelta(hours=1)
 

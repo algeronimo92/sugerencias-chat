@@ -23,7 +23,7 @@ import { formatRelativeTime } from './format'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'summary', label: 'Resumen' },
-  { id: 'flows', label: 'Flujos' },
+  { id: 'flows', label: 'Automatizaciones' },
   { id: 'tags', label: 'Etiquetas' },
   { id: 'pipeline', label: 'Embudo y citas' },
   { id: 'sales', label: 'Ventas' },

@@ -26,9 +26,9 @@ def normalize_edges(
         handle = str(raw_edge.get("source_handle") or FlowHandle.NEXT)
         edge_id = str(raw_edge.get("id") or f"{source}:{handle}:{target}")[:160]
         if source not in node_ids or target not in node_ids or source == target:
-            raise InvalidAutomation("Una conexión une un bloque consigo mismo o con uno que ya no existe. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Una conexión une un paso consigo mismo o con uno que ya no existe. Si importaste un JSON, revísalo.")
         if handle not in valid_handles and not allow_duplicate_handles:
-            raise InvalidAutomation("Una conexión sale por una salida que el bloque ya no tiene. Vuelve a conectarla.", node_id=source)
+            raise InvalidAutomation("Una conexión sale por una salida que el paso ya no tiene. Vuelve a conectarla.", node_id=source)
         if edge_id in edge_ids:
             raise InvalidAutomation("Hay dos conexiones con el mismo identificador. Si importaste un JSON, revísalo.")
         edge_ids.add(edge_id)
@@ -54,7 +54,7 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
         node_edges = outgoing[node["id"]]
         if node["type"] == FlowNodeType.END:
             if node_edges:
-                raise InvalidAutomation("Un bloque Fin termina el flujo: quita la conexión que sale de él.", node_id=node["id"])
+                raise InvalidAutomation("Un paso Fin termina la automatización: quita la conexión que sale de él.", node_id=node["id"])
         elif node["type"] == FlowNodeType.CONDITION:
             handles = sorted(edge["source_handle"] for edge in node_edges)
             groups = node["data"].get("condition_groups")
@@ -78,7 +78,7 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             # _run_visual_execution). Las demás condiciones sí son obligatorias.
             required = expected - {WaitAnyConditionKind.TIMER}
             if len(handles) != len(set(handles)) or not set(handles) <= expected or not required <= set(handles):
-                raise InvalidAutomation("Conecta la salida de cada condición de la pausa. Solo la del temporizador puede quedar sin conectar: ahí termina el flujo.", node_id=node["id"])
+                raise InvalidAutomation("Conecta la salida de cada condición de la pausa. Solo la del temporizador puede quedar sin conectar: ahí termina la automatización.", node_id=node["id"])
         elif node["type"] == FlowNodeType.QUESTION:
             required = {button["id"] for button in node["data"].get("buttons", [])} | {
                 QuestionHandle.OTHER, QuestionHandle.TIMEOUT,
@@ -98,16 +98,16 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             if len(handles) != len(expected) or set(handles) != expected:
                 raise InvalidAutomation("Conecta todas sus salidas: a cualquiera le puede tocar el próximo lead.", node_id=node["id"])
         elif len(node_edges) != 1 or node_edges[0]["source_handle"] != FlowHandle.NEXT:
-            raise InvalidAutomation("Falta conectar su salida: únela al bloque que sigue o a un Fin.", node_id=node["id"])
+            raise InvalidAutomation("Falta conectar su salida: únela al paso que sigue o a un Fin.", node_id=node["id"])
         if node["id"] != trigger_id and not incoming[node["id"]]:
-            raise InvalidAutomation("Ningún bloque conecta con este. Conéctalo desde el bloque anterior o bórralo.", node_id=node["id"])
+            raise InvalidAutomation("Ningún paso conecta con este. Conéctalo desde el paso anterior o bórralo.", node_id=node["id"])
 
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def walk(node_id: str) -> None:
         if node_id in visiting:
-            raise InvalidAutomation("Un bloque posterior vuelve a conectar con este y el flujo se repetiría sin fin. Revisa «Llega desde» y quita la conexión que regresa.", node_id=node_id)
+            raise InvalidAutomation("Un paso posterior vuelve a conectar con este y la automatización se repetiría sin fin. Revisa «Llega desde» y quita la conexión que regresa.", node_id=node_id)
         if node_id in visited:
             return
         visiting.add(node_id)
@@ -119,7 +119,7 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
     walk(trigger_id)
     if visited != node_ids:
         unreachable = next(node["id"] for node in nodes if node["id"] not in visited)
-        raise InvalidAutomation("Ninguna ruta desde el inicio del flujo llega a este bloque. Conéctalo desde un bloque que sí tenga ruta, o bórralo.", node_id=unreachable)
+        raise InvalidAutomation("Ninguna ruta desde el inicio de la automatización llega a este paso. Conéctalo desde un paso que sí tenga ruta, o bórralo.", node_id=unreachable)
 
 
 def flow_indexes(definition: dict) -> tuple[dict[str, dict], dict[tuple[str, str], str]]:

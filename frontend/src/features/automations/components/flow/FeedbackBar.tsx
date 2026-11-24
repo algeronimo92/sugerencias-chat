@@ -19,10 +19,10 @@ export function FeedbackBar({ error, notice, blockNumber, onGoToBlock }: {
     return (
       <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-red-100 px-4 py-2 text-xs text-red-800 dark:bg-red-950 dark:text-red-200">
         <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <p className="min-w-0 flex-1">{aboutBlock ? <><strong>Bloque #{blockNumber}:</strong> {error}</> : error}</p>
+        <p className="min-w-0 flex-1">{aboutBlock ? <><strong>Paso #{blockNumber}:</strong> {error}</> : error}</p>
         {aboutBlock && (
           <button type="button" onClick={onGoToBlock} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white/70 px-2 py-1 font-semibold hover:bg-white dark:border-red-800 dark:bg-red-900/40 dark:hover:bg-red-900/70">
-            <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver bloque #{blockNumber}
+            <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver paso #{blockNumber}
           </button>
         )}
       </div>

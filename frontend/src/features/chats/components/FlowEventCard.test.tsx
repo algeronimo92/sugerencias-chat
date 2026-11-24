@@ -40,15 +40,15 @@ describe('FlowEventCard', () => {
   it('dice quién lanzó el flujo y que terminó', () => {
     render(<FlowEventCard execution={execution()} />)
 
-    expect(screen.getByText(/Grecia Geronimo inició el flujo/)).toBeInTheDocument()
+    expect(screen.getByText(/Grecia Geronimo lanzó/)).toBeInTheDocument()
     expect(screen.getByText('Ubicacion')).toBeInTheDocument()
-    expect(screen.getByText(/Completado/)).toBeInTheDocument()
+    expect(screen.getByText(/Completada/)).toBeInTheDocument()
   })
 
   it('nombra al flujo padre cuando lo llamó otro flujo', () => {
     render(<FlowEventCard execution={execution({ start_source: 'flow', started_by_name: null, parent_rule_name: 'Hollywood peel' })} />)
 
-    expect(screen.getByText(/El flujo Hollywood peel inició/)).toBeInTheDocument()
+    expect(screen.getByText(/«Hollywood peel» lanzó/)).toBeInTheDocument()
   })
 
   it('muestra el motivo cuando la ejecución falló', () => {

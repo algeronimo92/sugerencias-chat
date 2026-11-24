@@ -53,10 +53,10 @@ export const Conversaciones: Story = {}
 
 export const Flujos: Story = {
   args: {
-    label: 'A qué hora salen los flujos',
+    label: 'A qué hora salen las automatizaciones',
     readings: [
-      { key: 'flows_manual', label: 'A mano', hint: 'Flujos iniciados desde un chat.' },
-      { key: 'flows_automatic', label: 'Automáticos', hint: 'Flujos que arrancó un disparador.' },
+      { key: 'flows_manual', label: 'A mano', hint: 'Automatizaciones lanzadas desde un chat.' },
+      { key: 'flows_automatic', label: 'Solas', hint: 'Automatizaciones que empezaron solas.' },
     ],
   },
 }

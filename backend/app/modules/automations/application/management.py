@@ -295,13 +295,13 @@ async def start_manual_flow_execution(
     """
     rule = await automation_ports().rules.get(rule_id)
     if rule is None:
-        raise InvalidAutomation("Este flujo ya no existe.")
+        raise InvalidAutomation("Esta automatización ya no existe.")
     if rule["trigger_type"] != AutomationTrigger.MANUAL:
-        raise InvalidAutomation("Este flujo no se puede iniciar desde el chat: su disparador no es «Inicio manual (vendedor)».")
+        raise InvalidAutomation("Esta automatización no se puede lanzar desde el chat: su inicio no es «La lanza tu equipo desde el chat».")
     if not rule["is_active"]:
-        raise InvalidAutomation("Este flujo está pausado o todavía no se publicó, así que no se puede iniciar.")
+        raise InvalidAutomation("Esta automatización está pausada o todavía no se publicó, así que no se puede lanzar.")
     if not is_admin and not rule["visible_to_sellers"]:
-        raise InvalidAutomation("Este flujo no está disponible para vendedores. Un administrador puede activarlo con «Visible para vendedores».")
+        raise InvalidAutomation("Esta automatización no está disponible para tu equipo. Un administrador puede activarla con «Visible para tu equipo».")
 
     # Otra automatización en curso con el lead no impide lanzar: lo manual
     # tiene prioridad sobre lo que está esperando (ver claim_due), y si algo
@@ -319,14 +319,14 @@ async def start_manual_flow_execution(
         )
     except ExecutionAlreadyRunning as exc:
         raise InvalidAutomation(
-            "Este flujo ya está en curso con este lead. Espera a que termine o cancélalo antes de iniciarlo otra vez."
+            "Esta automatización ya está en curso con este lead. Espera a que termine o cancélala antes de lanzarla otra vez."
         ) from exc
     if not created:
-        raise InvalidAutomation("No se pudo iniciar el flujo. Puede que este lead ya no exista; recarga la página.")
+        raise InvalidAutomation("No se pudo lanzar la automatización. Puede que este lead ya no exista; recarga la página.")
 
     executions = automation_ports().executions
     execution_id = await executions.find_by_event_key(rule_id, event_key)
     execution = await executions.view(execution_id) if execution_id else None
     if execution is None:
-        raise InvalidAutomation("El flujo se inició, pero no se pudo mostrar. Recarga la página para verlo.")
+        raise InvalidAutomation("La automatización se lanzó, pero no se pudo mostrar. Recarga la página para verla.")
     return execution

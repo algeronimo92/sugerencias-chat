@@ -18,13 +18,13 @@ export function PublishPausedDialog({ open, onResume, onKeepPaused, onCancel }: 
     <Modal
       alert
       layer="confirm"
-      title="Este flujo está pausado"
-      description="¿Lo reanudas al publicar? Si sigue pausado, no entra ningún lead nuevo hasta que lo reanudes."
+      title="Esta automatización está pausada"
+      description="¿La reanudas al publicar? Si sigue pausada, no entra ningún lead nuevo hasta que la reanudes."
       icon={<CirclePause className="h-4 w-4" />}
       onClose={onCancel}
       footer={<>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button variant="secondary" onClick={onKeepPaused}>Publicar y dejarlo pausado</Button>
+        <Button variant="secondary" onClick={onKeepPaused}>Publicar y dejarla pausada</Button>
         <Button onClick={onResume}>Publicar y reanudar</Button>
       </>}
     >

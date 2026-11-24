@@ -30,7 +30,7 @@ function activeSellerRuleIds(executions: AutomationExecution[]): Set<number> {
 }
 
 /**
- * Botón "Iniciar flujo" del cuadro de escritura: lista los flujos visuales de
+ * Botón "Iniciar automatización" del cuadro de escritura: lista los flujos visuales de
  * trigger manual que el admin marcó visibles (o todos, si quien mira es admin)
  * y dispara uno sobre este lead puntual. Mismo patrón que TemplatePicker.
  *
@@ -55,10 +55,10 @@ export function FlowPicker({ chatId, onChoose }: Props) {
     // Sin `relative`: la lista se ancla a la píldora del cuadro de escritura,
     // igual que la de plantillas, para no cortarse contra la columna del chat.
     <div ref={containerRef}>
-      <Tooltip content={open ? null : 'Iniciar un flujo automático'} side="top">
+      <Tooltip content={open ? null : 'Iniciar una automatización'} side="top">
         <button
           type="button"
-          aria-label="Iniciar un flujo para este lead"
+          aria-label="Iniciar una automatización para este lead"
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
@@ -89,7 +89,7 @@ function FlowList({ chatId, onChoose }: {
 
   return (
     <div className="absolute inset-x-0 bottom-full z-30 mb-2 rounded-xl border border-line bg-surface-raised p-2 shadow-popover sm:left-auto sm:w-72 sm:max-w-full">
-      <p className="px-2 pb-1.5 pt-1 text-xs font-semibold text-fg-muted">Iniciar flujo</p>
+      <p className="px-2 pb-1.5 pt-1 text-xs font-semibold text-fg-muted">Iniciar automatización</p>
       <div className="max-h-72 overflow-y-auto">
         {isLoading && (
           <div className="flex justify-center py-4">
@@ -97,7 +97,7 @@ function FlowList({ chatId, onChoose }: {
           </div>
         )}
         {!isLoading && flows.length === 0 && (
-          <p className="px-2 py-3 text-center text-sm text-fg-muted">No hay flujos disponibles para vendedores todavía.</p>
+          <p className="px-2 py-3 text-center text-sm text-fg-muted">Todavía no hay automatizaciones que tu equipo pueda lanzar.</p>
         )}
         {flows.map((flow) => {
           const alreadyRunning = activeRuleIds.has(flow.id)

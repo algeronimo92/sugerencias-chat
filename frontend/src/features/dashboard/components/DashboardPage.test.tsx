@@ -74,7 +74,7 @@ function metrics(): DashboardMetrics {
       }],
       origin_totals: { manual: 6, automatic: 2, manual_chained: 1, automatic_chained: 0 },
       by_actor: [{ name: 'Antonella', value: 8 }],
-      by_source: [{ name: 'Iniciado a mano', value: 8 }],
+      by_source: [{ name: 'A mano', value: 8 }],
       by_trigger: [{ name: 'manual', value: 8 }],
       trend: [{ date: '2026-09-20', value: 8 }],
       trend_manual: [{ date: '2026-09-20', value: 6 }],
@@ -251,7 +251,7 @@ describe('DashboardPage', () => {
     renderDashboard()
 
     expect(screen.getByText('Citas registradas')).toBeInTheDocument()
-    expect(screen.getByText('Flujos que inicié')).toBeInTheDocument()
+    expect(screen.getByText('Automatizaciones que lancé')).toBeInTheDocument()
     expect(screen.getByText('2 sin terminar')).toBeInTheDocument()
     expect(screen.getByText('Leads etiquetados')).toBeInTheDocument()
     expect(screen.getByText('75% de cobertura')).toBeInTheDocument()
@@ -261,11 +261,11 @@ describe('DashboardPage', () => {
     const user = userEvent.setup()
     renderDashboard()
 
-    await user.click(screen.getByRole('tab', { name: 'Flujos' }))
+    await user.click(screen.getByRole('tab', { name: 'Automatizaciones' }))
     expect(screen.getByText('Recordatorio de Yape')).toBeInTheDocument()
-    expect(screen.getByText('Quién inició flujos a mano')).toBeInTheDocument()
+    expect(screen.getByText('Quién lanzó automatizaciones a mano')).toBeInTheDocument()
     // El disparador lleva su explicación: el nombre solo no distingue "Lead nuevo" de "Conversación nueva".
-    expect(within(screen.getByRole('region', { name: 'Qué los inicia' })).getByText(/El vendedor lo inicia con el botón "Iniciar flujo"/)).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Cómo empiezan' })).getByText(/Tu equipo la lanza con el botón «Iniciar automatización»/)).toBeInTheDocument()
     expect(screen.queryByText('Citas registradas')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Etiquetas' }))
@@ -280,36 +280,36 @@ describe('DashboardPage', () => {
   it('desglosa cada flujo por estado con la cifra visible, no solo con color', async () => {
     const user = userEvent.setup()
     renderDashboard()
-    await user.click(screen.getByRole('tab', { name: 'Flujos' }))
+    await user.click(screen.getByRole('tab', { name: 'Automatizaciones' }))
 
     // La leyenda nombra los seis estados: el color no puede ser el único
     // indicio de qué es cada segmento.
-    for (const label of ['Completados', 'Sin terminar', 'No entregados', 'Cancelados', 'No aplicaron', 'Fallidos']) {
+    for (const label of ['Completadas', 'Sin terminar', 'No entregadas', 'Canceladas', 'No aplicaron', 'Fallidas']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    expect(screen.getByText('1 flujo no llegó a enviarse')).toBeInTheDocument()
+    expect(screen.getByText('1 automatización no llegó a enviarse')).toBeInTheDocument()
     // Lo propio es todo a mano: no hay reparto que elegir.
-    expect(screen.queryByRole('group', { name: 'Qué mostrar de cada flujo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Qué mostrar de cada automatización' })).not.toBeInTheDocument()
   })
 
   it('al mirar al equipo dice de cada flujo cuántos se iniciaron a mano y cuántos solos', async () => {
     const user = userEvent.setup()
     renderDashboard('admin')
-    await user.click(screen.getByRole('tab', { name: 'Flujos' }))
+    await user.click(screen.getByRole('tab', { name: 'Automatizaciones' }))
 
-    const panel = within(screen.getByRole('region', { name: 'Flujos iniciados' }))
+    const panel = within(screen.getByRole('region', { name: 'Automatizaciones iniciadas' }))
     // El resumen sale del total del período, no de sumar las filas visibles.
-    expect(panel.getByText(/De 8 flujos iniciados/)).toHaveTextContent('6 a mano (75%) y 2 automáticos (25%)')
+    expect(panel.getByText(/De 8 automatizaciones iniciadas/)).toHaveTextContent('6 a mano (75%) y 2 empezaron solas (25%)')
     const row = panel.getByRole('button', { name: /Recordatorio de Yape/ })
     // Lo que inició otro flujo es parte de "a mano", no una tercera cifra: 5 + 1 = 6.
-    expect(panel.getByText(/De 8 flujos iniciados/)).toHaveTextContent('1 lo inició otro flujo: 1 a partir de uno a mano y 0 de uno automático')
+    expect(panel.getByText(/De 8 automatizaciones iniciadas/)).toHaveTextContent('1 la lanzó otra automatización: 1 a partir de una a mano y 0 de una que empezó sola')
     expect(row).toHaveTextContent('5 a mano')
-    expect(row).toHaveTextContent('1 a mano, por otro flujo')
-    expect(row).toHaveTextContent('2 automáticos')
+    expect(row).toHaveTextContent('1 a mano, por otra automatización')
+    expect(row).toHaveTextContent('2 solas')
 
     await user.click(panel.getByRole('button', { name: 'Cómo terminaron' }))
-    expect(panel.getByRole('button', { name: /Recordatorio de Yape/ })).toHaveTextContent('3 completados')
-    expect(panel.queryByText(/De 8 flujos iniciados/)).not.toBeInTheDocument()
+    expect(panel.getByRole('button', { name: /Recordatorio de Yape/ })).toHaveTextContent('3 completadas')
+    expect(panel.queryByText(/De 8 automatizaciones iniciadas/)).not.toBeInTheDocument()
   })
 
   it('resume las separaciones en la moneda del negocio y contra el período anterior', () => {
@@ -411,7 +411,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Mensajes escritos en el CRM')).toBeInTheDocument()
     // El KPI aclara de dónde sale la cifra: los enviados desde el celular del
     // vendedor llegan sin autor y no se cuentan.
-    expect(screen.getByText('Los envió una persona desde el CRM, no un flujo ni WhatsApp · Últimos 30 días')).toBeInTheDocument()
+    expect(screen.getByText('Los envió una persona desde el CRM, no una automatización ni WhatsApp · Últimos 30 días')).toBeInTheDocument()
     expect(screen.getByText('Quién escribe más en el CRM')).toBeInTheDocument()
   })
 
@@ -419,15 +419,15 @@ describe('DashboardPage', () => {
     renderDashboard()
 
     const panel = screen.getByRole('region', { name: 'Mensajes enviados por día' })
-    expect(within(panel).getByText('180 mensajes del negocio: el 19% se escribió en el CRM, el 37% salió desde WhatsApp por fuera del CRM, el 42% lo mandaron los flujos automáticos y el 2% eran mensajes programados.')).toBeInTheDocument()
+    expect(within(panel).getByText('180 mensajes del negocio: el 19% se escribió en el CRM, el 37% salió desde WhatsApp por fuera del CRM, el 42% lo mandaron las automatizaciones y el 2% eran mensajes programados.')).toBeInTheDocument()
     const reparto = within(panel).getByRole('list', { name: 'Mensajes por origen' })
     expect(within(reparto).getByText('Desde WhatsApp, fuera del CRM').closest('li')).toHaveTextContent('6637%')
-    expect(within(reparto).getByText('Flujos automáticos').closest('li')).toHaveTextContent('7642%')
+    expect(within(reparto).getByText('Automatizaciones').closest('li')).toHaveTextContent('7642%')
     expect(within(reparto).getByText('Escritos en el CRM').closest('li')).toHaveTextContent('3419%')
     expect(within(reparto).getByText('Programados en el CRM')).toBeVisible()
     // Las barras llevan su propia leyenda, con los orígenes que tuvieron mensajes.
     const leyenda = within(panel).getByRole('list', { name: 'Colores de cada origen' })
-    for (const origen of ['Escritos en el CRM', 'Desde WhatsApp, fuera del CRM', 'Flujos automáticos', 'Programados en el CRM']) {
+    for (const origen of ['Escritos en el CRM', 'Desde WhatsApp, fuera del CRM', 'Automatizaciones', 'Programados en el CRM']) {
       expect(within(leyenda).getByText(origen)).toBeInTheDocument()
     }
   })

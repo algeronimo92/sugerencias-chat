@@ -37,7 +37,7 @@ test.describe('escribir en un chat', () => {
     await page.goto(`/chat/${CHAT_ID}`)
 
     await expect(page.getByText('Josefina Paredes').last()).toBeVisible()
-    await expectFullyOnScreen(page.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
+    await expectFullyOnScreen(page.getByRole('button', { name: 'Iniciar una automatización para este lead' }))
     await expectFullyOnScreen(page.getByRole('button', { name: 'Separar cita para este lead' }))
     await expectNoPageOverflow(page)
   })

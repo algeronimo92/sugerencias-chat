@@ -123,8 +123,8 @@ describe('el titular del panel', () => {
   })
 
   it('en flujos solo cuenta lo iniciado a mano', () => {
-    expect(teamHeadline(buildTeamHours(WEEK, 'flows_manual'), 'flows_manual')).toBe('2 flujos iniciados a mano: Grecia 2.')
+    expect(teamHeadline(buildTeamHours(WEEK, 'flows_manual'), 'flows_manual')).toBe('2 automatizaciones lanzadas a mano: Grecia 2.')
     const none = { ...WEEK, people: [{ user_id: 3, name: 'Zoe', cells: [] }] }
-    expect(teamHeadline(buildTeamHours(none, 'flows_manual'), 'flows_manual')).toBe('Nadie inició flujos a mano en el período.')
+    expect(teamHeadline(buildTeamHours(none, 'flows_manual'), 'flows_manual')).toBe('Nadie lanzó automatizaciones a mano en el período.')
   })
 })
