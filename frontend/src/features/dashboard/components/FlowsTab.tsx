@@ -84,7 +84,7 @@ export function FlowsTab({ data, days, subject, onOpenFlows }: Props) {
             onClick={onOpenFlows}
             className="shrink-0 text-[11px] font-medium text-wa-primary-strong hover:underline dark:text-wa-primary"
           >
-            Ver automatizaciones enviadas
+            Ver historial de envíos
           </button>
         }
       >
