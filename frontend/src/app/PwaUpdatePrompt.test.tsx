@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hold, LEASE_FRESH_MS, resetActivity } from '../shared/activity'
 import { resetPwaUpdateStore, setPwaCurrentChatId, usePwaUpdatePending } from '../shared/pwaUpdate'
-import { resetReloadGuard } from './pwaReload'
+import { LATEST_CHECK_TIMEOUT_MS, resetReloadGuard } from './pwaReload'
 import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS, UPDATE_TOAST_MS } from './PwaUpdatePrompt'
 
 // Doble de `useRegisterSW`: el test decide cuándo "aparece" un worker nuevo
@@ -84,10 +84,15 @@ function makeWorker() {
 }
 
 function makeRegistration(waiting: ReturnType<typeof makeWorker> | null = makeWorker()) {
-  return { update: vi.fn(() => Promise.resolve()), waiting } as unknown as ServiceWorkerRegistration & {
+  return { update: vi.fn(() => Promise.resolve()), waiting, installing: null } as unknown as ServiceWorkerRegistration & {
     update: ReturnType<typeof vi.fn>
     waiting: ReturnType<typeof makeWorker> | null
   }
+}
+
+/** Deja correr las promesas pendientes (aplicar primero busca la última versión). */
+async function flush() {
+  await act(async () => {})
 }
 
 function setVisibility(state: DocumentVisibilityState) {
@@ -262,12 +267,13 @@ describe('PwaUpdatePrompt', () => {
   })
 
   describe('recarga automática segura', () => {
-    it('aplica la versión nueva al cambiar de chat si no hay nada a medias, con texto visible', () => {
+    it('aplica la versión nueva al cambiar de chat si no hay nada a medias, con texto visible', async () => {
       mount()
       newBuildWhileIn('chat-1')
       expect(sw.updateServiceWorker).not.toHaveBeenCalled()
 
       act(() => setPwaCurrentChatId('chat-2'))
+      await flush()
       expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
       expect(screen.getByRole('status')).toHaveTextContent(/Actualizando/)
       expect(sessionStorage.getItem('pwa-update-applied')).toBe('1')
@@ -298,7 +304,7 @@ describe('PwaUpdatePrompt', () => {
       release()
     })
 
-    it('no recarga mientras haya un envío en vuelo, y sí cuando termina y se vuelve a navegar', () => {
+    it('no recarga mientras haya un envío en vuelo, y sí cuando termina y se vuelve a navegar', async () => {
       mount()
       sends.pending = 1
       newBuildWhileIn('chat-1')
@@ -307,6 +313,7 @@ describe('PwaUpdatePrompt', () => {
 
       sends.pending = 0
       act(() => setPwaCurrentChatId('chat-3'))
+      await flush()
       expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
     })
 
@@ -339,39 +346,93 @@ describe('PwaUpdatePrompt', () => {
   })
 
   describe('botón manual', () => {
-    it('"Actualizar" aplica el worker nuevo y deja constancia para el log del build', () => {
+    it('"Actualizar" aplica el worker nuevo y deja constancia para el log del build', async () => {
       mount()
       act(() => sw.setNeedRefresh(true))
       act(() => lastOfferOptions().action.onClick())
+      await flush()
       expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
       expect(sessionStorage.getItem('pwa-update-applied')).toBe('1')
     })
 
-    it('recarga cuando el worker nuevo queda activo, aunque la página no estuviera controlada al cargar', () => {
+    it('recarga cuando el worker nuevo queda activo, aunque la página no estuviera controlada al cargar', async () => {
       const registration = mount().registration
       act(() => sw.setNeedRefresh(true))
       act(() => lastOfferOptions().action.onClick())
+      await flush()
       expect(reload.page).not.toHaveBeenCalled()
       act(() => registration.waiting!.activate())
       expect(reload.page).toHaveBeenCalledTimes(1)
     })
 
-    it('recarga una sola vez aunque el plugin y el respaldo avisen los dos', () => {
+    it('recarga una sola vez aunque el plugin y el respaldo avisen los dos', async () => {
       // Dos recargas seguidas dejaban sin la barra de botones del sistema a
       // la PWA instalada en Android (2026-11-17).
       const registration = mount().registration
       act(() => sw.setNeedRefresh(true))
       act(() => lastOfferOptions().action.onClick())
+      await flush()
       act(() => sw.needReload())
       act(() => registration.waiting!.activate())
       expect(reload.page).toHaveBeenCalledTimes(1)
     })
 
-    it('recarga ya mismo si otra pestaña ya activó la versión nueva', () => {
+    it('recarga ya mismo si otra pestaña ya activó la versión nueva', async () => {
       mount(makeRegistration(null))
       act(() => sw.setNeedRefresh(true))
       act(() => lastOfferOptions().action.onClick())
+      await flush()
       expect(reload.page).toHaveBeenCalledTimes(1)
+    })
+
+    it('antes de aplicar busca la última versión y salta directo a ella, aunque no hayan pasado 5 minutos', async () => {
+      // Dos deploys a un minuto (2026-11-24): se aplicaba el primero y al
+      // recargar se volvía a pedir actualizar por el segundo.
+      const registration = mount().registration
+      act(() => sw.setNeedRefresh(true))
+      const older = registration.waiting!
+      // Vista mutable del doble: el test hace de navegador moviendo workers.
+      const fake = registration as unknown as { installing: unknown; waiting: unknown }
+      const newer = makeWorker()
+      newer.state = 'installing'
+      registration.update.mockClear()
+      registration.update.mockImplementation(() => {
+        fake.installing = newer
+        return Promise.resolve()
+      })
+
+      act(() => lastOfferOptions().action.onClick())
+      await flush()
+      expect(registration.update).toHaveBeenCalledTimes(1)
+      expect(sw.updateServiceWorker).not.toHaveBeenCalled()
+
+      // Termina de bajar: reemplaza a la que esperaba y recién ahí se aplica.
+      act(() => {
+        fake.installing = null
+        fake.waiting = newer
+        newer.state = 'installed'
+        newer.dispatchEvent(new Event('statechange'))
+      })
+      await flush()
+      expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
+      act(() => older.activate())
+      expect(reload.page).not.toHaveBeenCalled()
+      act(() => newer.activate())
+      expect(reload.page).toHaveBeenCalledTimes(1)
+    })
+
+    it('si la búsqueda de la última versión no responde, aplica la que ya había', async () => {
+      const registration = mount().registration
+      act(() => sw.setNeedRefresh(true))
+      registration.update.mockImplementation(() => new Promise(() => {}))
+
+      act(() => lastOfferOptions().action.onClick())
+      await flush()
+      expect(sw.updateServiceWorker).not.toHaveBeenCalled()
+      act(() => vi.advanceTimersByTime(LATEST_CHECK_TIMEOUT_MS))
+      await flush()
+      expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
+      expect(screen.getByRole('status')).toHaveTextContent(/Actualizando/)
     })
 
     it('"Actualizar" pasa por el mismo filtro y explica qué lo frena', () => {

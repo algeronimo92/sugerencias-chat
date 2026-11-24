@@ -13,7 +13,7 @@ import {
 import { useChatSocketConnected } from '../realtime/useRealtime'
 import { usePendingSends } from '../features/chats/public/usePendingSends'
 import { describeUpdateBlocker, updateBlocker } from './pwaUpdateGuard'
-import { reloadPageOnce, reloadWhenActivated } from './pwaReload'
+import { LATEST_CHECK_TIMEOUT_MS, reloadPageOnce, reloadWhenActivated, settleLatestWorker } from './pwaReload'
 
 // Id fijo para que el aviso no se apile si el efecto vuelve a correr.
 const UPDATE_TOAST_ID = 'pwa-update'
@@ -38,7 +38,8 @@ export const UPDATE_TOAST_MS = 20_000
 
 // Si el worker nuevo no toma el control en este tiempo, algo falló: se quita
 // el velo de "Actualizando…" y se le pide a la persona que recargue a mano.
-export const APPLY_TIMEOUT_MS = 15_000
+// Incluye la espera a que baje una versión más nueva (ver settleLatestWorker).
+export const APPLY_TIMEOUT_MS = 15_000 + LATEST_CHECK_TIMEOUT_MS
 
 // Marca que sobrevive a la recarga para poder decir en consola que el build
 // que acaba de cargar es el resultado de aplicar una actualización.
@@ -132,12 +133,20 @@ export function PwaUpdatePrompt() {
     toast.dismiss(UPDATE_TOAST_ID)
     setApplying(true)
     rememberUpdateApplied()
-    // El plugin recarga (vía `onNeedReload`) cuando el worker nuevo toma el
-    // control, pero solo si la página ya estaba controlada al cargar; el
-    // respaldo recarga cuando el worker queda activo. Entre los dos hay una
-    // sola recarga. En la 1.3.0 del plugin el argumento ya no cambia nada.
-    reloadWhenActivated(registration)
-    void updateServiceWorker(true)
+    // Antes de aplicar se busca la última versión, sin el tope de 5 minutos:
+    // si hubo otro deploy desde la última búsqueda, se salta directo a ese y
+    // no hace falta una segunda recarga.
+    lastCheckAtRef.current = Date.now()
+    void settleLatestWorker(registration).then(() => {
+      // El plugin recarga (vía `onNeedReload`) cuando el worker nuevo toma el
+      // control, pero solo si la página ya estaba controlada al cargar; el
+      // respaldo recarga cuando el worker queda activo. Entre los dos hay una
+      // sola recarga. Va después de buscar: `reloadWhenActivated` se engancha
+      // al worker que espera en ese momento. En la 1.3.0 del plugin el
+      // argumento de `updateServiceWorker` ya no cambia nada.
+      reloadWhenActivated(registration)
+      void updateServiceWorker(true)
+    })
     return true
   }, [pendingSends, registration, updateServiceWorker])
 
