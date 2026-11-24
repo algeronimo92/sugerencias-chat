@@ -69,6 +69,13 @@ async def test_pack_seeds_once_and_never_overwrites(tenant) -> None:
         assert kept == "#000000"
         assert {t["shortcut"] for t in STARTER_TEMPLATES} <= shortcuts
         assert rules and all(not active and owner == admin_id for active, owner in rules)
+        # Nacen como flujos visuales en borrador: es lo único que el editor crea
+        # ahora, y sin publicar no le escriben a nadie.
+        async with session_scope() as session:
+            drafts = (await session.execute(select(
+                AutomationRule.builder_mode, AutomationRule.published_flow_definition, AutomationRule.flow_definition,
+            ))).all()
+        assert all(mode == "visual" and published is None and draft["nodes"] for mode, published, draft in drafts)
 
 
 async def test_pack_without_admin_leaves_templates_for_later(tenant) -> None:

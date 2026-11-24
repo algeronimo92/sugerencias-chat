@@ -49,6 +49,42 @@ def test_every_starter_automation_is_valid_and_born_inactive(rule) -> None:
     assert not (refs.users or refs.tags or refs.templates or refs.media_assets)
 
 
+@pytest.mark.parametrize("rule", starter_pack.STARTER_AUTOMATIONS, ids=lambda r: r["name"])
+def test_every_starter_automation_becomes_a_publishable_visual_flow(rule) -> None:
+    """El paquete creaba reglas simples, que el editor ya no ofrece: un negocio
+    nuevo arrancaba con tres automatizaciones de un tipo que no podía crear."""
+    from app.modules.automations.application.validation import connect_flow, normalize_flow
+    from app.modules.automations.domain.flow_definition import normalize_visual_draft
+    from app.modules.automations.domain.rule_to_flow import flow_from_rule
+
+    definition = flow_from_rule(rule)
+
+    normalize_visual_draft(rule["name"], definition)
+    published = connect_flow(normalize_flow(rule["name"], definition))
+    assert published["trigger_type"] == rule["trigger_type"]
+    assert published["trigger_config"] == rule["trigger_config"]
+    # Mismas condiciones de entrada y mismas acciones, en el mismo orden.
+    for key, value in rule["conditions"].items():
+        assert published["conditions"][key] == value
+    actions = [node["data"]["action"] for node in published["flow_definition"]["nodes"] if node["type"] == "action"]
+    assert [action["type"] for action in actions] == [action["type"] for action in rule["actions"]]
+
+
+def test_a_rule_with_a_delay_waits_before_its_first_action() -> None:
+    from app.modules.automations.domain.rule_to_flow import flow_from_rule
+
+    definition = flow_from_rule({
+        "trigger_type": "lead_created", "trigger_config": {}, "conditions": {}, "delay_minutes": 5,
+        "actions": [{"type": "send_message", "text": "hola"}],
+    })
+
+    assert [node["type"] for node in definition["nodes"]] == ["trigger", "wait", "action", "end"]
+    assert definition["nodes"][1]["data"] == {"seconds": 300}
+    assert [(edge["source"], edge["target"]) for edge in definition["edges"]] == [
+        ("trigger-1", "wait-1"), ("wait-1", "action-2"), ("action-2", "end-1"),
+    ]
+
+
 def test_starter_automations_cover_welcome_appointment_and_recovery() -> None:
     triggers = {rule["trigger_type"] for rule in starter_pack.STARTER_AUTOMATIONS}
     assert triggers == {"lead_created", "stage_changed", "customer_response_overdue"}
@@ -78,18 +114,19 @@ def _fake_pack(monkeypatch, *, admin_id: int | None, existing_rules: list[str]):
     async def rules():
         return [{"name": name} for name in existing_rules]
 
-    async def validate(values):
-        return values
+    async def validate(name, definition):
+        return definition
 
-    async def create(values, user_id):
-        calls["created"].append((values["name"], user_id))
+    async def create(name, definition, user_id):
+        calls["created"].append((name, user_id))
+        calls.setdefault("definitions", []).append(definition)
         return {"id": len(calls["created"])}
 
     monkeypatch.setattr(starter_pack, "team_summary", team)
     monkeypatch.setattr(starter_pack, "seed_starter_catalog", seed_catalog)
     monkeypatch.setattr(starter_pack, "list_automation_rules", rules)
-    monkeypatch.setattr(starter_pack, "validate_automation_rule", validate)
-    monkeypatch.setattr(starter_pack, "create_automation_rule", create)
+    monkeypatch.setattr(starter_pack, "validate_visual_flow", validate)
+    monkeypatch.setattr(starter_pack, "create_visual_flow", create)
     return calls
 
 

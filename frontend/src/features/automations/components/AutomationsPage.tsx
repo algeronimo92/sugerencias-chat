@@ -201,6 +201,8 @@ export function AutomationsPage() {
   ], [])
   const executionTable = useReactTable({ data: executions, columns: historyColumns, getCoreRowModel: getCoreRowModel() })
   const isSaving = create.isPending || update.isPending
+  // Ya no se crean reglas simples: todo nace como flujo, desde una receta o
+  // de cero. Las que existan se siguen listando, editando y ejecutando.
   const simpleRules = rules.filter(rule => rule.builder_mode !== AutomationBuilderMode.Visual)
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
   // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
@@ -251,10 +253,6 @@ export function AutomationsPage() {
 
   function openExecutionChat(leadId: string | null) {
     if (leadId) navigate(`/chat/${encodeURIComponent(leadId)}`)
-  }
-
-  function openCreate() {
-    setEditingId(null); setForm(EMPTY_FORM); setError(null); setFormHighlight(null); setFormOpen(true)
   }
 
   function openEdit(rule: AutomationRule, highlight: ServiceHighlight | null = null) {
@@ -446,9 +444,6 @@ export function AutomationsPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Lo que el sistema hace solo y lo que tu equipo lanza con un toque desde el chat.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {/* Las reglas simples siguen pudiéndose crear hasta que las recetas las
-                  reemplacen; ya no son la opción principal. */}
-              {tab === 'automatic' && <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><GitBranch className="h-4 w-4" />Regla simple</button>}
               {(tab === 'automatic' || tab === 'sequences') && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
               <button type="button" onClick={() => setRecipePickerOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'sequences' ? 'Nueva secuencia' : 'Nueva automatización'}</button>
             </div>
