@@ -9,6 +9,7 @@ import {
   registerPwaUpdater,
   setPwaUpdatePending,
   usePwaCurrentChatId,
+  usePwaCurrentSection,
 } from '../shared/pwaUpdate'
 import { useChatSocketConnected } from '../realtime/useRealtime'
 import { usePendingSends } from '../features/chats/public/usePendingSends'
@@ -126,7 +127,7 @@ export function PwaUpdatePrompt() {
       if (trigger === 'manual') {
         toast.info('Todavía no se puede actualizar', { description: `Ahora mismo ${reason}. Termina eso y vuelve a intentarlo.` })
       } else {
-        console.info(`${currentBrandName()}: versión nueva pendiente, no se aplica al cambiar de chat porque ${reason}`)
+        console.info(`${currentBrandName()}: versión nueva pendiente, no se aplica al navegar porque ${reason}`)
       }
       return false
     }
@@ -211,7 +212,9 @@ export function PwaUpdatePrompt() {
   // Cambio de chat con una versión ya pendiente: se aplica si es seguro; si
   // no, se vuelve a ofrecer. `armed` evita aplicar en el mismo render en que
   // aparece el build nuevo o justo al cargar la página en un chat.
-  const chatId = usePwaCurrentChatId()
+  // El lugar es el chat abierto o, fuera de los chats, la sección: quien
+  // trabaja en Automatizaciones o en el tablero no cambia de chat nunca.
+  const chatId = `${usePwaCurrentSection()}:${usePwaCurrentChatId() ?? ''}`
   const previousChatIdRef = useRef(chatId)
   const armedRef = useRef(false)
   // Effect Event: el efecto corre al aparecer la versión, al cambiar de chat

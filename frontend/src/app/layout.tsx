@@ -14,6 +14,7 @@ import { useChatFiltersState } from '../features/chats/public/useChatFiltersStat
 import { MobileNavBar } from "./MobileNavBar";
 import { roleLabel } from "./navigation";
 import { PwaUpdateChip } from "./PwaUpdateChip";
+import { setPwaCurrentSection } from "../shared/pwaUpdate";
 import { CallCenterProvider, CallDock } from '../features/calls';
 import { NotificationCenter } from '../features/notifications/public/NotificationCenter';
 import { Sidebar } from "./Sidebar";
@@ -197,6 +198,9 @@ export function MainLayout() {
 
   usePushNavigation();
   const location = useLocation();
+  // Para que una versión nueva se aplique al cambiar de sección (ver pwaUpdate).
+  const section = location.pathname.split("/")[1] ?? "";
+  useEffect(() => setPwaCurrentSection(section), [section]);
   const isMobile = useLayout() === "mobile";
   // Barra superior y navegación inferior del celular: fuera de un chat, donde
   // el espacio es del composer y se vuelve con la flecha.

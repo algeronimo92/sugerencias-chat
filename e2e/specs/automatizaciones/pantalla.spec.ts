@@ -32,7 +32,7 @@ test('la pantalla separa lo que corre solo de lo que lanza el equipo', async ({ 
   // Antes se separaba por cómo estaban hechas («Reglas» y «Flujos visuales»):
   // la bienvenida automática quedaba mezclada entre las secuencias del equipo.
   const tabs = page.getByRole('navigation', { name: 'Secciones de automatizaciones' })
-  await expect(tabs.getByRole('button', { name: /Automáticas/ })).toHaveAttribute('aria-current', 'page')
+  await expect(tabs.getByRole('button', { name: /Empiezan solas/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toBeVisible()
   await expect(page.getByRole('heading', { name: FLOWS[0].name })).toHaveCount(0)
   // Sin pendientes, «Por atender» no lleva contador: un 0 se leería como aviso.
@@ -40,12 +40,39 @@ test('la pantalla separa lo que corre solo de lo que lanza el equipo', async ({ 
   await expectNoPageOverflow(page)
   await page.screenshot({ path: `test-results/automatizaciones-automaticas-${info.project.name}.png` })
 
-  await tabs.getByRole('button', { name: /Secuencias del equipo/ }).click()
+  await tabs.getByRole('button', { name: /Las lanza tu equipo/ }).click()
   await expect(page.getByRole('heading', { name: FLOWS[0].name })).toBeVisible()
   await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Nueva secuencia' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Nueva automatización' })).toBeVisible()
   await expectNoPageOverflow(page)
   await page.screenshot({ path: `test-results/automatizaciones-secuencias-${info.project.name}.png` })
+})
+
+test('la tarjeta dice qué otra automatización la lanza', async ({ page, api }, info) => {
+  // «Bienvenida» lanza la secuencia de cada servicio y eso no se veía en
+  // ningún lado: había que abrir el editor de cada una para enterarse.
+  const definition = JSON.parse(JSON.stringify({
+    conditions: {},
+    nodes: [
+      { id: 'trigger-1', type: 'trigger', position: { x: 70, y: 220 }, data: { trigger_type: 'conversation_started' } },
+      { id: 'invoke-1', type: 'invoke_flow', position: { x: 390, y: 220 }, data: { flow_rule_id: FLOWS[0].id } },
+      { id: 'end-1', type: 'end', position: { x: 710, y: 220 }, data: { label: 'Fin', close_conversation: false } },
+    ],
+    edges: [
+      { id: 'e1', source: 'trigger-1', target: 'invoke-1', source_handle: 'next' },
+      { id: 'e2', source: 'invoke-1', target: 'end-1', source_handle: 'next' },
+    ],
+  }))
+  api.on('get', '/api/automations', [{ ...BIENVENIDA, flow_definition: definition, published_flow_definition: definition }, ...FLOWS])
+
+  await page.goto('/automations')
+  await page.getByRole('button', { name: /Las lanza tu equipo/ }).click()
+
+  const launched = page.getByRole('article').filter({ hasText: FLOWS[0].name })
+  await expect(launched).toContainText('También la lanza: «Bienvenida»')
+  await expect(page.getByRole('article').filter({ hasText: FLOWS[1].name })).not.toContainText('También la lanza')
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/automatizaciones-tambien-la-lanza-${info.project.name}.png` })
 })
 
 test('«Por atender» junta lo que falló por causa y lo arregla desde la fila', async ({ page, api }, info) => {
@@ -120,7 +147,7 @@ test('pausar un flujo pide confirmación y dice qué pasa con lo que está en cu
   api.on('patch', '/api/automations/{rule_id}', { ...target, is_active: false })
 
   await page.goto('/automations')
-  await page.getByRole('button', { name: /Secuencias del equipo/ }).click()
+  await page.getByRole('button', { name: /Las lanza tu equipo/ }).click()
   await page.getByRole('switch', { name: `Pausar ${target.name}` }).click()
 
   const dialog = page.getByRole('alertdialog', { name: `Pausar “${target.name}”` })
@@ -252,8 +279,8 @@ test('el aviso de llamadas se puede apartar para llegar a los botones que tapaba
 
 test('crear empieza por elegir una receta y abre el editor con el flujo ya armado', async ({ page, api }, info) => {
   await page.goto('/automations')
-  await page.getByRole('button', { name: /Secuencias del equipo/ }).click()
-  await page.getByRole('button', { name: 'Nueva secuencia' }).click()
+  await page.getByRole('button', { name: /Las lanza tu equipo/ }).click()
+  await page.getByRole('button', { name: 'Nueva automatización' }).click()
 
   // Antes se abría directo un lienzo con «Lead nuevo → Crear tarea → Fin»,
   // que no era lo que nadie venía a hacer.

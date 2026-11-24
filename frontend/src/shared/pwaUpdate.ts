@@ -16,10 +16,12 @@ type Listener = () => void
 
 let updatePending = false
 let currentChatId: string | null = null
+let currentSection = ''
 let applyUpdate: (() => void) | null = null
 
 const pendingListeners = new Set<Listener>()
 const chatListeners = new Set<Listener>()
+const sectionListeners = new Set<Listener>()
 
 function subscribeTo(listeners: Set<Listener>) {
   return (listener: Listener) => {
@@ -32,6 +34,7 @@ function subscribeTo(listeners: Set<Listener>) {
 
 const subscribePending = subscribeTo(pendingListeners)
 const subscribeChat = subscribeTo(chatListeners)
+const subscribeSection = subscribeTo(sectionListeners)
 
 /** Lo escribe el prompt cuando el worker nuevo queda esperando. */
 export function setPwaUpdatePending(value: boolean) {
@@ -56,6 +59,25 @@ export function usePwaCurrentChatId() {
   return useSyncExternalStore(subscribeChat, () => currentChatId, () => null)
 }
 
+/**
+ * Lo escribe el layout: el primer tramo de la ruta («automations», «chat»…).
+ *
+ * Cambiar de sección es tan buen momento para aplicar una versión nueva como
+ * cambiar de chat. Sin esto, quien no pasaba por los chats seguía con la app
+ * vieja: el 2026-11-24, tras quitar campos de la API, la pantalla de
+ * automatizaciones en caché mostraba «0 automatizaciones» hasta que alguien
+ * pulsaba «Actualizar».
+ */
+export function setPwaCurrentSection(section: string) {
+  if (currentSection === section) return
+  currentSection = section
+  sectionListeners.forEach(listener => listener())
+}
+
+export function usePwaCurrentSection() {
+  return useSyncExternalStore(subscribeSection, () => currentSection, () => '')
+}
+
 /** El prompt registra cómo se aplica la actualización; el chip de la
  * cabecera solo la dispara. */
 export function registerPwaUpdater(apply: (() => void) | null) {
@@ -70,7 +92,9 @@ export function applyPwaUpdate() {
 export function resetPwaUpdateStore() {
   updatePending = false
   currentChatId = null
+  currentSection = ''
   applyUpdate = null
   pendingListeners.clear()
   chatListeners.clear()
+  sectionListeners.clear()
 }

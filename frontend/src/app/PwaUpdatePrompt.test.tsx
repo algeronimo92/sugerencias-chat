@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hold, LEASE_FRESH_MS, resetActivity } from '../shared/activity'
-import { resetPwaUpdateStore, setPwaCurrentChatId, usePwaUpdatePending } from '../shared/pwaUpdate'
+import { resetPwaUpdateStore, setPwaCurrentChatId, setPwaCurrentSection, usePwaUpdatePending } from '../shared/pwaUpdate'
 import { LATEST_CHECK_TIMEOUT_MS, resetReloadGuard } from './pwaReload'
 import { APPLY_TIMEOUT_MS, MIN_UPDATE_CHECK_GAP_MS, PwaUpdatePrompt, UPDATE_CHECK_INTERVAL_MS, UPDATE_TOAST_MS } from './PwaUpdatePrompt'
 
@@ -278,6 +278,19 @@ describe('PwaUpdatePrompt', () => {
       expect(screen.getByRole('status')).toHaveTextContent(/Actualizando/)
       expect(sessionStorage.getItem('pwa-update-applied')).toBe('1')
       expect(toastMock.dismiss).toHaveBeenCalledWith('pwa-update')
+    })
+
+    it('aplica la versión nueva al cambiar de sección, aunque nunca se pase por un chat', async () => {
+      // Quien solo configura (Automatizaciones, tablero) no cambia de chat:
+      // seguía con la app vieja y veía «0 automatizaciones».
+      mount()
+      act(() => setPwaCurrentSection('dashboard'))
+      act(() => sw.setNeedRefresh(true))
+      expect(sw.updateServiceWorker).not.toHaveBeenCalled()
+
+      act(() => setPwaCurrentSection('automations'))
+      await flush()
+      expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
     })
 
     it('no aplica en el mismo momento en que aparece la versión nueva', () => {
