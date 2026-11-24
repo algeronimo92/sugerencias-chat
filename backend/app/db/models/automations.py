@@ -16,16 +16,9 @@ class AutomationRule(Base):
     trigger_type: Mapped[str] = mapped_column(Text)
     trigger_config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     conditions: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
-    # Restos de las reglas simples, que se retiraron: nadie lee ni escribe
-    # ``actions``, ``builder_mode`` ni ``delay_minutes``. Siguen acá hasta la
-    # revisión que los borra, que va en un despliegue aparte: durante el
-    # cambio azul-verde la versión anterior del backend todavía los consulta.
-    actions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
-    builder_mode: Mapped[str] = mapped_column(Text, server_default="visual")
     flow_definition: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     published_flow_definition: Mapped[dict | None] = mapped_column(JSONB)
     flow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    delay_minutes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Tope de seguridad: si se completan >= N ejecuciones en la última hora,
     # las siguientes se re-agendan para más tarde en vez de correr — protege
     # contra un bug o una condición mal armada que dispare de más y arriesgue
@@ -43,7 +36,6 @@ class AutomationRule(Base):
 
     __table_args__ = (
         Index("idx_automation_rules_trigger_active", trigger_type, is_active),
-        Index("idx_automation_rules_builder_mode", builder_mode, is_active),
         Index("idx_automation_rules_created_by", created_by_user_id),
     )
 
