@@ -412,3 +412,54 @@ async def test_each_seller_message_moves_the_same_silence_deadline(tenant):
         # El cliente contestó: el cierre pendiente queda sin efecto.
         assert await scheduling.cancel_customer_deadlines(lead_id, NOW) == 1
         assert (await _row(deadline.id)).status == AutomationExecutionStatus.SKIPPED
+
+
+async def _silence_execution(tenant_lead: str, rule_id: int, **flow_state) -> int:
+    """Un seguimiento por silencio que ya mandó su primer mensaje y quedó en
+    una espera del flujo: SCHEDULED y sin started_at, como una sin empezar."""
+    from app.db.models.conversations import WspMessage
+
+    async with session_scope() as session:
+        anchor = (await session.execute(insert(WspMessage).values(
+            chat_id=tenant_lead, sender="cliente", content="hola", sent_at=NOW - timedelta(hours=5), message_type="text",
+        ).returning(WspMessage.id))).scalar_one()
+    return await _execution(
+        rule_id, tenant_lead, trigger_type="customer_response_overdue", event_key=f"silence:{anchor}",
+        scheduled_for=NOW + timedelta(days=1),
+        action_results=[{"type": "send_message", "status": "completed"}],
+        flow_state={"flow_version": 1, "current_node_id": "wait-1", "path": ["trigger-1", "action-1", "wait-1"], **flow_state},
+    )
+
+
+async def test_a_follow_up_that_is_waiting_does_not_restart_when_its_own_message_goes_out(tenant):
+    """El flujo «mensaje → esperar un día → mensaje» volvía al principio en
+    cuanto salía su propio primer mensaje, y lo mandaba de nuevo, en bucle."""
+    with tenant_context(tenant):
+        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, builder_mode="visual", flow_version=1)
+        lead_id = await _lead()
+        waiting = await _silence_execution(lead_id, rule_id)
+
+        changed = await SqlSchedulingStore().schedule_customer_deadlines(
+            {"chat_id": lead_id, "message_id": "del-propio-flujo", "sender": "vendedor", "sent_at": NOW},
+        )
+
+        row = await _row(waiting)
+        assert changed == 0
+        assert row.flow_state["current_node_id"] == "wait-1"
+        assert row.scheduled_for == NOW + timedelta(days=1)
+        assert row.action_results == [{"type": "send_message", "status": "completed"}]
+
+
+async def test_a_reply_stops_a_waiting_follow_up_but_not_one_waiting_for_that_reply(tenant):
+    with tenant_context(tenant):
+        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, builder_mode="visual", flow_version=1)
+        other_rule = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, builder_mode="visual", flow_version=1)
+        lead_id = await _lead()
+        chasing = await _silence_execution(lead_id, rule_id)
+        # Una Pausa con «llega un mensaje»: la respuesta decide por dónde sigue.
+        asking = await _silence_execution(lead_id, other_rule, awaiting=["message"])
+
+        assert await SqlSchedulingStore().cancel_customer_deadlines(lead_id, NOW) == 1
+
+        assert (await _row(chasing)).status == AutomationExecutionStatus.SKIPPED
+        assert (await _row(asking)).status == AutomationExecutionStatus.SCHEDULED
