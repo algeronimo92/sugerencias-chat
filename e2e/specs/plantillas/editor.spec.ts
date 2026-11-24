@@ -149,7 +149,13 @@ test('mientras Meta la revisa, el mensaje queda bloqueado y lo demás se puede g
 
 test('con el cupo de 24 horas gastado, la lista y el editor dicen desde cuándo se puede volver a editar', async ({ page, api }, info) => {
   // El caso real del 23-11-2026: editada 13:12 y vuelta a intentar 13:17.
-  const lastEdit = new Date(Date.now() - 5 * 60_000)
+  // Con el reloj fijo en ese momento: con la hora real, los cinco minutos
+  // después de medianoche la edición caía «ayer» y el próximo cambio «hoy», y
+  // la prueba fallaba sin que nada estuviera roto (tumbó un despliegue el
+  // 24-11-2026 a las 00:00 de Lima).
+  const now = new Date('2026-11-23T18:17:00Z')
+  await page.clock.setFixedTime(now)
+  const lastEdit = new Date(now.getTime() - 5 * 60_000)
   const edited = template({
     ...TEMPLATES[1], id: 21, name: 'Desde Instagram', official_name: 'desde_instagram', official_category: 'MARKETING', imported_from_meta: false,
     content: 'Hola {{1}}, gracias por escribirnos desde Instagram. ¿En qué tratamiento te ayudamos?', official_parameter_values: ['{{nombre}}'],
