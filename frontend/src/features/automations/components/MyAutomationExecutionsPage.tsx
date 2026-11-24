@@ -21,7 +21,7 @@ isServiceWindowFailure,type AutomationExecutionStatusValue,
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 import { followedBranchText } from '../domain/flowBranches'
-import { executionOutcome, executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
+import { executionLeadLabel, executionOutcome, executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
@@ -195,7 +195,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
   const Icon = statusIcon(execution.status)
   const isActive = ACTIVE_EXECUTION_STATUSES.includes(execution.status)
   const failed = execution.status === AutomationExecutionStatus.Failed
-  const leadLabel = execution.lead_name || execution.lead_id || 'Lead eliminado'
+  const leadLabel = executionLeadLabel(execution)
   const steps = execution.action_results ?? []
   const serviceWindow = isServiceWindowFailure(execution)
   const summary = rowSummary(execution)
@@ -269,7 +269,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
               {execution.trigger_type === AutomationTrigger.Manual && execution.start_source === 'manual'
                 ? (isMine ? 'Lo iniciaste desde el chat' : `Lo inició ${senderName} desde el chat`)
                 : execution.start_source === 'flow'
-                  ? 'Llamado por otro flujo'
+                  ? (execution.parent_rule_name ? `Lo inició el flujo «${execution.parent_rule_name}»` : 'Lo inició otro flujo')
                   : executionTriggerLabel(execution.trigger_type)}
             </dd>
           </div>

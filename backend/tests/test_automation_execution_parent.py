@@ -54,7 +54,7 @@ def _row(**overrides) -> dict:
     base = {
         "id": 2, "rule_id": 8, "rule_name": "Ubicacion", "rule_deleted": False,
         "event_payload": None, "parent_rule_name": None,
-        "lead_id": "lead-1", "lead_name": "Jose", "trigger_type": "manual", "status": "completed",
+        "lead_id": "lead-1", "lead_name": "Jose", "lead_phone": "51999000111", "trigger_type": "manual", "status": "completed",
         "scheduled_for": None, "paused_at": None, "pause_scope": None, "started_at": None,
         "finished_at": None, "action_results": [], "flow_state": {}, "error": None, "error_code": None,
         "created_at": None, "start_source": "flow", "started_by_user_id": None, "started_by_name": None,
@@ -80,3 +80,10 @@ def test_an_execution_without_parent_has_no_parent_fields():
     assert item["parent_execution_id"] is None
     assert item["parent_rule_id"] is None
     assert item["parent_rule_name"] is None
+
+
+def test_an_execution_carries_the_phone_to_name_a_lead_without_a_name():
+    # El historial mostraba el uuid del lead cuando no tenía nombre.
+    item = queries._execution_dict(_row(lead_name=None))
+
+    assert (item["lead_name"], item["lead_phone"]) == (None, "51999000111")

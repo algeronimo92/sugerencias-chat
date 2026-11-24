@@ -61,3 +61,24 @@ test('el seguimiento que estaba esperando dice que retoma cuando termine el fluj
   await expectFullyOnScreen(held)
   await page.screenshot({ path: `test-results/chat-seguimiento-retenido-${info.project.name}.png` })
 })
+
+test('el menú avisa que el lead ya recibió un flujo y quién lo lanzó', async ({ page, api }, info) => {
+  // En DermicaPro la vendedora repetía la secuencia que «Bienvenida» acababa
+  // de enviar: nada en el menú se lo decía. Avisa, no bloquea.
+  const sent = FLOWS[1]
+  api.on('get', '/api/automations/executions', [
+    execution(sent, {
+      id: 3101, status: 'completed', start_source: 'flow', parent_rule_name: 'Bienvenida',
+      created_at: new Date(Date.now() - 5 * 60_000).toISOString(), finished_at: new Date().toISOString(),
+    }),
+  ])
+
+  await page.goto(`/chat/${CHAT_ID}`)
+  await page.getByRole('button', { name: 'Iniciar un flujo para este lead' }).click()
+
+  const option = page.getByRole('button', { name: new RegExp(sent.name) })
+  await expect(option).toContainText('Ya se envió hace 5 min · La lanzó «Bienvenida»')
+  await expect(option).toBeEnabled()
+  await expectFullyOnScreen(option)
+  await page.screenshot({ path: `test-results/chat-flujo-ya-enviado-${info.project.name}.png` })
+})

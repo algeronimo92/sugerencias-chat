@@ -106,7 +106,24 @@ function CurrentCall() {
 
 function PrepareDevice() {
   const [state, setState] = useState<'pending' | 'working' | 'blocked' | 'done'>(() => (isDevicePrepared() ? 'done' : 'pending'))
+  // Plegado solo por esta sesión: el aviso tapaba «Nueva automatización» y el
+  // panel del editor sin forma de apartarlo. No se descarta para siempre
+  // porque sin preparar el dispositivo las llamadas no suenan: queda el botón.
+  const [collapsed, setCollapsed] = useState(false)
   if (state === 'done') return null
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setCollapsed(false)}
+        aria-label="Preparar este dispositivo para llamadas"
+        title="Las llamadas todavía no suenan en este dispositivo"
+        className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center self-end rounded-full sm:mt-5 border border-wa-border bg-white text-amber-600 shadow-lg outline-none focus-visible:ring-4 focus-visible:ring-amber-500/40 dark:border-wa-border-dark dark:bg-wa-panel-dark dark:text-amber-400"
+      >
+        <PhoneOff className="h-5 w-5" aria-hidden="true" />
+      </button>
+    )
+  }
   async function prepare() {
     setState('working')
     setState(await prepareDevice() === 'ready' ? 'done' : 'blocked')
@@ -119,7 +136,10 @@ function PrepareDevice() {
           ? 'El navegador no tiene permiso para usar el micrófono. Habilítalo en el candado de la barra de direcciones y vuelve a intentar.'
           : 'Te pedirá permiso para el micrófono y las notificaciones. Hazlo ahora para no perder la primera llamada.'}
       </p>
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" onClick={() => setCollapsed(true)} className="rounded-lg px-3 py-2 text-xs font-semibold text-wa-muted outline-none hover:bg-wa-hover focus-visible:ring-2 focus-visible:ring-wa-primary dark:text-wa-muted-dark dark:hover:bg-wa-head-dark">
+          Ahora no
+        </button>
         <button type="button" onClick={prepare} disabled={state === 'working'} className="rounded-lg bg-wa-primary-strong px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
           {state === 'blocked' ? 'Reintentar' : 'Preparar'}
         </button>

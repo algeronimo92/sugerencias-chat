@@ -179,6 +179,7 @@ export function execution(rule: Flow, overrides: Partial<Execution> = {}): Execu
     parent_rule_name: null,
     lead_id: CHAT_ID,
     lead_name: 'Josefina Paredes',
+    lead_phone: '51987654321',
     trigger_type: 'manual',
     status: 'scheduled',
     scheduled_for: new Date(Date.now() + 10 * 60_000).toISOString(),

@@ -114,11 +114,58 @@ export function stepStatusLabel(status: unknown) {
   return STEP_STATUS_LABELS[value] ?? value
 }
 
-export function executionActorLabel(execution: AutomationExecution) {
-  if (execution.started_by_name) return execution.started_by_name
-  if (execution.start_source === 'manual') return 'Usuario eliminado'
-  if (execution.start_source === 'flow') return 'Otro flujo'
-  return 'Sistema'
+/**
+ * Quién puso en marcha una ejecución, en palabras de la dueña.
+ *
+ * Decía «Ejecutada por Otro flujo» o «por Sistema»: no decía cuál flujo, y en
+ * DermicaPro uno de cada seis envíos lo lanza «Bienvenida». Una hija hereda el
+ * `started_by` de su madre, por eso el origen `flow` se mira antes que el nombre.
+ */
+export function executionOriginLabel(
+  execution: Pick<AutomationExecution, 'start_source' | 'started_by_name' | 'parent_rule_name'>,
+) {
+  if (execution.start_source === 'flow') {
+    return execution.parent_rule_name ? `La lanzó «${execution.parent_rule_name}»` : 'La lanzó otra automatización'
+  }
+  if (execution.start_source === 'manual') {
+    return `La lanzó ${execution.started_by_name ?? 'alguien que ya no está en el equipo'}`
+  }
+  return 'Empezó sola'
+}
+
+const RECENT_SEND_MS = 24 * 60 * 60 * 1000
+
+/** Qué flujos ya recibió este lead en el último día y quién los lanzó. En
+ *  DermicaPro la vendedora repetía a mano la secuencia que «Bienvenida»
+ *  acababa de enviar: nada en el menú se lo decía. No bloquea, solo avisa:
+ *  repetir puede ser a propósito. */
+export function recentSends(executions: AutomationExecution[], now: number): Map<number, string> {
+  const latest = new Map<number, AutomationExecution>()
+  for (const execution of executions) {
+    if (execution.status !== 'completed') continue
+    const age = now - new Date(execution.created_at).getTime()
+    if (age < 0 || age > RECENT_SEND_MS) continue
+    const known = latest.get(execution.rule_id)
+    if (!known || known.created_at < execution.created_at) latest.set(execution.rule_id, execution)
+  }
+  const notes = new Map<number, string>()
+  for (const [ruleId, execution] of latest) {
+    const minutes = Math.floor((now - new Date(execution.created_at).getTime()) / 60_000)
+    const when = minutes < 1 ? 'hace un momento' : minutes < 60 ? `hace ${minutes} min` : `hace ${Math.floor(minutes / 60)} h`
+    notes.set(ruleId, `Ya se envió ${when} · ${executionOriginLabel(execution)}`)
+  }
+  return notes
+}
+
+/**
+ * Cómo nombrar al cliente de una ejecución. Nunca su uuid: el historial lo
+ * mostraba cuando el lead no tenía nombre y nadie podía reconocerlo.
+ */
+export function executionLeadLabel(
+  execution: Pick<AutomationExecution, 'lead_id' | 'lead_name' | 'lead_phone'>,
+) {
+  if (!execution.lead_id) return 'Lead eliminado'
+  return execution.lead_name?.trim() || execution.lead_phone?.trim() || 'Lead sin nombre'
 }
 
 /** Texto con el que el motor guarda hoy un fallo que no tiene mensaje para

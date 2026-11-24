@@ -57,6 +57,9 @@ class AutomationExecutionItem(BaseModel):
     parent_rule_name: str | None = None
     lead_id: str | None = None
     lead_name: str | None = None
+    # Para nombrar al cliente que todavía no tiene nombre: el historial
+    # mostraba su uuid, que nadie reconoce.
+    lead_phone: str | None = None
     trigger_type: AutomationTrigger
     status: AutomationExecutionStatus
     scheduled_for: str

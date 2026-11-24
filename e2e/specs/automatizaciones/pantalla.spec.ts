@@ -1,4 +1,4 @@
-import { CHAT_ID, FLOWS, execution, flow } from '../../fixtures/crm'
+import { ADMIN, CHAT_ID, FLOWS, execution, flow } from '../../fixtures/crm'
 import { expectFullyOnScreen, expectNoPageOverflow } from '../../fixtures/screen'
 import { expect, test } from '../../fixtures/test'
 
@@ -188,6 +188,66 @@ test('la actividad distingue lo que alguien canceló de lo que no aplicó', asyn
   await skipped.locator('summary').click()
   await expect(skipped.getByRole('button', { name: 'Reintentar' })).toBeVisible()
   await expect(cancelled.getByRole('button', { name: 'Reintentar' })).toHaveCount(0)
+})
+
+test('la actividad dice quién lanzó cada una y nunca muestra un uuid', async ({ page, api }, info) => {
+  // Decía «Ejecutada por Otro flujo» y, si el lead no tenía nombre, su uuid:
+  // la dueña no sabía ni a quién se le envió ni qué lo envió.
+  const done = { status: 'completed' as const, finished_at: new Date().toISOString() }
+  api.on('get', '/api/automations/executions', byStatus([
+    execution(FLOWS[0], { ...done, id: 5001, start_source: 'flow', parent_rule_id: BIENVENIDA.id, parent_rule_name: BIENVENIDA.name, lead_name: null }),
+    execution(FLOWS[1], { ...done, id: 5002, start_source: 'manual', started_by_name: 'Ana Quispe', lead_name: null, lead_phone: null }),
+    execution(BIENVENIDA, { ...done, id: 5003, start_source: 'system', trigger_type: 'conversation_started', started_by_name: null, started_by_user_id: null }),
+  ]))
+
+  await page.goto('/automations?tab=history')
+
+  const byFlow = page.locator('details').filter({ hasText: FLOWS[0].name })
+  await expect(byFlow).toContainText('51987654321 · La lanzó «Bienvenida»')
+  await expect(page.locator('details').filter({ hasText: FLOWS[1].name })).toContainText('Lead sin nombre · La lanzó Ana Quispe')
+  await expect(page.locator('details').filter({ hasText: 'Empezó sola' })).toContainText('Josefina Paredes')
+  await expect(page.getByText(CHAT_ID)).toHaveCount(0)
+  await byFlow.scrollIntoViewIfNeeded()
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/automatizaciones-quien-la-lanzo-${info.project.name}.png` })
+})
+
+test('si la lista no carga lo dice y deja reintentar, en vez de parecer vacía', async ({ page, api }, info) => {
+  // Un fallo se veía igual que «Todavía no hay automatizaciones»: la dueña
+  // creía haber perdido las suyas.
+  api.fail('get', '/api/automations', 500)
+
+  await page.goto('/automations')
+
+  const failure = page.getByRole('alert').filter({ hasText: 'No se pudieron cargar las automatizaciones' })
+  await expect(failure).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Todavía no hay automatizaciones')).toHaveCount(0)
+  await expectFullyOnScreen(failure)
+  await page.screenshot({ path: `test-results/automatizaciones-fallo-de-carga-${info.project.name}.png` })
+
+  api.on('get', '/api/automations', [BIENVENIDA, ...FLOWS])
+  await failure.getByRole('button', { name: 'Reintentar' }).click()
+  await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toBeVisible()
+})
+
+test('el aviso de llamadas se puede apartar para llegar a los botones que tapaba', async ({ page, api }, info) => {
+  // Flotaba sobre «Nueva automatización» y el panel del editor sin forma de
+  // cerrarlo. Se pliega a un botón: sin preparar, las llamadas no suenan.
+  api
+    .on('get', '/api/auth/me', { ...ADMIN, can_handle_calls: true })
+    .on('get', '/api/calls/ringing', [])
+
+  await page.goto('/automations')
+
+  const notice = page.getByRole('region', { name: 'Preparar este dispositivo para llamadas' })
+  await expect(notice).toBeVisible()
+  await page.screenshot({ path: `test-results/automatizaciones-aviso-llamadas-${info.project.name}.png` })
+  await notice.getByRole('button', { name: 'Ahora no' }).click()
+  await expect(notice).toHaveCount(0)
+  await page.screenshot({ path: `test-results/automatizaciones-aviso-llamadas-plegado-${info.project.name}.png` })
+
+  await page.getByRole('button', { name: 'Nueva automatización' }).click()
+  await expect(page.getByRole('dialog', { name: '¿Qué quieres automatizar?' })).toBeVisible()
 })
 
 test('crear empieza por elegir una receta y abre el editor con el flujo ya armado', async ({ page, api }, info) => {

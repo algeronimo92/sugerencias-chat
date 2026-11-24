@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AutomationExecution } from '../types'
-import { executionOutcome, executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, outcomeFilter, readableExecutionError, stepResultDetail, stepStatusLabel } from './automationExecutions'
+import { executionLeadLabel, executionOriginLabel, executionOutcome, executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, outcomeFilter, readableExecutionError, stepResultDetail, stepStatusLabel } from './automationExecutions'
 
 describe('executionStatusLabel', () => {
   it('tells a cancelled run apart from one that did not apply', () => {
@@ -121,5 +121,35 @@ describe('stepResultDetail', () => {
   it('adds nothing to steps that have nothing to add', () => {
     expect(detail({ type: 'send_message', status: 'completed', message_ids: [1] })).toBeNull()
     expect(detail({ type: 'wait', status: 'scheduled', seconds: 60 })).toBeNull()
+  })
+})
+
+describe('executionOriginLabel', () => {
+  it('names who launched it', () => {
+    expect(executionOriginLabel({ start_source: 'manual', started_by_name: 'Ana', parent_rule_name: null })).toBe('La lanzó Ana')
+    expect(executionOriginLabel({ start_source: 'system', started_by_name: null, parent_rule_name: null })).toBe('Empezó sola')
+  })
+
+  it('names the automation that launched a child, not the person its parent inherited', () => {
+    expect(executionOriginLabel({ start_source: 'flow', started_by_name: 'Ana', parent_rule_name: 'Bienvenida' })).toBe('La lanzó «Bienvenida»')
+    expect(executionOriginLabel({ start_source: 'flow', started_by_name: null, parent_rule_name: null })).toBe('La lanzó otra automatización')
+  })
+
+  it('says so when the person is gone', () => {
+    expect(executionOriginLabel({ start_source: 'manual', started_by_name: null, parent_rule_name: null })).toBe('La lanzó alguien que ya no está en el equipo')
+  })
+})
+
+describe('executionLeadLabel', () => {
+  const LEAD_ID = '7b08f4d9-855f-4718-b95f-9c021da52f77'
+
+  it('never shows the uuid of a lead without a name', () => {
+    expect(executionLeadLabel({ lead_id: LEAD_ID, lead_name: null, lead_phone: '51987654321' })).toBe('51987654321')
+    expect(executionLeadLabel({ lead_id: LEAD_ID, lead_name: '  ', lead_phone: null })).toBe('Lead sin nombre')
+  })
+
+  it('prefers the name and tells a deleted lead apart', () => {
+    expect(executionLeadLabel({ lead_id: LEAD_ID, lead_name: 'María', lead_phone: '51987654321' })).toBe('María')
+    expect(executionLeadLabel({ lead_id: null, lead_name: null, lead_phone: null })).toBe('Lead eliminado')
   })
 })

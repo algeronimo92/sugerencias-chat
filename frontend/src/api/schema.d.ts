@@ -5176,6 +5176,8 @@ export interface components {
             lead_id?: string | null;
             /** Lead Name */
             lead_name?: string | null;
+            /** Lead Phone */
+            lead_phone?: string | null;
             trigger_type: components["schemas"]["AutomationTrigger"];
             status: components["schemas"]["AutomationExecutionStatus"];
             /** Scheduled For */
