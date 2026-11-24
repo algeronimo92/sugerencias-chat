@@ -5128,11 +5128,6 @@ export interface components {
          * @enum {string}
          */
         Audience: "client" | "staff";
-        /**
-         * AutomationBuilderMode
-         * @enum {string}
-         */
-        AutomationBuilderMode: "simple" | "visual";
         /** AutomationExecutionCount */
         AutomationExecutionCount: {
             /** Total */
@@ -5292,12 +5287,6 @@ export interface components {
             conditions: {
                 [key: string]: unknown;
             };
-            /** Actions */
-            actions: {
-                [key: string]: unknown;
-            }[];
-            /** @default simple */
-            builder_mode: components["schemas"]["AutomationBuilderMode"];
             /** Flow Definition */
             flow_definition?: {
                 [key: string]: unknown;
@@ -5311,8 +5300,6 @@ export interface components {
              * @default 0
              */
             flow_version: number;
-            /** Delay Minutes */
-            delay_minutes: number;
             /** Max Executions Per Hour */
             max_executions_per_hour?: number | null;
             /** Is Active */
@@ -5340,21 +5327,6 @@ export interface components {
         AutomationRuleUpdate: {
             /** Name */
             name?: string | null;
-            trigger_type?: components["schemas"]["AutomationTrigger"] | null;
-            /** Trigger Config */
-            trigger_config?: {
-                [key: string]: unknown;
-            } | null;
-            /** Conditions */
-            conditions?: {
-                [key: string]: unknown;
-            } | null;
-            /** Actions */
-            actions?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Delay Minutes */
-            delay_minutes?: number | null;
             /** Max Executions Per Hour */
             max_executions_per_hour?: number | null;
             /** Is Active */

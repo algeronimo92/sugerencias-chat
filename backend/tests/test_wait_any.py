@@ -168,7 +168,7 @@ class TestRunVisualExecutionWaitAny:
             "definition": wait_any_flow(), "flow_version": 0,
             "current_node_id": "w", "path": ["t"],
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -193,7 +193,7 @@ class TestRunVisualExecutionWaitAny:
             "waiting_at_node": "w", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": True, "resume_reason": "message",
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -213,7 +213,7 @@ class TestRunVisualExecutionWaitAny:
             "waiting_at_node": "w", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": True,
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -248,7 +248,7 @@ class TestRunVisualExecutionWaitAnyBusinessHours:
             "waiting_at_node": "w", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": False,
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -271,7 +271,7 @@ class TestRunVisualExecutionWaitAnyBusinessHours:
             "waiting_at_node": "w", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": False,
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -293,7 +293,7 @@ class TestRunVisualExecutionWaitAnyMediaPlayed:
         execution = make_execution(flow_state={
             "definition": flow, "flow_version": 0, "current_node_id": "w", "path": ["t"],
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -315,7 +315,7 @@ class TestRunVisualExecutionWaitAnyMediaPlayed:
             "awaiting_message": False, "watching_message_id": "WA123",
             "resume_reason": "media_played",
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -410,7 +410,7 @@ class TestRunVisualExecutionQuestion:
             "definition": question_flow(), "flow_version": 0,
             "current_node_id": "q", "path": ["t"],
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -441,7 +441,7 @@ class TestRunVisualExecutionQuestion:
             "waiting_at_node": "q", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": True, "resume_reason": "btn_2",
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -459,7 +459,7 @@ class TestRunVisualExecutionQuestion:
             "waiting_at_node": "q", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": True, "resume_reason": "other",
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),
@@ -477,7 +477,7 @@ class TestRunVisualExecutionQuestion:
             "waiting_at_node": "q", "waiting_since": "2026-01-01T00:00:00+00:00",
             "awaiting_message": True,
         })
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
 
         await run_visual_execution(
             execution, rule, make_chat(),

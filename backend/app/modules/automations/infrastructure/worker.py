@@ -22,7 +22,7 @@ from app.db.models.leads import Lead, LeadActivity
 from app.db.models.tasks import LeadTask
 from app.db.uow import session_scope
 from app.integrations.meta_webhook.projection import reply_identifier
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, WaitAnyConditionKind
+from app.modules.automations.domain.types import AutomationExecutionStatus, AutomationTrigger, WaitAnyConditionKind
 from app.modules.tasks.ports.types import TaskStatus
 from app.modules.automations.application.engine import process_due_automation_executions
 from app.modules.automations.application.triggers import (
@@ -447,7 +447,6 @@ async def backfill_automation_state() -> None:
         published_rules = (await session.execute(select(
             AutomationRule.id, AutomationRule.flow_version, AutomationRule.published_flow_definition,
         ).where(
-            AutomationRule.builder_mode == AutomationBuilderMode.VISUAL,
             AutomationRule.published_flow_definition.is_not(None),
             AutomationRule.flow_version > 0,
         ))).mappings().all()

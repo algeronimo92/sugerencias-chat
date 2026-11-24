@@ -155,8 +155,8 @@ async def _stage_rule(world: World, name: str, actions: list[dict]) -> int:
             rule_id = (await session.execute(
                 insert(AutomationRule).values(
                     name=name, trigger_type="stage_changed", trigger_config={},
-                    conditions={}, actions=[], delay_minutes=0,
-                    builder_mode="visual", flow_definition=definition,
+                    conditions={},
+                    flow_definition=definition,
                     published_flow_definition=definition, flow_version=1,
                     created_by_user_id=world.admin.id, created_at=now, updated_at=now,
                 ).returning(AutomationRule.id)
@@ -369,7 +369,7 @@ async def test_creating_a_lead_is_audited_and_triggers_automations(world: World)
             rule_id = (await session.execute(
                 insert(AutomationRule).values(
                     name="Bienvenida", trigger_type="lead_created", trigger_config={},
-                    conditions={}, actions=[], delay_minutes=0,
+                    conditions={},
                     created_by_user_id=world.admin.id, created_at=now, updated_at=now,
                 ).returning(AutomationRule.id)
             )).scalar_one()

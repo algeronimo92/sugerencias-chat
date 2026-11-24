@@ -42,8 +42,7 @@ async def schedule_in_session(
     if trigger_type not in TRIGGER_TYPES:
         return 0
     stmt = select(
-        AutomationRule.id, AutomationRule.delay_minutes, AutomationRule.builder_mode,
-        AutomationRule.flow_version,
+        AutomationRule.id, AutomationRule.flow_version,
     ).where(
         AutomationRule.is_active.is_(True), AutomationRule.trigger_type == trigger_type
     )
@@ -72,9 +71,9 @@ async def schedule_in_session(
                 event_key=event_key,
                 event_payload=payload or {},
                 status=AutomationExecutionStatus.SCHEDULED,
-                scheduled_for=now + timedelta(minutes=rule["delay_minutes"]),
+                scheduled_for=now,
                 action_results=[],
-                flow_state=initial_flow_state(rule["builder_mode"], rule["flow_version"]),
+                flow_state=initial_flow_state(rule["flow_version"]),
                 created_at=now,
                 start_source=start_source,
                 started_by_user_id=started_by_user_id,
@@ -205,8 +204,6 @@ class SqlSchedulingStore:
         rule_stmt = select(
             AutomationRule.id,
             AutomationRule.trigger_config,
-            AutomationRule.delay_minutes,
-            AutomationRule.builder_mode,
             AutomationRule.flow_version,
         ).where(
             AutomationRule.is_active.is_(True),
@@ -236,16 +233,14 @@ class SqlSchedulingStore:
             changed = 0
             for rule in rules:
                 minutes = max(1, int((rule["trigger_config"] or {}).get("minutes", 1)))
-                scheduled_for = sent_at + timedelta(
-                    minutes=minutes + int(rule["delay_minutes"] or 0)
-                )
+                scheduled_for = sent_at + timedelta(minutes=minutes)
                 payload = {
                     "last_message_id": message_key,
                     "last_sender": "vendedor",
                     "last_message_at": iso_utc(sent_at),
                     "deadline_at": iso_utc(scheduled_for),
                 }
-                flow_state = initial_flow_state(rule["builder_mode"], rule["flow_version"])
+                flow_state = initial_flow_state(rule["flow_version"])
                 result = await session.execute(
                     pg_insert(AutomationExecution).values(
                         rule_id=rule["id"],

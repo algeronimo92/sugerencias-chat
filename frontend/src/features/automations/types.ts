@@ -226,11 +226,10 @@ export type ContractAutomationRule = Delivered<ApiSchemas['AutomationRuleItem']>
  */
 export type AutomationRule = Omit<
   ContractAutomationRule,
-  'trigger_config' | 'conditions' | 'actions' | 'flow_definition' | 'published_flow_definition'
+  'trigger_config' | 'conditions' | 'flow_definition' | 'published_flow_definition'
 > & {
   trigger_config: { minutes?: number }
   conditions: AutomationConditions
-  actions: AutomationAction[]
   flow_definition: AutomationFlowDefinition | Record<string, never>
   published_flow_definition: AutomationFlowDefinition | null
 }
@@ -239,8 +238,8 @@ export type AutomationExecutionStartSource = 'system' | 'manual' | 'flow'
 
 export interface AutomationActionResult {
   position?: number
-  /** En una regla simple es el tipo de acción; en un flujo visual, el tipo de
-   *  nodo (`wait`, `wait_any`, `question`, `condition`, `end`…). */
+  /** El tipo de acción en un bloque Acción; en los demás, el tipo de nodo
+   *  (`wait`, `wait_any`, `question`, `condition`, `end`…). */
   type?: AutomationActionType | FlowNodeTypeValue
   status?: string
   error?: string
@@ -297,13 +296,9 @@ export type AutomationExecution = Omit<ContractAutomationExecution, 'action_resu
   }
 }
 
+/** Lo único que se edita de un flujo fuera del constructor. */
 export interface AutomationRuleInput {
   name: string
-  trigger_type: AutomationTrigger
-  trigger_config: { minutes?: number }
-  conditions: AutomationConditions
-  actions: AutomationAction[]
-  delay_minutes: number
   max_executions_per_hour: number | null
   is_active: boolean
   visible_to_sellers: boolean

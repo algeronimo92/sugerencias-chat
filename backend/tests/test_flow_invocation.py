@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.automations.ports.types import AutomationBuilderMode, AutomationTrigger, FlowNodeType
+from app.modules.automations.ports.types import AutomationTrigger, FlowNodeType
 from app.modules.automations.application.flow_nodes import start_invoked_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import check_invoked_flows, invoked_flow_ids
@@ -26,20 +26,20 @@ class TestInvocationValidation:
         assert invoked_flow_ids(definition(2, 3)) == {2, 3}
 
     def test_rejects_direct_self_invocation(self):
-        rules = {1: {"name": "Padre", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": definition()}}
+        rules = {1: {"name": "Padre", "published_flow_definition": definition()}}
         with pytest.raises(ValueError, match="sí mismo"):
             check_invoked_flows(rules, {1}, 1, definition(1))
 
     def test_rejects_indirect_cycle(self):
         rules = {
-            1: {"name": "A", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": definition()},
-            2: {"name": "B", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": definition(1)},
+            1: {"name": "A", "published_flow_definition": definition()},
+            2: {"name": "B", "published_flow_definition": definition(1)},
         }
         with pytest.raises(ValueError, match="sin fin"):
             check_invoked_flows(rules, {2}, 1, definition(2))
 
     def test_rejects_an_unpublished_child(self):
-        rules = {2: {"name": "B", "builder_mode": AutomationBuilderMode.VISUAL, "published_flow_definition": None}}
+        rules = {2: {"name": "B", "published_flow_definition": None}}
         with pytest.raises(ValueError, match="Publica primero «B»") as error:
             check_invoked_flows(rules, {2}, 1, definition(2))
         # El editor lleva al bloque que lo inicia, no solo muestra el texto.
@@ -48,7 +48,7 @@ class TestInvocationValidation:
 
 def _target(**overrides):
     return stored_rule(**{
-        "id": 9, "name": "Hollywood Peel", "builder_mode": AutomationBuilderMode.VISUAL,
+        "id": 9, "name": "Hollywood Peel",
         "published_flow_definition": definition(), "trigger_type": AutomationTrigger.MANUAL,
         "flow_version": 4, **overrides,
     })
@@ -92,7 +92,6 @@ class TestStartInvokedFlow:
 
     @pytest.mark.parametrize(("overrides", "message"), [
         ({"deleted_at": "ayer"}, "ya no existe"),
-        ({"builder_mode": AutomationBuilderMode.SIMPLE}, "ya no es un flujo visual"),
         ({"is_active": False}, "no está publicado y activo"),
     ])
     async def test_a_child_that_changed_since_publishing_is_refused(self, deps, executions, overrides, message):

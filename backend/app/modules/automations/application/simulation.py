@@ -3,7 +3,7 @@ nada ni gastar turnos de un Round robin."""
 
 from __future__ import annotations
 
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, FlowNodeType
+from app.modules.automations.domain.types import AutomationExecutionStatus, FlowNodeType
 
 from app.modules.automations.application.conditions import matches_condition_values
 from app.modules.automations.application.deps import AutomationDeps, default_deps
@@ -19,7 +19,7 @@ from app.modules.automations.domain.errors import InvalidAutomation, rejects_mal
 async def simulate_visual_flow(rule_id: int, lead_id: str, deps: AutomationDeps | None = None) -> dict:
     deps = deps or default_deps()
     current = await automation_ports().rules.get(rule_id)
-    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
+    if current is None:
         raise InvalidAutomation("Este flujo ya no existe. Puede que lo hayan eliminado.")
     validated = await validate_visual_flow(
         current["name"], current["flow_definition"], current_rule_id=rule_id,

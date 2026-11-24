@@ -59,7 +59,7 @@ FLOW = {
 @pytest.fixture
 def engine(executions):
     executions.rules[9] = stored_rule(
-        id=9, name="Hijo", builder_mode="visual", published_flow_definition={"nodes": []},
+        id=9, name="Hijo", published_flow_definition={"nodes": []},
     )
 
     def persisted_steps(started_at):
@@ -87,7 +87,7 @@ def engine(executions):
         executions.flow_versions[(1, 1)] = flow
         started_at = datetime.now(timezone.utc)
         execution = make_execution(flow_state={"flow_version": 1, **flow_state}, action_results=[])
-        rule = make_rule(builder_mode="visual", flow_version=1)
+        rule = make_rule(flow_version=1)
         await run_visual_execution(execution, rule, make_chat(conversacion_abierta=True), deps)
         return persisted_steps(started_at)
 
@@ -188,9 +188,9 @@ async def test_engine_fails_when_an_edge_is_missing(engine, deps):
 @pytest.fixture
 def simulator(in_memory_automations, deps, monkeypatch):
     in_memory_automations.rules.rules[1] = {
-        "id": 1, "name": "Flujo", "builder_mode": "visual", "flow_definition": FLOW, "flow_version": 3,
+        "id": 1, "name": "Flujo", "flow_definition": FLOW, "flow_version": 3,
     }
-    deps.executions.rules[9] = stored_rule(id=9, name="Hijo", builder_mode="visual")
+    deps.executions.rules[9] = stored_rule(id=9, name="Hijo")
     monkeypatch.setattr(simulation, "validate_visual_flow", AsyncMock(return_value={"conditions": {}, "flow_definition": FLOW}))
 
     async def closed_window(chat_id):

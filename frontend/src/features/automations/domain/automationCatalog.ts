@@ -137,9 +137,9 @@ const STEP_ONLY_LABELS: Record<string, string> = {
   flow: 'Flujo',
 }
 
-/** Etiqueta de un paso de `action_results`. Una regla simple guarda ahí el
- *  tipo de acción; un flujo visual, el tipo de nodo — el mismo campo lleva las
- *  dos cosas, así que la búsqueda va contra los dos catálogos. */
+/** Etiqueta de un paso de `action_results`. Un bloque Acción guarda ahí el
+ *  tipo de acción; los demás, el tipo de nodo — el mismo campo lleva las dos
+ *  cosas, así que la búsqueda va contra los dos catálogos. */
 export function automationStepLabel(type: string | null | undefined): string {
   if (!type) return 'Paso'
   if (Object.hasOwn(STEP_ONLY_LABELS, type)) return STEP_ONLY_LABELS[type]
@@ -235,12 +235,6 @@ export const FlowHandle = {
   No: 'no',
 } as const
 export type FlowHandleValue = ValueOf<typeof FlowHandle>
-
-export const AutomationBuilderMode = {
-  Simple: 'simple',
-  Visual: 'visual',
-} as const
-export type AutomationBuilderModeValue = ValueOf<typeof AutomationBuilderMode>
 
 export const AutomationExecutionStatus = {
   Scheduled: 'scheduled',

@@ -272,7 +272,7 @@ class TestDailyCap:
         }
         chat = make_chat()
         execution = make_execution(flow_state={"definition": flow, "flow_version": 0})
-        rule = make_rule(builder_mode="visual", flow_version=0)
+        rule = make_rule(flow_version=0)
         capped = {"cap": 2}
 
         async def daily_cap():

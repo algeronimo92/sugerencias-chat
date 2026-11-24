@@ -1,7 +1,7 @@
 import { AUTOMATION_ACTION_GROUPS, AUTOMATION_ACTION_LABELS } from '../domain/automationCatalog'
 
 /**
- * Las opciones del selector de acción, agrupadas (flujos y reglas simples).
+ * Las opciones del selector de acción, agrupadas.
  * Es una función y no un componente: `Select` (shared/ui) lee los `<optgroup>`
  * y `<option>` de sus hijos directos, y dentro de un componente no los ve.
  */

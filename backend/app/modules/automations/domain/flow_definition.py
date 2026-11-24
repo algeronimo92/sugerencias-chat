@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
+from app.modules.automations.domain.types import AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
 
 from app.modules.automations.domain.flow_graph import normalize_edges, validate_graph_topology
 from app.modules.automations.domain.limits import FLOW_NODE_TYPES, MAX_FLOW_EDGES, MAX_FLOW_NODES, TRIGGER_TYPES
@@ -374,8 +374,8 @@ def check_invoked_flows(
     current_rule_id: int | None,
     candidate_definition: dict,
 ) -> None:
-    """``rules`` son las reglas no borradas por id, con ``name``,
-    ``builder_mode`` y ``published_flow_definition``."""
+    """``rules`` son los flujos no borrados por id, con ``name`` y
+    ``published_flow_definition``."""
     if not target_ids:
         return
     for target_id in target_ids:
@@ -387,11 +387,6 @@ def check_invoked_flows(
             )
         if current_rule_id is not None and target_id == current_rule_id:
             raise InvalidAutomation("Un flujo no puede iniciarse a sí mismo. Elige otro flujo.", node_id=node_id)
-        if target["builder_mode"] != AutomationBuilderMode.VISUAL:
-            raise InvalidAutomation(
-                f"«{target['name']}» es una regla simple y no se puede iniciar desde un flujo. Elige un flujo visual.",
-                node_id=node_id,
-            )
         if not target["published_flow_definition"]:
             raise InvalidAutomation(
                 f"Publica primero «{target['name']}» para poder iniciarlo desde aquí.", node_id=node_id,

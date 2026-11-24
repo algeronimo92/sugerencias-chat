@@ -12,7 +12,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, ExecutionErrorCode, FlowNodeType
+from app.modules.automations.domain.types import AutomationExecutionStatus, ExecutionErrorCode, FlowNodeType
 
 from app.integrations.whatsapp.channel import SEND_FAILURES
 from app.modules.automations.application.conditions import matches_condition_values
@@ -254,16 +254,6 @@ async def run_execution(execution_id: int, deps: AutomationDeps | None = None) -
         await save_execution(
             execution_id, deps,
             status=AutomationExecutionStatus.CANCELLED, error="La regla fue desactivada",
-        )
-        return
-    if rule.builder_mode != AutomationBuilderMode.VISUAL:
-        # Las reglas simples (una lista de acciones, sin bloques) se retiraron
-        # del editor y de la API. Una que quedara de antes se cierra diciendo
-        # por qué, en vez de fallar con «el flujo no tiene versión publicada».
-        await save_execution(
-            execution_id, deps,
-            status=AutomationExecutionStatus.CANCELLED,
-            error="Las reglas simples ya no se ejecutan. Crea un flujo que la reemplace.",
         )
         return
     if not await _customer_response_deadline_is_current(execution, deps):

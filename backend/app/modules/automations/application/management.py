@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
+from app.modules.automations.domain.types import AutomationExecutionStatus, AutomationTrigger
 
 from app.db.uow import collect, unit_of_work
 from app.modules.automations.application.ports import ExecutionAlreadyRunning, automation_ports
@@ -24,7 +24,7 @@ from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import normalize_visual_draft
 from app.modules.automations.domain.errors import AutomationConflict, InvalidAutomation
 
-_DEADLINE_FIELDS = {"is_active", "trigger_type", "trigger_config", "delay_minutes"}
+_DEADLINE_FIELDS = {"is_active", "trigger_type", "trigger_config"}
 
 
 def _now() -> datetime:
@@ -47,17 +47,12 @@ async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
     current = await rules.get(rule_id)
     if current is None:
         return None
-    if current["builder_mode"] != AutomationBuilderMode.VISUAL:
-        # Una copia de una regla simple sería otra regla que el motor ya no corre.
-        raise InvalidAutomation("Las reglas simples ya no se duplican. Crea un flujo que la reemplace.")
     async with unit_of_work():
         new_id = await rules.insert({
             "name": f"{current['name']} (copia)"[:120],
             "trigger_type": current["trigger_type"],
             "trigger_config": current["trigger_config"],
             "conditions": {},
-            "actions": [],
-            "delay_minutes": 0,
             "max_executions_per_hour": current["max_executions_per_hour"],
             # Siempre arranca inactiva: evita tener dos flujos idénticos
             # corriendo a la vez sin que el usuario lo haya decidido. Por la
@@ -65,7 +60,6 @@ async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
             # decidir a propósito que la copia quede visible para vendedores.
             "is_active": False,
             "visible_to_sellers": False,
-            "builder_mode": AutomationBuilderMode.VISUAL,
             "flow_definition": current["flow_definition"],
             "published_flow_definition": None,
             "flow_version": 0,
@@ -119,8 +113,7 @@ async def create_visual_flow(name: str, definition: dict, user_id: int) -> dict:
             "name": validated["name"],
             "trigger_type": validated["trigger_type"],
             "trigger_config": validated["trigger_config"],
-            "conditions": {}, "actions": [], "delay_minutes": 0, "is_active": False,
-            "builder_mode": AutomationBuilderMode.VISUAL,
+            "conditions": {}, "is_active": False,
             "flow_definition": validated["flow_definition"],
             "published_flow_definition": None, "flow_version": 0,
         }, user_id=user_id, now=_now())
@@ -129,10 +122,7 @@ async def create_visual_flow(name: str, definition: dict, user_id: int) -> dict:
 
 
 async def _visual_flow(rule_id: int) -> dict | None:
-    current = await automation_ports().rules.get(rule_id)
-    if current is None or current["builder_mode"] != AutomationBuilderMode.VISUAL:
-        return None
-    return current
+    return await automation_ports().rules.get(rule_id)
 
 
 async def save_visual_flow(rule_id: int, name: str, definition: dict) -> dict | None:
@@ -306,7 +296,7 @@ async def start_manual_flow_execution(
     rule = await automation_ports().rules.get(rule_id)
     if rule is None:
         raise InvalidAutomation("Este flujo ya no existe.")
-    if rule["builder_mode"] != AutomationBuilderMode.VISUAL or rule["trigger_type"] != AutomationTrigger.MANUAL:
+    if rule["trigger_type"] != AutomationTrigger.MANUAL:
         raise InvalidAutomation("Este flujo no se puede iniciar desde el chat: su disparador no es «Inicio manual (vendedor)».")
     if not rule["is_active"]:
         raise InvalidAutomation("Este flujo está pausado o todavía no se publicó, así que no se puede iniciar.")

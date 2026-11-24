@@ -57,7 +57,7 @@ async def _rule(**values) -> int:
     async with session_scope() as session:
         return (await session.execute(insert(AutomationRule).values(**{
             "name": "Regla", "trigger_type": "manual", "trigger_config": {}, "conditions": {},
-            "actions": [], "delay_minutes": 0, "created_by_user_id": owner,
+            "created_by_user_id": owner,
             "created_at": NOW, "updated_at": NOW, **values,
         }).returning(AutomationRule.id))).scalar_one()
 
@@ -300,7 +300,7 @@ async def test_a_child_flow_is_scheduled_once_per_parent_node(tenant):
     with tenant_context(tenant):
         lead_id = await _lead()
         store = SqlExecutionStore()
-        child_rule = await store.rule(await _rule(builder_mode="visual", flow_version=3))
+        child_rule = await store.rule(await _rule(flow_version=3))
         parent_id = await _execution(child_rule.id, lead_id)
         parent, _ = await store.load(parent_id)
 
@@ -324,7 +324,7 @@ async def test_round_robin_turns_are_handed_out_in_order(tenant):
 
 async def test_a_manual_flow_cannot_run_twice_on_the_same_lead(tenant):
     with tenant_context(tenant):
-        rule_id = await _rule(builder_mode="visual")
+        rule_id = await _rule()
         lead_id = await _lead()
         scheduling = SqlSchedulingStore()
 
@@ -384,7 +384,7 @@ async def test_each_seller_message_moves_the_same_silence_deadline(tenant):
     from app.db.models.conversations import WspMessage
 
     with tenant_context(tenant):
-        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, delay_minutes=5)
+        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30})
         lead_id = await _lead()
         async with session_scope() as session:
             await session.execute(insert(WspMessage).values(
@@ -406,7 +406,7 @@ async def test_each_seller_message_moves_the_same_silence_deadline(tenant):
                 AutomationExecution.rule_id == rule_id,
             ))).scalars().all()
         [deadline] = rows
-        assert deadline.scheduled_for == second + timedelta(minutes=35)
+        assert deadline.scheduled_for == second + timedelta(minutes=30)
         assert deadline.event_payload["last_message_id"] == "seller-2"
 
         # El cliente contestó: el cierre pendiente queda sin efecto.
@@ -435,7 +435,7 @@ async def test_a_follow_up_that_is_waiting_does_not_restart_when_its_own_message
     """El flujo «mensaje → esperar un día → mensaje» volvía al principio en
     cuanto salía su propio primer mensaje, y lo mandaba de nuevo, en bucle."""
     with tenant_context(tenant):
-        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, builder_mode="visual", flow_version=1)
+        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, flow_version=1)
         lead_id = await _lead()
         waiting = await _silence_execution(lead_id, rule_id)
 
@@ -452,8 +452,8 @@ async def test_a_follow_up_that_is_waiting_does_not_restart_when_its_own_message
 
 async def test_a_reply_stops_a_waiting_follow_up_but_not_one_waiting_for_that_reply(tenant):
     with tenant_context(tenant):
-        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, builder_mode="visual", flow_version=1)
-        other_rule = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, builder_mode="visual", flow_version=1)
+        rule_id = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, flow_version=1)
+        other_rule = await _rule(trigger_type="customer_response_overdue", trigger_config={"minutes": 30}, flow_version=1)
         lead_id = await _lead()
         chasing = await _silence_execution(lead_id, rule_id)
         # Una Pausa con «llega un mensaje»: la respuesta decide por dónde sigue.

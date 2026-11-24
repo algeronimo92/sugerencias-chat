@@ -40,10 +40,10 @@ def _node_asks(node: object) -> bool:
 
 
 def uses_business_hours(conditions: object, flow_definition: object) -> bool:
-    """¿La regla, tal como corre hoy, pregunta por el horario de atención?
+    """¿El flujo, tal como corre hoy, pregunta por el horario de atención?
 
-    ``flow_definition`` es la versión que el motor ejecuta (la publicada); en
-    una regla simple no hay flujo y solo cuentan sus condiciones."""
+    ``flow_definition`` es la versión que el motor ejecuta (la publicada) y
+    ``conditions`` sus condiciones de entrada, que también se guardan aparte."""
     flow = flow_definition if isinstance(flow_definition, dict) else {}
     for entry in (conditions, flow.get("conditions")):
         if isinstance(entry, dict) and entry.get("business_hours_only"):

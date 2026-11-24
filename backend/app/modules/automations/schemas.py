@@ -3,16 +3,11 @@
 from typing import Any
 
 from pydantic import BaseModel, Field
-from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger, ExecutionErrorCode, ExecutionPauseScope, ExecutionStartSource
+from app.modules.automations.domain.types import AutomationExecutionStatus, AutomationTrigger, ExecutionErrorCode, ExecutionPauseScope, ExecutionStartSource
 
 
 class AutomationRuleUpdate(BaseModel):
     name: str | None = None
-    trigger_type: AutomationTrigger | None = None
-    trigger_config: dict | None = None
-    conditions: dict | None = None
-    actions: list[dict] | None = None
-    delay_minutes: int | None = Field(default=None, ge=0, le=10080)
     max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
     is_active: bool | None = None
     visible_to_sellers: bool | None = None
@@ -24,12 +19,9 @@ class AutomationRuleItem(BaseModel):
     trigger_type: AutomationTrigger
     trigger_config: dict
     conditions: dict
-    actions: list[dict]
-    builder_mode: AutomationBuilderMode = AutomationBuilderMode.SIMPLE
     flow_definition: dict = Field(default_factory=dict)
     published_flow_definition: dict | None = None
     flow_version: int = 0
-    delay_minutes: int
     max_executions_per_hour: int | None = None
     is_active: bool
     visible_to_sellers: bool = False
