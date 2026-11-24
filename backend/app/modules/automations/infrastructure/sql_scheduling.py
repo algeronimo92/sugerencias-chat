@@ -25,6 +25,8 @@ from app.modules.automations.domain.limits import OVERDUE_LOOKBACK_GRACE_MINUTES
 from app.modules.automations.domain.rules import message_sent_at
 from app.modules.automations.infrastructure.sql_executions import _has_started
 
+TEAM_REPLIED = "Alguien del equipo le escribió al cliente"
+
 logger = logging.getLogger(__name__)
 
 async def schedule_in_session(
@@ -155,6 +157,34 @@ class SqlSchedulingStore:
             ).values(
                 status=AutomationExecutionStatus.SKIPPED,
                 error="El cliente respondió antes del vencimiento",
+                finished_at=now,
+            ))
+        return result.rowcount or 0
+
+    async def stop_for_team_reply(self, lead_id: str, now: datetime) -> int:
+        """Una persona del equipo le escribió al cliente: el seguimiento
+        automático que estaba pendiente ya no hace falta.
+
+        Solo lo que arrancó el sistema: una secuencia lanzada a mano es algo
+        que esa misma persona decidió mandar. Y no el vencimiento de «cliente
+        sin responder» que todavía no corrió: lo arma justamente ese mensaje
+        del equipo."""
+        opted_in = select(AutomationRule.id).where(
+            AutomationRule.conditions["stop_when_team_replies"].astext == "true",
+        )
+        async with session_scope() as session:
+            result = await session.execute(update(AutomationExecution).where(
+                AutomationExecution.lead_id == lead_id,
+                AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
+                AutomationExecution.start_source == "system",
+                AutomationExecution.rule_id.in_(opted_in),
+                or_(
+                    _has_started(AutomationExecution),
+                    AutomationExecution.trigger_type != AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
+                ),
+            ).values(
+                status=AutomationExecutionStatus.CANCELLED,
+                error=TEAM_REPLIED,
                 finished_at=now,
             ))
         return result.rowcount or 0

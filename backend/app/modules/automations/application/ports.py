@@ -150,6 +150,11 @@ class SchedulingStore(Protocol):
 
     async def cancel_customer_deadlines(self, lead_id: str, now: datetime) -> int: ...
 
+    async def stop_for_team_reply(self, lead_id: str, now: datetime) -> int:
+        """Corta lo que el sistema tenía pendiente con el lead en las
+        automatizaciones marcadas «detener si alguien del equipo escribe».
+        Devuelve cuántas cortó."""
+
     async def schedule_customer_deadlines(self, message: dict, *, rule_id: int | None = None) -> int: ...
 
     async def recent_seller_silences(self, rule_id: int) -> list[dict]:

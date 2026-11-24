@@ -243,3 +243,19 @@ async def note_message_status(event: MessageStatusChanged) -> None:
     if is_delivery_state(event.meta_status):
         await _note_delivery(event.message_id, event.meta_status)
 
+
+@subscribe(MessageSent, phase=Phase.AFTER_COMMIT)
+async def stop_follow_ups_when_the_team_replies(event: MessageSent) -> None:
+    """Sin autor es un mensaje de una automatización o uno programado: solo
+    cuenta el que alguien escribió y mandó ahora."""
+    if event.actor_user_id is None or event.scheduled:
+        return
+    try:
+        stopped = await automation_ports().scheduling.stop_for_team_reply(event.chat_id, datetime.now(timezone.utc))
+    except SQLAlchemyError:
+        logger.exception("No se pudo cortar el seguimiento del chat %s", event.chat_id)
+        return
+    if stopped:
+        # Ya después del commit: se avisa directo, sin pasar otra vez por el bus.
+        await announce_automations_changed(AutomationsChanged())
+

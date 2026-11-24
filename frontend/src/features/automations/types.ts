@@ -15,6 +15,9 @@ export interface AutomationConditions {
   tag_id?: number | null
   require_open_window?: boolean
   business_hours_only?: boolean
+  /** No decide si el flujo empieza sino cuándo se corta: al escribir alguien
+   *  del equipo, lo que el sistema tenía pendiente con ese cliente se cancela. */
+  stop_when_team_replies?: boolean
   cooldown_minutes?: number | null
 }
 

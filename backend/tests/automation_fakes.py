@@ -275,6 +275,8 @@ class FakeScheduling:
         self.activity_ids: dict[str, int] = {}
         self.first_message: set[str] = set()
         self.cancelled_deadlines: list[str] = []
+        self.team_replies: list[str] = []
+        self.stopped_by_team_reply = 0
         self.deadline_messages: list[tuple[dict, int | None]] = []
         self.silences: dict[int, list[dict]] = {}
 
@@ -293,6 +295,10 @@ class FakeScheduling:
 
     async def is_first_message(self, lead_id):
         return lead_id in self.first_message
+
+    async def stop_for_team_reply(self, lead_id, now):
+        self.team_replies.append(lead_id)
+        return self.stopped_by_team_reply
 
     async def cancel_customer_deadlines(self, lead_id, now):
         self.cancelled_deadlines.append(lead_id)
