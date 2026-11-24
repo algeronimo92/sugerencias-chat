@@ -11,8 +11,8 @@ razonable que el negocio edita o borra.
   claves son las que usa el analista de n8n.
 - Es aditivo e idempotente: cada dueño inserta solo lo que falta y nunca
   modifica lo existente. Las automatizaciones se reconocen por nombre.
-- Las automatizaciones nacen **desactivadas**: mandan mensajes de WhatsApp en
-  nombre del negocio y eso lo decide el admin, no el alta.
+- Las automatizaciones nacen como **borrador sin publicar**: mandan mensajes
+  de WhatsApp en nombre del negocio y eso lo decide el admin, no el alta.
 - Se aplica solo en el alta de un negocio nuevo (``provision_tenant``);
   a uno existente únicamente si el operador lo pide desde la plataforma.
 """
@@ -23,9 +23,10 @@ import logging
 
 from app.modules.auth.public import team_summary
 from app.modules.automations.public import (
-    create_automation_rule,
+    create_visual_flow,
+    flow_from_rule,
     list_automation_rules,
-    validate_automation_rule,
+    validate_visual_flow,
 )
 from app.modules.catalogs.public import seed_starter_catalog
 
@@ -188,8 +189,13 @@ async def _seed_automations(user_id: int) -> int:
     for raw in STARTER_AUTOMATIONS:
         if raw["name"].strip().lower() in existing:
             continue
-        values = await validate_automation_rule(dict(raw))
-        await create_automation_rule(values, user_id)
+        # Como flujo visual y no como regla simple: es lo único que el editor
+        # crea ahora, y así el negocio las abre y las ajusta con los bloques
+        # que ya conoce. Se valida como si se fuera a publicar para que el
+        # borrador que queda sea publicable tal cual.
+        definition = flow_from_rule(raw)
+        await validate_visual_flow(raw["name"], definition)
+        await create_visual_flow(raw["name"], definition, user_id)
         created += 1
     return created
 

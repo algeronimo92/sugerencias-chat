@@ -23,7 +23,8 @@ from app.modules.automations.application.management import (
 )
 from app.modules.automations.application.simulation import simulate_visual_flow
 from app.modules.automations.application.triggers import trigger_inbound_message, trigger_lead_created
-from app.modules.automations.application.validation import validate_automation_rule
+from app.modules.automations.application.validation import validate_automation_rule, validate_visual_flow
+from app.modules.automations.domain.rule_to_flow import flow_from_rule
 from app.modules.automations.infrastructure.worker import (
     automations_tick,
     backfill_automation_state,
