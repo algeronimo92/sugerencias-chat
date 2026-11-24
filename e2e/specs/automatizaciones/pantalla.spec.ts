@@ -1,4 +1,4 @@
-import { FLOWS, execution, flow } from '../../fixtures/crm'
+import { CHAT_ID, FLOWS, execution, flow } from '../../fixtures/crm'
 import { expectFullyOnScreen, expectNoPageOverflow } from '../../fixtures/screen'
 import { expect, test } from '../../fixtures/test'
 
@@ -62,6 +62,8 @@ test('«Por atender» junta lo que falló por causa y lo arregla desde la fila',
   api
     .on('get', '/api/automations/executions', byStatus(rows))
     .on('post', '/api/automations/executions/{execution_id}/retry', { ...rows[1], status: 'scheduled' })
+    .on('get', '/api/chats/sellers', [{ id: 31, name: 'Ana Quispe', role: 'vendedor' }])
+    .on('patch', '/api/chats/{chat_id}', () => ({ status: 200, body: {} }))
     .on('post', '/api/automations/executions/{execution_id}/dismiss', { ...rows[2], attention_dismissed_at: new Date().toISOString() })
 
   await page.goto('/automations')
@@ -83,6 +85,18 @@ test('«Por atender» junta lo que falló por causa y lo arregla desde la fila',
   await expect(page.getByText('Ejecución reprogramada')).toBeVisible()
   expect(api.calls('post', '/api/automations/executions/{execution_id}/retry').map(call => call.path))
     .toEqual(['/api/automations/executions/4002/retry'])
+
+  // «Falta una vendedora» se arregla ahí mismo: reintentar a secas volvía a
+  // fallar, y antes había que ir al chat, asignarla y volver.
+  const noSeller = page.getByRole('region', { name: /Falta una vendedora/ })
+  await expect(noSeller.getByRole('button', { name: 'Asignar y reintentar' })).toBeDisabled()
+  await noSeller.getByRole('combobox', { name: 'Vendedora para este lead' }).click()
+  await page.getByRole('option', { name: 'Ana Quispe' }).click()
+  await noSeller.getByRole('button', { name: 'Asignar y reintentar' }).click()
+  await expect(page.getByText('Vendedora asignada y ejecución reprogramada')).toBeVisible()
+  expect(api.calls('patch', '/api/chats/{chat_id}').map(call => call.body)).toEqual([{ vendedor_id: 31 }])
+  expect(api.calls('post', '/api/automations/executions/{execution_id}/retry').map(call => call.path))
+    .toEqual(['/api/automations/executions/4002/retry', '/api/automations/executions/4003/retry'])
 
   // Un fallo con el que no hay nada que hacer se descarta: sin eso la lista
   // no se vaciaba nunca.
@@ -218,6 +232,7 @@ test('una completada cuyo mensaje no salió se lee «No se entregó» y pide ate
   api
     .on('get', '/api/automations/executions', byStatus(rows))
     .on('get', '/api/automations/executions/count', ({ url }) => ({ total: byStatus(rows)({ url }).length }))
+    .on('post', '/api/chats/{chat_id}/messages/{message_id}/retry', () => ({ status: 200, body: {} }))
     .on('get', '/api/automations/executions/{execution_id}/messages', [
       { message_id: 901, state: 'read' },
       { message_id: 902, state: 'failed' },
@@ -228,6 +243,13 @@ test('una completada cuyo mensaje no salió se lee «No se entregó» y pide ate
   const group = page.getByRole('region', { name: /Mensajes que no se entregaron/ })
   await expect(group).toContainText('Carla Méndez')
   await expect(group.getByRole('button', { name: 'Ir al chat' })).toBeVisible()
+  // Con el detalle cerrado todavía no se pidió el estado de ningún mensaje.
+  expect(api.calls('get', '/api/automations/executions/{execution_id}/messages')).toEqual([])
+  // Reenviar vuelve a mandar justo el mensaje que no salió, no todo el flujo.
+  await group.getByRole('button', { name: 'Reenviar' }).click()
+  await expect(page.getByText('Mensaje reenviado')).toBeVisible()
+  expect(api.calls('post', '/api/chats/{chat_id}/messages/{message_id}/retry').map(call => call.path))
+    .toEqual([`/api/chats/${CHAT_ID}/messages/902/retry`])
   await expect(page.getByText('Ana Torres')).toHaveCount(0)
 
   await page.getByRole('navigation', { name: 'Secciones de automatizaciones' }).getByRole('button', { name: 'Actividad' }).click()
@@ -236,8 +258,7 @@ test('una completada cuyo mensaje no salió se lee «No se entregó» y pide ate
   await expect(row('Carla Méndez').getByText('No se entregó', { exact: true })).toBeVisible()
   await expect(row('Sofía Luna').getByText('Enviando…', { exact: true })).toBeVisible()
   // Al abrir el detalle, cada mensaje con su marca, como en WhatsApp: se ve
-  // cuál de los dos fue el que no llegó. Cerrado, no se pide nada.
-  expect(api.calls('get', '/api/automations/executions/{execution_id}/messages')).toEqual([])
+  // cuál de los dos fue el que no llegó.
   await row('Carla Méndez').locator('summary').click()
   await expect(row('Carla Méndez').getByText('Leído', { exact: true })).toBeVisible()
   await expect(row('Carla Méndez').getByText('No se entregó', { exact: true })).toHaveCount(2)

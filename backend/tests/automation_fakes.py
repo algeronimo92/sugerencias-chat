@@ -160,11 +160,12 @@ class InMemoryExecutionStore:
     async def messages_queued_for_lead_since(self, lead_id, since):
         return self.queued_for_lead.get(lead_id, 0)
 
-    async def record_message_state(self, message_id, state, now):
+    async def record_message_state(self, message_id, state, now, *, resent=False):
         if message_id not in self.messages:
             return None
         execution_id, current = self.messages[message_id]
-        self.messages[message_id] = (execution_id, advance(current, state))
+        new_state = state if resent and current == "failed" else advance(current, state)
+        self.messages[message_id] = (execution_id, new_state)
         return execution_id
 
     async def queued_message_ids(self, after_id, limit):

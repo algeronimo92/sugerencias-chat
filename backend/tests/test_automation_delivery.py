@@ -89,6 +89,21 @@ class TestDeliveryEvents:
 
         assert tracked.messages[700] == (5, "failed")
 
+    async def test_resending_a_failed_message_clears_the_failure(self, tracked):
+        """Quien reenvía desde «Por atender» un mensaje que no salió espera que
+        deje de figurar como no entregado cuando WhatsApp lo acepta."""
+        await subscribers.note_message_failed(MessageFailed(chat_id="c", message_id=700))
+        await subscribers.note_message_sent(MessageSent(chat_id="c", message_id=700, actor_user_id=None))
+
+        assert tracked.messages[700] == (5, "sent")
+
+    async def test_a_late_sent_ack_from_meta_does_not_clear_a_failure(self, tracked):
+        # El «enviado» de Meta puede llegar después de su propio rechazo.
+        await subscribers.note_message_status(MessageStatusChanged(chat_id="c", message_id=700, meta_status="failed"))
+        await subscribers.note_message_status(MessageStatusChanged(chat_id="c", message_id=700, meta_status="sent"))
+
+        assert tracked.messages[700] == (5, "failed")
+
     async def test_messages_that_no_automation_sent_are_ignored(self, tracked):
         # Lo que escribe una vendedora pasa por los mismos avisos.
         await subscribers.note_message_sent(MessageSent(chat_id="c", message_id=999, actor_user_id=7))

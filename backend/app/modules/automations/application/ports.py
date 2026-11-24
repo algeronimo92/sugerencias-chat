@@ -73,10 +73,15 @@ class ExecutionStore(Protocol):
         """Cuántos mensajes le encolaron las automatizaciones a ese lead desde
         ``since``, hayan salido o no."""
 
-    async def record_message_state(self, message_id: int, state: str, now: datetime) -> int | None:
+    async def record_message_state(
+        self, message_id: int, state: str, now: datetime, *, resent: bool = False,
+    ) -> int | None:
         """Lo último que se supo de un mensaje. Solo avanza (ver
         ``domain.delivery.advance``) y actualiza el resumen de su ejecución.
-        Devuelve el id de la ejecución, o None si el mensaje no es de ninguna."""
+        Devuelve el id de la ejecución, o None si el mensaje no es de ninguna.
+
+        ``resent``: la cola volvió a mandar un mensaje que había fallado y
+        WhatsApp lo aceptó. Es el único caso en que «fallido» deja de serlo."""
 
     async def queued_message_ids(self, after_id: int, limit: int) -> list[tuple[int, list[int]]]:
         """Para reconciliar: las siguientes ``limit`` ejecuciones después de

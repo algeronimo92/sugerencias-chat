@@ -3,7 +3,8 @@ import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCancelExecution, useDismissExecution, useResumeExecution, useRetryExecution } from '../queries'
+import { useCancelExecution, useDismissExecution, useResendUndelivered, useResumeExecution, useRetryExecution } from '../queries'
+import { AssignSellerAndRetry } from './AssignSellerAndRetry'
 import type { AutomationExecution } from '../types'
 import { ATTENTION_WINDOW_DAYS, attentionCount, type AttentionCause, type AttentionGroup } from '../utils/attention'
 import { formatExecutionDate, readableExecutionError } from '../utils/automationExecutions'
@@ -40,7 +41,8 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
   const resume = useResumeExecution()
   const cancel = useCancelExecution()
   const dismiss = useDismissExecution()
-  const busy = retry.isPending || resume.isPending || cancel.isPending || dismiss.isPending
+  const resend = useResendUndelivered()
+  const busy = retry.isPending || resume.isPending || cancel.isPending || dismiss.isPending || resend.isPending
   const fail = (error: Error) => toast.error(extractErrorMessage(error))
 
   if (isLoading) {
@@ -84,9 +86,37 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
         </>
       )
     }
-    // Reintentar no reenvía lo que no salió (el paso ya figura como hecho):
-    // lo que sirve es ver en el chat qué faltó y escribirle al cliente.
-    if (cause === 'undelivered') return chat
+    // Reintentar la ejecución no reenvía lo que no salió (el paso ya figura
+    // como hecho): lo que sirve es volver a mandar ese mensaje.
+    if (cause === 'undelivered') {
+      const leadId = execution.lead_id
+      return (
+        <>
+          {leadId && (
+            <button
+              type="button" disabled={busy} className={PRIMARY_ACTION}
+              onClick={() => resend.mutate({ executionId: execution.id, chatId: leadId }, {
+                onSuccess: count => toast.success(count === 1 ? 'Mensaje reenviado' : `${count} mensajes reenviados`),
+                onError: fail,
+              })}
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />Reenviar
+            </button>
+          )}
+          {chat}
+        </>
+      )
+    }
+    // Reintentar así como está volvería a fallar: primero hay que darle
+    // una vendedora al lead.
+    if (cause === 'no_seller' && execution.lead_id) {
+      return (
+        <>
+          <AssignSellerAndRetry executionId={execution.id} leadId={execution.lead_id} disabled={busy} />
+          {chat}
+        </>
+      )
+    }
     if (cause === 'service_window') {
       return (
         <>

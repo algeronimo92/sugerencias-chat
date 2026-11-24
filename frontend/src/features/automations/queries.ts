@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { isoDateOffset, todayISODate } from '../../shared/utils/datetime'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchExecutionMessages, fetchAutomationRules, cancelExecution, createAutomation, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
+import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchExecutionMessages, retryChatMessage, fetchAutomationRules, cancelExecution, createAutomation, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
 import { AutomationExecutionStatus } from './domain/automationCatalog'
@@ -181,6 +181,19 @@ export function useExecutionMessages(executionId: number, enabled: boolean) {
     queryKey: executionKeys.messages(executionId),
     queryFn: () => fetchExecutionMessages(executionId),
     enabled,
+  })
+}
+
+/** Reenvía los mensajes de una ejecución que no se entregaron. Devuelve
+ *  cuántos volvió a poner en la cola. */
+export function useResendUndelivered() {
+  return useMutation({
+    mutationFn: async ({ executionId, chatId }: { executionId: number; chatId: string }) => {
+      const failed = (await fetchExecutionMessages(executionId)).filter(message => message.state === 'failed')
+      await Promise.all(failed.map(message => retryChatMessage(chatId, message.message_id)))
+      return failed.length
+    },
+    onSuccess: invalidateAutomations,
   })
 }
 

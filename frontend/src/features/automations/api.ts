@@ -106,6 +106,13 @@ export async function fetchExecutionMessages(executionId: number): Promise<Execu
   return data
 }
 
+/** Vuelve a poner en la cola de envío un mensaje que no salió. */
+export async function retryChatMessage(chatId: string, messageId: number): Promise<void> {
+  await client.post<ApiResponse<'/api/chats/{chat_id}/messages/{message_id}/retry', 'post'>>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${messageId}/retry`,
+  )
+}
+
 /** Saca una ejecución de «Por atender» sin cambiarle el estado. */
 export async function dismissExecution(id: number): Promise<AutomationExecution> {
   const { data } = await client.post<ApiResponse<'/api/automations/executions/{execution_id}/dismiss', 'post'>>(`/api/automations/executions/${id}/dismiss`)

@@ -373,7 +373,9 @@ class SqlExecutionStore:
                 .where(AutomationExecution.lead_id == lead_id, AutomationExecutionMessage.created_at >= since)
             ) or 0
 
-    async def record_message_state(self, message_id: int, state: str, now: datetime) -> int | None:
+    async def record_message_state(
+        self, message_id: int, state: str, now: datetime, *, resent: bool = False,
+    ) -> int | None:
         async with session_scope() as session:
             # FOR UPDATE: dos acuses del mismo mensaje llegan a la vez (Meta
             # los reintenta) y sin el bloqueo el más viejo podía ganar.
@@ -385,7 +387,7 @@ class SqlExecutionStore:
             if row is None:
                 return None
             execution_id, current = row
-            new_state = advance(current, state)
+            new_state = state if resent and current == MessageDeliveryState.FAILED else advance(current, state)
             if new_state != current:
                 await session.execute(update(AutomationExecutionMessage).where(
                     AutomationExecutionMessage.message_id == message_id,
