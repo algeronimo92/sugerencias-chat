@@ -5,8 +5,7 @@ from __future__ import annotations
 
 from app.modules.automations.application.ports import ReferenceChecker, RuleStore, automation_ports
 from app.modules.automations.domain.flow_definition import check_invoked_flows, connect_flow, normalize_flow
-from app.modules.automations.domain.limits import MAX_ACTIONS
-from app.modules.automations.domain.validation import ActionReferences, normalize_rate_limit, normalize_rule
+from app.modules.automations.domain.validation import ActionReferences
 from app.modules.automations.domain.errors import InvalidAutomation
 
 
@@ -27,25 +26,6 @@ async def verify_references(refs: ActionReferences, references: ReferenceChecker
         raise InvalidAutomation("Una de las plantillas elegidas no se puede enviar sola: tiene que ser una plantilla interna activa sin botones ni listas, o una de Meta aprobada cuyas variables salgan del lead (no de la cita). Elige otra.")
     if refs.media_assets and await references.missing_media_assets(refs.media_assets):
         raise InvalidAutomation("Uno de los archivos elegidos ya no está en la librería de medios. Elige otro.")
-
-
-async def validate_automation_rule(
-    values: dict, *, max_actions: int = MAX_ACTIONS, references: ReferenceChecker | None = None,
-) -> dict:
-    normalized, refs = normalize_rule(values, max_actions=max_actions)
-    await verify_references(refs, references or automation_ports().references)
-    max_per_hour = normalize_rate_limit(values.get("max_executions_per_hour"))
-    return {
-        "name": normalized["name"],
-        "trigger_type": normalized["trigger_type"],
-        "trigger_config": normalized["trigger_config"],
-        "conditions": normalized["conditions"],
-        "actions": normalized["actions"],
-        "delay_minutes": normalized["delay_minutes"],
-        "max_executions_per_hour": max_per_hour,
-        "is_active": normalized["is_active"],
-        "visible_to_sellers": normalized["visible_to_sellers"],
-    }
 
 
 async def validate_visual_flow(

@@ -28,7 +28,7 @@ from app.modules.automations.domain.limits import (
     TRIGGER_TYPES,
 )
 from app.modules.automations.domain.rules import is_stage_key, normalize_conditions, unknown_variables
-from app.modules.automations.domain.errors import InvalidAutomation, rejects_malformed_input
+from app.modules.automations.domain.errors import InvalidAutomation
 
 OVERDUE_TRIGGERS = frozenset({
     AutomationTrigger.SELLER_RESPONSE_OVERDUE,
@@ -234,43 +234,6 @@ def normalize_actions(actions: object, refs: ActionReferences, *, max_actions: i
             verb = "no existe" if len(unknown) == 1 else "no existen"
             raise InvalidAutomation(f"Acción {position}: {names} {verb}. Usa {{{{nombre}}}}, {{{{telefono}}}}, {{{{servicio}}}}, {{{{vendedor}}}} o {{{{fecha_actual}}}}")
     return normalized_actions
-
-
-@rejects_malformed_input
-def normalize_rule(values: dict, *, max_actions: int = MAX_ACTIONS) -> tuple[dict, ActionReferences]:
-    """La regla en su forma guardable y los ids que falta verificar contra la
-    base. El tope por hora se valida después de esa verificación, en
-    ``normalize_rate_limit``, para conservar el orden de los mensajes."""
-    name = str(values.get("name") or "").strip()
-    if not name or len(name) > 120:
-        raise InvalidAutomation("Escribe un nombre para la regla (hasta 120 caracteres).")
-    trigger_type, trigger_config = normalize_trigger(values.get("trigger_type"), values.get("trigger_config"))
-    conditions = normalize_conditions(values.get("conditions"))
-    refs = ActionReferences()
-    actions = normalize_actions(values.get("actions"), refs, max_actions=max_actions)
-    if conditions["seller_id"]:
-        refs.users.add(conditions["seller_id"])
-    if conditions["tag_id"]:
-        refs.tags.add(conditions["tag_id"])
-    if conditions["stage"]:
-        refs.condition_stages.add(conditions["stage"])
-    return {
-        "name": name,
-        "trigger_type": trigger_type,
-        "trigger_config": trigger_config,
-        "conditions": conditions,
-        "actions": actions,
-        "delay_minutes": int(values.get("delay_minutes") or 0),
-        "is_active": bool(values.get("is_active", True)),
-        "visible_to_sellers": bool(values.get("visible_to_sellers", False)),
-    }, refs
-
-
-@rejects_malformed_input
-def normalize_rate_limit(value: object) -> int | None:
-    if value is not None and not 1 <= int(value) <= 1000:
-        raise InvalidAutomation("El máximo por hora debe estar entre 1 y 1000. Déjalo vacío para no poner límite.")
-    return int(value) if value else None
 
 
 def normalize_wait_any_conditions(data: dict, position: int) -> dict:

@@ -42,39 +42,31 @@ async def _backfill_if_deadline_rule(item: dict | None) -> None:
 
 # --- Reglas -----------------------------------------------------------------
 
-async def create_automation_rule(values: dict, user_id: int) -> dict:
-    rules = automation_ports().rules
-    async with unit_of_work():
-        rule_id = await rules.insert(values, user_id=user_id, now=_now())
-        await _changed()
-    item = await rules.get(rule_id)
-    await _backfill_if_deadline_rule(item)
-    return item
-
-
 async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
     rules = automation_ports().rules
     current = await rules.get(rule_id)
     if current is None:
         return None
-    is_visual = current["builder_mode"] == AutomationBuilderMode.VISUAL
+    if current["builder_mode"] != AutomationBuilderMode.VISUAL:
+        # Una copia de una regla simple sería otra regla que el motor ya no corre.
+        raise InvalidAutomation("Las reglas simples ya no se duplican. Crea un flujo que la reemplace.")
     async with unit_of_work():
         new_id = await rules.insert({
             "name": f"{current['name']} (copia)"[:120],
             "trigger_type": current["trigger_type"],
             "trigger_config": current["trigger_config"],
-            "conditions": {} if is_visual else current["conditions"],
-            "actions": [] if is_visual else current["actions"],
-            "delay_minutes": 0 if is_visual else current["delay_minutes"],
+            "conditions": {},
+            "actions": [],
+            "delay_minutes": 0,
             "max_executions_per_hour": current["max_executions_per_hour"],
-            # Siempre arranca inactiva: evita tener dos reglas idénticas
+            # Siempre arranca inactiva: evita tener dos flujos idénticos
             # corriendo a la vez sin que el usuario lo haya decidido. Por la
             # misma razón, nunca copia visible_to_sellers=True: el admin debe
             # decidir a propósito que la copia quede visible para vendedores.
             "is_active": False,
             "visible_to_sellers": False,
-            "builder_mode": current["builder_mode"],
-            "flow_definition": current["flow_definition"] if is_visual else {},
+            "builder_mode": AutomationBuilderMode.VISUAL,
+            "flow_definition": current["flow_definition"],
             "published_flow_definition": None,
             "flow_version": 0,
         }, user_id=user_id, now=_now())

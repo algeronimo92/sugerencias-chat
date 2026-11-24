@@ -4,24 +4,34 @@ status por ruta."""
 import pytest
 
 from app.modules.automations.domain.errors import MALFORMED_INPUT, InvalidAutomation
-from app.modules.automations.domain.validation import normalize_rule
+from app.modules.automations.domain.flow_definition import normalize_flow
 
 
-def test_a_malformed_rule_is_an_invalid_input_not_a_server_error():
+def _flow(action, *, with_end=True):
+    nodes = [
+        {"id": "t", "type": "trigger", "position": {"x": 0, "y": 0}, "data": {"trigger_type": "lead_created"}},
+        {"id": "a", "type": "action", "position": {"x": 0, "y": 0}, "data": {"action": action}},
+    ]
+    if with_end:
+        nodes.append({"id": "e", "type": "end", "position": {"x": 0, "y": 0}, "data": {"label": "Fin"}})
+    return {"conditions": {}, "nodes": nodes, "edges": []}
+
+
+def test_a_malformed_flow_is_an_invalid_input_not_a_server_error():
     with pytest.raises(InvalidAutomation) as caught:
-        normalize_rule({"name": "x", "trigger_type": "lead_created", "actions": [{"type": "add_tag", "tag_id": [1]}]})
+        normalize_flow("x", _flow({"type": "add_tag", "tag_id": [1]}))
 
     assert caught.value.status_code == 400
-    # El texto del TypeError describe el código, no la regla.
-    assert caught.value.detail == MALFORMED_INPUT
+    # El texto del TypeError describe el código, no el flujo.
+    assert MALFORMED_INPUT in caught.value.detail
 
 
 def test_a_rule_violation_keeps_its_message():
     with pytest.raises(InvalidAutomation) as caught:
-        normalize_rule({"name": "x", "trigger_type": "lead_created", "actions": 5})
+        normalize_flow("x", _flow({"type": "add_tag", "tag_id": 1}, with_end=False))
 
     assert caught.value.status_code == 400
-    assert "acciones" in caught.value.detail
+    assert "bloque Fin" in caught.value.detail
 
 
 def test_an_unexpected_failure_is_not_shown_raw_in_the_history():

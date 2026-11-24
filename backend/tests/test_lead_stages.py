@@ -157,7 +157,7 @@ def _validate_against_stages(monkeypatch, rows):
     sobre una sesión que solo conoce las etapas del negocio."""
     from contextlib import asynccontextmanager
 
-    from app.modules.automations.application.validation import validate_automation_rule
+    from app.modules.automations.application.validation import validate_visual_flow
     from app.modules.automations.infrastructure import sql_references
     from app.modules.leads import stage_queries
 
@@ -170,7 +170,28 @@ def _validate_against_stages(monkeypatch, rows):
     checker = sql_references.SqlReferenceChecker()
 
     async def validate(values):
-        return await validate_automation_rule(values, references=checker)
+        # Un flujo mínimo: disparador, las acciones en fila y un Fin.
+        ids = ["t", *(f"a{i}" for i in range(len(values["actions"]))), "e"]
+        nodes = [
+            {"id": "t", "type": "trigger", "position": {"x": 0, "y": 0}, "data": {"trigger_type": values["trigger_type"]}},
+            *(
+                {"id": f"a{i}", "type": "action", "position": {"x": 0, "y": 0}, "data": {"action": action}}
+                for i, action in enumerate(values["actions"])
+            ),
+            {"id": "e", "type": "end", "position": {"x": 0, "y": 0}, "data": {"label": "Fin"}},
+        ]
+        edges = [
+            {"id": str(i), "source": source, "target": target, "source_handle": "next"}
+            for i, (source, target) in enumerate(zip(ids, ids[1:]))
+        ]
+        flow = await validate_visual_flow(
+            values["name"], {"conditions": values.get("conditions", {}), "nodes": nodes, "edges": edges},
+            references=checker, rules=SimpleNamespace(),
+        )
+        return {
+            "conditions": flow["conditions"],
+            "actions": [n["data"]["action"] for n in flow["flow_definition"]["nodes"] if n["type"] == "action"],
+        }
 
     return validate
 

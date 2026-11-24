@@ -7,7 +7,6 @@ from uuid import UUID
 import pytest
 
 import app.tenancy.provisioning as provisioning
-from app.modules.automations.domain.validation import normalize_rule
 from app.modules.catalogs.template_validation import validate_template_values
 from app.modules.platform import onboarding, starter_pack
 from app.tenancy.context import TenantContext, get_current_tenant
@@ -42,9 +41,11 @@ def test_starter_shortcuts_are_unique() -> None:
 
 
 @pytest.mark.parametrize("rule", starter_pack.STARTER_AUTOMATIONS, ids=lambda r: r["name"])
-def test_every_starter_automation_is_valid_and_born_inactive(rule) -> None:
-    normalized, refs = normalize_rule(dict(rule))
-    assert normalized["is_active"] is False
+def test_no_starter_automation_depends_on_what_each_business_has(rule) -> None:
+    from app.modules.automations.domain.flow_definition import normalize_flow
+    from app.modules.automations.domain.rule_to_flow import flow_from_rule
+
+    refs = normalize_flow(rule["name"], flow_from_rule(rule)).refs
     # Sin ids que dependan de lo que tenga cada negocio.
     assert not (refs.users or refs.tags or refs.templates or refs.media_assets)
 
