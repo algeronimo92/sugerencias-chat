@@ -1,5 +1,4 @@
 import { flow } from '../../fixtures/crm'
-import { expectFullyOnScreen } from '../../fixtures/screen'
 import { expect, test } from '../../fixtures/test'
 
 // Un flujo que solo corre en el horario de atención, en un negocio que
@@ -53,15 +52,18 @@ test('la condición de horario muestra cuál es y deja cambiarlo sin salir del e
 
   await page.getByRole('button', { name: 'Cambiar horario' }).click()
   const dialog = page.getByRole('dialog', { name: 'Horario de atención' })
-  // En el celular el diálogo ocupa casi toda la pantalla y entra con una
-  // animación: se espera a que el botón esté a la vista antes de medirlo.
+  // En el celular el diálogo puede ser más alto que la pantalla (depende de
+  // la tipografía) y su cuerpo se desplaza. Se reintenta el desplazamiento
+  // porque el primero puede caer mientras el diálogo todavía se acomoda.
   const save = dialog.getByRole('button', { name: 'Guardar horario' })
-  await save.scrollIntoViewIfNeeded()
-  await expect(async () => { await expectFullyOnScreen(save) }).toPass({ timeout: 5_000 })
+  await expect(async () => {
+    await save.scrollIntoViewIfNeeded()
+    await expect(save).toBeInViewport({ ratio: 1, timeout: 500 })
+  }).toPass({ timeout: 10_000 })
   await expect(dialog).toContainText(`Lo usa 1 automatización: «${SEGUIMIENTO.name}».`)
   await dialog.getByRole('checkbox', { name: 'Sábado' }).click()
   await page.screenshot({ path: `test-results/horario-editor-dialogo-${info.project.name}.png` })
-  await dialog.getByRole('button', { name: 'Guardar horario' }).click()
+  await save.click()
   await expect(dialog.getByRole('status')).toContainText('Horario guardado')
   await dialog.getByRole('button', { name: 'Cerrar' }).click()
 
