@@ -142,6 +142,58 @@ describe('chats_updated', () => {
     expect(result.current.pathname).toBe(`/chat/${CHAT}`)
   })
 
+  describe('con una búsqueda de mensajes abierta', () => {
+    const PRECIO: QueryKey = ['chats', 'search', 'messages', 'precio', {}]
+    const BOTOX: QueryKey = ['chats', 'search', 'messages', 'botox', {}]
+    const CONTACTS: QueryKey = ['chats', 'search', 'contacts', 'botox', {}]
+
+    beforeEach(() => {
+      for (const key of [PRECIO, BOTOX, CONTACTS]) queryClient.setQueryData(key, [])
+    })
+
+    function refreshed(key: QueryKey) {
+      return queryClient.getQueryState(key)?.isInvalidated === true
+    }
+
+    it('un mensaje nuevo solo repite la búsqueda cuyo texto contiene', () => {
+      // Cada búsqueda recorre todos los mensajes: repetirla por cada WhatsApp
+      // que entra a cualquier chat saturó la base (2026-11-24).
+      connect()
+      emit(inbound)
+      expect(refreshed(PRECIO)).toBe(true)
+      expect(refreshed(BOTOX)).toBe(false)
+      // Los contactos son baratos y sí dependen de cualquier cambio del lead.
+      expect(refreshed(CONTACTS)).toBe(true)
+    })
+
+    it('no distingue tildes ni mayúsculas, como el servidor', () => {
+      const key: QueryKey = ['chats', 'search', 'messages', 'PRÉCIO hola', {}]
+      queryClient.setQueryData(key, [])
+      connect()
+      emit(inbound)
+      expect(refreshed(key)).toBe(true)
+    })
+
+    it('un mensaje editado o eliminado la repite: un resultado pudo cambiar', () => {
+      connect()
+      emit({ type: 'chats_updated', chat_id: CHAT, reason: 'message_changed', message_statuses: [] })
+      expect(refreshed(BOTOX)).toBe(true)
+    })
+
+    it('un cambio que no es de mensajes no la repite', () => {
+      connect()
+      emit({ type: 'chats_updated', chat_id: CHAT, reason: 'stage_changed', message_statuses: [] })
+      expect(refreshed(BOTOX)).toBe(false)
+      expect(refreshed(CONTACTS)).toBe(true)
+    })
+
+    it('un aviso que no dice qué cambió la repite', () => {
+      connect()
+      emit({ type: 'chats_updated', message_statuses: [] })
+      expect(refreshed(BOTOX)).toBe(true)
+    })
+  })
+
   it('el mismo mensaje no avisa dos veces', () => {
     connect()
     emit(inbound)

@@ -7,11 +7,11 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
 import { invalidate, type RealtimeModule } from '../../realtime/bus'
-import type { MessageStatusUpdate } from '../../realtime/socketEvents'
+import type { LatestMessage, MessageStatusUpdate, SocketEventOf } from '../../realtime/socketEvents'
 import { messageKeys, noteKeys, scheduledKeys } from './keys'
 import type { MessagePage } from './types'
-import { parseContent } from '../whatsapp/public/message'
-import { leadKeys } from '../leads/public/keys'
+import { highlightSegments, parseContent, searchTerms } from '../whatsapp/public/message'
+import { leadKeys, messageSearchTerm } from '../leads/public/keys'
 import { whatsappKeys } from '../platform/public/keys'
 
 function applyMessageStatuses(queryClient: QueryClient, chatId: string, updates: MessageStatusUpdate[]) {
@@ -37,6 +37,29 @@ function applyMessageStatuses(queryClient: QueryClient, chatId: string, updates:
   })
 }
 
+function messageText(latest: LatestMessage): string {
+  const content = parseContent({ content: latest.content, message_type: latest.message_type, message_subtype: latest.message_subtype })
+  return content.text || ''
+}
+
+/**
+ * ¿Este aviso puede cambiar lo que muestra una búsqueda de mensajes abierta?
+ *
+ * La búsqueda recorre el historial entero del negocio. Refrescarla con cada
+ * aviso la repetía por cada WhatsApp que entraba a cualquier chat, y las
+ * repeticiones se apilaban: el 2026-11-24 una sola búsqueda abierta dejó la
+ * base al 150 % de CPU y el backend sin responder al chequeo de salud. Ahora
+ * solo se repite si el mensaje nuevo contiene lo buscado, si un mensaje se
+ * editó o eliminó, o si el aviso no dice qué cambió.
+ */
+function affectsMessageSearch(event: SocketEventOf<'chats_updated'>, search: string): boolean {
+  if (event.reason === 'message_changed') return true
+  const latest = event.latest_message
+  if (!latest) return !event.chat_id && !event.reason
+  const text = messageText(latest)
+  return searchTerms(search).every(term => highlightSegments(text, term).some(segment => segment.match))
+}
+
 export function createChatsRealtime(): RealtimeModule {
   // El mismo mensaje puede llegar en más de un aviso: se avisa una sola vez.
   let lastNotifiedMessageId: string | null = null
@@ -58,7 +81,16 @@ export function createChatsRealtime(): RealtimeModule {
         // parchea el estado en la caché sin pedir nada.
         const isStatusOnly = reason === 'message_status'
 
-        if (!isStatusOnly) invalidate(queryClient, leadKeys.all, leadKeys.unreadCount)
+        if (!isStatusOnly) {
+          void queryClient.invalidateQueries({
+            queryKey: leadKeys.all,
+            predicate: query => {
+              const search = messageSearchTerm(query.queryKey)
+              return search === null || affectsMessageSearch(event, search)
+            },
+          })
+          invalidate(queryClient, leadKeys.unreadCount)
+        }
         if (changedChatId) {
           applyMessageStatuses(queryClient, changedChatId, event.message_statuses)
           // Un envío fallido puede ser el primer síntoma de que WhatsApp se
