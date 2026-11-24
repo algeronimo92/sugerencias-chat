@@ -133,7 +133,9 @@ async def test_initial_filter_folds_accents_and_keeps_n_tilde_apart(tenant):
         assert await names("Ñ") == {"Ñique"}
         # Sin nombre (solo número) o con algo que no es letra: "#".
         assert await names("#") == {"1er cliente", None}
-        assert (await list_contacts(initial="A", search="ang"))["total"] == 1
+        # Se suma a la búsqueda. "gel" y no "ang": la búsqueda no pliega tildes,
+        # así que "ang" no encuentra a "Ángela".
+        assert (await list_contacts(initial="A", search="gel"))["total"] == 1
 
 
 def test_csv_upload_round_trip_is_base64():
