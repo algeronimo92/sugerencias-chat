@@ -70,11 +70,6 @@ export async function startManualFlow({ ruleId, chatId }: { ruleId: number; chat
   return toAutomationExecution(data)
 }
 
-export async function createAutomation(input: AutomationRuleInput): Promise<AutomationRule> {
-  const { data } = await client.post<ApiResponse<'/api/automations', 'post'>>('/api/automations', input)
-  return toAutomationRule(data)
-}
-
 export async function updateAutomation({ id, ...values }: Partial<AutomationRuleInput> & { id: number }): Promise<AutomationRule> {
   const { data } = await client.patch<ApiResponse<'/api/automations/{rule_id}', 'patch'>>(`/api/automations/${id}`, values)
   return toAutomationRule(data)
