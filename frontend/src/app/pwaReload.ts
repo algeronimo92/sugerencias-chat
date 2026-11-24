@@ -52,3 +52,47 @@ export function reloadWhenActivated(registration: ServiceWorkerRegistration | nu
   }
   worker.addEventListener('statechange', onStateChange)
 }
+
+/** Cuánto se espera a que baje una versión más nueva antes de aplicar la que ya hay. */
+export const LATEST_CHECK_TIMEOUT_MS = 10_000
+
+/**
+ * Pregunta al servidor si hay un build más nuevo que el que espera y, si lo
+ * hay, espera a que termine de bajar: así "Actualizar" salta directo a la
+ * última versión y no a la que se detectó antes.
+ *
+ * Sin esto, con dos deploys seguidos (#290 y #291, 2026-11-24, a un minuto
+ * de distancia) la pestaña aplicaba el primero, porque el segundo caía dentro
+ * del tope de 5 minutos entre búsquedas, y al recargar volvía a pedir
+ * actualizar. El worker nuevo reemplaza al que esperaba, y el plugin le manda
+ * `SKIP_WAITING` a `registration.waiting`: el más nuevo.
+ *
+ * Nunca falla ni bloquea: sin red o pasado el tope se aplica lo que ya había.
+ */
+export function settleLatestWorker(
+  registration: ServiceWorkerRegistration | null,
+  timeoutMs: number = LATEST_CHECK_TIMEOUT_MS,
+): Promise<void> {
+  if (!registration) return Promise.resolve()
+  return new Promise(resolve => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeoutId)
+      resolve()
+    }
+    const timeoutId = window.setTimeout(finish, timeoutMs)
+    registration.update().then(() => {
+      const installing = registration.installing
+      if (!installing) return finish()
+      const onStateChange = () => {
+        if (installing.state === 'installing') return
+        installing.removeEventListener('statechange', onStateChange)
+        finish()
+      }
+      installing.addEventListener('statechange', onStateChange)
+      onStateChange()
+    }, finish)
+  })
+}
