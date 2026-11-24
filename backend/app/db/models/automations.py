@@ -1,7 +1,7 @@
 """Modelos ORM del dominio automations."""
 
 from datetime import datetime
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.modules.automations.ports.types import AutomationBuilderMode, AutomationExecutionStatus
@@ -209,6 +209,9 @@ class AutomationExecutionMessage(Base):
     )
     state: Mapped[str] = mapped_column(Text, default="pending", server_default="pending")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Cuándo se encoló. `updated_at` cambia con cada acuse, así que no sirve
+    # para contar cuántos mensajes recibió un cliente en las últimas 24 horas.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         CheckConstraint(

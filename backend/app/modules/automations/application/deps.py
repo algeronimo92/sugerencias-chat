@@ -28,7 +28,16 @@ from app.modules.leads.public import Actor, LeadNotFound, TagNotAvailable
 from app.modules.media.ports.media_library_service import get_media_asset
 from app.modules.notifications.ports.service import create_system_notification
 from app.modules.platform.ports.business_hours import BusinessHours, business_hours
+from app.modules.platform.ports.settings_service import get_effective
 from app.modules.tasks.ports.repository import create_task
+
+
+DAILY_MESSAGE_CAP_KEY = "automation_daily_message_cap"
+
+
+async def daily_message_cap() -> int | None:
+    value = (await get_effective(DAILY_MESSAGE_CAP_KEY)).strip()
+    return int(value) if value.isdigit() and int(value) > 0 else None
 
 
 def _utc_now() -> datetime:
@@ -96,6 +105,8 @@ class AutomationDeps:
     assign_tag: Callable[..., Awaitable[bool]] = assign_tag
     remove_tag: Callable[..., Awaitable[bool]] = remove_tag
     get_customer_service_window: Callable[[str], Awaitable[dict | None]] = get_customer_service_window
+    # Tope de mensajes automáticos por cliente en 24 horas; None es sin tope.
+    daily_message_cap: Callable[[], Awaitable[int | None]] = daily_message_cap
     # El horario de atención del negocio, en su zona horaria. Era una
     # constante del motor (lunes a viernes 08:00–18:00, Lima).
     business_hours: Callable[[], Awaitable[BusinessHours]] = business_hours

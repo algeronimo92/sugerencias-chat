@@ -69,6 +69,10 @@ class ExecutionStore(Protocol):
         """Anota que la ejecución encoló esos mensajes, todavía sin enviar.
         Repetir un mensaje ya anotado no cambia nada."""
 
+    async def messages_queued_for_lead_since(self, lead_id: str, since: datetime) -> int:
+        """Cuántos mensajes le encolaron las automatizaciones a ese lead desde
+        ``since``, hayan salido o no."""
+
     async def record_message_state(self, message_id: int, state: str, now: datetime) -> int | None:
         """Lo último que se supo de un mensaje. Solo avanza (ver
         ``domain.delivery.advance``) y actualiza el resumen de su ejecución.

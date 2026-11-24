@@ -208,6 +208,9 @@ def deps(
         recorder.reactions.append((chat_id, wa_message_id, emoji, from_me))
         return {"id": 42, "wa_message_id": wa_message_id}
 
+    async def no_cap():
+        return None
+
     async def default_business_hours():
         # El horario de un negocio que no configuró nada.
         return BusinessHours(timezone=ZoneInfo("America/Lima"), days=dict(DEFAULT_DAYS))
@@ -216,6 +219,7 @@ def deps(
         executions=executions,
         now=lambda: frozen_now,
         business_hours=default_business_hours,
+        daily_message_cap=no_cap,
         publish=publish,
         fetch_chat=nothing,
         latest_message=nothing,
