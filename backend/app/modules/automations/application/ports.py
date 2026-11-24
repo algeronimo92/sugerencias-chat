@@ -35,6 +35,13 @@ class ExecutionStore(Protocol):
 
     async def completed_for_lead_since(self, rule_id: int, lead_id: str, since: datetime) -> bool: ...
 
+    async def started_for_lead_since(
+        self, rule_id: int, lead_id: str, since: datetime, *, exclude_event_key: str,
+    ) -> str | None:
+        """El origen (``start_source``) de la ejecución más reciente de ese
+        flujo sobre ese lead creada desde ``since`` que envió o va a enviar
+        algo: ni fallida, ni cancelada, ni omitida. None si no hay."""
+
     async def flow_definition(self, rule_id: int, version: int) -> dict | None: ...
 
     async def schedule_child(

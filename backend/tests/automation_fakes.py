@@ -80,6 +80,20 @@ class InMemoryExecutionStore:
     async def completed_for_lead_since(self, rule_id, lead_id, since):
         return bool(self._completed(rule_id, since, lead_id))
 
+    async def started_for_lead_since(self, rule_id, lead_id, since, *, exclude_event_key):
+        recent = [
+            execution for execution in self.executions.values()
+            if execution.rule_id == rule_id and execution.lead_id == lead_id
+            and getattr(execution, "created_at", None) is not None and execution.created_at >= since
+            and getattr(execution, "event_key", None) != exclude_event_key
+            and getattr(execution, "status", None) not in {
+                AutomationExecutionStatus.FAILED, AutomationExecutionStatus.CANCELLED,
+                AutomationExecutionStatus.SKIPPED,
+            }
+        ]
+        recent.sort(key=lambda execution: execution.created_at)
+        return getattr(recent[-1], "start_source", "system") if recent else None
+
     async def flow_definition(self, rule_id, version):
         return self.flow_versions.get((rule_id, version))
 

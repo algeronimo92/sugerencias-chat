@@ -311,6 +311,30 @@ async def test_a_child_flow_is_scheduled_once_per_parent_node(tenant):
         assert (await _row(first)).flow_state == {"flow_version": 3, "current_node_id": None, "path": []}
 
 
+async def test_a_recent_start_of_the_same_flow_for_the_lead_is_found(tenant):
+    with tenant_context(tenant):
+        lead_id = await _lead()
+        store = SqlExecutionStore()
+        rule_id = await _rule()
+        since = NOW - timedelta(minutes=30)
+
+        async def found():
+            return await store.started_for_lead_since(rule_id, lead_id, since, exclude_event_key="flow:1:n")
+
+        assert await found() is None
+        # Lo que no envió nada, lo de otro lead, lo viejo y la propia hija no cuentan.
+        await _execution(rule_id, lead_id, status=AutomationExecutionStatus.FAILED, start_source="manual")
+        await _execution(rule_id, lead_id, status=AutomationExecutionStatus.CANCELLED, start_source="manual")
+        await _execution(rule_id, lead_id, status=AutomationExecutionStatus.SKIPPED, start_source="manual")
+        await _execution(rule_id, await _lead(), start_source="manual")
+        await _execution(rule_id, lead_id, start_source="manual", created_at=NOW - timedelta(minutes=31))
+        await _execution(rule_id, lead_id, start_source="flow", event_key="flow:1:n")
+        assert await found() is None
+
+        await _execution(rule_id, lead_id, status=AutomationExecutionStatus.COMPLETED, start_source="manual")
+        assert await found() == "manual"
+
+
 async def test_round_robin_turns_are_handed_out_in_order(tenant):
     with tenant_context(tenant):
         rule_id = await _rule()

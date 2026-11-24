@@ -1,12 +1,13 @@
 """Invocar un flujo desde otro: la validación al publicar y la ejecución
 hija que agenda el motor."""
 
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
 
 from app.modules.automations.ports.types import AutomationTrigger, FlowNodeType
-from app.modules.automations.application.flow_nodes import start_invoked_flow
+from app.modules.automations.application.flow_nodes import already_started_for_lead, start_invoked_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import check_invoked_flows, invoked_flow_ids
 from tests.automation_fakes import rule as stored_rule
@@ -109,3 +110,57 @@ class TestStartInvokedFlow:
         )
         with pytest.raises(ValueError, match="sin fin"):
             await start_invoked_flow(parent, 1, "call-1", deps)
+
+
+LEAD = "4316bc30-f78c-57a2-8f98-bff9087678d6"
+
+
+def _parent():
+    return SimpleNamespace(id=100, rule_id=1, lead_id=LEAD, event_payload={}, flow_state={}, started_by_user_id=None)
+
+
+def _earlier(deps, **overrides):
+    return SimpleNamespace(**{
+        "id": 50, "rule_id": 9, "lead_id": LEAD, "event_key": "manual:abc", "status": "running",
+        "start_source": "manual", "created_at": deps.now() - timedelta(seconds=10), **overrides,
+    })
+
+
+class TestInvokedFlowIsNotRepeated:
+    """Incidente de noviembre de 2026: la vendedora lanzaba la secuencia en los
+    15 s que «Bienvenida» espera y el cliente la recibía dos veces."""
+
+    async def test_skips_the_flow_the_team_just_launched_from_the_chat(self, deps, executions):
+        executions.rules[9] = _target()
+        executions.executions[50] = _earlier(deps)
+
+        reason = await already_started_for_lead(_parent(), 9, "call-1", deps)
+
+        assert reason == "No se repitió «Hollywood Peel»: tu equipo ya lo lanzó desde el chat hace menos de 30 minutos"
+
+    async def test_says_so_when_another_flow_started_it(self, deps, executions):
+        executions.rules[9] = _target()
+        executions.executions[50] = _earlier(deps, start_source="flow", event_key="flow:7:n")
+
+        reason = await already_started_for_lead(_parent(), 9, "call-1", deps)
+
+        assert reason == "No se repitió «Hollywood Peel»: ya se le inició a este cliente hace menos de 30 minutos"
+
+    @pytest.mark.parametrize("overrides", [
+        {"created_at_minutes_ago": 31},
+        {"status": "failed"},
+        {"status": "cancelled"},
+        {"status": "skipped"},
+        {"lead_id": "otro-lead"},
+        {"rule_id": 8},
+        # El reintento del mismo bloque debe recuperar a su hija, no frenarse con ella.
+        {"event_key": "flow:100:call-1", "start_source": "flow"},
+    ])
+    async def test_starts_it_when_nothing_was_sent_recently(self, deps, executions, overrides):
+        executions.rules[9] = _target()
+        minutes = overrides.pop("created_at_minutes_ago", None)
+        if minutes:
+            overrides["created_at"] = deps.now() - timedelta(minutes=minutes)
+        executions.executions[50] = _earlier(deps, **overrides)
+
+        assert await already_started_for_lead(_parent(), 9, "call-1", deps) is None

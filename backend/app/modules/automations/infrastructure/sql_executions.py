@@ -209,6 +209,24 @@ class SqlExecutionStore:
             )
         return recent is not None
 
+    async def started_for_lead_since(
+        self, rule_id: int, lead_id: str, since: datetime, *, exclude_event_key: str,
+    ) -> str | None:
+        async with session_scope() as session:
+            return await session.scalar(
+                select(AutomationExecution.start_source).where(
+                    AutomationExecution.rule_id == rule_id,
+                    AutomationExecution.lead_id == lead_id,
+                    AutomationExecution.created_at >= since,
+                    AutomationExecution.event_key != exclude_event_key,
+                    AutomationExecution.status.notin_([
+                        AutomationExecutionStatus.FAILED,
+                        AutomationExecutionStatus.CANCELLED,
+                        AutomationExecutionStatus.SKIPPED,
+                    ]),
+                ).order_by(AutomationExecution.created_at.desc()).limit(1)
+            )
+
     async def flow_definition(self, rule_id: int, version: int) -> dict | None:
         async with session_scope() as session:
             return await session.scalar(select(AutomationFlowVersion.definition).where(
