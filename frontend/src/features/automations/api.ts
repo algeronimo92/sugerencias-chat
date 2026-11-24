@@ -1,6 +1,7 @@
 import type { AutomationExecutionFilters } from './types'
 import client from "../../shared/http/client";
 import { jsonAs, type ApiResponse } from '../../shared/http/contract'
+import { asPublishedDefinition } from './domain/publishedDefinition'
 import type { AutomationAction, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowSimulationStep, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
 
 /** De lo que entrega el contrato a la regla que usan las pantallas. */
@@ -11,7 +12,7 @@ export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
     conditions: jsonAs<AutomationConditions>(rule.conditions),
     actions: rule.actions.map(action => jsonAs<AutomationAction>(action)),
     flow_definition: jsonAs<AutomationRule['flow_definition']>(rule.flow_definition),
-    published_flow_definition: rule.published_flow_definition === null ? null : jsonAs<AutomationFlowDefinition>(rule.published_flow_definition),
+    published_flow_definition: asPublishedDefinition(rule.published_flow_definition),
   }
 }
 
