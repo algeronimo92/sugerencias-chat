@@ -6,7 +6,7 @@ const NOW = new Date('2026-11-23T15:00:00Z').getTime()
 const daysAgo = (days: number) => new Date(NOW - days * 86_400_000).toISOString()
 
 function execution(overrides: Partial<AutomationExecution>): AutomationExecution {
-  return { id: 1, status: 'failed', error: null, error_code: null, rule_deleted: false, paused_at: null, ...overrides } as AutomationExecution
+  return { id: 1, status: 'failed', error: null, error_code: null, rule_deleted: false, paused_at: null, attention_dismissed_at: null, ...overrides } as AutomationExecution
 }
 
 describe('groupAttention', () => {
@@ -45,6 +45,9 @@ describe('groupAttention', () => {
       execution({ status: 'scheduled' }),
       // Sin automatización no hay nada que reintentar.
       execution({ status: 'failed', rule_deleted: true }),
+      // Alguien ya la vio y la descartó.
+      execution({ status: 'failed', attention_dismissed_at: '2026-11-23T10:00:00Z' }),
+      execution({ status: 'paused', paused_at: daysAgo(30), attention_dismissed_at: '2026-11-23T10:00:00Z' }),
     ], NOW)).toEqual([])
   })
 })

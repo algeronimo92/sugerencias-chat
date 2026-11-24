@@ -137,3 +137,30 @@ async def test_an_execution_of_a_paused_rule_ends_cancelled_not_skipped(deps, ex
 
     assert executions.executions[1].status == AutomationExecutionStatus.CANCELLED
     assert executions.executions[1].error == "La regla fue desactivada"
+
+
+async def test_dismissing_takes_a_failure_off_the_attention_list_without_touching_it(in_memory_automations):
+    """«Por atender» no se vaciaba nunca: un fallo que alguien ya vio y decidió
+    dejar así seguía pidiendo una decisión."""
+    from app.modules.automations.application.management import dismiss_automation_execution
+
+    store = in_memory_automations.executions
+    store.add(stored_execution(id=5, status=AutomationExecutionStatus.FAILED))
+
+    assert await dismiss_automation_execution(5) is not None
+
+    assert store.executions[5].status == AutomationExecutionStatus.FAILED
+    assert store.executions[5].attention_dismissed_at is not None
+    assert in_memory_automations.of(AutomationsChanged) == [AutomationsChanged()]
+
+
+@pytest.mark.parametrize("status", [
+    AutomationExecutionStatus.COMPLETED, AutomationExecutionStatus.SCHEDULED, AutomationExecutionStatus.CANCELLED,
+])
+async def test_only_failures_and_pauses_can_be_dismissed(in_memory_automations, status):
+    from app.modules.automations.application.management import dismiss_automation_execution
+
+    in_memory_automations.executions.add(stored_execution(id=5, status=status))
+
+    assert await dismiss_automation_execution(5) is None
+    assert in_memory_automations.published == []

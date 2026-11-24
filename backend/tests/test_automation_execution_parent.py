@@ -58,7 +58,7 @@ def _row(**overrides) -> dict:
         "scheduled_for": None, "paused_at": None, "pause_scope": None, "started_at": None,
         "finished_at": None, "action_results": [], "flow_state": {}, "error": None, "error_code": None,
         "created_at": None, "start_source": "flow", "started_by_user_id": None, "started_by_name": None,
-        "window_override_at": None, "window_override_by_name": None,
+        "window_override_at": None, "window_override_by_name": None, "attention_dismissed_at": None,
     }
     return {**base, **overrides}
 

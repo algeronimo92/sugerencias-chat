@@ -59,12 +59,13 @@ test('«Por atender» junta lo que falló por causa y lo arregla desde la fila',
   api
     .on('get', '/api/automations/executions', byStatus(rows))
     .on('post', '/api/automations/executions/{execution_id}/retry', { ...rows[1], status: 'scheduled' })
+    .on('post', '/api/automations/executions/{execution_id}/dismiss', { ...rows[2], attention_dismissed_at: new Date().toISOString() })
 
   await page.goto('/automations')
   const tab = page.getByRole('navigation', { name: 'Secciones de automatizaciones' }).getByRole('button', { name: /Por atender/ })
-  // El contador avisa desde cualquier sección.
+  // Con pendientes se entra directo acá: es lo único que se degrada en silencio.
+  await expect(tab).toHaveAttribute('aria-current', 'page')
   await expect(tab).toContainText('4')
-  await tab.click()
 
   const failed = page.getByRole('region', { name: /Se cortaron por un error/ })
   await expect(page.getByRole('region', { name: /Frenadas por la ventana de 24 horas/ })).toContainText('Valeria Quispe')
@@ -79,6 +80,13 @@ test('«Por atender» junta lo que falló por causa y lo arregla desde la fila',
   await expect(page.getByText('Ejecución reprogramada')).toBeVisible()
   expect(api.calls('post', '/api/automations/executions/{execution_id}/retry').map(call => call.path))
     .toEqual(['/api/automations/executions/4002/retry'])
+
+  // Un fallo con el que no hay nada que hacer se descarta: sin eso la lista
+  // no se vaciaba nunca.
+  await page.getByRole('button', { name: 'Descartar el aviso de Lucía Pérez' }).click()
+  await expect(page.getByText('Aviso descartado')).toBeVisible()
+  expect(api.calls('post', '/api/automations/executions/{execution_id}/dismiss').map(call => call.path))
+    .toEqual(['/api/automations/executions/4003/dismiss'])
 })
 
 test('sin nada pendiente, «Por atender» lo dice en vez de quedar en blanco', async ({ page }) => {

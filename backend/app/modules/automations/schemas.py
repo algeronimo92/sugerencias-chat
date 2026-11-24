@@ -91,6 +91,8 @@ class AutomationExecutionItem(BaseModel):
     # Un admin autorizó a esta ejecución a enviar con la ventana de 24 h
     # cerrada. None cuando corre con la regla de siempre.
     window_override_at: str | None = None
+    # Descartada de «Por atender»: ya no pide una decisión.
+    attention_dismissed_at: str | None = None
     window_override_by_name: str | None = None
 
 

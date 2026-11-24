@@ -74,6 +74,7 @@ def _execution_dict(row) -> dict:
         "started_by_user_id": row["started_by_user_id"],
         "started_by_name": row["started_by_name"],
         "window_override_at": iso_utc(row["window_override_at"]),
+        "attention_dismissed_at": iso_utc(row["attention_dismissed_at"]),
         "window_override_by_name": row["window_override_by_name"],
     }
 
@@ -257,6 +258,7 @@ async def list_automation_executions(
         AutomationExecution.started_by_user_id,
         User.name.label("started_by_name"),
         AutomationExecution.window_override_at,
+        AutomationExecution.attention_dismissed_at,
         override_user.name.label("window_override_by_name"),
     ).join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id).outerjoin(
         Lead, Lead.id == AutomationExecution.lead_id

@@ -100,6 +100,12 @@ export async function fetchAutomationExecution(executionId: number | null): Prom
   return toAutomationExecution(data)
 }
 
+/** Saca una ejecución de «Por atender» sin cambiarle el estado. */
+export async function dismissExecution(id: number): Promise<AutomationExecution> {
+  const { data } = await client.post<ApiResponse<'/api/automations/executions/{execution_id}/dismiss', 'post'>>(`/api/automations/executions/${id}/dismiss`)
+  return toAutomationExecution(data)
+}
+
 export async function cancelExecution(id: number): Promise<AutomationExecution> {
   const { data } = await client.post<ApiResponse<'/api/automations/executions/{execution_id}/cancel', 'post'>>(`/api/automations/executions/${id}/cancel`)
   return toAutomationExecution(data)

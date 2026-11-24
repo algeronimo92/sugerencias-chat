@@ -148,6 +148,12 @@ class InMemoryExecutionStore:
             status=AutomationExecutionStatus.SCHEDULED, paused_at=None, pause_scope=None,
         )
 
+    async def dismiss(self, execution_id, now):
+        return self._transition(
+            execution_id, {AutomationExecutionStatus.FAILED, AutomationExecutionStatus.PAUSED},
+            attention_dismissed_at=now,
+        )
+
     async def cancel(self, execution_id, now):
         return self._transition(
             execution_id,

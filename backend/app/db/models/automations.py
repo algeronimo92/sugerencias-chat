@@ -133,6 +133,11 @@ class AutomationExecution(Base):
     # próxima ejecución de la misma regla vuelve a respetar la ventana.
     window_override_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     window_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Alguien la vio en «Por atender» y decidió que no hay nada que hacer.
+    # Sin esto esa lista no se vaciaba nunca y no se podía entrar ahí por
+    # defecto. Se limpia cuando la ejecución vuelve a moverse (reintento,
+    # pausa): si vuelve a fallar, vuelve a pedir atención.
+    attention_dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("pause_scope IN ('lead', 'execution')", name="ck_automation_executions_pause_scope"),

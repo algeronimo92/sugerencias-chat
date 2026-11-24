@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useCancelExecution, useResumeExecution, useRetryExecution } from '../queries'
+import { useCancelExecution, useDismissExecution, useResumeExecution, useRetryExecution } from '../queries'
 import type { AutomationExecution } from '../types'
 import { ATTENTION_WINDOW_DAYS, attentionCount, type AttentionCause, type AttentionGroup } from '../utils/attention'
 import { formatExecutionDate, readableExecutionError } from '../utils/automationExecutions'
@@ -16,6 +16,7 @@ const CAUSE_ICON: Record<AttentionCause, LucideIcon> = {
 }
 
 const ACTION = 'inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-line-control bg-surface px-3 text-xs font-semibold text-fg outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-50'
+const QUIET_ACTION = 'inline-flex min-h-9 items-center rounded-lg px-2.5 text-xs font-semibold text-fg-muted outline-none transition-colors hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-50'
 const PRIMARY_ACTION = 'inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-accent-fill px-3 text-xs font-semibold text-on-accent outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--accent-fill),#000_8%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50'
 
 interface Props {
@@ -37,7 +38,8 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
   const retry = useRetryExecution()
   const resume = useResumeExecution()
   const cancel = useCancelExecution()
-  const busy = retry.isPending || resume.isPending || cancel.isPending
+  const dismiss = useDismissExecution()
+  const busy = retry.isPending || resume.isPending || cancel.isPending || dismiss.isPending
   const fail = (error: Error) => toast.error(extractErrorMessage(error))
 
   if (isLoading) {
@@ -137,7 +139,16 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
                         : `${formatExecutionDate(execution.finished_at ?? execution.created_at)}${group.cause === 'failed' && execution.error ? ` · ${readableExecutionError(execution.error)}` : ''}`}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">{actions(group.cause, execution)}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {actions(group.cause, execution)}
+                    {/* Sin esto la lista no se vaciaba nunca: hay fallos con los
+                        que no hay nada que hacer (el cliente ya fue atendido a mano). */}
+                    <button
+                      type="button" disabled={busy} className={QUIET_ACTION}
+                      aria-label={`Descartar el aviso de ${execution.lead_name ?? 'este lead'}`}
+                      onClick={() => dismiss.mutate(execution.id, { onSuccess: () => toast.success('Aviso descartado'), onError: fail })}
+                    >Descartar</button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -145,7 +156,7 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
         )
       })}
       <p className="text-xs text-fg-muted">
-        Se muestran los fallos de los últimos {ATTENTION_WINDOW_DAYS} días. Lo anterior está en{' '}
+        Se muestran los fallos de los últimos {ATTENTION_WINDOW_DAYS} días. «Descartar» quita el aviso sin tocar la ejecución; lo anterior y lo descartado están en{' '}
         <button type="button" onClick={onSeeActivity} className="font-semibold text-accent-strong underline">Actividad</button>.
       </p>
     </div>
