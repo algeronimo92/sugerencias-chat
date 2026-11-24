@@ -17,6 +17,7 @@ export async function fetchTasksPage(query: TaskPageQuery): Promise<TaskPage> {
   return (await client.get<ApiResponse<'/api/tasks/page', 'get'>>('/api/tasks/page', {
       params: {
         day_end: query.dayEnd,
+        status: query.status,
         search: query.search || undefined,
         bucket: query.bucket,
         assigned_user_id: query.assignedUserId,

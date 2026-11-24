@@ -1,9 +1,10 @@
 import type { LucideIcon } from 'lucide-react'
-import { AlertTriangle, Bell, CalendarCheck, CalendarClock, CalendarDays, FileText, ListTodo, MessageCircle, Phone } from 'lucide-react'
+import { AlertTriangle, Ban, Bell, CalendarCheck, CalendarClock, CalendarDays, CheckCheck, FileText, ListTodo, MessageCircle, Phone } from 'lucide-react'
 import type { StatTone } from '../../../shared/ui/tones'
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 import { TASK_TYPE_OPTIONS, TaskTypeValue } from '../domain/taskCatalog'
-import type { LeadTask, TaskType } from '../types'
+import { TaskStatusValue } from '../domain/taskCatalog'
+import type { LeadTask, TaskStatusFilter, TaskType } from '../types'
 
 /* ---------------------------------------------------------------------------
  * Vocabulario de la pantalla
@@ -20,6 +21,16 @@ import type { LeadTask, TaskType } from '../types'
  * en memoria: en un negocio con más de 500 pendientes las demás no se veían.
  * Aquí solo se agrupa por día la página que llegó.
  * ------------------------------------------------------------------------- */
+
+export const STATUS_FILTERS: readonly { value: TaskStatusFilter; label: string; heading: string }[] = [
+  { value: 'all', label: 'Todas', heading: 'Todas las tareas' },
+  { value: 'pending', label: 'Pendientes', heading: 'Pendientes' },
+  { value: 'completed', label: 'Completadas', heading: 'Completadas' },
+]
+
+export function isClosed(task: LeadTask) {
+  return task.status !== TaskStatusValue.Pending
+}
 
 export type Bucket = 'overdue' | 'today' | 'upcoming'
 export type GroupKey = 'all' | Bucket
@@ -153,7 +164,11 @@ export function buildSections(tasks: LeadTask[]): Section[] {
   const overdue: LeadTask[] = []
   const today: LeadTask[] = []
   const upcoming: LeadTask[] = []
+  const completed: LeadTask[] = []
+  const canceled: LeadTask[] = []
   for (const task of tasks) {
+    if (task.status === TaskStatusValue.Completed) { completed.push(task); continue }
+    if (task.status === TaskStatusValue.Canceled) { canceled.push(task); continue }
     const bucket = bucketOf(task)
     if (bucket === 'overdue') overdue.push(task)
     else if (bucket === 'today') today.push(task)
@@ -169,16 +184,20 @@ export function buildSections(tasks: LeadTask[]): Section[] {
     if (last && last.id === `day-${key}`) last.items.push(task)
     else sections.push({ id: `day-${key}`, title: dayLabel(key), icon: CalendarDays, tone: 'info', items: [task] })
   }
+  // Las cerradas van al final: el backend ya las manda después de las pendientes.
+  if (completed.length) sections.push({ id: 'completed', title: 'Completadas', icon: CheckCheck, tone: 'success', items: completed })
+  if (canceled.length) sections.push({ id: 'canceled', title: 'Canceladas', icon: Ban, tone: 'neutral', items: canceled })
   return sections
 }
 
 /** "3 tareas de 10 · Mis tareas · Vencidas": qué se ve y de quién. */
-export function pendingSummary({ isLoading, isError, visible, total, isFiltered, scopeLabel, group }: {
-  isLoading: boolean; isError: boolean; visible: number; total: number; isFiltered: boolean; scopeLabel: string; group: TaskGroup
+export function pendingSummary({ isLoading, isError, visible, total, isFiltered, scopeLabel, group, status = 'pending' }: {
+  isLoading: boolean; isError: boolean; visible: number; total: number; isFiltered: boolean; scopeLabel: string; group: TaskGroup; status?: TaskStatusFilter
 }) {
   if (isLoading) return 'Cargando tareas…'
   if (isError) return 'Listado no disponible'
-  const of = isFiltered && total > 0 ? ` de ${total}` : ''
+  // `total` son las pendientes: "de N" solo tiene sentido mirando pendientes.
+  const of = status === 'pending' && isFiltered && total > 0 ? ` de ${total}` : ''
   const inGroup = group.key === 'all' ? '' : ` · ${group.label}`
   return `${visible} ${visible === 1 ? 'tarea' : 'tareas'}${of} · ${scopeLabel}${inGroup}`
 }

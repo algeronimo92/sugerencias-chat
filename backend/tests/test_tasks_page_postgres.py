@@ -5,7 +5,7 @@ llegaron (antes la lista se cortaba en 500)."""
 from datetime import datetime, timedelta, timezone
 
 from app.modules.tasks.queries import list_pending_page
-from app.modules.tasks.repository import create_task
+from app.modules.tasks.repository import create_task, update_task
 from app.modules.tasks.types import TaskType
 from app.tenancy.context import tenant_context
 from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
@@ -50,3 +50,33 @@ async def test_pages_cover_every_pending_task_and_counts_follow_search(tenant):
 
         team = await list_pending_page(ana, True, day_end=day_end, all_users=True)
         assert team["pending_total"] == 26
+
+
+async def test_status_filter_lists_closed_tasks_and_keeps_pending_counts(tenant):
+    with tenant_context(tenant):
+        ana = await _seller("Ana")
+        lead = await _lead("Lead", seller_id=ana)
+        now = datetime.now(timezone.utc)
+        ids = []
+        for index in range(5):
+            task = await create_task({"lead_id": lead, "title": f"T{index}", "assigned_user_id": ana,
+                                      "due_at": now + timedelta(days=index + 1)}, ana)
+            ids.append(task["id"])
+        await update_task(ids[0], {"status": "completed"}, ana)
+        await update_task(ids[1], {"status": "completed"}, ana)
+        await update_task(ids[2], {"status": "canceled"}, ana)
+        day_end = now + timedelta(hours=6)
+
+        pending = await list_pending_page(ana, False, day_end=day_end)
+        assert [item["title"] for item in pending["items"]] == ["T3", "T4"]
+
+        completed = await list_pending_page(ana, False, day_end=day_end, status="completed", bucket="upcoming")
+        assert completed["total"] == 2
+        assert {item["title"] for item in completed["items"]} == {"T0", "T1"}
+        assert all(item["completed_at"] for item in completed["items"])
+        # Los chips y "Completar todas" siguen hablando de las pendientes.
+        assert completed["counts"]["all"] == completed["pending_total"] == 2
+
+        everything = await list_pending_page(ana, False, day_end=day_end, status="all", limit=3)
+        assert everything["total"] == 5
+        assert [item["title"] for item in everything["items"]][:2] == ["T3", "T4"]

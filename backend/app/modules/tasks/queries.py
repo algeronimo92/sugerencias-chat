@@ -24,6 +24,7 @@ def _task(row):
             and row["due_at"] < datetime.now(timezone.utc)
         ),
         "created_at": iso_utc(row["created_at"]),
+        "completed_at": iso_utc(row["completed_at"]),
     }
 
 
@@ -32,7 +33,7 @@ def _task_query():
         LeadTask.id, LeadTask.lead_id, Lead.nombre.label("lead_name"), LeadTask.title,
         LeadTask.description, LeadTask.task_type, LeadTask.status, LeadTask.priority,
         LeadTask.due_at, LeadTask.remind_at, LeadTask.assigned_user_id,
-        User.name.label("assigned_user_name"), LeadTask.created_at,
+        User.name.label("assigned_user_name"), LeadTask.created_at, LeadTask.completed_at,
     ).join(Lead, Lead.id == LeadTask.lead_id).join(User, User.id == LeadTask.assigned_user_id)
 
 
@@ -105,6 +106,7 @@ async def list_pending_page(
     is_admin: bool,
     *,
     day_end: datetime,
+    status: str = "pending",
     search: str | None = None,
     bucket: str | None = None,
     assigned_user_id: int | None = None,
@@ -113,9 +115,12 @@ async def list_pending_page(
     offset: int = 0,
     limit: int = 50,
 ) -> dict:
-    """Una página de pendientes con los contadores de cada grupo. Antes la
+    """Una página de tareas con los contadores de cada grupo. Antes la
     pantalla traía hasta 500 y filtraba en memoria: con más de 500 tareas las
-    demás no aparecían en ningún lado (ni en la lista ni en los contadores)."""
+    demás no aparecían en ningún lado (ni en la lista ni en los contadores).
+
+    `status` es "pending", "completed" o "all". Los grupos por vencimiento y
+    sus contadores son siempre de las pendientes: una tarea cerrada no vence."""
     if day_end.tzinfo is None:
         day_end = day_end.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
@@ -135,21 +140,34 @@ async def list_pending_page(
         func.count(),
         *(func.count(case((condition, 1))) for condition in buckets.values()),
     )
-    items_stmt = pending(_task_query())
+    scoped_items = _scoped(_task_query(), user_id, is_admin, assigned_user_id, all_users, owner_id)
+    if status != "all":
+        scoped_items = scoped_items.where(LeadTask.status == status)
     if search and search.strip():
-        items_stmt = items_stmt.where(_search_condition(search))
-    if bucket:
-        items_stmt = items_stmt.where(buckets[bucket])
-    items_stmt = items_stmt.order_by(LeadTask.due_at.asc(), LeadTask.id.asc()).offset(offset).limit(limit)
+        scoped_items = scoped_items.where(_search_condition(search))
+    if bucket and status == "pending":
+        scoped_items = scoped_items.where(buckets[bucket])
+    total_stmt = select(func.count()).select_from(scoped_items.subquery())
+    if status == "pending":
+        order = (LeadTask.due_at.asc(), LeadTask.id.asc())
+    else:
+        # Las pendientes primero, por vencimiento; luego lo último que se cerró.
+        is_closed = LeadTask.status != TaskStatus.PENDING
+        order = (
+            is_closed.asc(), case((~is_closed, LeadTask.due_at)).asc(),
+            func.coalesce(LeadTask.completed_at, LeadTask.updated_at).desc(), LeadTask.id.desc(),
+        )
+    items_stmt = scoped_items.order_by(*order).offset(offset).limit(limit)
 
     async with session_scope() as session:
         pending_total = (await session.execute(base)).scalar_one()
         counted = (await session.execute(counts_stmt)).one()
+        total = (await session.execute(total_stmt)).scalar_one()
         rows = (await session.execute(items_stmt)).mappings().all()
     counts = {"all": counted[0], **dict(zip(TASK_BUCKETS, counted[1:]))}
     return {
         "items": [_task(row) for row in rows],
-        "total": counts[bucket or "all"],
+        "total": total,
         "counts": counts,
         "pending_total": pending_total,
     }

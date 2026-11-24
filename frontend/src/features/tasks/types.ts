@@ -22,6 +22,7 @@ export interface LeadTask {
   assigned_user_name: string
   is_overdue: boolean
   created_at: string
+  completed_at?: string | null
 }
 
 export interface TaskInput {
@@ -37,7 +38,11 @@ export interface TaskInput {
 
 export type TaskBucket = 'overdue' | 'today' | 'upcoming'
 
+/** Qué tareas lista la bandeja: las pendientes (por defecto), las completadas o todas. */
+export type TaskStatusFilter = 'pending' | 'completed' | 'all'
+
 export interface TaskPageQuery {
+  status: TaskStatusFilter
   /** Medianoche local de mañana: hasta ahí llega "Para hoy". */
   dayEnd: string
   search: string
