@@ -101,6 +101,7 @@ def manual_by_starter_hour_stmt(scope: DashboardScope):
 
 async def _by_flow(scope: DashboardScope) -> list[dict]:
     status = AutomationExecution.status
+    undelivered = AutomationExecution.delivery_state == "failed"
     rows = await execute_mapping(
         _scoped(
             select(
@@ -108,9 +109,15 @@ async def _by_flow(scope: DashboardScope) -> list[dict]:
                 AutomationRule.id.label("rule_id"),
                 AutomationRule.trigger_type.label("trigger_type"),
                 func.count(AutomationExecution.id).label("value"),
+                # Completado es que además sus mensajes salieron: las que
+                # recorrieron sus pasos sin entregar van aparte, para que la
+                # barra diga lo mismo que la etiqueta de Automatizaciones.
                 func.count(AutomationExecution.id)
-                .filter(status == AutomationExecutionStatus.COMPLETED)
+                .filter(status == AutomationExecutionStatus.COMPLETED, undelivered.is_not(True))
                 .label("completed"),
+                func.count(AutomationExecution.id)
+                .filter(status == AutomationExecutionStatus.COMPLETED, undelivered)
+                .label("undelivered"),
                 func.count(AutomationExecution.id)
                 .filter(status == AutomationExecutionStatus.FAILED)
                 .label("failed"),
@@ -145,6 +152,7 @@ async def _by_flow(scope: DashboardScope) -> list[dict]:
             "trigger_type": str(row["trigger_type"]),
             "value": int(row["value"]),
             "completed": int(row["completed"]),
+            "undelivered": int(row["undelivered"]),
             "failed": int(row["failed"]),
             "skipped": int(row["skipped"]),
             "cancelled": int(row["cancelled"]),

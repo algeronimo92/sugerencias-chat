@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.automations.domain.types import AutomationBuilderMode
 from app.modules.auth.public import User
-from app.modules.automations.schemas import AutomationExecutionCount, AutomationExecutionItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
+from app.modules.automations.schemas import AutomationExecutionCount, AutomationExecutionItem, AutomationExecutionMessageItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
 from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 from app.modules.automations.public import (
@@ -17,6 +17,7 @@ from app.modules.automations.public import (
     get_automation_execution,
     get_automation_rule,
     count_automation_executions,
+    execution_message_states,
     list_automation_executions,
     list_automation_rules,
     list_flow_versions,
@@ -311,6 +312,14 @@ async def get_execution(execution_id: int, admin: User = Depends(require_automat
     if execution is None:
         raise HTTPException(404, "Ejecución no encontrada")
     return execution
+
+
+@router.get("/executions/{execution_id}/messages", response_model=list[AutomationExecutionMessageItem])
+async def get_execution_messages(execution_id: int, admin: User = Depends(require_automations_manage)):
+    """En qué quedó cada mensaje de una ejecución (en cola, enviado,
+    entregado, leído o no entregado). Se pide al abrir su detalle: traerlo en
+    la lista costaría un join por fila para algo que casi nunca se mira."""
+    return await execution_message_states(execution_id)
 
 
 @router.post("/executions/{execution_id}/retry", response_model=AutomationExecutionItem)

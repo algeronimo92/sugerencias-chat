@@ -33,6 +33,7 @@ from app.modules.automations.infrastructure.worker import (
 )
 from app.modules.automations.queries import (
     count_automation_executions,
+    execution_message_states,
     get_automation_execution,
     get_automation_rule,
     list_automation_executions,

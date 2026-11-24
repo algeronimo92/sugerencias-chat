@@ -4252,6 +4252,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/automations/executions/{execution_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Messages
+         * @description En qué quedó cada mensaje de una ejecución (en cola, enviado,
+         *     entregado, leído o no entregado). Se pide al abrir su detalle: traerlo en
+         *     la lista costaría un join por fila para algo que casi nunca se mira.
+         */
+        get: operations["get_execution_messages_api_automations_executions__execution_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/automations/executions/{execution_id}/retry": {
         parameters: {
             query?: never;
@@ -5178,6 +5200,16 @@ export interface components {
             delivery_state?: string | null;
             /** Window Override By Name */
             window_override_by_name?: string | null;
+        };
+        /**
+         * AutomationExecutionMessageItem
+         * @description Un mensaje que mandó una ejecución: pending, sent, delivered, read o failed.
+         */
+        AutomationExecutionMessageItem: {
+            /** Message Id */
+            message_id: number;
+            /** State */
+            state: string;
         };
         /**
          * AutomationExecutionRetryRequest
@@ -6198,6 +6230,8 @@ export interface components {
             trigger_type: string;
             /** Completed */
             completed: number;
+            /** Undelivered */
+            undelivered: number;
             /** Failed */
             failed: number;
             /** Skipped */
@@ -18516,6 +18550,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomationExecutionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_messages_api_automations_executions__execution_id__messages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationExecutionMessageItem"][];
                 };
             };
             /** @description Validation Error */

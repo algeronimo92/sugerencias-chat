@@ -206,12 +206,22 @@ test('una completada cuyo mensaje no salió se lee «No se entregó» y pide ate
   const now = new Date().toISOString()
   const rows = [
     execution(FLOWS[0], { id: 5001, status: 'completed', delivery_state: 'delivered', finished_at: now, lead_name: 'Ana Torres' }),
-    execution(FLOWS[1], { id: 5002, status: 'completed', delivery_state: 'failed', finished_at: now, lead_name: 'Carla Méndez' }),
+    execution(FLOWS[1], {
+      id: 5002, status: 'completed', delivery_state: 'failed', finished_at: now, lead_name: 'Carla Méndez',
+      action_results: [
+        { position: 1, type: 'send_message', status: 'completed', message_ids: [901] },
+        { position: 2, type: 'send_message', status: 'completed', message_ids: [902] },
+      ],
+    }),
     execution(FLOWS[2], { id: 5003, status: 'completed', delivery_state: 'pending', finished_at: now, lead_name: 'Sofía Luna' }),
   ]
   api
     .on('get', '/api/automations/executions', byStatus(rows))
     .on('get', '/api/automations/executions/count', ({ url }) => ({ total: byStatus(rows)({ url }).length }))
+    .on('get', '/api/automations/executions/{execution_id}/messages', [
+      { message_id: 901, state: 'read' },
+      { message_id: 902, state: 'failed' },
+    ])
 
   // Con un mensaje sin entregar hay algo que atender: se entra ahí.
   await page.goto('/automations')
@@ -225,8 +235,15 @@ test('una completada cuyo mensaje no salió se lee «No se entregó» y pide ate
   await expect(row('Ana Torres').getByText('Completada', { exact: true })).toBeVisible()
   await expect(row('Carla Méndez').getByText('No se entregó', { exact: true })).toBeVisible()
   await expect(row('Sofía Luna').getByText('Enviando…', { exact: true })).toBeVisible()
+  // Al abrir el detalle, cada mensaje con su marca, como en WhatsApp: se ve
+  // cuál de los dos fue el que no llegó. Cerrado, no se pide nada.
+  expect(api.calls('get', '/api/automations/executions/{execution_id}/messages')).toEqual([])
+  await row('Carla Méndez').locator('summary').click()
+  await expect(row('Carla Méndez').getByText('Leído', { exact: true })).toBeVisible()
+  await expect(row('Carla Méndez').getByText('No se entregó', { exact: true })).toHaveCount(2)
   await row('Carla Méndez').scrollIntoViewIfNeeded()
   await page.screenshot({ path: `test-results/automatizaciones-entrega-${info.project.name}.png` })
+  await row('Carla Méndez').locator('summary').click()
 
   // El filtro trae exactamente lo que la etiqueta muestra.
   // Por rol: «Estado» también es la etiqueta de las opciones de la lista

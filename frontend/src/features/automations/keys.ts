@@ -27,4 +27,6 @@ export const executionKeys = {
     dateFrom ?? 'none', dateTo ?? 'none', mine ?? false, startedBy ?? 'none', team ?? false,
   ] as const,
   detail: (executionId: number | null) => ['automation-executions', 'by-id', executionId] as const,
+  // Bajo `automation-executions`: un acuse nuevo refresca también las marcas.
+  messages: (executionId: number) => ['automation-executions', 'messages', executionId] as const,
 }
