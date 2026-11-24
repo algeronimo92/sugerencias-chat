@@ -19,6 +19,7 @@ vi.mock('../hooks/useTemplates', () => ({
 }))
 vi.mock('../hooks/useTemplateCategories', () => ({ useTemplateCategories: () => ({ data: [] }) }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('../../media/public/queries', () => ({ useMediaLibrary: () => ({ data: [] }) }))
 vi.mock('./ImportMetaTemplatesDialog', () => ({ ImportMetaTemplatesDialog: () => null }))
 
 function template(overrides: Partial<MessageTemplate>): MessageTemplate {
@@ -54,6 +55,25 @@ describe('TemplatesPage', () => {
     // El texto se muestra sin las marcas de formato de WhatsApp.
     expect(within(rows()[0]).getByText('El HIFU 12D es un tratamiento')).toBeInTheDocument()
     expect(screen.queryByText('APPROVED')).not.toBeInTheDocument()
+  })
+
+  it('abre la vista previa desde la lista, primero como queda en el chat del lead', async () => {
+    const user = userEvent.setup()
+    mocks.templates = [template({
+      id: 7, name: 'Bienvenida', content: 'Hola {{nombre}}, *bienvenida*', interactive_config: {}, official_parameter_values: [],
+      official_header_type: 'none', official_buttons: [],
+    })]
+    render(<MemoryRouter><TemplatesPage /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Vista previa de Bienvenida' }))
+    const dialog = screen.getByRole('dialog', { name: 'Bienvenida' })
+    expect(within(dialog).getByRole('heading', { name: 'Así queda en el chat del lead' })).toBeInTheDocument()
+    // Con el cliente de ejemplo y el formato de WhatsApp aplicado.
+    expect(within(dialog).getByText('bienvenida')).toHaveClass('font-semibold')
+    expect(within(dialog).getByText(/Hola Ana/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Teléfono del cliente' }))
+    expect(within(dialog).getByRole('heading', { name: 'Así lo verá el cliente' })).toBeInTheDocument()
   })
 
   it('busca y filtra, y ofrece quitar los filtros cuando no queda nada', async () => {

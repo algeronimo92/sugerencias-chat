@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Clock3, Copy, MoreVertical, Paperclip, RefreshCw, Trash2, TriangleAlert, Undo2 } from 'lucide-react'
+import { AlertCircle, Check, Clock3, Copy, Eye, MoreVertical, Paperclip, RefreshCw, Trash2, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../../../shared/ui/Badge'
@@ -9,9 +9,10 @@ import { metaEditRules } from '../domain/metaEditRules'
 import { whenLabel } from '../domain/whenLabel'
 import { officialCategoryLabel, officialStatus, rejectedReason, snippet, type StatusTone } from '../domain/templateList'
 import type { MessageTemplate } from '../types'
+import { TemplatePreviewDialog } from './TemplatePreviewDialog'
 
 /** Columnas de la lista en escritorio; la cabecera usa la misma grilla. */
-export const LIST_GRID = 'md:grid md:grid-cols-[minmax(0,1fr)_11rem_9rem_5rem_10.5rem] md:items-center md:gap-4'
+export const LIST_GRID = 'md:grid md:grid-cols-[minmax(0,1fr)_11rem_9rem_5rem_13rem] md:items-center md:gap-4'
 
 const STATUS_ICON: Record<StatusTone, typeof Check> = { success: Check, warning: Clock3, danger: AlertCircle, neutral: TriangleAlert }
 
@@ -109,16 +110,26 @@ interface ActionsProps {
   onToggleActive: (active: boolean) => void
   onSync: () => void
   onDuplicate: () => void
+  onPreview: () => void
   onAskDelete: () => void
   /** Solo si hay cambios sin enviar en este dispositivo. */
   onDiscardUnsent?: () => void
 }
 
-function RowActions({ template, editPath, busy, onToggleActive, onSync, onDuplicate, onAskDelete, onDiscardUnsent }: ActionsProps) {
+function RowActions({ template, editPath, busy, onToggleActive, onSync, onDuplicate, onPreview, onAskDelete, onDiscardUnsent }: ActionsProps) {
   const active = template.is_active
   const syncable = template.template_type === 'official' && template.meta_template_id != null
   return (
     <div className="flex items-center gap-2 md:justify-end">
+      <button
+        type="button"
+        aria-label={`Vista previa de ${template.name}`}
+        title="Vista previa: cómo queda en el chat del lead"
+        onClick={onPreview}
+        className="flex h-10 w-10 items-center justify-center rounded-lg text-fg-muted outline-none hover:bg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Eye className="h-4 w-4" aria-hidden="true" />
+      </button>
       <Link to={editPath} className="inline-flex h-10 items-center rounded-lg px-2 text-sm font-semibold text-accent-strong outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring">Editar</Link>
       <button
         type="button"
@@ -175,6 +186,7 @@ interface Props {
 export function TemplateListRow({ template, highlighted, busy, onToggleActive, onSync, onDuplicate, onDelete, unsent, onDiscardUnsent }: Props) {
   const row = useRef<HTMLLIElement>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const editPath = `/templates/${template.id}`
 
   useEffect(() => {
@@ -201,9 +213,11 @@ export function TemplateListRow({ template, highlighted, busy, onToggleActive, o
         onToggleActive={onToggleActive}
         onSync={onSync}
         onDuplicate={onDuplicate}
+        onPreview={() => setPreviewing(true)}
         onAskDelete={() => setConfirmingDelete(true)}
         onDiscardUnsent={unsent ? onDiscardUnsent : undefined}
       />
+      {previewing && <TemplatePreviewDialog template={template} onClose={() => setPreviewing(false)} />}
       <ConfirmDialog
         open={confirmingDelete}
         onOpenChange={setConfirmingDelete}
