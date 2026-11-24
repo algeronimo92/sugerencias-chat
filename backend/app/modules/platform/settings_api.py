@@ -11,6 +11,7 @@ from app.modules.platform.platform_settings import platform_settings_many
 from app.modules.auth.ports.types import UserRole
 from app.modules.auth.public import Permission, roles_with_permission, set_role_permission
 from app.modules.platform.subscribers import lead_visibility_changed
+from app.modules.automations.ports.business_hours_usage import rules_using_business_hours
 from app.modules.platform.business_hours import (
     BUSINESS_HOURS_KEY,
     DEFAULT_TIMEZONE,
@@ -75,6 +76,7 @@ async def _business_hours_out() -> dict:
         ],
         "timezone": values["business_timezone"].strip() or DEFAULT_TIMEZONE,
         "configured": bool(values[BUSINESS_HOURS_KEY].strip()),
+        "used_by": await rules_using_business_hours(),
     }
 
 

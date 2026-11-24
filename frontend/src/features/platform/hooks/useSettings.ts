@@ -31,8 +31,8 @@ export function useBusinessTimezones(enabled = true) {
   })
 }
 
-export function useBusinessHours() {
-  return useQuery({ queryKey: settingsKeys.businessHours, queryFn: fetchBusinessHours })
+export function useBusinessHours(enabled = true) {
+  return useQuery({ queryKey: settingsKeys.businessHours, queryFn: fetchBusinessHours, enabled })
 }
 
 export function useSaveBusinessHours() {

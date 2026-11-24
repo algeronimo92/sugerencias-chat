@@ -13,6 +13,7 @@ from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
 from app.modules.automations.domain.limits import ACTIVE_EXECUTION_STATUSES
+from app.modules.automations.domain.business_hours_usage import uses_business_hours
 from app.modules.automations.domain.rules import local_day_range_utc
 
 
@@ -136,6 +137,25 @@ async def _rules(rule_id: int | None = None) -> list[dict]:
 
 async def list_automation_rules() -> list[dict]:
     return await _rules()
+
+
+async def rules_using_business_hours() -> list[dict]:
+    """Las automatizaciones que hoy preguntan por el horario de atención, con
+    las encendidas primero. Mira la versión que el motor ejecuta: un borrador
+    sin publicar todavía no usa nada."""
+    stmt = select(
+        AutomationRule.id, AutomationRule.name, AutomationRule.is_active,
+        AutomationRule.conditions, AutomationRule.published_flow_definition,
+    ).where(AutomationRule.deleted_at.is_(None)).order_by(
+        AutomationRule.is_active.desc(), AutomationRule.name.asc(),
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(stmt)).mappings().all()
+    return [
+        {"id": row["id"], "name": row["name"], "is_active": row["is_active"]}
+        for row in rows
+        if uses_business_hours(row["conditions"], row["published_flow_definition"])
+    ]
 
 
 async def get_automation_rule(rule_id: int) -> dict | None:

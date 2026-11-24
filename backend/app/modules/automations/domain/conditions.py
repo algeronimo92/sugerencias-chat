@@ -114,7 +114,7 @@ def match_flow_condition(
     # El horario es de cada negocio: lo resuelve la capa de aplicación, igual
     # que la ventana de WhatsApp.
     matches = bool(in_business_hours)
-    return matches, "Dentro del horario laboral" if matches else "Fuera del horario laboral"
+    return matches, "Dentro del horario de atención" if matches else "Fuera del horario de atención"
 
 
 def match_condition_node(

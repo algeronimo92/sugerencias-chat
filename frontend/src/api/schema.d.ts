@@ -5366,6 +5366,20 @@ export interface components {
             timezone: string;
             /** Configured */
             configured: boolean;
+            /** Used By */
+            used_by: components["schemas"]["BusinessHoursUser"][];
+        };
+        /**
+         * BusinessHoursUser
+         * @description Una automatización que pregunta por el horario de atención.
+         */
+        BusinessHoursUser: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
         };
         /** BusinessTimezoneItem */
         BusinessTimezoneItem: {
