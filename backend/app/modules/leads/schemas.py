@@ -273,7 +273,10 @@ class DashboardFunnelStep(DashboardMetricItem):
 class DashboardFlowRow(DashboardMetricItem):
     rule_id: int
     trigger_type: str
+    # Recorrió sus pasos y sus mensajes salieron (o no mandó ninguno).
     completed: int
+    # Recorrió sus pasos pero algún mensaje no se entregó. Aparte de `completed`.
+    undelivered: int
     failed: int
     skipped: int
     cancelled: int

@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.time_format import iso_utc
 from app.db.models.auth import User
-from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
+from app.db.models.automations import AutomationExecution, AutomationExecutionMessage, AutomationFlowVersion, AutomationRule
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
@@ -323,6 +323,18 @@ async def count_automation_executions(
     )
     async with session_scope() as session:
         return await session.scalar(stmt) or 0
+
+
+async def execution_message_states(execution_id: int) -> list[dict]:
+    """Los mensajes que mandó una ejecución y lo último que se supo de cada
+    uno: el detalle detrás de «No se entregó» o «Completada»."""
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(AutomationExecutionMessage.message_id, AutomationExecutionMessage.state)
+            .where(AutomationExecutionMessage.execution_id == execution_id)
+            .order_by(AutomationExecutionMessage.message_id.asc())
+        )).all()
+    return [{"message_id": message_id, "state": state} for message_id, state in rows]
 
 
 async def get_automation_execution(execution_id: int) -> dict | None:

@@ -253,6 +253,9 @@ export interface AutomationActionResult {
   message_ids?: number[]
 }
 
+/** Un mensaje que mandó una ejecución y lo último que se supo de él. */
+export type ExecutionMessage = Delivered<ApiSchemas['AutomationExecutionMessageItem']>
+
 /** Una ejecución tal como la entrega el backend (contrato `AutomationExecutionItem`). */
 export type ContractAutomationExecution = Delivered<ApiSchemas['AutomationExecutionItem']>
 
