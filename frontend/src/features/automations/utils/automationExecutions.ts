@@ -1,7 +1,7 @@
 import {
 AUTOMATION_TRIGGERS,AutomationExecutionStatus,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
-import type { AutomationExecution, AutomationTrigger } from '../types'
+import type { AutomationExecution, AutomationExecutionFilters, AutomationTrigger } from '../types'
 
 /** Helpers de presentación compartidos por las vistas que listan ejecuciones
  *  de automatizaciones: el Historial de admin (AutomationsPage) y "Flujos
@@ -17,7 +17,7 @@ export function executionTriggerLabel(value: AutomationTrigger) {
 
 export function executionTone(status: string) {
   if (status === AutomationExecutionStatus.Completed) return 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300'
-  if (status === AutomationExecutionStatus.Failed) return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+  if (status === AutomationExecutionStatus.Failed || status === 'undelivered') return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
   if (status === AutomationExecutionStatus.Skipped) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
   // Neutro: cancelar fue una decisión de alguien, no un problema que atender.
   if (status === AutomationExecutionStatus.Cancelled) return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
@@ -41,8 +41,55 @@ export function isExecutionStatus(value: string): value is AutomationExecutionSt
   return Object.values(AutomationExecutionStatus).some(status => status === value)
 }
 
+/**
+ * Lo que se le muestra a la persona de una ejecución: su estado, salvo en las
+ * completadas, donde manda qué pasó con sus mensajes.
+ *
+ * «Completada» significaba «el flujo recorrió sus pasos», y para quien mira
+ * la pantalla significa «el cliente lo recibió». Había completadas con
+ * mensajes que nunca salieron y se leían igual que las demás. El estado del
+ * motor no cambia (de él dependen el tope por hora y el «no repetir»); esto
+ * es solo cómo se muestra y se filtra.
+ */
+export const ExecutionOutcome = { Sending: 'sending', Undelivered: 'undelivered' } as const
+export type ExecutionOutcomeValue = AutomationExecutionStatusValue | (typeof ExecutionOutcome)[keyof typeof ExecutionOutcome]
+
+export function executionOutcome(execution: Pick<AutomationExecution, 'status' | 'delivery_state'>): ExecutionOutcomeValue {
+  if (execution.status !== AutomationExecutionStatus.Completed) return execution.status
+  if (execution.delivery_state === 'failed') return ExecutionOutcome.Undelivered
+  if (execution.delivery_state === 'pending') return ExecutionOutcome.Sending
+  return AutomationExecutionStatus.Completed
+}
+
+/** En el orden del filtro: las tres formas de «terminó de recorrer sus pasos» juntas. */
+export const EXECUTION_OUTCOME_LABELS: Record<ExecutionOutcomeValue, string> = {
+  [AutomationExecutionStatus.Scheduled]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Scheduled],
+  [AutomationExecutionStatus.Running]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Running],
+  [AutomationExecutionStatus.Paused]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Paused],
+  [AutomationExecutionStatus.Completed]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Completed],
+  [ExecutionOutcome.Sending]: 'Enviando…',
+  [ExecutionOutcome.Undelivered]: 'No se entregó',
+  [AutomationExecutionStatus.Failed]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Failed],
+  [AutomationExecutionStatus.Skipped]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Skipped],
+  [AutomationExecutionStatus.Cancelled]: EXECUTION_STATUS_LABELS[AutomationExecutionStatus.Cancelled],
+}
+
+export function isExecutionOutcome(value: string): value is ExecutionOutcomeValue {
+  return value in EXECUTION_OUTCOME_LABELS
+}
+
+/** Los filtros del backend que traen exactamente lo que esa etiqueta muestra. */
+export function outcomeFilter(outcome: ExecutionOutcomeValue): Pick<AutomationExecutionFilters, 'status' | 'delivery'> {
+  if (outcome === ExecutionOutcome.Undelivered) return { status: AutomationExecutionStatus.Completed, delivery: 'failed' }
+  if (outcome === ExecutionOutcome.Sending) return { status: AutomationExecutionStatus.Completed, delivery: 'pending' }
+  // «Completada» deja afuera las que no se entregaron: si no, el filtro
+  // traería filas con otra etiqueta.
+  if (outcome === AutomationExecutionStatus.Completed) return { status: outcome, delivery: 'ok' }
+  return { status: outcome }
+}
+
 export function executionStatusLabel(status: string) {
-  return isExecutionStatus(status) ? EXECUTION_STATUS_LABELS[status] : status
+  return isExecutionOutcome(status) ? EXECUTION_OUTCOME_LABELS[status] : status
 }
 
 // Un paso de una ejecución. Antes se mostraba el código en inglés ("completed").

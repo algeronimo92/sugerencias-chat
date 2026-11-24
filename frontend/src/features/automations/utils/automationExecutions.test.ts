@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AutomationExecution } from '../types'
-import { executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, readableExecutionError, stepStatusLabel } from './automationExecutions'
+import { executionOutcome, executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, outcomeFilter, readableExecutionError, stepStatusLabel } from './automationExecutions'
 
 describe('executionStatusLabel', () => {
   it('tells a cancelled run apart from one that did not apply', () => {
@@ -63,5 +63,31 @@ describe('heldByManualFlow', () => {
   it('parent and child never hold each other', () => {
     expect(heldByManualFlow({ ...followUp, parent_execution_id: 2 }, [manual])).toBeUndefined()
     expect(heldByManualFlow(followUp, [{ ...manual, parent_execution_id: 1 }])).toBeUndefined()
+  })
+})
+
+describe('executionOutcome', () => {
+  const outcome = (status: string, delivery: string | null) => executionOutcome({ status, delivery_state: delivery } as Pick<AutomationExecution, 'status' | 'delivery_state'>)
+
+  it('a completed run only reads as completed if its messages went out', () => {
+    // Había «completadas» con mensajes que nunca salieron y se leían igual.
+    expect(executionStatusLabel(outcome('completed', 'delivered'))).toBe('Completada')
+    expect(executionStatusLabel(outcome('completed', null))).toBe('Completada')
+    expect(executionStatusLabel(outcome('completed', 'pending'))).toBe('Enviando…')
+    expect(executionStatusLabel(outcome('completed', 'failed'))).toBe('No se entregó')
+  })
+
+  it('what has not finished or already failed keeps its own state', () => {
+    // «Falló» es peor noticia que un mensaje sin entregar: manda el estado.
+    expect(outcome('failed', 'failed')).toBe('failed')
+    expect(outcome('scheduled', 'pending')).toBe('scheduled')
+    expect(outcome('cancelled', 'failed')).toBe('cancelled')
+  })
+
+  it('each label filters exactly the rows that show it', () => {
+    expect(outcomeFilter('completed')).toEqual({ status: 'completed', delivery: 'ok' })
+    expect(outcomeFilter('sending')).toEqual({ status: 'completed', delivery: 'pending' })
+    expect(outcomeFilter('undelivered')).toEqual({ status: 'completed', delivery: 'failed' })
+    expect(outcomeFilter('failed')).toEqual({ status: 'failed' })
   })
 })

@@ -25,6 +25,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.db.models.control import Organization, OrganizationDomain
+from app.composition import configure
 from app.db.session import close_engine, control_session
 from app.modules.automations.application.delivery import reconcile_delivery
 from app.tenancy.context import TenantContext, tenant_context
@@ -49,6 +50,9 @@ async def _main() -> int:
     parser.add_argument("--hostname", required=True)
     parser.add_argument("--apply", action="store_true", help="escribe las correcciones (sin esto solo simula)")
     args = parser.parse_args()
+    # Sin esto los puertos no tienen adaptadores: un script no pasa por el
+    # arranque de la API, que es quien los registra.
+    configure()
     try:
         context = await _context_for(normalize_hostname(args.hostname))
         with tenant_context(context):

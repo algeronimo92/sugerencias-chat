@@ -93,6 +93,9 @@ class AutomationExecutionItem(BaseModel):
     window_override_at: str | None = None
     # Descartada de «Por atender»: ya no pide una decisión.
     attention_dismissed_at: str | None = None
+    # Qué pasó con los mensajes que mandó: pending, delivered o failed; None
+    # si no mandó ninguno (o es anterior a que se llevara la cuenta).
+    delivery_state: str | None = None
     window_override_by_name: str | None = None
 
 

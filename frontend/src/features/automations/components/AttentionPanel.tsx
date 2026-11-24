@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, MessageCircle, PauseCircle, RotateCcw, UserX } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, MailX, MessageCircle, PauseCircle, RotateCcw, UserX } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -10,6 +10,7 @@ import { formatExecutionDate, readableExecutionError } from '../utils/automation
 
 const CAUSE_ICON: Record<AttentionCause, LucideIcon> = {
   service_window: Clock3,
+  undelivered: MailX,
   failed: AlertTriangle,
   no_seller: UserX,
   long_pause: PauseCircle,
@@ -83,6 +84,9 @@ export function AttentionPanel({ groups, isLoading, onOpenChat, onSeeActivity }:
         </>
       )
     }
+    // Reintentar no reenvía lo que no salió (el paso ya figura como hecho):
+    // lo que sirve es ver en el chat qué faltó y escribirle al cliente.
+    if (cause === 'undelivered') return chat
     if (cause === 'service_window') {
       return (
         <>

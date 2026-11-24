@@ -200,6 +200,7 @@ export function execution(rule: Flow, overrides: Partial<Execution> = {}): Execu
     window_override_at: null,
     window_override_by_name: null,
     attention_dismissed_at: null,
+    delivery_state: null,
     ...overrides,
   }
 }

@@ -11,7 +11,10 @@ const BIENVENIDA = { ...flow(20, 'Bienvenida'), trigger_type: 'conversation_star
 function byStatus(rows: ReturnType<typeof execution>[]) {
   return ({ url }: { url: URL }) => {
     const status = url.searchParams.get('status')
-    return status ? rows.filter(row => row.status === status) : rows
+    const delivery = url.searchParams.get('delivery')
+    return rows
+      .filter(row => !status || row.status === status)
+      .filter(row => !delivery || (delivery === 'ok' ? row.delivery_state === null || row.delivery_state === 'delivered' : row.delivery_state === delivery))
   }
 }
 
@@ -195,4 +198,43 @@ test('crear empieza por elegir una receta y abre el editor con el flujo ya armad
   // Elegir una receta no crea nada: el flujo nace sin guardar.
   expect(api.calls('post', '/api/automations/flows')).toEqual([])
   await page.screenshot({ path: `test-results/automatizaciones-receta-editor-${info.project.name}.png` })
+})
+
+test('una completada cuyo mensaje no salió se lee «No se entregó» y pide atención', async ({ page, api }, info) => {
+  // «Completada» significaba «recorrió sus pasos». Había completadas con
+  // mensajes que nunca le llegaron al cliente y se leían igual que las demás.
+  const now = new Date().toISOString()
+  const rows = [
+    execution(FLOWS[0], { id: 5001, status: 'completed', delivery_state: 'delivered', finished_at: now, lead_name: 'Ana Torres' }),
+    execution(FLOWS[1], { id: 5002, status: 'completed', delivery_state: 'failed', finished_at: now, lead_name: 'Carla Méndez' }),
+    execution(FLOWS[2], { id: 5003, status: 'completed', delivery_state: 'pending', finished_at: now, lead_name: 'Sofía Luna' }),
+  ]
+  api
+    .on('get', '/api/automations/executions', byStatus(rows))
+    .on('get', '/api/automations/executions/count', ({ url }) => ({ total: byStatus(rows)({ url }).length }))
+
+  // Con un mensaje sin entregar hay algo que atender: se entra ahí.
+  await page.goto('/automations')
+  const group = page.getByRole('region', { name: /Mensajes que no se entregaron/ })
+  await expect(group).toContainText('Carla Méndez')
+  await expect(group.getByRole('button', { name: 'Ir al chat' })).toBeVisible()
+  await expect(page.getByText('Ana Torres')).toHaveCount(0)
+
+  await page.getByRole('navigation', { name: 'Secciones de automatizaciones' }).getByRole('button', { name: 'Actividad' }).click()
+  const row = (name: string) => page.locator('details').filter({ hasText: name })
+  await expect(row('Ana Torres').getByText('Completada', { exact: true })).toBeVisible()
+  await expect(row('Carla Méndez').getByText('No se entregó', { exact: true })).toBeVisible()
+  await expect(row('Sofía Luna').getByText('Enviando…', { exact: true })).toBeVisible()
+  await row('Carla Méndez').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `test-results/automatizaciones-entrega-${info.project.name}.png` })
+
+  // El filtro trae exactamente lo que la etiqueta muestra.
+  await page.getByLabel('Estado').click()
+  await page.getByRole('option', { name: 'No se entregó', exact: true }).click()
+  await expect(row('Carla Méndez')).toBeVisible()
+  await expect(row('Ana Torres')).toHaveCount(0)
+  await page.getByLabel('Estado').click()
+  await page.getByRole('option', { name: 'Completada', exact: true }).click()
+  await expect(row('Ana Torres')).toBeVisible()
+  await expect(row('Carla Méndez')).toHaveCount(0)
 })

@@ -3,7 +3,7 @@ pantallas. La API lo llama directo porque no cambia nada."""
 
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import aliased
 
 from app.core.time_format import iso_utc
@@ -14,6 +14,7 @@ from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger
 from app.modules.automations.domain.limits import ACTIVE_EXECUTION_STATUSES
 from app.modules.automations.domain.business_hours_usage import uses_business_hours
+from app.modules.automations.domain.delivery import ExecutionDeliveryState
 from app.modules.automations.domain.rules import local_day_range_utc
 
 
@@ -75,6 +76,7 @@ def _execution_dict(row) -> dict:
         "started_by_name": row["started_by_name"],
         "window_override_at": iso_utc(row["window_override_at"]),
         "attention_dismissed_at": iso_utc(row["attention_dismissed_at"]),
+        "delivery_state": row["delivery_state"],
         "window_override_by_name": row["window_override_by_name"],
     }
 
@@ -179,11 +181,21 @@ def _filter_executions(
     started_by_user_id: int | None,
     started_by_anyone: bool,
     owner_id: int | None,
+    delivery: str | None = None,
 ):
     """Los filtros del historial, compartidos por la lista y por su total:
     si cada una armara los suyos, «200 de 1.234» podría contar otra cosa."""
     if owner_id is not None:
         stmt = stmt.where(Lead.vendedor_id == owner_id)
+    # Qué pasó con sus mensajes, aparte de si recorrió sus pasos. «ok» incluye
+    # las que no mandaron ninguno: tampoco tienen nada sin entregar.
+    if delivery == "ok":
+        stmt = stmt.where(or_(
+            AutomationExecution.delivery_state.is_(None),
+            AutomationExecution.delivery_state == ExecutionDeliveryState.DELIVERED,
+        ))
+    elif delivery:
+        stmt = stmt.where(AutomationExecution.delivery_state == delivery)
     if rule_id is not None:
         stmt = stmt.where(AutomationExecution.rule_id == rule_id)
     if status:
@@ -227,6 +239,7 @@ async def list_automation_executions(
     started_by_user_id: int | None = None,
     started_by_anyone: bool = False,
     owner_id: int | None = None,
+    delivery: str | None = None,
 ) -> list[dict]:
     # Alias propio: `User` ya está tomado por started_by_user_id y la fila
     # necesita los dos nombres a la vez (quién la arrancó y quién autorizó
@@ -259,6 +272,7 @@ async def list_automation_executions(
         User.name.label("started_by_name"),
         AutomationExecution.window_override_at,
         AutomationExecution.attention_dismissed_at,
+        AutomationExecution.delivery_state,
         override_user.name.label("window_override_by_name"),
     ).join(AutomationRule, AutomationRule.id == AutomationExecution.rule_id).outerjoin(
         Lead, Lead.id == AutomationExecution.lead_id
@@ -275,6 +289,7 @@ async def list_automation_executions(
         stmt, rule_id=rule_id, status=status, execution_id=execution_id, exclude_skipped=exclude_skipped,
         lead_id=lead_id, start_source=start_source, date_from=date_from, date_to=date_to, active=active,
         started_by_user_id=started_by_user_id, started_by_anyone=started_by_anyone, owner_id=owner_id,
+        delivery=delivery,
     )
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with session_scope() as session:
@@ -293,6 +308,7 @@ async def count_automation_executions(
     started_by_user_id: int | None = None,
     started_by_anyone: bool = False,
     owner_id: int | None = None,
+    delivery: str | None = None,
 ) -> int:
     """Cuántas ejecuciones cumplen los filtros, sin el tope de la lista. El
     historial mostraba «200 resultados» en días de más de 300 y nadie sabía
@@ -303,6 +319,7 @@ async def count_automation_executions(
         stmt, rule_id=rule_id, status=status, execution_id=None, exclude_skipped=exclude_skipped,
         lead_id=lead_id, start_source=None, date_from=date_from, date_to=date_to, active=active,
         started_by_user_id=started_by_user_id, started_by_anyone=started_by_anyone, owner_id=owner_id,
+        delivery=delivery,
     )
     async with session_scope() as session:
         return await session.scalar(stmt) or 0
