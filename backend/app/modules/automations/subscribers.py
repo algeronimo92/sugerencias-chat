@@ -213,16 +213,22 @@ async def notify_execution_failure(event: ExecutionFailed) -> None:
 # lo mandaría otra vez. Un aviso perdido deja la proyección atrasada, que es
 # lo que repara ``scripts.reconcile_delivery``.
 
-async def _note_delivery(message_id: int, state: str) -> None:
+async def _note_delivery(message_id: int, state: str, *, resent: bool = False) -> None:
     try:
-        await automation_ports().executions.record_message_state(message_id, state, datetime.now(timezone.utc))
+        await automation_ports().executions.record_message_state(
+            message_id, state, datetime.now(timezone.utc), resent=resent,
+        )
     except SQLAlchemyError:
         logger.exception("No se pudo anotar la entrega del mensaje %s (%s)", message_id, state)
 
 
 @subscribe(MessageSent, phase=Phase.AFTER_COMMIT)
 async def note_message_sent(event: MessageSent) -> None:
-    await _note_delivery(event.message_id, MessageDeliveryState.SENT)
+    # Este aviso lo emite nuestra cola cuando WhatsApp acepta el mensaje. Si
+    # ese mensaje figuraba como fallido es que alguien lo reenvió: deja de
+    # estarlo. Un «enviado» de Meta que llega tarde va por otro aviso y no
+    # tiene este permiso.
+    await _note_delivery(event.message_id, MessageDeliveryState.SENT, resent=True)
 
 
 @subscribe(MessageFailed, phase=Phase.AFTER_COMMIT)

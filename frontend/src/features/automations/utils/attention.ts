@@ -27,11 +27,11 @@ const GROUPS: Record<AttentionCause, Pick<AttentionGroup, 'title' | 'hint'>> = {
   },
   undelivered: {
     title: 'Mensajes que no se entregaron',
-    hint: 'El flujo recorrió todos sus pasos, pero WhatsApp no entregó algún mensaje. Abre el chat para ver cuál y escribirle al cliente.',
+    hint: 'El flujo recorrió todos sus pasos, pero WhatsApp no entregó algún mensaje. Puedes reenviarlo o abrir el chat para ver cuál fue.',
   },
   no_seller: {
     title: 'Falta una vendedora',
-    hint: 'La automatización necesitaba a quién asignar la tarea o el aviso y el lead no tiene vendedora.',
+    hint: 'La automatización necesitaba a quién asignar la tarea o el aviso y el lead no tiene vendedora. Elige una y se reintenta.',
   },
   failed: {
     title: 'Se cortaron por un error',
