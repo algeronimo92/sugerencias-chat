@@ -29,6 +29,7 @@ import type { Tag } from '../../catalogs/types'
 import { AttachmentPreview, MediaAssetField } from '../../media/public/MediaAssetField'
 import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
+import type { FlowStarter } from '../domain/flowRecipes'
 import { useUsers } from '../../platform/public/useUsers'
 import type { AppUser } from '../../platform/types'
 import { AutomationActionType as ActionType, assertNever, AutomationBuilderMode, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
@@ -271,6 +272,9 @@ interface VisualFlowBuilderProps {
   highlight?: ServiceHighlight
   /** Bloque al que abrir el flujo (p. ej. "Ver en el flujo" del historial). */
   initialBlock?: string
+  /** Punto de partida de un flujo nuevo (una receta). No se guarda nada
+   *  hasta que la persona guarda: es solo lo que ve al abrir el editor. */
+  starter?: FlowStarter
   onClose: () => void
 }
 
@@ -283,7 +287,7 @@ function isEditableTarget(target: EventTarget | null) {
     && !!target.closest('input, textarea, select, [contenteditable="true"]')
 }
 
-export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: VisualFlowBuilderProps) {
+export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onClose }: VisualFlowBuilderProps) {
   const createFlow = useCreateVisualFlow()
   const saveFlow = useSaveVisualFlow()
   const publishFlow = usePublishVisualFlow()
@@ -314,7 +318,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
     const definition = rule?.flow_definition
     return isFlowDefinition(definition) && definition.nodes.length
       ? withDefaultConditions(definition)
-      : initialFlow()
+      : starter?.definition ?? initialFlow()
   })
   // Desde Catálogos se abre en lo que nombra al servicio: las condiciones de
   // entrada o el primer bloque que lo cambia, no en el disparador.
@@ -325,6 +329,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, onClose }: Vi
     rule, initialDefinition, initialPublishedDefinition,
     openAtBlock ?? initialReferences?.nodeIds[0] ?? flow.nodes[0]?.id ?? null,
     initialReferences?.entryConditions ?? false,
+    starter?.name,
   )
   const serviceReferences = useMemo(() => highlight ? onlyPart(flowServiceReferences(flow, highlight.service), highlight.part) : null, [flow, highlight])
   const flaggedNodeIds = useMemo(() => new Set(serviceReferences?.nodeIds ?? []), [serviceReferences])
