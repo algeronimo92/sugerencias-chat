@@ -34,6 +34,8 @@ AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, readableExecutionError } from '../utils/automationExecutions'
 import { EXECUTIONS_PAGE_LIMIT } from '../api'
 import { AttentionPanel } from './AttentionPanel'
+import { RecipePicker } from './RecipePicker'
+import type { FlowStarter } from '../domain/flowRecipes'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
@@ -174,7 +176,9 @@ export function AutomationsPage() {
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight; block?: string } | null>(null)
+  const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight; block?: string; starter?: FlowStarter } | null>(null)
+  // Crear empieza por elegir qué se quiere lograr, no por un lienzo en blanco.
+  const [recipePickerOpen, setRecipePickerOpen] = useState(false)
   // Llegada desde Catálogos: qué servicio resaltar en la regla abierta.
   const [formHighlight, setFormHighlight] = useState<ServiceHighlight | null>(null)
   const [importFlowOpen, setImportFlowOpen] = useState(false)
@@ -403,7 +407,7 @@ export function AutomationsPage() {
   // con distinto disparador: comparten tarjeta.
   function flowCards(list: AutomationRule[], empty: { title: string; text: string; action: string } | null) {
     if (list.length === 0) {
-      return empty && <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">{empty.title}</p><p className="mx-auto mt-1 max-w-md text-xs text-wa-muted">{empty.text}</p><button type="button" onClick={() => setFlowBuilder({})} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />{empty.action}</button></div>
+      return empty && <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">{empty.title}</p><p className="mx-auto mt-1 max-w-md text-xs text-wa-muted">{empty.text}</p><button type="button" onClick={() => setRecipePickerOpen(true)} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />{empty.action}</button></div>
     }
     return <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{list.map(rule => {
             const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
@@ -431,7 +435,7 @@ export function AutomationsPage() {
                   reemplacen; ya no son la opción principal. */}
               {tab === 'automatic' && <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><GitBranch className="h-4 w-4" />Regla simple</button>}
               {(tab === 'automatic' || tab === 'sequences') && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
-              <button type="button" onClick={() => setFlowBuilder({})} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'sequences' ? 'Nueva secuencia' : 'Nueva automatización'}</button>
+              <button type="button" onClick={() => setRecipePickerOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'sequences' ? 'Nueva secuencia' : 'Nueva automatización'}</button>
             </div>
           </div>
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
@@ -618,7 +622,8 @@ export function AutomationsPage() {
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-wa-border px-5 py-3.5 dark:border-wa-border-dark"><label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Checkbox checked={form.isActive} onChange={event => setForm(current => ({ ...current, isActive: event.target.checked }))} />Activar al guardar</label><div className="flex gap-2"><button type="button" onClick={closeForm} className="rounded-lg px-3 py-2 text-sm text-wa-muted">Cancelar</button><button type="submit" disabled={isSaving} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar regla</button></div></footer>
       </form></div>}
-      {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} initialBlock={flowBuilder.block} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
+      {recipePickerOpen && <RecipePicker section={tab === 'sequences' ? 'sequences' : 'automatic'} onClose={() => setRecipePickerOpen(false)} onChoose={starter => { setRecipePickerOpen(false); setFlowBuilder({ starter: starter ?? undefined }) }} />}
+      {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} initialBlock={flowBuilder.block} starter={flowBuilder.starter} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
       {importFlowOpen && <ImportFlowJsonDialog
         title="Importar flujo desde JSON"
         description="Pega el JSON de un flujo o sube un archivo .json. Se creará como un flujo nuevo en borrador; podrás revisarlo y publicarlo desde el editor."

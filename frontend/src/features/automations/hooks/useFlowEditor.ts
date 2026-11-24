@@ -62,6 +62,8 @@ export function initialFlowEditorState(
   publishedDefinition: AutomationFlowDefinition | null,
   firstNodeId: string | null,
   showEntryConditions = false,
+  /** Nombre con el que arranca un flujo nuevo creado desde una receta. */
+  starterName?: string,
 ): FlowEditorState {
   return {
     ruleId: rule?.id ?? null,
@@ -69,7 +71,7 @@ export function initialFlowEditorState(
     savedName: rule?.name ?? null,
     publishedDefinition,
     publishedVersion: publishedDefinition && rule?.flow_version ? rule.flow_version : null,
-    name: rule?.name ?? 'Nuevo flujo visual',
+    name: rule?.name ?? starterName ?? 'Nuevo flujo visual',
     maxPerHour: rule?.max_executions_per_hour ?? null,
     visibleToSellers: rule?.visible_to_sellers ?? false,
     // Con las condiciones de entrada abiertas el panel las muestra a ellas,
@@ -181,10 +183,11 @@ export function useFlowEditor(
   publishedDefinition: AutomationFlowDefinition | null,
   firstNodeId: string | null,
   showEntryConditions = false,
+  starterName?: string,
 ) {
   return useReducer(
     flowEditorReducer,
     undefined,
-    () => initialFlowEditorState(rule, initialDefinition, publishedDefinition, firstNodeId, showEntryConditions),
+    () => initialFlowEditorState(rule, initialDefinition, publishedDefinition, firstNodeId, showEntryConditions, starterName),
   )
 }

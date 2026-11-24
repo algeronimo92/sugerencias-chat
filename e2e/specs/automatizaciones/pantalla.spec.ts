@@ -154,3 +154,27 @@ test('la actividad distingue lo que alguien canceló de lo que no aplicó', asyn
   await expect(skipped.getByRole('button', { name: 'Reintentar' })).toBeVisible()
   await expect(cancelled.getByRole('button', { name: 'Reintentar' })).toHaveCount(0)
 })
+
+test('crear empieza por elegir una receta y abre el editor con el flujo ya armado', async ({ page, api }, info) => {
+  await page.goto('/automations')
+  await page.getByRole('button', { name: /Secuencias del equipo/ }).click()
+  await page.getByRole('button', { name: 'Nueva secuencia' }).click()
+
+  // Antes se abría directo un lienzo con «Lead nuevo → Crear tarea → Fin»,
+  // que no era lo que nadie venía a hacer.
+  const picker = page.getByRole('dialog', { name: '¿Qué quieres automatizar?' })
+  await expectFullyOnScreen(picker.getByRole('button', { name: /Enviar precios/ }))
+  await expect(picker.getByRole('button', { name: /Dar la bienvenida/ })).toBeVisible()
+  await expect(picker.getByRole('button', { name: /Empezar de cero/ })).toBeVisible()
+  await page.screenshot({ path: `test-results/automatizaciones-recetas-${info.project.name}.png` })
+
+  await picker.getByRole('button', { name: /Enviar precios/ }).click()
+
+  await expect(picker).toBeHidden()
+  // El editor abre con el nombre y los mensajes de la receta.
+  await expect.poll(() => page.locator('input').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value)))
+    .toContain('Precio de …')
+  // Elegir una receta no crea nada: el flujo nace sin guardar.
+  expect(api.calls('post', '/api/automations/flows')).toEqual([])
+  await page.screenshot({ path: `test-results/automatizaciones-receta-editor-${info.project.name}.png` })
+})
