@@ -2,7 +2,7 @@ import type { AutomationExecutionFilters } from './types'
 import client from "../../shared/http/client";
 import { jsonAs, type ApiResponse } from '../../shared/http/contract'
 import { asPublishedDefinition } from './domain/publishedDefinition'
-import type { AutomationAction, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowSimulationStep, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
+import type { ExecutionMessage, AutomationAction, AutomationActionResult, AutomationConditions, AutomationExecution, AutomationFlowDefinition, ContractAutomationExecution, ContractAutomationRule, AutomationFlowSimulation, AutomationFlowSimulationStep, AutomationFlowVersion, AutomationRule, AutomationRuleInput } from "./types";
 
 /** De lo que entrega el contrato a la regla que usan las pantallas. */
 export function toAutomationRule(rule: ContractAutomationRule): AutomationRule {
@@ -98,6 +98,12 @@ export async function retryExecution({ id, ignoreServiceWindow = false }: { id: 
 export async function fetchAutomationExecution(executionId: number | null): Promise<AutomationExecution> {
   const { data } = await client.get<ApiResponse<'/api/automations/executions/{execution_id}', 'get'>>(`/api/automations/executions/${executionId}`)
   return toAutomationExecution(data)
+}
+
+/** En qué quedó cada mensaje que mandó una ejecución. */
+export async function fetchExecutionMessages(executionId: number): Promise<ExecutionMessage[]> {
+  const { data } = await client.get<ApiResponse<'/api/automations/executions/{execution_id}/messages', 'get'>>(`/api/automations/executions/${executionId}/messages`)
+  return data
 }
 
 /** Saca una ejecución de «Por atender» sin cambiarle el estado. */

@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { isoDateOffset, todayISODate } from '../../shared/utils/datetime'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchAutomationRules, cancelExecution, createAutomation, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
+import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchExecutionMessages, fetchAutomationRules, cancelExecution, createAutomation, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
 import { AutomationExecutionStatus } from './domain/automationCatalog'
@@ -171,6 +171,16 @@ export function useAutomationExecution(executionId: number | null) {
     queryKey: executionKeys.detail(executionId),
     queryFn: () => fetchAutomationExecution(executionId),
     enabled: executionId !== null,
+  })
+}
+
+/** Las marcas de cada mensaje de una ejecución. Solo se piden al abrir su
+ *  detalle: la lista trae cientos de filas y casi ninguna se abre. */
+export function useExecutionMessages(executionId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: executionKeys.messages(executionId),
+    queryFn: () => fetchExecutionMessages(executionId),
+    enabled,
   })
 }
 

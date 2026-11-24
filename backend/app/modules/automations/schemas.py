@@ -54,6 +54,13 @@ class AutomationRuleItem(BaseModel):
     updated_at: str
 
 
+class AutomationExecutionMessageItem(BaseModel):
+    """Un mensaje que mandó una ejecución: pending, sent, delivered, read o failed."""
+
+    message_id: int
+    state: str
+
+
 class AutomationExecutionCount(BaseModel):
     total: int
 
