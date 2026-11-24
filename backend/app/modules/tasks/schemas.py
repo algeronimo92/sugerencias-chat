@@ -1,6 +1,8 @@
 """Contratos HTTP de tasks."""
 
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
 from app.modules.tasks.types import TaskPriority, TaskStatus, TaskType
 
@@ -42,6 +44,28 @@ class TaskItem(BaseModel):
     assigned_user_name: str
     is_overdue: bool
     created_at: str
+
+TaskBucket = Literal["overdue", "today", "upcoming"]
+
+
+class TaskCounts(BaseModel):
+    all: int
+    overdue: int
+    today: int
+    upcoming: int
+
+
+class TaskPage(BaseModel):
+    items: list[TaskItem]
+    # Cuántas hay en el grupo pedido (con la búsqueda aplicada): con esto se
+    # calcula el número de páginas.
+    total: int
+    # Los contadores de los chips, con la búsqueda aplicada.
+    counts: TaskCounts
+    # Todas las pendientes del responsable elegido, sin búsqueda ni grupo: es
+    # lo que afecta "Completar todas".
+    pending_total: int
+
 
 class CompletedTasks(BaseModel):
     completed: int

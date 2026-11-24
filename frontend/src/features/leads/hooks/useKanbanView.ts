@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePageSize } from '../../../shared/hooks/usePageSize'
 
 export type KanbanView = 'lista' | 'tablero'
 
@@ -28,29 +29,7 @@ export function useKanbanView() {
   return [view, changeView] as const
 }
 
-export const PAGE_SIZES = [10, 20, 50] as const
-export type PageSize = (typeof PAGE_SIZES)[number]
-const PAGE_SIZE_KEY = 'kanban:filas'
-
-function readPageSize(): PageSize {
-  try {
-    const stored = Number(localStorage.getItem(PAGE_SIZE_KEY))
-    return PAGE_SIZES.find((size) => size === stored) ?? 10
-  } catch {
-    return 10
-  }
-}
-
 /** Filas por página de la lista, recordadas como la vista. */
 export function useKanbanPageSize() {
-  const [size, setSize] = useState<PageSize>(readPageSize)
-  function changeSize(next: PageSize) {
-    setSize(next)
-    try {
-      localStorage.setItem(PAGE_SIZE_KEY, String(next))
-    } catch {
-      // Sin almacenamiento la elección dura lo que la pestaña.
-    }
-  }
-  return [size, changeSize] as const
+  return usePageSize('kanban:filas')
 }

@@ -1,8 +1,8 @@
 /**
  * "Tareas": que los cuatro estados de la vista se dibujen (cargando, error con
  * reintento, vacío con salida al chat y poblado), que el chip contador sea el
- * filtro, que lo vencido mande en el orden y que completar sea reversible —
- * sin pedirle nada nuevo al backend.
+ * filtro, que lo vencido mande en el orden, que completar sea reversible y que
+ * la lista se pagine en el servidor (con +500 pendientes no se pierde ninguna).
  */
 
 import { render, screen, within } from '@testing-library/react'
@@ -10,21 +10,22 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TasksPage } from './TasksPage'
-import type { LeadTask } from '../types'
+import type { LeadTask, TaskPageQuery } from '../types'
+import { bucketOf } from './taskListModel'
 
 const navigate = vi.fn()
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 
 vi.mock('../hooks/useTasks', () => ({
-  useTasks: vi.fn(),
+  useTasksPage: vi.fn(),
   useUpdateTask: vi.fn(),
   useCompleteAllTasks: vi.fn(),
 }))
 vi.mock('../../auth/queries', () => ({ useMe: vi.fn() }))
 vi.mock('../../platform/hooks/useUsers', () => ({ useUsers: vi.fn() }))
 
-import { useCompleteAllTasks, useTasks, useUpdateTask } from '../hooks/useTasks'
+import { useCompleteAllTasks, useTasksPage, useUpdateTask } from '../hooks/useTasks'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
 
@@ -51,15 +52,29 @@ function task(overrides: Partial<LeadTask> & { id: number }): LeadTask {
   } as LeadTask
 }
 
-function mockQuery(value: Record<string, unknown>, update: Record<string, unknown> = {}) {
+/** El backend en pequeño: búsqueda por título o lead, grupo y página. */
+function serverPage(tasks: LeadTask[], query: TaskPageQuery) {
+  const term = query.search.toLowerCase()
+  const searched = tasks.filter(item => !term || [item.title, item.lead_name].some(value => value?.toLowerCase().includes(term)))
+  const counts = { all: searched.length, overdue: 0, today: 0, upcoming: 0 }
+  for (const item of searched) counts[bucketOf(item)] += 1
+  const inGroup = searched.filter(item => !query.bucket || bucketOf(item) === query.bucket)
+  return {
+    items: inGroup.slice(query.offset, query.offset + query.limit),
+    total: inGroup.length, counts, pending_total: tasks.length,
+  }
+}
+
+function mockQuery({ data = [], ...value }: Record<string, unknown> & { data?: LeadTask[] }, update: Record<string, unknown> = {}) {
   vi.mocked(useMe).mockReturnValue({ data: { id: 1, role: 'seller' } } as never)
   vi.mocked(useUsers).mockReturnValue({ data: [] } as never)
   vi.mocked(useUpdateTask).mockReturnValue({ mutate: vi.fn(), isPending: false, variables: undefined, ...update } as never)
   vi.mocked(useCompleteAllTasks).mockReturnValue({ mutate: vi.fn(), isPending: false } as never)
-  vi.mocked(useTasks).mockReturnValue({
-    data: [], isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn(),
+  vi.mocked(useTasksPage).mockImplementation((query: TaskPageQuery) => ({
+    data: value.isLoading || value.isError ? undefined : serverPage(data, query),
+    isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn(),
     ...value,
-  } as never)
+  }) as never)
 }
 
 describe('TasksPage', () => {
@@ -111,7 +126,7 @@ describe('TasksPage', () => {
     expect(groups[1]).toMatch(/Para hoy/)
   })
 
-  it('filtra por grupo desde el chip contador, sin volver a consultar', async () => {
+  it('filtra por grupo desde el chip contador, pidiéndole el grupo al servidor', async () => {
     mockQuery({
       data: [
         task({ id: 1, title: 'Cotización atrasada', is_overdue: true, due_at: hoursFromNow(-30) }),
@@ -121,7 +136,6 @@ describe('TasksPage', () => {
     const user = userEvent.setup()
     render(<TasksPage onOpenChat={vi.fn()} />)
 
-    const callsBefore = vi.mocked(useTasks).mock.calls.length
     const chip = screen.getByRole('button', { name: /vencidas/i })
     expect(within(chip).getByText('1')).toBeInTheDocument()
 
@@ -130,7 +144,24 @@ describe('TasksPage', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('Cotización atrasada')).toBeInTheDocument()
     expect(screen.queryByText('Llamada de hoy')).not.toBeInTheDocument()
-    expect(vi.mocked(useTasks).mock.calls.at(-1)).toEqual(vi.mocked(useTasks).mock.calls[callsBefore - 1])
+    expect(vi.mocked(useTasksPage).mock.calls.at(-1)?.[0]).toMatchObject({ bucket: 'overdue', offset: 0 })
+  })
+
+  it('pagina en el servidor y no deja fuera tareas cuando hay muchas', async () => {
+    mockQuery({ data: Array.from({ length: 25 }, (_, index) => task({ id: index + 1, title: `Tarea ${index + 1}`, due_at: hoursFromNow(index + 30) })) })
+    const user = userEvent.setup()
+    render(<TasksPage onOpenChat={vi.fn()} />)
+
+    const pagination = screen.getByRole('navigation', { name: 'Paginación de tareas' })
+    expect(pagination).toHaveTextContent('1–10 de 25')
+    expect(screen.getByText('Tarea 1')).toBeInTheDocument()
+    expect(screen.queryByText('Tarea 11')).not.toBeInTheDocument()
+
+    await user.click(within(pagination).getByRole('button', { name: 'Última página' }))
+
+    expect(vi.mocked(useTasksPage).mock.calls.at(-1)?.[0]).toMatchObject({ offset: 20, limit: 10 })
+    expect(pagination).toHaveTextContent('21–25 de 25')
+    expect(screen.getByText('Tarea 25')).toBeInTheDocument()
   })
 
   it('abre el chat del lead desde la fila', async () => {

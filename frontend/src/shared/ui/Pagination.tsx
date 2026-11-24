@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Select } from '../../../../shared/ui/Input'
-import { PAGE_SIZES, type PageSize } from '../../hooks/useKanbanView'
+import { PAGE_SIZES, type PageSize } from '../hooks/usePageSize'
+import { Select } from './Input'
 
 interface PaginationProps {
   page: number
@@ -9,10 +9,12 @@ interface PaginationProps {
   total: number
   onPageChange: (page: number) => void
   onPageSizeChange: (size: PageSize) => void
+  /** Qué se pagina, en singular y plural: "lead"/"leads", "tarea"/"tareas". */
+  noun?: { one: string; many: string }
 }
 
-/** Números alrededor de la página actual (`size` como máximo): con etapas de
- *  cientos de leads, una fila con todos no entraría. */
+/** Números alrededor de la página actual (`size` como máximo): con listas de
+ *  cientos de filas, una fila con todos no entraría. */
 function pageWindow(page: number, pageCount: number, size: number): number[] {
   const start = Math.max(0, Math.min(page - Math.floor(size / 2), pageCount - size))
   return Array.from({ length: Math.min(size, pageCount) }, (_, index) => start + index)
@@ -37,7 +39,7 @@ function PageButton({ label, disabled, current, onClick, children, className = '
   )
 }
 
-export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange }: PaginationProps) {
+export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange, noun = { one: 'lead', many: 'leads' } }: PaginationProps) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const first = total === 0 ? 0 : page * pageSize + 1
   const last = Math.min(total, (page + 1) * pageSize)
@@ -48,9 +50,9 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
   return (
     // En el celular todo va en una fila (resumen, números, filas por página):
     // en dos filas se comía alto de la lista. Ahí se ven 3 números en vez de 5.
-    <nav aria-label="Paginación de leads" className="flex shrink-0 items-center gap-x-2 border-t border-wa-border bg-wa-panel px-4 py-2 sm:gap-x-4 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
+    <nav aria-label={`Paginación de ${noun.many}`} className="flex shrink-0 items-center gap-x-2 border-t border-wa-border bg-wa-panel px-4 py-2 sm:gap-x-4 sm:px-6 dark:border-wa-border-dark dark:bg-wa-panel-dark">
       <p className="shrink-0 text-sm tabular-nums text-wa-muted dark:text-wa-muted-dark" aria-live="polite">
-        {first}–{last} de {total}<span className="hidden sm:inline"> {total === 1 ? 'lead' : 'leads'}</span>
+        {first}–{last} de {total}<span className="hidden sm:inline"> {total === 1 ? noun.one : noun.many}</span>
       </p>
       <label className="order-3 flex shrink-0 items-center gap-2 text-sm text-wa-muted sm:order-2 sm:ml-auto dark:text-wa-muted-dark">
         <span className="hidden sm:inline">Filas por página</span>

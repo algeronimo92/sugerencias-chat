@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.tasks.types import TaskStatus
 from app.modules.auth.public import User
-from app.modules.tasks.schemas import CompletedTasks, TaskCreate, TaskItem, TaskUpdate
+from app.modules.tasks.schemas import CompletedTasks, TaskBucket, TaskCreate, TaskItem, TaskPage, TaskUpdate
 from app.modules.auth.public import Permission, can, get_current_user, require_permission
-from app.modules.tasks.queries import get_task, list_tasks
+from app.modules.tasks.queries import get_task, list_pending_page, list_tasks
 from app.modules.tasks.service import MissingTaskReferenceError, complete_pending_tasks, create_task, update_task
 from app.modules.leads.ports.visibility import ensure_lead_visible, seller_scope
 
@@ -27,6 +29,34 @@ async def get_tasks(
     if lead_id:
         await ensure_lead_visible(user, lead_id)
     return await list_tasks(user.id, can(user, Permission.TEAM_SUPERVISE), status, lead_id, assigned_user_id, all_users, owner_id=await seller_scope(user))
+
+
+@router.get("/page", response_model=TaskPage)
+async def get_pending_tasks_page(
+    day_end: datetime,
+    search: str | None = None,
+    bucket: TaskBucket | None = None,
+    assigned_user_id: int | None = None,
+    all_users: bool = False,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
+    user: User = Depends(get_current_user),
+):
+    """La bandeja de "Tareas", paginada en el servidor."""
+    if not can(user, Permission.TEAM_SUPERVISE) and (assigned_user_id is not None or all_users):
+        raise HTTPException(403, "Tu rol no puede consultar tareas de otros usuarios")
+    return await list_pending_page(
+        user.id,
+        can(user, Permission.TEAM_SUPERVISE),
+        day_end=day_end,
+        search=search.strip() if search else None,
+        bucket=bucket,
+        assigned_user_id=assigned_user_id,
+        all_users=all_users,
+        owner_id=await seller_scope(user),
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.post("", response_model=TaskItem, status_code=201)

@@ -34,3 +34,23 @@ export interface TaskInput {
   remind_at?: string | null
   assigned_user_id?: number
 }
+
+export type TaskBucket = 'overdue' | 'today' | 'upcoming'
+
+export interface TaskPageQuery {
+  /** Medianoche local de mañana: hasta ahí llega "Para hoy". */
+  dayEnd: string
+  search: string
+  bucket: TaskBucket | undefined
+  assignedUserId: number | undefined
+  allUsers: boolean
+  offset: number
+  limit: number
+}
+
+export interface TaskPage {
+  items: LeadTask[]
+  total: number
+  counts: Record<'all' | TaskBucket, number>
+  pending_total: number
+}

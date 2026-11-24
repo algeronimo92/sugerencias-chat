@@ -2679,6 +2679,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pending Tasks Page
+         * @description La bandeja de "Tareas", paginada en el servidor.
+         */
+        get: operations["get_pending_tasks_page_api_tasks_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/complete-all": {
         parameters: {
             query?: never;
@@ -9256,6 +9276,17 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /** TaskCounts */
+        TaskCounts: {
+            /** All */
+            all: number;
+            /** Overdue */
+            overdue: number;
+            /** Today */
+            today: number;
+            /** Upcoming */
+            upcoming: number;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Lead Id */
@@ -9305,6 +9336,16 @@ export interface components {
             is_overdue: boolean;
             /** Created At */
             created_at: string;
+        };
+        /** TaskPage */
+        TaskPage: {
+            /** Items */
+            items: components["schemas"]["TaskItem"][];
+            /** Total */
+            total: number;
+            counts: components["schemas"]["TaskCounts"];
+            /** Pending Total */
+            pending_total: number;
         };
         /**
          * TaskPriority
@@ -15095,6 +15136,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pending_tasks_page_api_tasks_page_get: {
+        parameters: {
+            query: {
+                day_end: string;
+                search?: string | null;
+                bucket?: ("overdue" | "today" | "upcoming") | null;
+                assigned_user_id?: number | null;
+                all_users?: boolean;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPage"];
                 };
             };
             /** @description Validation Error */
