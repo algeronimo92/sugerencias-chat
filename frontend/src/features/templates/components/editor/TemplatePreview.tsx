@@ -1,5 +1,5 @@
-import { CornerUpLeft, ExternalLink, FileText, Image as ImageIcon, List, Phone } from 'lucide-react'
-import { useState } from 'react'
+import { CheckCheck, CornerUpLeft, ExternalLink, FileText, Image as ImageIcon, List, Phone } from 'lucide-react'
+import { useId, useState } from 'react'
 import { cn } from '../../../../shared/utils/cn'
 import type { MediaAsset } from '../../../media/types'
 import { parseRichText, resolveMediaUrl } from '../../../whatsapp/public/message'
@@ -37,10 +37,16 @@ function imageUrlOf(item: DraftAttachment): string | null {
   return url ? resolveMediaUrl(url) ?? null : null
 }
 
-function ButtonRow({ button }: { button: PreviewButton }) {
+/** Dónde se mira el mensaje: en el teléfono del cliente llega como burbuja
+ *  recibida; en el chat del lead (el del CRM) queda como enviada. */
+export type PreviewView = 'phone' | 'chat'
+
+const SURFACE: Record<PreviewView, string> = { phone: 'bg-bubble-in', chat: 'bg-bubble-out' }
+
+function ButtonRow({ button, view }: { button: PreviewButton; view: PreviewView }) {
   const Icon = BUTTON_ICON[button.kind]
   return (
-    <div className="flex max-w-[19rem] items-center justify-center gap-2 rounded-lg bg-bubble-in px-3 py-2.5 text-sm font-medium text-info-fg shadow-sm">
+    <div className={cn('flex w-full max-w-[19rem] items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-info-fg shadow-sm', SURFACE[view])}>
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span className="truncate">{button.text}</span>
     </div>
@@ -48,11 +54,11 @@ function ButtonRow({ button }: { button: PreviewButton }) {
 }
 
 /** Un archivo de la plantilla; el que lleva el texto lo muestra como pie. */
-function FileBubble({ item, caption }: { item: DraftAttachment; caption: string | null }) {
+function FileBubble({ item, caption, view }: { item: DraftAttachment; caption: string | null; view: PreviewView }) {
   const url = imageUrlOf(item)
   const Icon = draftContentType(item).startsWith('image/') ? ImageIcon : FileText
   return (
-    <div className="max-w-[19rem] rounded-lg bg-bubble-in p-1 shadow-sm">
+    <div className={cn('w-full max-w-[19rem] rounded-lg p-1 shadow-sm', SURFACE[view])}>
       {url
         ? <img src={url} alt="" className="max-h-48 w-full rounded-md object-cover" />
         : (
@@ -67,10 +73,10 @@ function FileBubble({ item, caption }: { item: DraftAttachment; caption: string 
 }
 
 /** La burbuja del mensaje: encabezado, texto y pie. */
-function MessageBubble({ preview, headerUrl }: { preview: TemplatePreviewModel; headerUrl: string | null }) {
+function MessageBubble({ preview, headerUrl, view }: { preview: TemplatePreviewModel; headerUrl: string | null; view: PreviewView }) {
   const missingImage = preview.headerImageAssetId != null && !headerUrl
   return (
-    <div className="max-w-[19rem] rounded-lg bg-bubble-in px-2.5 pb-1.5 pt-2 shadow-sm">
+    <div className={cn('w-full max-w-[19rem] rounded-lg px-2.5 pb-1.5 pt-2 shadow-sm', SURFACE[view])}>
       {headerUrl && <img src={headerUrl} alt="" className="mb-1.5 max-h-48 w-full rounded-md object-cover" />}
       {missingImage && (
         <div className="mb-1.5 flex items-center gap-2 rounded-md bg-subtle px-3 py-3 text-xs text-fg-muted"><ImageIcon className="h-4 w-4" aria-hidden="true" />Imagen del encabezado</div>
@@ -80,31 +86,47 @@ function MessageBubble({ preview, headerUrl }: { preview: TemplatePreviewModel; 
         ? <p className="whitespace-pre-wrap break-words"><RichText text={preview.body} /></p>
         : <p className="text-fg-muted">Aquí aparecerá tu mensaje.</p>}
       {preview.footer && <p className="mt-1.5 break-words text-xs text-bubble-meta">{preview.footer}</p>}
-      <p className="mt-0.5 text-right text-xs text-bubble-meta" aria-hidden="true">10:24</p>
+      <p className="mt-0.5 flex items-center justify-end gap-1 text-xs text-bubble-meta" aria-hidden="true">
+        10:24
+        {view === 'chat' && <CheckCheck className="h-3.5 w-3.5 text-info-fg" />}
+      </p>
     </div>
   )
 }
 
-/** Elegir si la vista previa usa el cliente de ejemplo o uno sin datos. */
-function DataToggle({ withData, onChange }: { withData: boolean; onChange: (withData: boolean) => void }) {
+/** Un selector de dos o más opciones, como pestañas chicas. */
+function Segmented<T extends string | boolean>({ label, options, value, onChange }: {
+  label: string
+  options: readonly (readonly [T, string])[]
+  value: T
+  onChange: (value: T) => void
+}) {
   return (
-    <div role="group" aria-label="Datos de la vista previa" className="mt-2.5 inline-flex gap-1 rounded-lg bg-subtle p-1">
-      {([[true, 'Con datos'], [false, 'Sin datos']] as const).map(([value, label]) => (
+    <div role="group" aria-label={label} className="inline-flex gap-1 rounded-lg bg-subtle p-1">
+      {options.map(([option, text]) => (
         <button
-          key={label}
+          key={text}
           type="button"
-          aria-pressed={withData === value}
-          onClick={() => onChange(value)}
+          aria-pressed={value === option}
+          onClick={() => onChange(option)}
           className={cn(
             'h-8 rounded-md px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-            withData === value ? 'bg-surface font-semibold text-fg shadow-sm' : 'font-medium text-fg-muted hover:text-fg',
+            value === option ? 'bg-surface font-semibold text-fg shadow-sm' : 'font-medium text-fg-muted hover:text-fg',
           )}
         >
-          {label}
+          {text}
         </button>
       ))}
     </div>
   )
+}
+
+const VIEW_OPTIONS = [['phone', 'Teléfono del cliente'], ['chat', 'Chat del lead']] as const
+const DATA_OPTIONS = [[true, 'Con datos'], [false, 'Sin datos']] as const
+
+const VIEW_TITLE: Record<PreviewView, string> = {
+  phone: 'Así lo verá el cliente',
+  chat: 'Así queda en el chat del lead',
 }
 
 interface Props {
@@ -112,15 +134,22 @@ interface Props {
   attachments: DraftAttachment[]
   mediaAssets: MediaAsset[]
   defaultFooter: string | undefined
+  /** Con qué vista arranca: el editor mira el teléfono; la lista, el chat. */
+  initialView?: PreviewView
 }
 
 /**
  * El mensaje como lo recibe el cliente, mientras se escribe (2026-11-23).
  * Antes se armaba a ciegas: `*negrita*` se veía con asteriscos y una oficial
  * se enviaba a Meta sin haber visto el resultado.
+ *
+ * Con «Chat del lead» (2026-11-24) se ve además como queda en la
+ * conversación del CRM al mandarla: a la derecha, en verde y con los checks.
  */
-export function TemplatePreview({ form, attachments, mediaAssets, defaultFooter }: Props) {
+export function TemplatePreview({ form, attachments, mediaAssets, defaultFooter, initialView = 'phone' }: Props) {
   const [withData, setWithData] = useState(true)
+  const [view, setView] = useState<PreviewView>(initialView)
+  const titleId = useId()
   const internal = form.templateType === 'internal'
   const preview = previewOf(form, { withData, defaultFooter })
   const files = internal && form.interactiveType === 'none' ? attachments : []
@@ -132,17 +161,22 @@ export function TemplatePreview({ form, attachments, mediaAssets, defaultFooter 
   const showBubble = files.length === 0 || (preview.body.trim() !== '' && withCaption === null)
 
   return (
-    <section aria-labelledby="template-preview-title" className="overflow-hidden rounded-xl border border-line bg-surface">
+    <section aria-labelledby={titleId} className="overflow-hidden rounded-xl border border-line bg-surface">
       <div className="border-b border-line px-4 py-3">
-        <h2 id="template-preview-title" className="text-base font-semibold text-fg">Así lo verá el cliente</h2>
+        <h2 id={titleId} className="text-base font-semibold text-fg">{VIEW_TITLE[view]}</h2>
         <p className="mt-0.5 text-sm text-fg-muted">{internal ? 'Con un cliente de ejemplo llamado Ana.' : 'Con los datos de ejemplo que revisa Meta.'}</p>
-        {internal && <DataToggle withData={withData} onChange={setWithData} />}
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <Segmented label="Dónde se mira" options={VIEW_OPTIONS} value={view} onChange={setView} />
+          {internal && <Segmented label="Datos de la vista previa" options={DATA_OPTIONS} value={withData} onChange={setWithData} />}
+        </div>
       </div>
 
-      <div className="flex flex-col gap-1 bg-thread px-4 py-5 text-sm text-fg">
-        {files.map((item, index) => <FileBubble key={item.key} item={item} caption={index === withCaption ? preview.body : null} />)}
-        {showBubble && <MessageBubble preview={preview} headerUrl={headerUrl} />}
-        {preview.buttons.map(button => <ButtonRow key={button.key} button={button} />)}
+      {/* En el chat del lead lo enviado va a la derecha, en verde y con los
+          checks, como cualquier mensaje del vendedor. */}
+      <div className={cn('flex flex-col gap-1 bg-thread px-4 py-5 text-sm text-fg', view === 'chat' ? 'items-end' : 'items-start')}>
+        {files.map((item, index) => <FileBubble key={item.key} item={item} view={view} caption={index === withCaption ? preview.body : null} />)}
+        {showBubble && <MessageBubble preview={preview} headerUrl={headerUrl} view={view} />}
+        {preview.buttons.map(button => <ButtonRow key={button.key} button={button} view={view} />)}
       </div>
     </section>
   )
