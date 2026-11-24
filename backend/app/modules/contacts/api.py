@@ -49,6 +49,9 @@ async def get_contacts(
     search: str | None = Query(default=None, max_length=100),
     origen: ContactOrigin | None = None,
     tag: str | None = Query(default=None, max_length=40),
+    # Una letra (con la Ñ, que en español es otra) o "#" para los nombres que
+    # no empiezan con letra. Es el filtro A-Z de la agenda.
+    initial: str | None = Query(default=None, pattern=r"^([A-Za-zÑñ]|#)$"),
     has_lead: bool | None = None,
     removed_in_app: bool | None = None,
     consent: bool | None = None,
@@ -57,7 +60,7 @@ async def get_contacts(
     user: User = Depends(require_contacts_view),
 ):
     return await list_contacts(
-        search=search, origen=origen, tag=tag, has_lead=has_lead, removed_in_app=removed_in_app,
+        search=search, origen=origen, tag=tag, initial=initial, has_lead=has_lead, removed_in_app=removed_in_app,
         consent=consent, offset=offset, limit=limit, owner_id=await seller_scope(user),
     )
 

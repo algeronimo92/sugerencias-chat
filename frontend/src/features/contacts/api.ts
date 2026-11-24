@@ -20,6 +20,7 @@ export async function fetchContacts(filters: ContactFilters, page: number): Prom
       search: filters.search.trim() || undefined,
       origen: filters.origen || undefined,
       tag: filters.tag || undefined,
+      initial: filters.initial || undefined,
       has_lead: yesNo(filters.hasLead),
       consent: yesNo(filters.consent),
       removed_in_app: filters.removedInApp || undefined,

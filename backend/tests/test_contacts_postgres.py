@@ -118,6 +118,26 @@ async def test_contacts_follow_leads(tenant):
         assert (juan["lead_id"], juan["origen"]) == (other, "lead")
 
 
+async def test_initial_filter_folds_accents_and_keeps_n_tilde_apart(tenant):
+    with tenant_context(tenant):
+        admin = await _admin()
+        for phone, name in [("987000061", "Ángela"), ("987000062", "ana"), ("987000063", "Ñique"),
+                            ("987000064", "Nora"), ("987000065", "1er cliente"), ("987000066", None)]:
+            await service.create_contact({"telefono": phone, "nombre": name}, user_id=admin)
+
+        async def names(initial: str) -> set:
+            return {item["nombre"] for item in (await list_contacts(initial=initial))["items"]}
+
+        assert await names("A") == {"Ángela", "ana"}
+        assert await names("n") == {"Nora"}
+        assert await names("Ñ") == {"Ñique"}
+        # Sin nombre (solo número) o con algo que no es letra: "#".
+        assert await names("#") == {"1er cliente", None}
+        # Se suma a la búsqueda. "gel" y no "ang": la búsqueda no pliega tildes,
+        # así que "ang" no encuentra a "Ángela".
+        assert (await list_contacts(initial="A", search="gel"))["total"] == 1
+
+
 def test_csv_upload_round_trip_is_base64():
     # El frontend manda el archivo en base64, como el resto de las subidas.
     assert base64.b64decode(base64.b64encode(_csv("a,b", "1,2"))) == _csv("a,b", "1,2")
