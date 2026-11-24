@@ -36,6 +36,7 @@ from app.modules.ai.ai_context import make_context_revision
 from app.modules.ai.ai_job_tokens import AIJobClaims, require_ai_job_context
 from app.modules.auth.auth_service import get_current_user, verify_webhook_token
 from app.modules.automations.application.engine import process_due_automation_executions
+from app.modules.automations.domain.rule_to_flow import flow_from_rule
 from app.modules.conversations.application.ports import conversation_ports
 from app.modules.conversations.application.scheduling import dispatch_scheduled_message
 from app.realtime.ws_manager import manager
@@ -146,13 +147,17 @@ async def _stage_activities(world: World, chat_id: str) -> list[LeadActivity]:
 
 
 async def _stage_rule(world: World, name: str, actions: list[dict]) -> int:
+    """Un flujo publicado y activo que corre ``actions`` al cambiar la etapa."""
     now = datetime.now(timezone.utc)
+    definition = flow_from_rule({"trigger_type": "stage_changed", "actions": actions})
     with tenant_context(world.tenant):
         async with get_sessionmaker()() as session:
             rule_id = (await session.execute(
                 insert(AutomationRule).values(
                     name=name, trigger_type="stage_changed", trigger_config={},
-                    conditions={}, actions=actions, delay_minutes=0,
+                    conditions={}, actions=[], delay_minutes=0,
+                    builder_mode="visual", flow_definition=definition,
+                    published_flow_definition=definition, flow_version=1,
                     created_by_user_id=world.admin.id, created_at=now, updated_at=now,
                 ).returning(AutomationRule.id)
             )).scalar_one()
