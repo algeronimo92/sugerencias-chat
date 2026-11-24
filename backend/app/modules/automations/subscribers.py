@@ -14,6 +14,7 @@ notificaciones, despertar al worker) salen de acá, después del commit.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -41,11 +42,14 @@ from app.modules.catalogs.public import (
 )
 from app.modules.conversations.ports.message_queries import fetch_message_by_wa_id
 from app.modules.conversations.ports.service_window import SERVICE_WINDOW_ERROR_CODE
-from app.modules.conversations.public import ExternalMessageDetected, ProviderMessageStored
+from app.modules.conversations.public import (
+    ExternalMessageDetected, MessageDiscarded, MessageFailed, MessageSent, MessageStatusChanged, ProviderMessageStored,
+)
 from app.modules.leads.public import LeadCreated, LeadStageChanged, LeadUpdated
 from app.modules.notifications.ports.push_service import send_push_to_user
 from app.modules.notifications.ports.service import create_system_notification
 from app.realtime.ws_manager import manager
+from app.modules.automations.domain.delivery import MessageDeliveryState, is_delivery_state
 from app.modules.automations.domain.types import AutomationTrigger, ExecutionErrorCode
 from app.modules.notifications.ports.types import NotificationType
 
@@ -200,3 +204,42 @@ async def notify_execution_failure(event: ExecutionFailed) -> None:
         )
     except Exception:
         logger.exception("No se pudo notificar el fallo de la ejecución %s", event.execution_id)
+
+
+# --- Entrega de los mensajes de una ejecución -------------------------------
+#
+# Después del commit y nunca dentro de la transacción del envío: si anotar la
+# entrega fallara ahí, revertiría un mensaje que WhatsApp ya aceptó y la cola
+# lo mandaría otra vez. Un aviso perdido deja la proyección atrasada, que es
+# lo que repara ``scripts.reconcile_delivery``.
+
+async def _note_delivery(message_id: int, state: str) -> None:
+    try:
+        await automation_ports().executions.record_message_state(message_id, state, datetime.now(timezone.utc))
+    except SQLAlchemyError:
+        logger.exception("No se pudo anotar la entrega del mensaje %s (%s)", message_id, state)
+
+
+@subscribe(MessageSent, phase=Phase.AFTER_COMMIT)
+async def note_message_sent(event: MessageSent) -> None:
+    await _note_delivery(event.message_id, MessageDeliveryState.SENT)
+
+
+@subscribe(MessageFailed, phase=Phase.AFTER_COMMIT)
+async def note_message_failed(event: MessageFailed) -> None:
+    await _note_delivery(event.message_id, MessageDeliveryState.FAILED)
+
+
+@subscribe(MessageDiscarded, phase=Phase.AFTER_COMMIT)
+async def note_message_discarded(event: MessageDiscarded) -> None:
+    # Alguien descartó un mensaje que no había salido: tampoco se entregó.
+    await _note_delivery(event.message_id, MessageDeliveryState.FAILED)
+
+
+@subscribe(MessageStatusChanged, phase=Phase.AFTER_COMMIT)
+async def note_message_status(event: MessageStatusChanged) -> None:
+    # Los acuses de Meta: entregado, leído, o un rechazo tardío de un mensaje
+    # que ya figuraba como enviado.
+    if is_delivery_state(event.meta_status):
+        await _note_delivery(event.message_id, event.meta_status)
+

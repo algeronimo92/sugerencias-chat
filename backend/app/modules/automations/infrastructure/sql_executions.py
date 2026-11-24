@@ -13,9 +13,10 @@ from sqlalchemy import DateTime, String, and_, cast, exists, func, literal, not_
 from sqlalchemy.orm import aliased
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 
-from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
+from app.db.models.automations import AutomationExecution, AutomationExecutionMessage, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
 from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationExecutionStatus, ExecutionStartSource
+from app.modules.automations.domain.delivery import MessageDeliveryState, advance, message_ids_in, summarize
 from app.modules.automations.domain.execution import Execution, Rule, initial_flow_state
 from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION
 from app.modules.automations.queries import get_automation_execution
@@ -93,6 +94,21 @@ def _blocking_execution_exists(candidate):
         and_(not_(_has_started(candidate)), not_(is_manual), waiting),
         newer_manual,
     )
+
+
+async def _refresh_delivery(session, execution_id: int) -> None:
+    """Recalcula el resumen de entrega de una ejecución desde sus mensajes."""
+    # Se bloquea la ejecución antes de leer: los acuses de dos mensajes suyos
+    # pueden llegar a la vez, y cada uno resumiría sin ver el cambio del otro.
+    await session.execute(
+        select(AutomationExecution.id).where(AutomationExecution.id == execution_id).with_for_update()
+    )
+    states = (await session.execute(
+        select(AutomationExecutionMessage.state).where(AutomationExecutionMessage.execution_id == execution_id)
+    )).scalars().all()
+    await session.execute(update(AutomationExecution).where(
+        AutomationExecution.id == execution_id,
+    ).values(delivery_state=summarize(states)))
 
 
 def to_rule(row: AutomationRule) -> Rule:
@@ -335,6 +351,74 @@ class SqlExecutionStore:
                 AutomationExecution.pause_scope.is_distinct_from(PAUSE_SCOPE_EXECUTION),
             ).values(**_resume_values(now)))
         return result.rowcount or 0
+
+    async def track_messages(self, execution_id: int, message_ids: list[int], now: datetime) -> None:
+        if not message_ids:
+            return
+        async with session_scope() as session:
+            await session.execute(pg_insert(AutomationExecutionMessage).values([
+                {"message_id": message_id, "execution_id": execution_id, "state": MessageDeliveryState.PENDING, "updated_at": now}
+                for message_id in message_ids
+            ]).on_conflict_do_nothing(index_elements=[AutomationExecutionMessage.message_id]))
+            await _refresh_delivery(session, execution_id)
+
+    async def record_message_state(self, message_id: int, state: str, now: datetime) -> int | None:
+        async with session_scope() as session:
+            # FOR UPDATE: dos acuses del mismo mensaje llegan a la vez (Meta
+            # los reintenta) y sin el bloqueo el más viejo podía ganar.
+            row = (await session.execute(
+                select(AutomationExecutionMessage.execution_id, AutomationExecutionMessage.state)
+                .where(AutomationExecutionMessage.message_id == message_id)
+                .with_for_update()
+            )).first()
+            if row is None:
+                return None
+            execution_id, current = row
+            new_state = advance(current, state)
+            if new_state != current:
+                await session.execute(update(AutomationExecutionMessage).where(
+                    AutomationExecutionMessage.message_id == message_id,
+                ).values(state=new_state, updated_at=now))
+                await _refresh_delivery(session, execution_id)
+        return execution_id
+
+    async def queued_message_ids(self, after_id: int, limit: int) -> list[tuple[int, list[int]]]:
+        async with session_scope() as session:
+            rows = (await session.execute(
+                select(AutomationExecution.id, AutomationExecution.action_results)
+                .where(AutomationExecution.id > after_id)
+                .order_by(AutomationExecution.id.asc()).limit(limit)
+            )).all()
+        return [(execution_id, message_ids_in(results)) for execution_id, results in rows]
+
+    async def tracked_message_states(self, execution_ids: list[int]) -> dict[int, dict[int, str]]:
+        tracked: dict[int, dict[int, str]] = {execution_id: {} for execution_id in execution_ids}
+        if not execution_ids:
+            return tracked
+        async with session_scope() as session:
+            rows = (await session.execute(
+                select(
+                    AutomationExecutionMessage.execution_id, AutomationExecutionMessage.message_id,
+                    AutomationExecutionMessage.state,
+                ).where(AutomationExecutionMessage.execution_id.in_(execution_ids))
+            )).all()
+        for execution_id, message_id, state in rows:
+            tracked[execution_id][message_id] = state
+        return tracked
+
+    async def replace_message_states(self, execution_id: int, states: dict[int, str], now: datetime) -> None:
+        if not states:
+            return
+        async with session_scope() as session:
+            insert = pg_insert(AutomationExecutionMessage).values([
+                {"message_id": message_id, "execution_id": execution_id, "state": state, "updated_at": now}
+                for message_id, state in states.items()
+            ])
+            await session.execute(insert.on_conflict_do_update(
+                index_elements=[AutomationExecutionMessage.message_id],
+                set_={"state": insert.excluded.state, "updated_at": now},
+            ))
+            await _refresh_delivery(session, execution_id)
 
     async def dismiss(self, execution_id: int, now: datetime) -> bool:
         async with session_scope() as session:

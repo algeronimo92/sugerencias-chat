@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from app.db.models.auth import User
 from app.db.models.automations import AutomationExecution, AutomationRule
@@ -463,3 +463,103 @@ async def test_a_reply_stops_a_waiting_follow_up_but_not_one_waiting_for_that_re
 
         assert (await _row(chasing)).status == AutomationExecutionStatus.SKIPPED
         assert (await _row(asking)).status == AutomationExecutionStatus.SCHEDULED
+
+
+async def _delivery(execution_id: int) -> tuple[str | None, dict[int, str]]:
+    from app.db.models.automations import AutomationExecutionMessage
+
+    async with session_scope() as session:
+        messages = dict((await session.execute(
+            select(AutomationExecutionMessage.message_id, AutomationExecutionMessage.state)
+            .where(AutomationExecutionMessage.execution_id == execution_id)
+        )).all())
+    return (await _row(execution_id)).delivery_state, messages
+
+
+async def test_the_delivery_summary_follows_the_messages_of_an_execution(tenant):
+    """Una ejecución quedaba «completada» al encolar; que sus mensajes hayan
+    salido o no se pierde si nadie lo anota."""
+    with tenant_context(tenant):
+        execution_id = await _execution(await _rule(), await _lead(), status=AutomationExecutionStatus.COMPLETED)
+        store = SqlExecutionStore()
+        assert (await _delivery(execution_id))[0] is None  # todavía no mandó nada
+
+        await store.track_messages(execution_id, [9001, 9002], NOW)
+        await store.track_messages(execution_id, [9001], NOW)  # repetir no cambia nada
+        assert await _delivery(execution_id) == ("pending", {9001: "pending", 9002: "pending"})
+
+        assert await store.record_message_state(9001, "sent", NOW) == execution_id
+        assert (await _delivery(execution_id))[0] == "pending"  # falta el otro
+
+        await store.record_message_state(9002, "read", NOW)
+        assert (await _delivery(execution_id))[0] == "delivered"
+
+        # Un acuse viejo no retrocede; un rechazo tardío sí cambia el resumen.
+        await store.record_message_state(9002, "delivered", NOW)
+        assert (await _delivery(execution_id))[1][9002] == "read"
+        await store.record_message_state(9001, "failed", NOW)
+        assert await _delivery(execution_id) == ("failed", {9001: "failed", 9002: "read"})
+
+        # No se toca el estado del motor: de él dependen el tope por hora y el «no repetir».
+        assert (await _row(execution_id)).status == AutomationExecutionStatus.COMPLETED
+
+
+async def test_a_message_no_execution_sent_is_ignored_and_messages_go_with_their_execution(tenant):
+    from app.db.models.automations import AutomationExecutionMessage
+
+    with tenant_context(tenant):
+        execution_id = await _execution(await _rule(), await _lead())
+        store = SqlExecutionStore()
+        await store.track_messages(execution_id, [9100], NOW)
+
+        assert await store.record_message_state(4242, "sent", NOW) is None
+
+        async with session_scope() as session:
+            await session.execute(delete(AutomationExecution).where(AutomationExecution.id == execution_id))
+        async with session_scope() as session:
+            assert (await session.scalar(select(func.count(AutomationExecutionMessage.message_id)))) == 0
+
+
+async def test_reconciling_rebuilds_the_delivery_from_the_real_messages(tenant):
+    """Las ejecuciones anteriores a la cuenta de entrega no tienen nada
+    anotado: se reconstruye desde los mensajes que sus pasos dejaron escritos."""
+    from app.db.models.conversations import WspMessage
+    from app.modules.automations.application.delivery import reconcile_delivery
+
+    async def message(**values) -> int:
+        async with session_scope() as session:
+            return (await session.execute(insert(WspMessage).values(
+                chat_id=lead_id, sender="vendedor", content="hola", sent_at=NOW, message_type="text", **values,
+            ).returning(WspMessage.id))).scalar_one()
+
+    with tenant_context(tenant):
+        rule_id = await _rule()
+        lead_id = await _lead()
+        read = await message(outbox_status="sent", meta_status="read")
+        accepted = await message(outbox_status="sent")
+        lost = await message(outbox_status="failed")
+        queued = await message(outbox_status="queued")
+        delivered = await _execution(
+            rule_id, lead_id, status=AutomationExecutionStatus.COMPLETED, action_results=[{"message_ids": [read]}],
+        )
+        undelivered = await _execution(
+            await _rule(), lead_id, status=AutomationExecutionStatus.COMPLETED,
+            action_results=[{"message_ids": [accepted]}, {"message_ids": [lost]}],
+        )
+        sending = await _execution(
+            await _rule(), lead_id, status=AutomationExecutionStatus.COMPLETED, action_results=[{"message_ids": [queued]}],
+        )
+        no_messages = await _execution(await _rule(), lead_id, status=AutomationExecutionStatus.COMPLETED)
+
+        dry = await reconcile_delivery(apply=False)
+        assert dry.changed_executions == 3
+        assert (await _row(undelivered)).delivery_state is None  # la simulación no escribe
+
+        await reconcile_delivery(apply=True)
+
+        assert (await _row(delivered)).delivery_state == "delivered"
+        assert (await _row(undelivered)).delivery_state == "failed"
+        assert (await _row(sending)).delivery_state == "pending"
+        assert (await _row(no_messages)).delivery_state is None
+        # Ya coincide: reconciliar de nuevo no encuentra nada que corregir.
+        assert not (await reconcile_delivery(apply=False)).corrected

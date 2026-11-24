@@ -56,3 +56,26 @@ def strongest_meta_status(statuses: list[tuple[str, dict]]) -> tuple[str, dict] 
         return None
     _rank, value, payload = max(ranked, key=lambda item: item[0])
     return value, payload
+
+
+_UNSENT_OUTBOX = frozenset({"queued", "sending", "retryable_failed"})
+_LOST_OUTBOX = frozenset({"failed", "discarded"})
+
+
+def delivery_state_of(outbox_status: str | None, meta_status: str | None) -> str | None:
+    """En qué quedó un mensaje saliente, en una sola palabra: ``pending``,
+    ``sent``, ``delivered``, ``read`` o ``failed``.
+
+    Manda lo que informó Meta; si todavía no informó nada, lo que sabe la cola
+    de envío. ``None`` si el mensaje no pasó por la cola (uno entrante, o uno
+    escrito desde el teléfono del negocio)."""
+    if meta_status in META_STATUS_RANK:
+        return meta_status
+    if outbox_status == "sent":
+        return "sent"
+    if outbox_status in _LOST_OUTBOX:
+        return "failed"
+    if outbox_status in _UNSENT_OUTBOX:
+        return "pending"
+    return None
+

@@ -11,6 +11,7 @@ import dataclasses
 import itertools
 from datetime import timedelta
 
+from app.db.uow import unit_of_work
 from app.integrations.whatsapp.channel import SEND_FAILURES, is_transient_send_failure
 from app.modules.automations.domain.types import AutomationActionType, AutomationExecutionStatus
 from app.modules.notifications.ports.types import NotificationType
@@ -402,7 +403,15 @@ def with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -
     async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
         scope = f"automation:{execution_id}:{position}:{next(calls)}"
         keyed = [{**item, "dedupe_key": f"{scope}:{index}"} for index, item in enumerate(items)]
-        return await deps.enqueue_messages(chat_id, keyed)
+        # En la misma transacción que encola: la cola de envío no ve el
+        # mensaje hasta el commit, así que su aviso de «enviado» nunca puede
+        # llegar antes de que la ejecución sepa que ese mensaje es suyo.
+        async with unit_of_work():
+            sent = await deps.enqueue_messages(chat_id, keyed)
+            await deps.executions.track_messages(
+                execution_id, [message["id"] for message in sent if message.get("id") is not None], deps.now(),
+            )
+        return sent
 
     return dataclasses.replace(deps, enqueue_messages=enqueue_messages)
 

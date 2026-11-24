@@ -7,6 +7,7 @@ from app.db.models.conversations import WspMessage
 from app.integrations.meta_webhook.projection import reply_identifier
 from app.core.time_format import iso_utc_micros as _fmt_ts
 from app.db.uow import session_scope
+from app.modules.conversations.domain.delivery import delivery_state_of
 
 
 async def fetch_chat_signature() -> str:
@@ -178,3 +179,18 @@ async def phoneless_chats_mentioning(tail: str, *, since: datetime, limit: int =
     )
     async with session_scope() as session:
         return list((await session.execute(stmt)).scalars().all())
+
+
+async def delivery_states(message_ids: list[int]) -> dict[int, str]:
+    """En qué quedó cada mensaje saliente (ver ``delivery_state_of``). Los que
+    ya no existen o no pasaron por la cola de envío no aparecen."""
+    if not message_ids:
+        return {}
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(WspMessage.id, WspMessage.outbox_status, WspMessage.meta_status)
+            .where(WspMessage.id.in_(message_ids))
+        )).all()
+    states = {message_id: delivery_state_of(outbox_status, meta_status) for message_id, outbox_status, meta_status in rows}
+    return {message_id: state for message_id, state in states.items() if state is not None}
+

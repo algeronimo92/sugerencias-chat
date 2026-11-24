@@ -17,6 +17,7 @@ import pytest
 from app.core.events import DomainEvent
 from app.modules.automations.application import ports as automation_ports_module
 from app.modules.automations.application.ports import AutomationPorts, ExecutionAlreadyRunning
+from app.modules.automations.domain.delivery import advance
 from app.modules.automations.ports.types import AutomationExecutionStatus
 
 
@@ -30,6 +31,8 @@ class InMemoryExecutionStore:
         self.children: list[dict] = []
         self.due: list[int] = []
         self.lead_resumes: list[str] = []
+        # message_id -> (execution_id, estado de entrega).
+        self.messages: dict[int, tuple[int, str]] = {}
         self._ids = itertools.count(1000)
 
     def add(self, execution, rule=None):
@@ -147,6 +150,34 @@ class InMemoryExecutionStore:
             execution_id, {AutomationExecutionStatus.PAUSED},
             status=AutomationExecutionStatus.SCHEDULED, paused_at=None, pause_scope=None,
         )
+
+    async def track_messages(self, execution_id, message_ids, now):
+        for message_id in message_ids:
+            self.messages.setdefault(message_id, (execution_id, "pending"))
+
+    async def record_message_state(self, message_id, state, now):
+        if message_id not in self.messages:
+            return None
+        execution_id, current = self.messages[message_id]
+        self.messages[message_id] = (execution_id, advance(current, state))
+        return execution_id
+
+    async def queued_message_ids(self, after_id, limit):
+        from app.modules.automations.domain.delivery import message_ids_in
+
+        ids = sorted(execution_id for execution_id in self.executions if execution_id > after_id)[:limit]
+        return [(execution_id, message_ids_in(self.executions[execution_id].action_results)) for execution_id in ids]
+
+    async def tracked_message_states(self, execution_ids):
+        tracked = {execution_id: {} for execution_id in execution_ids}
+        for message_id, (execution_id, state) in self.messages.items():
+            if execution_id in tracked:
+                tracked[execution_id][message_id] = state
+        return tracked
+
+    async def replace_message_states(self, execution_id, states, now):
+        for message_id, state in states.items():
+            self.messages[message_id] = (execution_id, state)
 
     async def dismiss(self, execution_id, now):
         return self._transition(

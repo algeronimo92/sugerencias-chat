@@ -15,7 +15,7 @@ from app.db.models.appointments import Appointment
 from app.db.models.tasks import LeadTask
 from app.db.models.contacts import Contact, ContactImportBatch, ContactImportRow, WhatsAppAppSync, WhatsAppHistoryChunk, ContactSettings
 from app.db.models.media import MediaAsset
-from app.db.models.automations import AutomationRule, AutomationFlowVersion, AutomationRoundRobinState, AutomationExecution
+from app.db.models.automations import AutomationRule, AutomationFlowVersion, AutomationRoundRobinState, AutomationExecution, AutomationExecutionMessage
 
 __all__ = [
     'Base',
@@ -86,4 +86,5 @@ __all__ = [
     'AutomationFlowVersion',
     'AutomationRoundRobinState',
     'AutomationExecution',
+    'AutomationExecutionMessage',
 ]
