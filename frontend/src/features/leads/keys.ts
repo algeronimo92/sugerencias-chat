@@ -17,7 +17,9 @@ export const leadKeys = {
   lists: ['chats', 'list'] as const,
   list: (search: string, filters: ChatFilters, order: ChatOrder = 'recent') => ['chats', 'list', search, filters, order] as const,
   /** Las dos secciones del buscador de la bandeja. Cuelgan de `all`: un
-   *  mensaje nuevo o un cambio en un lead las refresca como a la lista. */
+   *  cambio en un lead las refresca como a la lista. La de mensajes recorre
+   *  el historial entero, así que el tiempo real la refresca solo cuando el
+   *  mensaje nuevo puede aparecer en ella (`messageSearchTerm`). */
   contactSearch: (search: string, filters: ChatFilters) => ['chats', 'search', 'contacts', search, filters] as const,
   messageSearch: (search: string, filters: ChatFilters) => ['chats', 'search', 'messages', search, filters] as const,
   detailAll: ['chat'] as const,
@@ -48,4 +50,11 @@ export const stageKeys = {
   all: ['lead-stages'] as const,
   list: ['lead-stages', 'list'] as const,
   admin: ['lead-stages', 'admin'] as const,
+}
+
+/** El texto que busca una clave de `leadKeys.messageSearch`, o `null` si la
+ *  clave es de otra cosa. */
+export function messageSearchTerm(queryKey: readonly unknown[]): string | null {
+  const [root, kind, section, search] = queryKey
+  return root === 'chats' && kind === 'search' && section === 'messages' && typeof search === 'string' ? search : null
 }
