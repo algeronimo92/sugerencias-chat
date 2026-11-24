@@ -1,8 +1,8 @@
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import {
 Activity,AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
-FileJson,GitBranch,History,Layers3,Loader2,LocateFixed,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
-Sparkles,Trash2,XCircle,
+FileJson,GitBranch,History,Loader2,LocateFixed,MessageCircle,Pencil,Plus,Power,RotateCcw,Save,ShieldCheck,
+Send,Sparkles,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -24,7 +24,7 @@ import { useUsers } from '../../platform/public/useUsers'
 import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowFailure, type AutomationExecutionStatusValue } from '../domain/automationCatalog'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue, isTaskPriority, isTaskType } from '../../tasks/public/taskCatalog'
 import {
-useAutomationExecutions,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
+useAttention,useAutomationExecutions,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
 useDeleteAutomation,useDuplicateAutomation,useRetryExecution,useUpdateAutomation,
 } from '../queries'
 import type {
@@ -33,6 +33,7 @@ AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
 import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, readableExecutionError } from '../utils/automationExecutions'
 import { EXECUTIONS_PAGE_LIMIT } from '../api'
+import { AttentionPanel } from './AttentionPanel'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
@@ -124,6 +125,15 @@ function validateForm(form: RuleForm) {
   return errors
 }
 
+type AutomationsTab = 'attention' | 'automatic' | 'sequences' | 'activity'
+
+const TABS: { key: AutomationsTab; label: string; icon: typeof History }[] = [
+  { key: 'attention', label: 'Por atender', icon: AlertTriangle },
+  { key: 'automatic', label: 'Automáticas', icon: Bot },
+  { key: 'sequences', label: 'Secuencias del equipo', icon: Send },
+  { key: 'activity', label: 'Actividad', icon: History },
+]
+
 export function AutomationsPage() {
   const navigate = useNavigate()
   const { data: rules = [], isLoading } = useAutomationRules()
@@ -160,7 +170,7 @@ export function AutomationsPage() {
   // `?tab=history` existe para el enlace "Ver flujos automáticos" de "Flujos
   // enviados": sin él, quien llegaba buscando el historial caía en Reglas.
   const [searchParams] = useSearchParams()
-  const [chosenTab, setTab] = useState<'rules' | 'flows' | 'history' | null>(() => searchParams.get('tab') === 'history' ? 'history' : null)
+  const [chosenTab, setTab] = useState<AutomationsTab | null>(() => searchParams.get('tab') === 'history' ? 'activity' : null)
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -184,10 +194,16 @@ export function AutomationsPage() {
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
   // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
   const visualRuleIds = new Set(visualRules.map(rule => rule.id))
-  // Sin elección propia se entra donde hay contenido. DermicaPro tenía 16
-  // flujos y ninguna regla, y la pantalla abría en «Reglas (0)» diciendo
-  // «Todavía no hay automatizaciones» debajo de «Automatizaciones 16».
-  const tab = chosenTab ?? (simpleRules.length === 0 && visualRules.length > 0 ? 'flows' : 'rules')
+  // Lo que corre solo y lo que lanza una persona son tareas distintas de
+  // gente distinta: se separaban por cómo estaban construidas («Reglas» y
+  // «Flujos visuales»), que es un detalle de implementación.
+  const automaticFlows = visualRules.filter(rule => rule.trigger_type !== TriggerType.Manual)
+  const sequenceFlows = visualRules.filter(rule => rule.trigger_type === TriggerType.Manual)
+  const attention = useAttention()
+  // Se entra en Automáticas y no en Por atender: un fallo todavía no se puede
+  // marcar como resuelto, así que esa lista casi nunca está vacía y abrir
+  // siempre ahí taparía la tarea más frecuente, que es editar.
+  const tab: AutomationsTab = chosenTab ?? 'automatic'
   const historyTruncated = executions.length >= EXECUTIONS_PAGE_LIMIT
   const activeRulesCount = rules.filter(rule => rule.is_active).length
   const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
@@ -250,8 +266,8 @@ export function AutomationsPage() {
   if (!isLoading && ruleUrl.key !== shownRule) {
     setShownRule(ruleUrl.key)
     const { rule, highlight, block } = ruleUrl
-    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab('flows'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
-    else if (rule) { setTab('rules'); openEdit(rule, highlight) }
+    if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab(rule.trigger_type === TriggerType.Manual ? 'sequences' : 'automatic'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
+    else if (rule) { setTab('automatic'); openEdit(rule, highlight) }
   }
   // Se marca solo lo que pidió Catálogos: la acción que asigna el servicio o la condición que filtra por su nombre.
   const actionService = formHighlight?.part === 'action' ? formHighlight.service : null
@@ -383,6 +399,20 @@ export function AutomationsPage() {
     )
   }
 
+  // Las automáticas y las secuencias del equipo son el mismo tipo de flujo
+  // con distinto disparador: comparten tarjeta.
+  function flowCards(list: AutomationRule[], empty: { title: string; text: string; action: string } | null) {
+    if (list.length === 0) {
+      return empty && <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">{empty.title}</p><p className="mx-auto mt-1 max-w-md text-xs text-wa-muted">{empty.text}</p><button type="button" onClick={() => setFlowBuilder({})} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />{empty.action}</button></div>
+    }
+    return <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{list.map(rule => {
+            const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
+            const hasPublished = !!rule.published_flow_definition
+            const hasDraftChanges = hasPublished && !areFlowDefinitionsEqual(rule.flow_definition, rule.published_flow_definition)
+            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} bloques · {triggerLabel(rule.trigger_type)}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creado por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && toggleControl(rule)}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicado · v${rule.flow_version}` : hasPublished ? 'Pausado' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar flujo →</button></div></div></div></article>
+    })}</div>
+  }
+
   return (
     <div className="relative h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
       <main className="relative mx-auto max-w-[1240px] px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
@@ -394,11 +424,14 @@ export function AutomationsPage() {
                 Centro de automatización
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-wa-text dark:text-white">Automatizaciones</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Diseña reglas y flujos visuales para acelerar el seguimiento comercial de forma segura y auditable.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">Lo que el sistema hace solo y lo que tu equipo lanza con un toque desde el chat.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {tab === 'flows' && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
-              <button type="button" onClick={() => tab === 'flows' ? setFlowBuilder({}) : openCreate()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'flows' ? 'Nuevo flujo visual' : 'Nueva automatización'}</button>
+              {/* Las reglas simples siguen pudiéndose crear hasta que las recetas las
+                  reemplacen; ya no son la opción principal. */}
+              {tab === 'automatic' && <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><GitBranch className="h-4 w-4" />Regla simple</button>}
+              {(tab === 'automatic' || tab === 'sequences') && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
+              <button type="button" onClick={() => setFlowBuilder({})} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />{tab === 'sequences' ? 'Nueva secuencia' : 'Nueva automatización'}</button>
             </div>
           </div>
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
@@ -409,31 +442,39 @@ export function AutomationsPage() {
         </header>
 
         <nav className="mb-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-wa-border bg-white/75 p-1.5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/75" aria-label="Secciones de automatizaciones">
-          <button type="button" onClick={() => setTab('rules')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'rules' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><GitBranch className="h-3.5 w-3.5" />Reglas <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'rules' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{simpleRules.length}</span></button>
-          <button type="button" onClick={() => setTab('flows')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'flows' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><Layers3 className="h-3.5 w-3.5" />Flujos visuales <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === 'flows' ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{visualRules.length}</span></button>
-          <button type="button" onClick={() => setTab('history')} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === 'history' ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}><History className="h-3.5 w-3.5" />Historial</button>
+          {TABS.map(({ key, label, icon: Icon }) => {
+            const count = { attention: attention.count, automatic: simpleRules.length + automaticFlows.length, sequences: sequenceFlows.length, activity: null }[key]
+            const selected = tab === key
+            return (
+              <button key={key} type="button" onClick={() => setTab(key)} aria-current={selected ? 'page' : undefined} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${selected ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>
+                <Icon className="h-3.5 w-3.5" />{label}
+                {/* Por atender sin pendientes no lleva contador: un «0» ahí se lee como un aviso. */}
+                {count !== null && !(key === 'attention' && count === 0) && <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${key === 'attention' && !selected ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : selected ? 'bg-white/20' : 'bg-wa-field dark:bg-wa-head-dark'}`}>{count}</span>}
+              </button>
+            )
+          })}
         </nav>
 
         {error && !formOpen && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
-        {tab === 'rules' ? (
-          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : simpleRules.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">{visualRules.length ? 'Todavía no hay reglas' : 'Todavía no hay automatizaciones'}</p><p className="mt-1 text-xs text-wa-muted">{visualRules.length ? 'Tus automatizaciones están en «Flujos visuales». Una regla sirve para algo de un solo paso: asignar, notificar o programar un seguimiento.' : 'Crea la primera regla para asignar, notificar o programar seguimientos.'}</p></div>
-          ) : <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{simpleRules.map(rule => (
+        {tab === 'attention' ? (
+          <AttentionPanel groups={attention.groups} isLoading={attention.isLoading} onOpenChat={openExecutionChat} onSeeActivity={() => setTab('activity')} />
+        ) : tab === 'automatic' ? (
+          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : (
+            <div className="space-y-4">
+              {simpleRules.length > 0 && <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{simpleRules.map(rule => (
             <article key={rule.id} className={`rounded-2xl border bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-wa-panel-dark/90 ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border opacity-75 dark:border-wa-border-dark'}`}>
               <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : 'bg-wa-field text-wa-muted dark:bg-wa-head-dark'}`}><Bot className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-xs text-wa-muted">Cuando: {triggerLabel(rule.trigger_type)}{rule.trigger_config.minutes ? ` · ${rule.trigger_config.minutes} min` : ''}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Editar" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{toggleControl(rule)}{deleteControl(rule)}</div></div>
                 <div className="mt-3 flex flex-wrap gap-1.5">{rule.actions.map((action, index) => <span key={index} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{index + 1}. {ACTION_LABELS[action.type]}</span>)}{rule.delay_minutes > 0 && <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">Espera {rule.delay_minutes} min</span>}{rule.max_executions_per_hour && <span className="rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Máx. {rule.max_executions_per_hour}/h</span>}</div>
                 <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span>{rule.last_execution_status && <span className={`rounded-full px-2 py-0.5 ${executionTone(rule.last_execution_status)}`}>{executionStatusLabel(rule.last_execution_status)}</span>}</div>
               </div></div>
             </article>
-          ))}</div>
-        ) : tab === 'flows' ? (
-          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : visualRules.length === 0 ? <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">Todavía no hay flujos visuales</p><p className="mt-1 text-xs text-wa-muted">Conecta disparadores, condiciones, acciones y esperas en un lienzo.</p><button type="button" onClick={() => setFlowBuilder({})} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />Crear primer flujo</button></div> : <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{visualRules.map(rule => {
-            const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
-            const hasPublished = !!rule.published_flow_definition
-            const hasDraftChanges = hasPublished && !areFlowDefinitionsEqual(rule.flow_definition, rule.published_flow_definition)
-            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} bloques · {triggerLabel(rule.trigger_type)}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creado por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && toggleControl(rule)}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicado · v${rule.flow_version}` : hasPublished ? 'Pausado' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar flujo →</button></div></div></div></article>
-          })}</div>
+              ))}</div>}
+              {flowCards(automaticFlows, simpleRules.length > 0 ? null : { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo: dar la bienvenida, hacer seguimiento, avisar a tu equipo.', action: 'Crear la primera' })}
+            </div>
+          )
+        ) : tab === 'sequences' ? (
+          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : flowCards(sequenceFlows, { title: 'Todavía no hay secuencias', text: 'Son los mensajes que tu equipo lanza con un toque desde el chat: precios, evidencias, indicaciones. Se crean eligiendo el disparador «Inicio manual (vendedor)».', action: 'Crear la primera' })
         ) : (
           <div className="overflow-hidden rounded-2xl border border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark">
             <div className="flex flex-wrap items-end gap-3 border-b border-wa-border bg-wa-hover/60 p-3 dark:border-wa-border-dark dark:bg-wa-head-dark/40">

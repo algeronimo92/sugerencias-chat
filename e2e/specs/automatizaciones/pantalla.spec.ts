@@ -1,37 +1,104 @@
-import { FLOWS, execution } from '../../fixtures/crm'
-import { expectFullyOnScreen } from '../../fixtures/screen'
+import { FLOWS, execution, flow } from '../../fixtures/crm'
+import { expectFullyOnScreen, expectNoPageOverflow } from '../../fixtures/screen'
 import { expect, test } from '../../fixtures/test'
 
-// Un negocio como DermicaPro: solo flujos visuales, ninguna regla simple.
+// Un negocio como DermicaPro: una automatización que corre sola y varias
+// secuencias que el equipo lanza desde el chat. Ninguna regla simple.
+const BIENVENIDA = { ...flow(20, 'Bienvenida'), trigger_type: 'conversation_started' as const }
+
+/** El backend filtra por `status`; el simulado tiene que hacerlo también, o
+ *  «Por atender» recibiría lo que es de «Actividad». */
+function byStatus(rows: ReturnType<typeof execution>[]) {
+  return ({ url }: { url: URL }) => {
+    const status = url.searchParams.get('status')
+    return status ? rows.filter(row => row.status === status) : rows
+  }
+}
+
 test.beforeEach(({ api }) => {
   api
-    .on('get', '/api/automations', FLOWS)
+    .on('get', '/api/automations', [BIENVENIDA, ...FLOWS])
     .on('get', '/api/users', [])
     .on('get', '/api/tags', [])
     .on('get', '/api/media-library', [])
 })
 
-test('con flujos y sin reglas se entra en los flujos, no en una pestaña vacía', async ({ page }, info) => {
+test('la pantalla separa lo que corre solo de lo que lanza el equipo', async ({ page }, info) => {
   await page.goto('/automations')
 
-  // Antes abría en «Reglas (0)» y decía «Todavía no hay automatizaciones»
-  // debajo del contador «Automatizaciones 5».
-  await expect(page.getByRole('heading', { name: FLOWS[0].name })).toBeVisible()
-  await expect(page.getByText('Todavía no hay automatizaciones')).toHaveCount(0)
-  await page.screenshot({ path: `test-results/automatizaciones-entrada-${info.project.name}.png` })
+  // Antes se separaba por cómo estaban hechas («Reglas» y «Flujos visuales»):
+  // la bienvenida automática quedaba mezclada entre las secuencias del equipo.
+  const tabs = page.getByRole('navigation', { name: 'Secciones de automatizaciones' })
+  await expect(tabs.getByRole('button', { name: /Automáticas/ })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toBeVisible()
+  await expect(page.getByRole('heading', { name: FLOWS[0].name })).toHaveCount(0)
+  // Sin pendientes, «Por atender» no lleva contador: un 0 se leería como aviso.
+  await expect(tabs.getByRole('button', { name: 'Por atender', exact: true })).toBeVisible()
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/automatizaciones-automaticas-${info.project.name}.png` })
 
-  await page.getByRole('button', { name: /^Reglas/ }).click()
-  await expect(page.getByText('Tus automatizaciones están en «Flujos visuales»')).toBeVisible()
+  await tabs.getByRole('button', { name: /Secuencias del equipo/ }).click()
+  await expect(page.getByRole('heading', { name: FLOWS[0].name })).toBeVisible()
+  await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Nueva secuencia' })).toBeVisible()
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/automatizaciones-secuencias-${info.project.name}.png` })
+})
+
+test('«Por atender» junta lo que falló por causa y lo arregla desde la fila', async ({ page, api }, info) => {
+  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const hourAgo = new Date(Date.now() - 3_600_000).toISOString()
+  const rows = [
+    execution(FLOWS[0], { id: 4001, status: 'failed', error_code: 'service_window_closed', error: 'Ventana cerrada', finished_at: hourAgo, lead_name: 'Valeria Quispe' }),
+    execution(FLOWS[2], { id: 4002, status: 'failed', error: 'La plantilla ya no está aprobada', finished_at: hourAgo, lead_name: 'Paola Ríos' }),
+    execution(BIENVENIDA, { id: 4003, status: 'failed', error: 'El lead no tiene vendedor asignado', finished_at: hourAgo, lead_name: 'Lucía Pérez' }),
+    execution(FLOWS[1], { id: 4004, status: 'paused', paused_at: monthAgo, lead_name: 'Jimena Castro' }),
+    // Una pausa de hoy es una decisión reciente: no pide atención.
+    execution(FLOWS[3], { id: 4005, status: 'paused', paused_at: hourAgo, lead_name: 'Rosa Díaz' }),
+  ]
+  api
+    .on('get', '/api/automations/executions', byStatus(rows))
+    .on('post', '/api/automations/executions/{execution_id}/retry', { ...rows[1], status: 'scheduled' })
+
+  await page.goto('/automations')
+  const tab = page.getByRole('navigation', { name: 'Secciones de automatizaciones' }).getByRole('button', { name: /Por atender/ })
+  // El contador avisa desde cualquier sección.
+  await expect(tab).toContainText('4')
+  await tab.click()
+
+  const failed = page.getByRole('region', { name: /Se cortaron por un error/ })
+  await expect(page.getByRole('region', { name: /Frenadas por la ventana de 24 horas/ })).toContainText('Valeria Quispe')
+  await expect(failed).toContainText('La plantilla ya no está aprobada')
+  await expect(page.getByRole('region', { name: /Falta una vendedora/ })).toContainText('Lucía Pérez')
+  await expect(page.getByRole('region', { name: /En pausa hace más de 7 días/ })).toContainText('Jimena Castro')
+  await expect(page.getByText('Rosa Díaz')).toHaveCount(0)
+  await expectNoPageOverflow(page)
+  await page.screenshot({ path: `test-results/automatizaciones-por-atender-${info.project.name}.png`, fullPage: true })
+
+  await failed.getByRole('button', { name: 'Reintentar' }).click()
+  await expect(page.getByText('Ejecución reprogramada')).toBeVisible()
+  expect(api.calls('post', '/api/automations/executions/{execution_id}/retry').map(call => call.path))
+    .toEqual(['/api/automations/executions/4002/retry'])
+})
+
+test('sin nada pendiente, «Por atender» lo dice en vez de quedar en blanco', async ({ page }) => {
+  await page.goto('/automations')
+  await page.getByRole('navigation', { name: 'Secciones de automatizaciones' }).getByRole('button', { name: 'Por atender' }).click()
+
+  await expect(page.getByText('Todo en marcha')).toBeVisible()
+  await page.getByRole('button', { name: 'Ver la actividad' }).click()
+  await expect(page.getByRole('button', { name: 'Actividad' })).toHaveAttribute('aria-current', 'page')
 })
 
 test('pausar un flujo pide confirmación y dice qué pasa con lo que está en curso', async ({ page, api }, info) => {
-  const flow = FLOWS[0]
-  api.on('patch', '/api/automations/{rule_id}', { ...flow, is_active: false })
+  const target = FLOWS[0]
+  api.on('patch', '/api/automations/{rule_id}', { ...target, is_active: false })
 
   await page.goto('/automations')
-  await page.getByRole('button', { name: `Pausar ${flow.name}` }).click()
+  await page.getByRole('button', { name: /Secuencias del equipo/ }).click()
+  await page.getByRole('button', { name: `Pausar ${target.name}` }).click()
 
-  const dialog = page.getByRole('alertdialog', { name: `Pausar “${flow.name}”` })
+  const dialog = page.getByRole('alertdialog', { name: `Pausar “${target.name}”` })
   await expectFullyOnScreen(dialog)
   await expect(dialog).toContainText('no recibirán los pasos que faltan')
   await page.screenshot({ path: `test-results/automatizaciones-pausar-${info.project.name}.png` })
@@ -40,19 +107,20 @@ test('pausar un flujo pide confirmación y dice qué pasa con lo que está en cu
   await dialog.getByRole('button', { name: 'No pausar' }).click()
   expect(api.calls('patch', '/api/automations/{rule_id}')).toEqual([])
 
-  await page.getByRole('button', { name: `Pausar ${flow.name}` }).click()
+  await page.getByRole('button', { name: `Pausar ${target.name}` }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Pausar', exact: true }).click()
   expect(api.calls('patch', '/api/automations/{rule_id}')).toEqual([
-    { method: 'patch', path: `/api/automations/${flow.id}`, body: { is_active: false } },
+    { method: 'patch', path: `/api/automations/${target.id}`, body: { is_active: false } },
   ])
 })
 
-test('el historial avisa cuando hay más ejecuciones de las que muestra', async ({ page, api }, info) => {
+test('la actividad avisa cuando hay más ejecuciones de las que muestra', async ({ page, api }, info) => {
   // El listado trae 200 como máximo y los días normales superan las 300:
   // se leía «200 resultados» como si fuera todo.
   const full = Array.from({ length: 200 }, (_, index) => execution(FLOWS[index % FLOWS.length], { id: 1000 + index, status: 'completed' }))
-  api.on('get', '/api/automations/executions', full)
+  api.on('get', '/api/automations/executions', byStatus(full))
 
+  // El enlace viejo (`?tab=history`) sigue llevando a la actividad.
   await page.goto('/automations?tab=history')
 
   const notice = page.getByRole('status').filter({ hasText: 'Hay más ejecuciones de las que se muestran' })
@@ -63,13 +131,13 @@ test('el historial avisa cuando hay más ejecuciones de las que muestra', async 
   await page.screenshot({ path: `test-results/automatizaciones-historial-${info.project.name}.png` })
 })
 
-test('el historial distingue lo que alguien canceló de lo que no aplicó', async ({ page, api }, info) => {
+test('la actividad distingue lo que alguien canceló de lo que no aplicó', async ({ page, api }, info) => {
   // Las dos se guardaban como «skipped» y se leían «Omitida»: en DermicaPro
   // 655 de 718 eran cancelaciones, no flujos que no aplicaban.
-  api.on('get', '/api/automations/executions', [
+  api.on('get', '/api/automations/executions', byStatus([
     execution(FLOWS[0], { id: 2001, status: 'cancelled', error: 'Cancelada manualmente', finished_at: new Date().toISOString() }),
     execution(FLOWS[1], { id: 2002, status: 'skipped', error: 'El cliente respondió antes del vencimiento', finished_at: new Date().toISOString() }),
-  ])
+  ]))
 
   await page.goto('/automations?tab=history')
 
