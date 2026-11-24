@@ -51,6 +51,35 @@ async def start_invoked_flow(
     return child_id, target.name
 
 
+# Cuánto tiempo atrás se mira antes de que un flujo inicie a otro. En
+# DermicaPro, «Bienvenida» espera 15 s antes de iniciar la secuencia del
+# servicio; en 16 de 4.865 envíos de noviembre de 2026 la vendedora lanzó esa
+# misma secuencia a mano dentro de esos segundos y el cliente la recibió dos
+# veces seguidas. Media hora cubre también a quien responde un chat que
+# Bienvenida todavía no atendió.
+INVOKED_FLOW_REPEAT_WINDOW = timedelta(minutes=30)
+
+
+async def already_started_for_lead(
+    parent_execution, flow_rule_id: int, node_id: str, deps: AutomationDeps,
+) -> str | None:
+    """Motivo para no iniciar el flujo hijo, si ese mismo flujo ya se le inició
+    a este lead hace poco por otro camino. Solo frena lo que inicia un flujo:
+    quien lo lanza desde el chat siempre puede repetirlo."""
+    if not parent_execution.lead_id:
+        return None
+    source = await deps.executions.started_for_lead_since(
+        flow_rule_id, parent_execution.lead_id, deps.now() - INVOKED_FLOW_REPEAT_WINDOW,
+        exclude_event_key=f"flow:{parent_execution.id}:{node_id}",
+    )
+    if source is None:
+        return None
+    target = await deps.executions.rule(flow_rule_id)
+    name = target.name if target else f"#{flow_rule_id}"
+    who = "tu equipo ya lo lanzó desde el chat" if source == "manual" else "ya se le inició a este cliente"
+    return f"No se repitió «{name}»: {who} hace menos de 30 minutos"
+
+
 @dataclasses.dataclass
 class FlowRun:
     execution: object
@@ -182,6 +211,13 @@ class InvokeFlowNode(FlowNodeHandler):
 
     async def execute(self, node: dict, run: FlowRun) -> NodeOutcome:
         flow_rule_id = int(node["data"]["flow_rule_id"])
+        repeated = await already_started_for_lead(run.execution, flow_rule_id, node["id"], run.deps)
+        if repeated:
+            run.record(
+                node["id"], type=FlowNodeType.INVOKE_FLOW, status=AutomationExecutionStatus.SKIPPED,
+                flow_rule_id=flow_rule_id, detail=repeated,
+            )
+            return _advance(run.edges[(node["id"], FlowHandle.NEXT)])
         child_id, target_name = await start_invoked_flow(run.execution, flow_rule_id, node["id"], run.deps)
         run.record(
             node["id"], type=FlowNodeType.INVOKE_FLOW, status=AutomationExecutionStatus.COMPLETED,

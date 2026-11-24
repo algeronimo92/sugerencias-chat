@@ -2,7 +2,7 @@
 memoria: qué guarda en cada paso, dónde se suspende y cómo termina."""
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -109,6 +109,24 @@ async def test_engine_runs_until_the_first_timed_wait(engine, deps):
         {"node_id": "rr", "type": "round_robin", "status": "completed", "branch": "out_1", "detail": "Turno: Uno"},
         {"node_id": "w", "type": "wait", "status": "scheduled", "seconds": 30},
     ]
+
+
+async def test_engine_does_not_repeat_a_flow_the_team_just_launched(engine, deps, executions):
+    # La vendedora lanzó «Hijo» a mano segundos antes de que este flujo llegara
+    # a su bloque «Iniciar otro flujo»: no se repite y el flujo sigue su camino.
+    executions.executions[50] = make_execution(
+        id=50, rule_id=9, event_key="manual:abc", start_source="manual",
+        created_at=deps.now() - timedelta(seconds=10),
+    )
+
+    persisted = await engine({"current_node_id": None, "path": []}, deps)
+
+    assert persisted[-1]["path"] == ["t", "c", "a", "i", "rr", "w"]
+    assert executions.children == []
+    assert persisted[-1]["results"][2] == {
+        "node_id": "i", "type": "invoke_flow", "status": "skipped",
+        "detail": "No se repitió «Hijo»: tu equipo ya lo lanzó desde el chat hace menos de 30 minutos",
+    }
 
 
 async def test_engine_pauses_on_wait_any_first_arrival(engine, deps):
