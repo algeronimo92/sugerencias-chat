@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
@@ -23,6 +23,7 @@ from app.modules.automations.application.ports import ExecutionAlreadyRunning
 from app.modules.automations.domain.execution import initial_flow_state
 from app.modules.automations.domain.limits import OVERDUE_LOOKBACK_GRACE_MINUTES, TRIGGER_TYPES
 from app.modules.automations.domain.rules import message_sent_at
+from app.modules.automations.infrastructure.sql_executions import _has_started
 
 logger = logging.getLogger(__name__)
 
@@ -132,13 +133,25 @@ class SqlSchedulingStore:
         return message_count == 1 and not has_recorded_creation
 
     async def cancel_customer_deadlines(self, lead_id: str, now: datetime) -> int:
-        """Invalida el cierre pendiente cuando el cliente vuelve a responder."""
+        """Invalida el cierre pendiente cuando el cliente vuelve a responder.
+
+        Un seguimiento que ya empezó y está en una espera también se corta: el
+        cliente contestó, no hay nada que seguir persiguiendo. La excepción es
+        el que está justamente esperando esa respuesta (un bloque Pausa con
+        «llega un mensaje» o una Pregunta): ese la necesita para elegir por
+        dónde sigue, y cancelarlo acá le ganaba la carrera al worker que lo
+        iba a reanudar."""
+        waits_for_this_reply = or_(
+            AutomationExecution.flow_state.has_key("awaiting"),
+            func.coalesce(AutomationExecution.flow_state["awaiting_message"].astext, "") == "true",
+        )
         async with session_scope() as session:
             result = await session.execute(update(AutomationExecution).where(
                 AutomationExecution.lead_id == lead_id,
                 AutomationExecution.trigger_type == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE,
                 AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
                 AutomationExecution.started_at.is_(None),
+                not_(waits_for_this_reply),
             ).values(
                 status=AutomationExecutionStatus.SKIPPED,
                 error="El cliente respondió antes del vencimiento",
@@ -225,9 +238,16 @@ class SqlSchedulingStore:
                             "error": None,
                             "finished_at": None,
                         },
+                        # Solo el vencimiento que todavía no corrió. Una espera
+                        # del flujo deja la fila en SCHEDULED y sin
+                        # started_at, igual que una sin empezar: sin mirar
+                        # si ya dio algún paso, el mensaje que el propio
+                        # flujo acababa de enviar lo reiniciaba desde el
+                        # principio y lo mandaba otra vez, en bucle.
                         where=and_(
                             AutomationExecution.status == AutomationExecutionStatus.SCHEDULED,
                             AutomationExecution.started_at.is_(None),
+                            not_(_has_started(AutomationExecution)),
                         ),
                     )
                 )
