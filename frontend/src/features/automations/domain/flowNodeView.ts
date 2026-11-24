@@ -48,7 +48,7 @@ export const FLOW_NODE_VIEW: Record<AutomationFlowNodeType, FlowNodeView> = {
   [FlowNodeType.Trigger]: {
     icon: Zap,
     iconClass: FLOW_TONES.trigger.icon,
-    summary: data => AUTOMATION_TRIGGERS.find(item => item.value === data.trigger_type)?.label ?? 'Disparador',
+    summary: data => AUTOMATION_TRIGGERS.find(item => item.value === data.trigger_type)?.label ?? 'Cómo empieza',
   },
   [FlowNodeType.Condition]: { icon: Split, iconClass: FLOW_TONES.condition.icon, summary: conditionSummary },
   [FlowNodeType.Action]: {
@@ -62,7 +62,7 @@ export const FLOW_NODE_VIEW: Record<AutomationFlowNodeType, FlowNodeView> = {
   [FlowNodeType.InvokeFlow]: {
     icon: CirclePlay,
     iconClass: FLOW_TONES.neutral.icon,
-    summary: data => data.invokedFlowName ?? 'Selecciona un flujo',
+    summary: data => data.invokedFlowName ?? 'Selecciona una automatización',
   },
   [FlowNodeType.Wait]: {
     icon: Timer,

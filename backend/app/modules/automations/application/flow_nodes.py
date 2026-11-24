@@ -46,7 +46,7 @@ async def start_invoked_flow(
         payload=payload, now=deps.now(),
     )
     if child_id is None:
-        raise StepFailed("No se pudo recuperar la ejecución del flujo hijo")
+        raise StepFailed("No se pudo recuperar la ejecución de la automatización lanzada")
     await deps.publish(AutomationsChanged(wake=True))
     return child_id, target.name
 
@@ -76,7 +76,7 @@ async def already_started_for_lead(
         return None
     target = await deps.executions.rule(flow_rule_id)
     name = target.name if target else f"#{flow_rule_id}"
-    who = "tu equipo ya lo lanzó desde el chat" if source == "manual" else "ya se le inició a este cliente"
+    who = "tu equipo ya la lanzó desde el chat" if source == "manual" else "ya se le lanzó a este cliente"
     return f"No se repitió «{name}»: {who} hace menos de 30 minutos"
 
 
@@ -221,7 +221,7 @@ class InvokeFlowNode(FlowNodeHandler):
         child_id, target_name = await start_invoked_flow(run.execution, flow_rule_id, node["id"], run.deps)
         run.record(
             node["id"], type=FlowNodeType.INVOKE_FLOW, status=AutomationExecutionStatus.COMPLETED,
-            flow_rule_id=flow_rule_id, child_execution_id=child_id, detail=f"Flujo hijo iniciado: {target_name}",
+            flow_rule_id=flow_rule_id, child_execution_id=child_id, detail=f"Automatización lanzada: {target_name}",
         )
         return _advance(run.edges[(node["id"], FlowHandle.NEXT)])
 
@@ -230,7 +230,7 @@ class InvokeFlowNode(FlowNodeHandler):
         target = await simulation.deps.executions.rule(target_id)
         simulation.record(
             node["id"], type=FlowNodeType.INVOKE_FLOW, status="would_run",
-            detail=f"Iniciaría el flujo hijo: {target.name if target else f'#{target_id}'}",
+            detail=f"Lanzaría la automatización: {target.name if target else f'#{target_id}'}",
         )
         return simulation.edges[(node["id"], FlowHandle.NEXT)]
 

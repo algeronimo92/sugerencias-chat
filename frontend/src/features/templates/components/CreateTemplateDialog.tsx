@@ -67,7 +67,7 @@ export function CreateTemplateDialog({ onClose, onCreated }: Props) {
   return (
     <Modal
       title="Nueva plantilla"
-      description="Un mensaje de texto para reutilizar en tus flujos."
+      description="Un mensaje de texto para reutilizar en tus automatizaciones."
       icon={<FilePlus2 className="h-4 w-4" />}
       busy={pending}
       onClose={onClose}

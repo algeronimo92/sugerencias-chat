@@ -102,7 +102,7 @@ const STEP_STATUS_LABELS: Record<string, string> = {
   [AutomationExecutionStatus.Scheduled]: 'Esperando',
   [AutomationExecutionStatus.Running]: 'En curso',
   [AutomationExecutionStatus.Paused]: 'En pausa',
-  matched: 'Entra al flujo',
+  matched: 'Entra a la automatización',
   evaluated: 'Revisado',
   would_run: 'Se haría',
   would_wait: 'Esperaría',

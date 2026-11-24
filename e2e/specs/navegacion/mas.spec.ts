@@ -16,6 +16,6 @@ test('en el celular la cabecera no amontona íconos y "Más" reúne las acciones
   await page.getByRole('button', { name: 'Más', exact: true }).click()
   const hoja = page.getByRole('dialog', { name: 'Más vistas' })
   for (const accion of ['Automatizaciones', 'Configuración', 'Reportar un problema', 'Modo oscuro', 'Cerrar sesión']) {
-    await expectFullyOnScreen(hoja.getByRole('button', { name: accion }))
+    await expectFullyOnScreen(hoja.getByRole('button', { name: accion, exact: true }))
   }
 })

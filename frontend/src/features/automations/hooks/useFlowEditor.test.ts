@@ -17,7 +17,7 @@ describe('flowEditorReducer', () => {
       'trigger-1',
     )
 
-    expect(empty).toMatchObject({ ruleId: null, name: 'Nuevo flujo visual', savedDefinition: null, selectedId: null })
+    expect(empty).toMatchObject({ ruleId: null, name: 'Nueva automatización', savedDefinition: null, selectedId: null })
     expect(existing).toMatchObject({ ruleId: 4, name: 'Bienvenida', maxPerHour: 10, visibleToSellers: true, selectedId: 'trigger-1', publishedDefinition: DEFINITION })
   })
 
@@ -60,15 +60,15 @@ describe('flowEditorReducer', () => {
   it('publicar guarda la versión publicada y lo dice', () => {
     const published = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 3 })
 
-    expect(published).toMatchObject({ publishedDefinition: DEFINITION, notice: 'Flujo publicado · versión 3.' })
+    expect(published).toMatchObject({ publishedDefinition: DEFINITION, notice: 'Automatización publicada · versión 3.' })
   })
 
   it('al publicar un flujo pausado, el aviso dice si quedó activo o sigue pausado', () => {
     const resumed = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 4, pausedChoice: 'resume' })
     const keptPaused = flowEditorReducer(stateWith(), { type: 'published', definition: DEFINITION, version: 4, pausedChoice: 'keepPaused' })
 
-    expect(resumed.notice).toBe('Flujo publicado · versión 4. Ya está activo.')
-    expect(keptPaused.notice).toBe('Flujo publicado · versión 4. Sigue pausado.')
+    expect(resumed.notice).toBe('Automatización publicada · versión 4. Ya está activa.')
+    expect(keptPaused.notice).toBe('Automatización publicada · versión 4. Sigue pausada.')
   })
 
   it('restaurar una versión deselecciona el bloque abierto', () => {

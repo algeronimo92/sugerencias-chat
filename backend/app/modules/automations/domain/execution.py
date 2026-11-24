@@ -107,9 +107,9 @@ def child_flow_payload(parent: Any, flow_rule_id: int) -> dict:
     ancestry = [int(item) for item in (payload.get("flow_ancestry") or [])]
     ancestry.append(parent.rule_id)
     if flow_rule_id in ancestry:
-        raise StepFailed("Estos flujos se inician entre sí en círculo y se repetirían sin fin. Quita uno de los bloques «Iniciar otro flujo».")
+        raise StepFailed("Estas automatizaciones se inician entre sí en círculo y se repetirían sin fin. Quita uno de los pasos «Iniciar otra automatización».")
     if len(ancestry) >= MAX_FLOW_INVOCATION_DEPTH:
-        raise StepFailed("La cadena de flujos invocados es demasiado profunda")
+        raise StepFailed("La cadena de automatizaciones lanzadas es demasiado profunda")
     message_context = execution_message_context(parent)
     child_payload = {
         "parent_execution_id": parent.id,
@@ -123,9 +123,9 @@ def child_flow_payload(parent: Any, flow_rule_id: int) -> dict:
 
 def require_invocable(target: Any) -> None:
     if target is None or target.deleted_at is not None:
-        raise StepFailed("El flujo hijo ya no existe")
+        raise StepFailed("La automatización lanzada ya no existe")
     if not target.is_active or not target.published_flow_definition:
-        raise StepFailed(f"El flujo hijo {target.name} no está publicado y activo")
+        raise StepFailed(f"La automatización lanzada {target.name} no está publicada y activa")
 
 
 def initial_flow_state(flow_version: int) -> dict:

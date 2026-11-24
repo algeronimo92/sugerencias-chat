@@ -99,7 +99,7 @@ PERMISSION_INFO: dict[Permission, PermissionInfo] = {
     P.CONVERSATIONS_SEND: PermissionInfo("conversations", "Escribir y enviar mensajes, y usar las sugerencias de IA"),
     P.CALLS_HANDLE: PermissionInfo("conversations", "Atender y hacer llamadas de WhatsApp"),
     P.TEAM_SUPERVISE: PermissionInfo(
-        "conversations", "Actuar sobre lo de otros: tareas, notas, mensajes programados, llamadas y flujos"
+        "conversations", "Actuar sobre lo de otros: tareas, notas, mensajes programados, llamadas y automatizaciones"
     ),
     P.TASKS_USE: PermissionInfo("tasks", "Ver y gestionar tareas"),
     P.APPOINTMENTS_VIEW: PermissionInfo("appointments", "Ver la agenda de citas"),
@@ -110,7 +110,7 @@ PERMISSION_INFO: dict[Permission, PermissionInfo] = {
     P.CONTACTS_EDIT: PermissionInfo("contacts", "Crear y editar contactos"),
     P.CONTACTS_DELETE: PermissionInfo("contacts", "Eliminar contactos"),
     P.CONTACTS_IMPORT: PermissionInfo("contacts", "Importar contactos y pasarlos al embudo en bloque"),
-    P.AUTOMATIONS_RUN: PermissionInfo("automations", "Lanzar flujos manuales y seguir sus ejecuciones"),
+    P.AUTOMATIONS_RUN: PermissionInfo("automations", "Lanzar automatizaciones desde el chat y seguir sus ejecuciones"),
     P.AUTOMATIONS_MANAGE: PermissionInfo("automations", "Crear, editar y publicar automatizaciones"),
     P.TEMPLATES_USE: PermissionInfo("catalogs", "Usar plantillas y respuestas rápidas"),
     P.TEMPLATES_MANAGE: PermissionInfo("catalogs", "Crear y editar plantillas y sus categorías"),

@@ -58,12 +58,12 @@ export function NodeTypeMenu({ x, y, onPick, onClose }: {
     <div
       ref={menu}
       role="menu"
-      aria-label="Agregar un bloque conectado"
+      aria-label="Agregar un paso conectado"
       onKeyDown={onArrow}
       style={{ left, top: y, width: MENU_WIDTH, maxHeight: `calc(100vh - ${MARGIN * 2}px)` }}
       className="fixed z-[70] overflow-y-auto rounded-xl border border-wa-border bg-white p-1.5 shadow-2xl dark:border-flow-border-dark dark:bg-flow-panel-dark"
     >
-      <p className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Agregar bloque conectado</p>
+      <p className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-wa-muted dark:text-wa-muted-dark">Agregar paso conectado</p>
       {FLOW_PALETTE.map(({ type, label, icon: Icon, description }) => (
         <button
           key={type}

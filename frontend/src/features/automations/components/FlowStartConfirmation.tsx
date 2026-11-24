@@ -17,7 +17,7 @@ interface Props {
 }
 
 /**
- * Confirmación de "Iniciar flujo", en la franja de arriba del cuadro de
+ * Confirmación de "Iniciar automatización", en la franja de arriba del cuadro de
  * escritura (entre "Mensaje de WhatsApp" y "Cambiar a nota interna").
  *
  * Elegir un flujo de la lista lo lanzaba en el acto, y un flujo le escribe al
@@ -40,7 +40,7 @@ export function FlowStartConfirmation({ chatId, flow, onClose }: Props) {
     startFlow.mutate(
       { ruleId: flow.id, chatId },
       {
-        onSuccess: () => toast.success(`Flujo "${flow.name}" iniciado`),
+        onSuccess: () => toast.success(`Automatización «${flow.name}» iniciada`),
         onError: (error) => toast.error(extractErrorMessage(error)),
         onSettled: onClose,
       }
@@ -50,7 +50,7 @@ export function FlowStartConfirmation({ chatId, flow, onClose }: Props) {
   return (
     <div
       role="group"
-      aria-label={`Confirmar el flujo ${flow.name}`}
+      aria-label={`Confirmar la automatización ${flow.name}`}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !startFlow.isPending) {
           event.preventDefault()

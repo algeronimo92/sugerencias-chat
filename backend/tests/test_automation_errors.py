@@ -31,7 +31,7 @@ def test_a_rule_violation_keeps_its_message():
         normalize_flow("x", _flow({"type": "add_tag", "tag_id": 1}, with_end=False))
 
     assert caught.value.status_code == 400
-    assert "bloque Fin" in caught.value.detail
+    assert "paso Fin" in caught.value.detail
 
 
 def test_an_unexpected_failure_is_not_shown_raw_in_the_history():

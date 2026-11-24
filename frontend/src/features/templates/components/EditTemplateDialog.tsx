@@ -98,7 +98,7 @@ export function EditTemplateDialog({ template, onClose, onSaved, leadOnlyVariabl
   return (
     <Modal
       title="Editar plantilla"
-      description={isMeta ? 'Plantilla de Meta. Los cambios se ven en todos los flujos que la usan.' : 'Los cambios se ven en todos los flujos que la usan.'}
+      description={isMeta ? 'Plantilla de Meta. Los cambios se ven en todas las automatizaciones que la usan.' : 'Los cambios se ven en todas las automatizaciones que la usan.'}
       icon={<PencilLine className="h-4 w-4" />}
       size={isMeta || editsAttachments ? 'md' : 'sm'}
       busy={pending}

@@ -10,7 +10,7 @@ describe('NodeTypeMenu', () => {
 
     const items = screen.getAllByRole('menuitem')
     expect(items.map(item => item.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Fin'), expect.stringContaining('Pregunta')]))
-    expect(screen.queryByRole('menuitem', { name: /Disparador/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /Cómo empieza/ })).toBeNull()
     expect(items[0]).toHaveFocus()
 
     await userEvent.keyboard('{ArrowUp}')

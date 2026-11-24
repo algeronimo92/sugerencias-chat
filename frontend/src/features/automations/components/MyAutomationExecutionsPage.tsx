@@ -84,7 +84,7 @@ const STATUS_GROUPS: readonly StatusGroup[] = [
     matches: status => status === AutomationExecutionStatus.Cancelled,
   },
   {
-    key: 'skipped', label: 'No aplicaron', hint: 'El flujo no aplicaba a ese lead.',
+    key: 'skipped', label: 'No aplicaron', hint: 'La automatización no aplicaba a ese lead.',
     emptyTitle: 'Ningún envío sin aplicar en este período',
     icon: SkipForward, tone: 'warning',
     matches: status => status === AutomationExecutionStatus.Skipped,
@@ -151,10 +151,10 @@ function rowSummary(execution: AutomationExecution) {
   if (ACTIVE_EXECUTION_STATUSES.includes(execution.status)) return pendingLabel(execution)
   if (execution.status === AutomationExecutionStatus.Failed) {
     if (isServiceWindowFailure(execution)) return 'No salió: la ventana de 24 h estaba cerrada'
-    return execution.error ?? 'El flujo se cortó antes de terminar'
+    return execution.error ?? 'La automatización se cortó antes de terminar'
   }
   if (execution.status === AutomationExecutionStatus.Cancelled) return 'Se canceló antes de terminar'
-  if (execution.status === AutomationExecutionStatus.Skipped) return 'El flujo no aplicaba a este lead'
+  if (execution.status === AutomationExecutionStatus.Skipped) return 'La automatización no aplicaba a este lead'
   const steps = execution.action_results?.length ?? 0
   const finished = execution.finished_at ? ` · terminó ${timeLabel(execution.finished_at)}` : ''
   return `${steps} ${steps === 1 ? 'paso' : 'pasos'}${finished}`
@@ -215,7 +215,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
             {/* En móvil el ancho es para el nombre: la advertencia se explica
                 mejor dentro del detalle que como pastilla que lo trunca. */}
             {execution.rule_deleted && (
-              <Badge variant="warning" size="md" className="hidden shrink-0 text-xs sm:inline-flex">Flujo eliminado</Badge>
+              <Badge variant="warning" size="md" className="hidden shrink-0 text-xs sm:inline-flex">Automatización eliminada</Badge>
             )}
           </span>
           <span className="mt-0.5 block truncate text-xs text-wa-muted dark:text-wa-muted-dark lg:hidden">
@@ -267,9 +267,9 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
             <dt className="text-wa-muted dark:text-wa-muted-dark">Origen</dt>
             <dd className="mt-1 font-medium text-wa-text dark:text-white">
               {execution.trigger_type === AutomationTrigger.Manual && execution.start_source === 'manual'
-                ? (isMine ? 'Lo iniciaste desde el chat' : `Lo inició ${senderName} desde el chat`)
+                ? (isMine ? 'La lanzaste desde el chat' : `La lanzó ${senderName} desde el chat`)
                 : execution.start_source === 'flow'
-                  ? (execution.parent_rule_name ? `Lo inició el flujo «${execution.parent_rule_name}»` : 'Lo inició otro flujo')
+                  ? (execution.parent_rule_name ? `La lanzó «${execution.parent_rule_name}»` : 'La lanzó otra automatización')
                   : executionTriggerLabel(execution.trigger_type)}
             </dd>
           </div>
@@ -277,7 +277,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
 
         {execution.rule_deleted && (
           <p className="mt-3 text-xs text-amber-800 dark:text-amber-300">
-            Este flujo se eliminó: el envío quedó registrado, pero ya no puedes volver a iniciarlo.
+            Esta automatización se eliminó: el envío quedó registrado, pero ya no puedes volver a lanzarla.
           </p>
         )}
 
@@ -306,11 +306,11 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
               <span className="block font-semibold">
-                {serviceWindow ? 'No salió: la ventana de 24 h está cerrada' : 'El flujo se cortó'}
+                {serviceWindow ? 'No salió: la ventana de 24 h está cerrada' : 'La automatización se cortó'}
               </span>
               <span className="mt-0.5 block">
                 {serviceWindow
-                  ? 'WhatsApp solo deja escribir libre dentro de las 24 h desde el último mensaje del cliente. Mándale una plantilla para reabrir la conversación y vuelve a iniciar el flujo.'
+                  ? 'WhatsApp solo deja escribir libre dentro de las 24 h desde el último mensaje del cliente. Mándale una plantilla para reabrir la conversación y vuelve a lanzar la automatización.'
                   : execution.error}
               </span>
             </span>
@@ -332,7 +332,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
           {isActive && (
             <ConfirmDialog
               title="¿Cancelar este envío?"
-              description={`"${execution.rule_name}" dejará de correr sobre ${leadLabel}. Los pasos que ya salieron no se deshacen y el flujo no se puede retomar donde estaba.`}
+              description={`"${execution.rule_name}" dejará de correr sobre ${leadLabel}. Los pasos que ya salieron no se deshacen y la automatización no se puede retomar donde estaba.`}
               confirmLabel="Cancelar envío"
               cancelLabel="Dejarlo correr"
               disabled={isCancelling}
@@ -443,7 +443,7 @@ export function MyAutomationExecutionsPage() {
     <div className="h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
       <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
-          <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Flujos enviados</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Automatizaciones enviadas</h1>
         </header>
 
         <ExecutionHistoryFilters
@@ -466,13 +466,13 @@ export function MyAutomationExecutionsPage() {
             habían salido. Es orientación, no alerta: gris y sin triángulo. */}
         {isAdmin && (
           <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-wa-muted dark:text-wa-muted-dark">
-            Los flujos automáticos no aparecen aquí.
+            Las que empiezan solas no aparecen aquí.
             <Link
               to="/automations?tab=history"
               className="inline-flex items-center gap-1.5 rounded font-semibold text-wa-primary-strong underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-wa-primary/60 dark:text-wa-primary"
             >
               <Workflow className="h-4 w-4" aria-hidden="true" />
-              Ver flujos automáticos
+              Ver las que empiezan solas
             </Link>
           </p>
         )}
@@ -564,12 +564,12 @@ export function MyAutomationExecutionsPage() {
                   <h3 className="text-base font-semibold text-wa-text dark:text-wa-text-dark">
                     {isFiltered
                       ? activeGroup.emptyTitle
-                      : sender === 'team' ? 'Tu equipo no inició ningún flujo a mano hoy' : 'Todavía no enviaste ningún flujo hoy'}
+                      : sender === 'team' ? 'Tu equipo no lanzó ninguna automatización hoy' : 'Todavía no lanzaste ninguna automatización hoy'}
                   </h3>
                   <p className="mt-1 max-w-xl text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
                     {isFiltered
-                      ? `Prueba otro período${isAdmin ? ', flujo o persona' : ' o flujo'} para encontrar el envío que buscas.`
-                      : 'Abre una conversación y selecciona Iniciar flujo. Los envíos aparecerán aquí con su estado y sus pasos.'}
+                      ? `Prueba otro período${isAdmin ? ', automatización o persona' : ' o automatización'} para encontrar el envío que buscas.`
+                      : 'Abre una conversación y selecciona Iniciar automatización. Los envíos aparecerán aquí con su estado y sus pasos.'}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {isFiltered ? (

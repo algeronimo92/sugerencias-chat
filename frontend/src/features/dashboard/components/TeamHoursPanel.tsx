@@ -22,10 +22,10 @@ const READINGS: { key: PersonReading; label: string; hint: string; unit: [string
   },
   {
     key: 'flows_manual',
-    label: 'Flujos a mano',
-    hint: 'Flujos que cada persona inició desde un chat. Los que se inician solos no cuentan.',
-    unit: ['flujo', 'flujos'],
-    none: 'Ningún flujo iniciado',
+    label: 'Automatizaciones a mano',
+    hint: 'Automatizaciones que cada persona lanzó desde un chat. Las que empiezan solas no cuentan.',
+    unit: ['automatización', 'automatizaciones'],
+    none: 'Ninguna automatización lanzada',
   },
 ]
 

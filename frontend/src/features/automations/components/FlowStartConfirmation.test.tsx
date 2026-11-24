@@ -30,7 +30,7 @@ describe('FlowStartConfirmation', () => {
     const user = userEvent.setup()
     render(<FlowStartConfirmation chatId={CHAT_ID} flow={FLOW} onClose={onClose} />)
 
-    expect(screen.getByRole('group', { name: 'Confirmar el flujo Bienvenida guiada' })).toHaveTextContent('¿Iniciar «Bienvenida guiada»?')
+    expect(screen.getByRole('group', { name: 'Confirmar la automatización Bienvenida guiada' })).toHaveTextContent('¿Iniciar «Bienvenida guiada»?')
     expect(mutate).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Iniciar' }))

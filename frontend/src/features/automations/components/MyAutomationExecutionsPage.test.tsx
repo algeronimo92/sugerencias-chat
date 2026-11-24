@@ -80,7 +80,7 @@ describe('MyAutomationExecutionsPage', () => {
     const user = userEvent.setup()
     render(<MyAutomationExecutionsPage />)
 
-    expect(screen.getByText('Todavía no enviaste ningún flujo hoy')).toBeInTheDocument()
+    expect(screen.getByText('Todavía no lanzaste ninguna automatización hoy')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /ir a los chats/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /completados/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Ver últimos 7 días' }))
@@ -132,7 +132,7 @@ describe('MyAutomationExecutionsPage', () => {
     render(<MyAutomationExecutionsPage />)
 
     expect(screen.queryByLabelText('Enviado por')).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Ver flujos automáticos' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver las que empiezan solas' })).not.toBeInTheDocument()
     expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith(false)
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: true, startedBy: undefined, team: undefined })
   })
@@ -148,7 +148,7 @@ describe('MyAutomationExecutionsPage', () => {
 
     expect(vi.mocked(useAutomationExecutions).mock.calls.at(-1)?.[0]).toMatchObject({ mine: false, team: true })
     expect(screen.getAllByText(/Marta/).length).toBeGreaterThan(1)
-    expect(screen.getByText('Lo inició Marta desde el chat')).toBeInTheDocument()
+    expect(screen.getByText('La lanzó Marta desde el chat')).toBeInTheDocument()
 
     await user.click(screen.getByLabelText('Enviado por'))
     await user.click(screen.getByRole('option', { name: 'Marta' }))
@@ -165,8 +165,8 @@ describe('MyAutomationExecutionsPage', () => {
     mockQuery({}, 'admin')
     render(<MyAutomationExecutionsPage />)
 
-    expect(screen.getByText('Tu equipo no inició ningún flujo a mano hoy')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Ver flujos automáticos' })).toHaveAttribute('href', '/automations?tab=history')
+    expect(screen.getByText('Tu equipo no lanzó ninguna automatización hoy')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ver las que empiezan solas' })).toHaveAttribute('href', '/automations?tab=history')
     expect(screen.queryByRole('option', { name: /Automáticos/ })).not.toBeInTheDocument()
   })
 

@@ -200,7 +200,7 @@ ACTION_NORMALIZERS: dict[str, Callable[[str, dict, int, ActionReferences], dict]
 
 def normalize_trigger(trigger_type: object, trigger_config: object) -> tuple[str, dict]:
     if trigger_type not in TRIGGER_TYPES:
-        raise InvalidAutomation("Elige un disparador de la lista.")
+        raise InvalidAutomation("Elige un inicio de la lista.")
     config = trigger_config if isinstance(trigger_config, dict) else {}
     if trigger_type in OVERDUE_TRIGGERS:
         minutes = int(config.get("minutes") or 0)
@@ -451,6 +451,6 @@ def normalize_flow_condition_node(
         groups.append({"id": group_id, "conditions": conditions})
     if total_conditions > MAX_CONDITIONS_PER_NODE:
         raise InvalidAutomation(
-            f"Un bloque Condición admite hasta {MAX_CONDITIONS_PER_NODE} condiciones. Pasa algunas a otro bloque Condición."
+            f"Un paso Condición admite hasta {MAX_CONDITIONS_PER_NODE} condiciones. Pasa algunas a otro paso Condición."
         )
     return {"condition_groups": groups}, users, tags

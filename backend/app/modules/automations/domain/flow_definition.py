@@ -82,7 +82,7 @@ def _normalize_action_node(data: dict, ref: FlowNodeRef, facts: FlowValidationFa
 def _normalize_invoke_flow_node(data: dict, ref: FlowNodeRef, facts: FlowValidationFacts) -> dict:
     flow_rule_id = int(data.get("flow_rule_id") or 0)
     if not flow_rule_id:
-        raise InvalidAutomation("Elige qué flujo se iniciará.")
+        raise InvalidAutomation("Elige qué automatización se iniciará.")
     facts.invoke_flow_nodes.append((ref.index, flow_rule_id))
     return {"flow_rule_id": flow_rule_id}
 
@@ -141,7 +141,7 @@ def dynamic_handles(node_type: str, data: dict) -> set[str]:
 def _validate_name(name: object) -> str:
     name = str(name or "").strip()
     if not name or len(name) > 120:
-        raise InvalidAutomation("Escribe un nombre para el flujo (hasta 120 caracteres).")
+        raise InvalidAutomation("Escribe un nombre para la automatización (hasta 120 caracteres).")
     return name
 
 
@@ -151,25 +151,25 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
     sin exigir todavía que el grafo esté completo."""
     name = _validate_name(name)
     if not isinstance(definition, dict):
-        raise InvalidAutomation("No se pudo leer el flujo. Si importaste un JSON, revisa que sea un flujo completo.")
+        raise InvalidAutomation("No se pudo leer la automatización. Si importaste un JSON, revisa que sea una automatización completa.")
     conditions = normalize_conditions(definition.get("conditions"))
     raw_nodes = definition.get("nodes")
     raw_edges = definition.get("edges")
     if not isinstance(raw_nodes, list) or not 1 <= len(raw_nodes) <= MAX_FLOW_NODES:
-        raise InvalidAutomation(f"Un flujo puede tener hasta {MAX_FLOW_NODES} bloques. Pasa una parte a otro flujo y llámalo con «Iniciar otro flujo».")
+        raise InvalidAutomation(f"Una automatización puede tener hasta {MAX_FLOW_NODES} pasos. Pasa una parte a otra automatización y llámala con «Iniciar otra automatización».")
     if not isinstance(raw_edges, list) or len(raw_edges) > MAX_FLOW_EDGES:
-        raise InvalidAutomation(f"Un flujo puede tener hasta {MAX_FLOW_EDGES} conexiones. Pasa una parte a otro flujo y llámalo con «Iniciar otro flujo».")
+        raise InvalidAutomation(f"Una automatización puede tener hasta {MAX_FLOW_EDGES} conexiones. Pasa una parte a otra automatización y llámala con «Iniciar otra automatización».")
     nodes: list[dict] = []
     ids: set[str] = set()
     for raw_node in raw_nodes:
         if not isinstance(raw_node, dict):
-            raise InvalidAutomation("Un bloque no se pudo leer. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Un paso no se pudo leer. Si importaste un JSON, revísalo.")
         node_id = str(raw_node.get("id") or "").strip()[:80]
         node_type = str(raw_node.get("type") or "")
         if not node_id or node_id in ids:
-            raise InvalidAutomation("Hay dos bloques con el mismo identificador, o uno sin identificador. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Hay dos pasos con el mismo identificador, o uno sin identificador. Si importaste un JSON, revísalo.")
         if node_type not in FLOW_NODE_TYPES:
-            raise InvalidAutomation("Hay un bloque de un tipo que no existe. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Hay un paso de un tipo que no existe. Si importaste un JSON, revísalo.")
         ids.add(node_id)
         nodes.append({
             "id": node_id, "type": node_type,
@@ -204,7 +204,7 @@ def normalize_visual_draft(name: str, definition: dict) -> dict:
 # acciones la conservan, porque las Reglas simples la muestran; dentro de un
 # flujo sobra: el error lleva el bloque y el editor lo nombra con su #n.
 _POSITION_PREFIX = re.compile(
-    r"^(?:Acción|Bloque|Condición|Espera|Invocación|Pausa|Pregunta|Round robin|Reparto)\s+\d+(?:,\s*grupo\s+\d+)?:\s*"
+    r"^(?:Acción|Bloque|Paso|Condición|Espera|Invocación|Pausa|Pregunta|Round robin|Reparto)\s+\d+(?:,\s*grupo\s+\d+)?:\s*"
 )
 
 
@@ -252,27 +252,27 @@ class NormalizedFlow:
 def normalize_flow(name: str, definition: dict) -> NormalizedFlow:
     name = _validate_name(name)
     if not isinstance(definition, dict):
-        raise InvalidAutomation("No se pudo leer el flujo. Si importaste un JSON, revisa que sea un flujo completo.")
+        raise InvalidAutomation("No se pudo leer la automatización. Si importaste un JSON, revisa que sea una automatización completa.")
     raw_nodes = definition.get("nodes")
     raw_edges = definition.get("edges")
     if not isinstance(raw_nodes, list) or not 2 <= len(raw_nodes) <= MAX_FLOW_NODES:
-        raise InvalidAutomation(f"Para publicar, el flujo necesita entre 2 y {MAX_FLOW_NODES} bloques. Si tienes más, pasa una parte a otro flujo y llámalo con «Iniciar otro flujo».")
+        raise InvalidAutomation(f"Para publicar, la automatización necesita entre 2 y {MAX_FLOW_NODES} pasos. Si tienes más, pasa una parte a otra automatización y llámala con «Iniciar otra automatización».")
     if not isinstance(raw_edges, list) or len(raw_edges) > MAX_FLOW_EDGES:
-        raise InvalidAutomation(f"Un flujo puede tener hasta {MAX_FLOW_EDGES} conexiones. Pasa una parte a otro flujo y llámalo con «Iniciar otro flujo».")
+        raise InvalidAutomation(f"Una automatización puede tener hasta {MAX_FLOW_EDGES} conexiones. Pasa una parte a otra automatización y llámala con «Iniciar otra automatización».")
 
     ids: set[str] = set()
     nodes: list[dict] = []
     facts = FlowValidationFacts()
     for position, raw_node in enumerate(raw_nodes, start=1):
         if not isinstance(raw_node, dict):
-            raise InvalidAutomation("Un bloque no se pudo leer. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Un paso no se pudo leer. Si importaste un JSON, revísalo.")
         node_id = str(raw_node.get("id") or "").strip()[:80]
         node_type = str(raw_node.get("type") or "")
         data = raw_node.get("data") if isinstance(raw_node.get("data"), dict) else {}
         if not node_id or node_id in ids:
-            raise InvalidAutomation("Hay dos bloques con el mismo identificador, o uno sin identificador. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Hay dos pasos con el mismo identificador, o uno sin identificador. Si importaste un JSON, revísalo.")
         if node_type not in FLOW_NODE_TYPES:
-            raise InvalidAutomation("Hay un bloque de un tipo que no existe. Si importaste un JSON, revísalo.")
+            raise InvalidAutomation("Hay un paso de un tipo que no existe. Si importaste un JSON, revísalo.")
         ids.add(node_id)
         with about_node(node_id):
             normalized_data = NODE_NORMALIZERS[FlowNodeType(node_type)](
@@ -286,11 +286,11 @@ def normalize_flow(name: str, definition: dict) -> NormalizedFlow:
         })
 
     if len(facts.trigger_nodes) != 1:
-        raise InvalidAutomation("El flujo debe empezar con un solo disparador. Si importaste un JSON, revisa que tenga uno.")
+        raise InvalidAutomation("La automatización debe tener un solo inicio. Si importaste un JSON, revisa que tenga uno.")
     if not facts.end_count:
-        raise InvalidAutomation("Falta un bloque Fin. Agrégalo desde la barra izquierda y conecta el último paso a él.")
+        raise InvalidAutomation("Falta un paso Fin. Agrégalo desde la barra izquierda y conecta el último paso a él.")
     if not facts.action_nodes and not facts.invoke_flow_nodes:
-        raise InvalidAutomation("El flujo todavía no hace nada: agrega al menos una Acción o un bloque «Iniciar otro flujo».")
+        raise InvalidAutomation("La automatización todavía no hace nada: agrega al menos una Acción o un paso «Iniciar otra automatización».")
 
     trigger = facts.trigger_nodes[0]
     trigger_type, trigger_config = normalize_trigger(
@@ -383,10 +383,10 @@ def check_invoked_flows(
         node_id = _invoking_node(candidate_definition, target_id)
         if target is None:
             raise InvalidAutomation(
-                f"El flujo #{target_id} ya no existe. Elige otro en «Flujo que se inicia».", node_id=node_id,
+                f"La automatización #{target_id} ya no existe. Elige otra en «Automatización que se inicia».", node_id=node_id,
             )
         if current_rule_id is not None and target_id == current_rule_id:
-            raise InvalidAutomation("Un flujo no puede iniciarse a sí mismo. Elige otro flujo.", node_id=node_id)
+            raise InvalidAutomation("Una automatización no puede iniciarse a sí misma. Elige otra automatización.", node_id=node_id)
         if not target["published_flow_definition"]:
             raise InvalidAutomation(
                 f"Publica primero «{target['name']}» para poder iniciarlo desde aquí.", node_id=node_id,
@@ -404,7 +404,7 @@ def check_invoked_flows(
 
     def walk(rule_id: int) -> None:
         if rule_id in visiting:
-            raise InvalidAutomation("Estos flujos se inician entre sí en círculo y se repetirían sin fin. Quita uno de los bloques «Iniciar otro flujo».")
+            raise InvalidAutomation("Estas automatizaciones se inician entre sí en círculo y se repetirían sin fin. Quita uno de los pasos «Iniciar otra automatización».")
         if rule_id in visited:
             return
         visiting.add(rule_id)

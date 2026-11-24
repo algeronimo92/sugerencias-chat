@@ -108,7 +108,7 @@ describe('LeadAutomationPanel', () => {
 
     await user.click(screen.getByRole('button', { expanded: false }))
 
-    expect(screen.getByText('Iniciada por Lucía Ramos · Cliente sin responder')).toBeInTheDocument()
+    expect(screen.getByText('La lanzó Lucía Ramos · Cliente sin responder')).toBeInTheDocument()
   })
 
   it('detalla los pasos ya dados, incluida la espera', async () => {
@@ -126,7 +126,7 @@ describe('LeadAutomationPanel', () => {
     await user.click(screen.getByRole('button', { expanded: false }))
 
     expect(screen.getByText(/1\. Enviar mensaje de texto/)).toBeInTheDocument()
-    expect(screen.getByText(/2\. Pausa/)).toBeInTheDocument()
+    expect(screen.getByText(/2\. Espera/)).toBeInTheDocument()
     expect(screen.getByText(/espera 30 min 0 s/)).toBeInTheDocument()
   })
 

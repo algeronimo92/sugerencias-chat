@@ -38,7 +38,7 @@ describe('buildHoursGrid', () => {
     const grid = buildHoursGrid(hours([{ weekday: 0, slot: 4, flows_manual: 5 }]), 'flows_manual')
 
     expect(grid.rows[3].cells[0]).toMatchObject({ value: 0, intensity: 0, text: '' })
-    expect(grid.rows[0].cells[4].description).toBe('Lun 8–10 h: 5 flujos a mano en 5 lunes')
+    expect(grid.rows[0].cells[4].description).toBe('Lun 8–10 h: 5 automatizaciones a mano en 5 lunes')
     expect(grid.hasData).toBe(true)
   })
 

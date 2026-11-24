@@ -53,13 +53,13 @@ describe('TeamHoursPanel', () => {
 
     // Dos pestañas del mismo tipo: lo que hizo alguien y quedó con su nombre.
     expect(screen.getAllByRole('button', { pressed: undefined }).filter(button => button.hasAttribute('aria-pressed'))).toHaveLength(2)
-    await user.click(screen.getByRole('button', { name: 'Flujos a mano' }))
+    await user.click(screen.getByRole('button', { name: 'Automatizaciones a mano' }))
 
-    expect(screen.getByText('3 flujos iniciados a mano: Grecia 3.')).toBeInTheDocument()
+    expect(screen.getByText('3 automatizaciones lanzadas a mano: Grecia 3.')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: /WhatsApp/ })).not.toBeInTheDocument()
     const people = within(screen.getByRole('list', { name: 'En el CRM, por persona' })).getAllByRole('listitem')
-    expect(within(people[0]).getByText('3 flujos')).toBeInTheDocument()
-    expect(within(people[1]).getByText('Ningún flujo iniciado')).toBeInTheDocument()
+    expect(within(people[0]).getByText('3 automatizaciones')).toBeInTheDocument()
+    expect(within(people[1]).getByText('Ninguna automatización lanzada')).toBeInTheDocument()
   })
 
   it('al tocar una celda dice de quién es y qué pasó ahí', async () => {

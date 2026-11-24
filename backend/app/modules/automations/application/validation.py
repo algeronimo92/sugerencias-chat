@@ -41,13 +41,13 @@ async def validate_visual_flow(
     flow = normalize_flow(name, definition)
     await verify_references(flow.refs, references)
     if flow.condition_users and await references.inactive_users(flow.condition_users):
-        raise InvalidAutomation("Un bloque Condición usa un vendedor que ya no existe o está desactivado. Elige otro.")
+        raise InvalidAutomation("Un paso Condición usa un vendedor que ya no existe o está desactivado. Elige otro.")
     if flow.condition_tags and await references.inactive_tags(flow.condition_tags):
-        raise InvalidAutomation("Un bloque Condición usa una etiqueta que ya no existe o está desactivada. Elige otra.")
+        raise InvalidAutomation("Un paso Condición usa una etiqueta que ya no existe o está desactivada. Elige otra.")
     if flow.condition_stages:
         problem = await references.stage_problem(flow.condition_stages, active_only=False)
         if problem:
-            raise InvalidAutomation(f"En un bloque Condición: {problem}. Elige otra etapa.")
+            raise InvalidAutomation(f"En un paso Condición: {problem}. Elige otra etapa.")
     if flow.invoked_flow_ids:
         check_invoked_flows(
             await rules.flow_targets(), flow.invoked_flow_ids, current_rule_id, {"nodes": flow.nodes},

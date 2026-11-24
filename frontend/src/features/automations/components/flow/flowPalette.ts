@@ -14,7 +14,7 @@ export interface FlowPaletteItem {
 export const FLOW_PALETTE: FlowPaletteItem[] = [
   { type: FlowNodeType.Condition, label: FLOW_NODE_LABELS[FlowNodeType.Condition], icon: Split, description: 'Elige la ruta según el lead o su mensaje' },
   { type: FlowNodeType.Action, label: FLOW_NODE_LABELS[FlowNodeType.Action], icon: Activity, description: 'Envía, etiqueta, asigna o crea una tarea' },
-  { type: FlowNodeType.InvokeFlow, label: FLOW_NODE_LABELS[FlowNodeType.InvokeFlow], icon: CirclePlay, description: 'Inicia otro flujo para este lead' },
+  { type: FlowNodeType.InvokeFlow, label: FLOW_NODE_LABELS[FlowNodeType.InvokeFlow], icon: CirclePlay, description: 'Inicia otra automatización para este lead' },
   { type: FlowNodeType.WaitAny, label: FLOW_NODE_LABELS[FlowNodeType.WaitAny], icon: Timer, description: 'Espera un tiempo o una respuesta del lead' },
   { type: FlowNodeType.Question, label: FLOW_NODE_LABELS[FlowNodeType.Question], icon: MessageCircleQuestion, description: 'Pregunta con botones; una ruta por respuesta' },
   { type: FlowNodeType.RoundRobin, label: FLOW_NODE_LABELS[FlowNodeType.RoundRobin], icon: Repeat, description: 'Reparte los leads por turnos entre varias salidas' },

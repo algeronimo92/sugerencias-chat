@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { searchableText, searchFlowNodes, type FlowNodeSearchItem } from './flowNodeSearch'
 
 const items: FlowNodeSearchItem[] = [
-  { id: 'a', number: 1, title: 'Inicio manual (vendedor)', text: '' },
+  { id: 'a', number: 1, title: 'La lanza tu equipo desde el chat', text: '' },
   { id: 'b', number: 2, title: 'Cambiar/quitar servicio de interés', text: 'Hollywood Peel' },
   { id: 'c', number: 12, title: 'Enviar mensaje de texto', text: 'Promoción de verano para {{nombre}}' },
   { id: 'd', number: 21, title: 'Pregunta', text: '¿Agendamos tu evaluación? Sí No' },

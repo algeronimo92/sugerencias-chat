@@ -7,7 +7,7 @@ import { formatMessageTime } from '../../whatsapp/public/message'
 function outcome(execution: AutomationExecution): { label: string; Icon: LucideIcon; tone: string } {
   switch (execution.status) {
     case 'completed':
-      return { label: 'Completado', Icon: CheckCircle2, tone: 'text-wa-primary-strong dark:text-wa-primary' }
+      return { label: 'Completada', Icon: CheckCircle2, tone: 'text-wa-primary-strong dark:text-wa-primary' }
     case 'failed':
       return { label: 'Con error', Icon: AlertTriangle, tone: 'text-red-600 dark:text-red-400' }
     case 'paused':
@@ -15,17 +15,17 @@ function outcome(execution: AutomationExecution): { label: string; Icon: LucideI
     case 'running':
       return { label: 'En curso', Icon: Loader2, tone: 'text-wa-primary-strong dark:text-wa-primary' }
     default:
-      return { label: 'Programado', Icon: Clock3, tone: 'text-amber-600 dark:text-amber-400' }
+      return { label: 'Programada', Icon: Clock3, tone: 'text-amber-600 dark:text-amber-400' }
   }
 }
 
 /** Quién lo puso en marcha. Un flujo hijo nombra al flujo que lo llamó. */
 function starterLabel(execution: AutomationExecution): string {
   if (execution.start_source === 'flow') {
-    return execution.parent_rule_name ? `El flujo ${execution.parent_rule_name} inició` : 'Otro flujo inició'
+    return execution.parent_rule_name ? `«${execution.parent_rule_name}» lanzó` : 'Otra automatización lanzó'
   }
-  if (execution.started_by_name) return `${execution.started_by_name} inició el flujo`
-  return 'Se inició el flujo'
+  if (execution.started_by_name) return `${execution.started_by_name} lanzó`
+  return 'Se inició'
 }
 
 /**

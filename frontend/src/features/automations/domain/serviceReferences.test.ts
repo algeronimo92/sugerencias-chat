@@ -31,7 +31,7 @@ describe('serviceReferences', () => {
     // Desde Catálogos se marca solo lo que corresponde al enlace.
     expect(onlyPart(references, 'action')).toEqual({ entryConditions: false, nodeIds: ['a'] })
     expect(onlyPart(references, 'condition')).toEqual({ entryConditions: true, nodeIds: [] })
-    expect(flowServiceSummary(references)).toBe('las condiciones de entrada ("Servicio de interés contiene") y el bloque "Cambiar/quitar servicio de interés"')
+    expect(flowServiceSummary(references)).toBe('las condiciones de entrada ("Servicio de interés contiene") y el paso "Cambiar/quitar servicio de interés"')
     expect(hasServiceReferences(flowServiceReferences(null, 'x'))).toBe(false)
   })
 })

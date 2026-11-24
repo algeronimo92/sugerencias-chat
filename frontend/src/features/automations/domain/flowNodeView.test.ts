@@ -11,7 +11,7 @@ describe('FLOW_NODE_VIEW', () => {
     expect(flowNodeSummary('wait', { seconds: 90 })).toContain('Esperar')
     expect(flowNodeSummary('question', { buttons: [{ id: 'btn_1', label: 'Sí' }, { id: 'btn_2', label: 'No' }] })).toBe('Sí / No')
     expect(flowNodeSummary('round_robin', { outputs: [] })).toBe('Sin salidas')
-    expect(flowNodeSummary('invoke_flow', {})).toBe('Selecciona un flujo')
+    expect(flowNodeSummary('invoke_flow', {})).toBe('Selecciona una automatización')
     expect(flowNodeSummary('end', {})).toBe('Fin')
   })
 })

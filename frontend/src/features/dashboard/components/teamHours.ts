@@ -173,8 +173,8 @@ export function teamHeadline(team: TeamHours, reading: PersonReading): string {
   const names = named.join(', ')
 
   if (reading === 'flows_manual') {
-    if (total === 0) return 'Nadie inició flujos a mano en el período.'
-    return `${formatNumber(total)} ${total === 1 ? 'flujo iniciado' : 'flujos iniciados'} a mano: ${names}.`
+    if (total === 0) return 'Nadie lanzó automatizaciones a mano en el período.'
+    return `${formatNumber(total)} ${total === 1 ? 'automatización lanzada' : 'automatizaciones lanzadas'} a mano: ${names}.`
   }
 
   const outside = team.whatsapp?.total ?? 0

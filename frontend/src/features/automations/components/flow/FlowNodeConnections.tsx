@@ -23,7 +23,7 @@ export function FlowNodeConnections({ incoming, outgoing, onGo, onRemove }: {
 }) {
   return (
     <div className="mt-5 space-y-4 border-t border-wa-border pt-4 dark:border-wa-border-dark">
-      <ConnectionList title="Llega desde" empty="Ningún bloque conecta con este." icon="in" items={incoming} onGo={onGo} onRemove={onRemove} />
+      <ConnectionList title="Llega desde" empty="Ningún paso conecta con este." icon="in" items={incoming} onGo={onGo} onRemove={onRemove} />
       <ConnectionList title="Sale hacia" empty="Sin conexiones." icon="out" items={outgoing} onGo={onGo} onRemove={onRemove} />
     </div>
   )
@@ -46,7 +46,7 @@ function ConnectionList({ title, empty, icon, items, onGo, onRemove }: {
           <button
             type="button"
             onClick={() => onGo(item.nodeId)}
-            title="Ir a este bloque"
+            title="Ir a este paso"
             className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-wa-primary/10"
           >
             <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -54,7 +54,7 @@ function ConnectionList({ title, empty, icon, items, onGo, onRemove }: {
             <span className="min-w-0 flex-1 truncate">{item.title}</span>
             <span className="shrink-0 text-wa-muted">{item.handle}</span>
           </button>
-          <button type="button" onClick={() => onRemove(item.edgeId)} aria-label={`Quitar la conexión con el bloque #${item.number ?? ''}`} className="px-2 text-red-500">
+          <button type="button" onClick={() => onRemove(item.edgeId)} aria-label={`Quitar la conexión con el paso #${item.number ?? ''}`} className="px-2 text-red-500">
             <X className="h-3 w-3" />
           </button>
         </div>

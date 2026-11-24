@@ -30,7 +30,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/tasks', label: 'Tareas', icon: CalendarClock, permissions: ['tasks.use'], group: 'main' },
   { path: '/dashboard', label: 'Dashboard', icon: BarChart3, permissions: ['dashboard.view'], group: 'main' },
   { path: '/citas/nueva', label: 'Nueva Cita', icon: CalendarPlus, permissions: ['appointments.edit'], group: 'main' },
-  { path: '/mis-flujos', label: 'Flujos enviados', icon: Send, permissions: ['automations.run'], group: 'tools' },
+  { path: '/mis-flujos', label: 'Automatizaciones enviadas', icon: Send, permissions: ['automations.run'], group: 'tools' },
   { path: '/automations', label: 'Automatizaciones', icon: Workflow, permissions: ['automations.manage'], group: 'tools' },
   { path: '/templates', label: 'Plantillas', icon: FileText, permissions: ['templates.manage'], group: 'tools' },
   { path: '/media-library', label: 'Archivos', icon: FolderOpen, permissions: ['media_library.manage'], group: 'settings' },

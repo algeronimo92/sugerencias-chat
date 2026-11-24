@@ -67,7 +67,7 @@ def match_flow_condition(
         return matches, f"Servicio {'contiene' if matches else 'no contiene'} {value}"
     if condition_type in _MESSAGE_TEXT_CONDITIONS:
         if message_content is None or not str(message_content).strip():
-            return False, "No hay un mensaje de cliente disponible en el contexto del flujo"
+            return False, "No hay un mensaje de cliente disponible en el contexto de la automatización"
         normalized_message = normalize_reply_text(str(message_content))
         normalized_value = normalize_reply_text(str(value))
         if condition_type == FlowConditionType.MESSAGE_EQUALS:
@@ -97,7 +97,7 @@ def match_flow_condition(
     if condition_type == FlowConditionType.MESSAGE_TYPE_EQUALS:
         message_type = context.get("message_type")
         if not message_type:
-            return False, "No hay un mensaje de cliente disponible en el contexto del flujo"
+            return False, "No hay un mensaje de cliente disponible en el contexto de la automatización"
         subtype = context.get("message_subtype")
         literal = f"{message_type}/{subtype}" if subtype else message_type
         matches = value in {message_type, literal}

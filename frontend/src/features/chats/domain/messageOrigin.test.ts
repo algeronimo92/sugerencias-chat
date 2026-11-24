@@ -16,7 +16,7 @@ describe('originLabel', () => {
 
   it('nombra el flujo cuando la ejecución está cargada', () => {
     expect(originLabel({ kind: 'automation', user_id: null, user_name: null, execution_id: 63802 }, FLOWS))
-      .toBe('Flujo Hollywood peel')
+      .toBe('Automatización Hollywood peel')
   })
 
   it('dice "Automatización" si la ejecución ya no está entre las cargadas', () => {

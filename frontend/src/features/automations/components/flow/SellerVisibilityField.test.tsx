@@ -6,7 +6,7 @@ import { SellerVisibilityField } from './SellerVisibilityField'
 describe('SellerVisibilityField', () => {
   it('desmarcado avisa que los vendedores no lo ven', () => {
     render(<SellerVisibilityField visible={false} saved onChange={() => {}} />)
-    expect(screen.getByRole('status')).toHaveTextContent('solo los administradores pueden iniciarlo')
+    expect(screen.getByRole('status')).toHaveTextContent('solo los administradores pueden lanzarla')
   })
 
   it('marcarlo se guarda al instante', async () => {

@@ -58,7 +58,7 @@ export function RecipePicker({ section, onChoose, onClose }: Props) {
           <PencilRuler className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-fg">Empezar de cero</span>
-            <span className="mt-0.5 block text-sm text-fg-muted">Abre el editor con un flujo mínimo para armarlo bloque por bloque.</span>
+            <span className="mt-0.5 block text-sm text-fg-muted">Abre el editor con una automatización mínima para armarla paso por paso.</span>
           </span>
         </button>
       </div>

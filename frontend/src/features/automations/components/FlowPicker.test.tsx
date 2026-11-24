@@ -56,9 +56,9 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
-    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
+    await user.click(screen.getByRole('button', { name: 'Iniciar una automatización para este lead' }))
 
-    expect(screen.getByText(/No hay flujos disponibles/)).toBeInTheDocument()
+    expect(screen.getByText(/Todavía no hay automatizaciones que tu equipo pueda lanzar/)).toBeInTheDocument()
   })
 
   it('lista los flujos y al elegir uno lo entrega para confirmar', async () => {
@@ -70,7 +70,7 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
-    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
+    await user.click(screen.getByRole('button', { name: 'Iniciar una automatización para este lead' }))
     await user.click(screen.getByText('Bienvenida guiada'))
 
     expect(onChoose).toHaveBeenCalledWith({ id: 9, name: 'Bienvenida guiada' })
@@ -88,7 +88,7 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
-    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
+    await user.click(screen.getByRole('button', { name: 'Iniciar una automatización para este lead' }))
 
     expect(screen.getByText('Ya en curso')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Bienvenida guiada/ })).toBeDisabled()
@@ -108,7 +108,7 @@ describe('FlowPicker', () => {
     const user = userEvent.setup()
     render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
 
-    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
+    await user.click(screen.getByRole('button', { name: 'Iniciar una automatización para este lead' }))
 
     expect(screen.getByText('Ya se envió hace 5 min · La lanzó «Bienvenida»')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Hollywood peel/ })).toBeEnabled()

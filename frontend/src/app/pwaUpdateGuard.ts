@@ -27,7 +27,7 @@ const BLOCKER_LABELS: Record<UpdateBlocker, string> = {
   'sending-media': 'se están enviando adjuntos',
   reply: 'hay una respuesta a medias',
   selection: 'hay mensajes seleccionados',
-  'flow-editor': 'el editor de flujos tiene cambios sin guardar',
+  'flow-editor': 'el editor de automatizaciones tiene cambios sin guardar',
   sending: 'hay un mensaje enviándose',
   dialog: 'hay un diálogo abierto',
   'other-tab': 'otra pestaña del CRM está ocupada',

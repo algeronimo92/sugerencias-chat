@@ -209,7 +209,7 @@ export function InteractiveOptionsEditor({ editor, limits, defaultFooter }: Prop
         <Checkbox checked={showIds} onCheckedChange={checked => setShowIds(checked === true)} />
         <span>
           Mostrar los ID de cada opción
-          <span className="block text-xs text-fg-muted">El cliente no los ve. Las automatizaciones los usan para saber qué eligió; solo cámbialos si un flujo ya depende de ellos.</span>
+          <span className="block text-xs text-fg-muted">El cliente no los ve. Las automatizaciones los usan para saber qué eligió; solo cámbialos si una automatización ya depende de ellos.</span>
         </span>
       </label>
     </div>

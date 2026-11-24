@@ -25,11 +25,11 @@ ACTIVE_STATUSES = (
 )
 
 SOURCE_LABELS = {
-    "manual": "Iniciado a mano",
+    "manual": "A mano",
     # Era "Piloto automático"; "Flujos enviados" dice "automáticos" y un mismo
     # concepto con dos nombres se leía como dos cosas distintas.
-    "system": "Automático",
-    "flow": "Desde otro flujo",
+    "system": "Solas",
+    "flow": "Desde otra automatización",
 }
 
 # Un error de Postgres o de Meta trae identificadores y stack en la misma

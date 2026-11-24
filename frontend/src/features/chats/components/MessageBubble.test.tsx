@@ -87,9 +87,9 @@ function renderBubble(overrides: Partial<Message> = {}, options: Options = {}) {
 
 describe('MessageBubble', () => {
   it('firma la primera burbuja de un grupo con quién o qué la mandó', () => {
-    renderBubble({}, { originLabel: 'Flujo Hollywood peel' })
+    renderBubble({}, { originLabel: 'Automatización Hollywood peel' })
 
-    expect(screen.getByTestId('message-origin')).toHaveTextContent('Flujo Hollywood peel')
+    expect(screen.getByTestId('message-origin')).toHaveTextContent('Automatización Hollywood peel')
   })
 
   it('no repite la firma dentro del mismo grupo', () => {

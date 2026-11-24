@@ -28,7 +28,7 @@ class TestInvocationValidation:
 
     def test_rejects_direct_self_invocation(self):
         rules = {1: {"name": "Padre", "published_flow_definition": definition()}}
-        with pytest.raises(ValueError, match="sí mismo"):
+        with pytest.raises(ValueError, match="sí misma"):
             check_invoked_flows(rules, {1}, 1, definition(1))
 
     def test_rejects_indirect_cycle(self):
@@ -93,7 +93,7 @@ class TestStartInvokedFlow:
 
     @pytest.mark.parametrize(("overrides", "message"), [
         ({"deleted_at": "ayer"}, "ya no existe"),
-        ({"is_active": False}, "no está publicado y activo"),
+        ({"is_active": False}, "no está publicada y activa"),
     ])
     async def test_a_child_that_changed_since_publishing_is_refused(self, deps, executions, overrides, message):
         executions.rules[9] = _target(**overrides)
@@ -136,7 +136,7 @@ class TestInvokedFlowIsNotRepeated:
 
         reason = await already_started_for_lead(_parent(), 9, "call-1", deps)
 
-        assert reason == "No se repitió «Hollywood Peel»: tu equipo ya lo lanzó desde el chat hace menos de 30 minutos"
+        assert reason == "No se repitió «Hollywood Peel»: tu equipo ya la lanzó desde el chat hace menos de 30 minutos"
 
     async def test_says_so_when_another_flow_started_it(self, deps, executions):
         executions.rules[9] = _target()
@@ -144,7 +144,7 @@ class TestInvokedFlowIsNotRepeated:
 
         reason = await already_started_for_lead(_parent(), 9, "call-1", deps)
 
-        assert reason == "No se repitió «Hollywood Peel»: ya se le inició a este cliente hace menos de 30 minutos"
+        assert reason == "No se repitió «Hollywood Peel»: ya se le lanzó a este cliente hace menos de 30 minutos"
 
     @pytest.mark.parametrize("overrides", [
         {"created_at_minutes_ago": 31},

@@ -17,11 +17,11 @@ const NODE_HELP: Partial<Record<string, string[]>> = {
   [FlowNodeType.Condition]: [
     'En cada salida deben cumplirse todas sus condiciones (Y).',
     'Las salidas se revisan en orden (O) y el lead sale por la primera que se cumpla.',
-    'Los mensajes se comparan con el texto que inició o reanudó el flujo, sin importar mayúsculas, tildes ni espacios repetidos.',
+    'Los mensajes se comparan con el texto que inició o reanudó la automatización, sin importar mayúsculas, tildes ni espacios repetidos.',
   ],
   [FlowNodeType.WaitAny]: [
     'El lead sigue por la salida de lo que pase primero.',
-    'Conecta cada condición. Si el temporizador queda sin conectar, ahí termina el flujo.',
+    'Conecta cada condición. Si el temporizador queda sin conectar, ahí termina la automatización.',
   ],
   [FlowNodeType.Question]: [
     'Conecta cada botón, «Otra respuesta» y «Sin respuesta» a su propia salida.',
@@ -35,8 +35,8 @@ const NODE_HELP: Partial<Record<string, string[]>> = {
     'Conecta todas las salidas. El nombre solo sirve para ubicarla en el lienzo.',
   ],
   [FlowNodeType.InvokeFlow]: [
-    'El otro flujo empieza para el mismo lead.',
-    'Este no lo espera: sigue de inmediato por su salida, que normalmente conectas a un Fin.',
+    'La otra automatización empieza para el mismo lead.',
+    'Esta no la espera: sigue de inmediato por su salida, que normalmente conectas a un Fin.',
   ],
   [FlowNodeType.End]: [
     '«Cerrar conversación» marca el chat como cerrado cuando un lead llega a este Fin.',
@@ -61,13 +61,13 @@ const ACTION_HELP: Partial<Record<string, string[]>> = {
     'Para marcar de qué anuncio vino, usa «Agregar etiqueta».',
   ],
   [AutomationActionType.SetConversationState]: [
-    'Abrirla desde aquí no inicia los flujos de «Conversación nueva»: esos solo empiezan con un mensaje del cliente.',
+    'Abrirla desde aquí no inicia las automatizaciones de «Conversación nueva»: esas solo empiezan con un mensaje del cliente.',
   ],
 }
 
 export const ENTRY_CONDITIONS_HELP = [
-  'El flujo solo empieza si el lead cumple todas estas condiciones.',
-  'Para separar rutas dentro del flujo, usa un bloque Condición.',
+  'La automatización solo empieza si el lead cumple todas estas condiciones.',
+  'Para separar rutas dentro de la automatización, usa un paso Condición.',
 ]
 
 export function blockHelp(nodeType: string, actionType?: string): string[] {
