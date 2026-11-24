@@ -53,7 +53,11 @@ test('la condición de horario muestra cuál es y deja cambiarlo sin salir del e
 
   await page.getByRole('button', { name: 'Cambiar horario' }).click()
   const dialog = page.getByRole('dialog', { name: 'Horario de atención' })
-  await expectFullyOnScreen(dialog.getByRole('button', { name: 'Guardar horario' }))
+  // En el celular el diálogo ocupa casi toda la pantalla y entra con una
+  // animación: se espera a que el botón esté a la vista antes de medirlo.
+  const save = dialog.getByRole('button', { name: 'Guardar horario' })
+  await save.scrollIntoViewIfNeeded()
+  await expect(async () => { await expectFullyOnScreen(save) }).toPass({ timeout: 5_000 })
   await expect(dialog).toContainText(`Lo usa 1 automatización: «${SEGUIMIENTO.name}».`)
   await dialog.getByRole('checkbox', { name: 'Sábado' }).click()
   await page.screenshot({ path: `test-results/horario-editor-dialogo-${info.project.name}.png` })
