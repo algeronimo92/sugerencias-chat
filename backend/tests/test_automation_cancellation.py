@@ -176,3 +176,39 @@ async def test_a_completed_execution_whose_message_was_not_delivered_can_be_dism
 
     assert await dismiss_automation_execution(5) is not None
     assert store.executions[5].status == AutomationExecutionStatus.COMPLETED
+
+
+class TestStopWhenTheTeamReplies:
+    """El seguimiento automático seguía escribiéndole al cliente aunque una
+    vendedora ya hubiera tomado la conversación."""
+
+    async def test_a_message_written_by_a_person_stops_the_follow_up(self, in_memory_automations, monkeypatch):
+        from app.modules.automations import subscribers
+        from app.modules.conversations.public import MessageSent
+
+        announced = []
+
+        async def announce(event):
+            announced.append(event)
+
+        monkeypatch.setattr(subscribers, "announce_automations_changed", announce)
+        in_memory_automations.scheduling.stopped_by_team_reply = 1
+
+        await subscribers.stop_follow_ups_when_the_team_replies(MessageSent(chat_id="chat-1", message_id=1, actor_user_id=7))
+
+        assert in_memory_automations.scheduling.team_replies == ["chat-1"]
+        assert announced == [AutomationsChanged()]
+
+    @pytest.mark.parametrize("event_values", [
+        # Lo mandó una automatización: no es una persona tomando el chat.
+        {"actor_user_id": None},
+        # Un programado se escribió antes: nadie está en el chat ahora.
+        {"actor_user_id": 7, "scheduled": True},
+    ])
+    async def test_messages_nobody_is_writing_right_now_do_not_stop_anything(self, in_memory_automations, event_values):
+        from app.modules.automations import subscribers
+        from app.modules.conversations.public import MessageSent
+
+        await subscribers.stop_follow_ups_when_the_team_replies(MessageSent(chat_id="chat-1", message_id=1, **event_values))
+
+        assert in_memory_automations.scheduling.team_replies == []

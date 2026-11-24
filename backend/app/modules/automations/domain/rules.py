@@ -66,6 +66,9 @@ def normalize_conditions(raw_conditions: object) -> dict:
         "tag_id": int(conditions["tag_id"]) if conditions.get("tag_id") else None,
         "require_open_window": bool(conditions.get("require_open_window", False)),
         "business_hours_only": bool(conditions.get("business_hours_only", False)),
+        # No decide si el flujo empieza, sino cuándo se corta: si alguien del
+        # equipo le escribe al cliente, el seguimiento automático sobra.
+        "stop_when_team_replies": bool(conditions.get("stop_when_team_replies", False)),
         "cooldown_minutes": (
             max(1, min(MAX_COOLDOWN_MINUTES, int(conditions["cooldown_minutes"])))
             if conditions.get("cooldown_minutes")

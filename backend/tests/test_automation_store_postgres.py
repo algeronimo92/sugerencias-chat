@@ -563,3 +563,29 @@ async def test_reconciling_rebuilds_the_delivery_from_the_real_messages(tenant):
         assert (await _row(no_messages)).delivery_state is None
         # Ya coincide: reconciliar de nuevo no encuentra nada que corregir.
         assert not (await reconcile_delivery(apply=False)).corrected
+
+
+async def test_a_team_reply_stops_only_the_system_follow_ups_that_asked_for_it(tenant):
+    """«Detener si alguien del equipo le escribe»: corta lo automático que
+    estaba pendiente, no lo que una persona lanzó ni lo que no lo pidió."""
+    with tenant_context(tenant):
+        lead_id = await _lead()
+        opted_in = {"conditions": {"stop_when_team_replies": True}}
+        waiting = await _execution(await _rule(**opted_in), lead_id, flow_state=WAITING, start_source="system")
+        not_started = await _execution(await _rule(**opted_in), lead_id, trigger_type="lead_created", start_source="system")
+        # El vencimiento de «cliente sin responder» lo arma justamente ese mensaje.
+        deadline = await _execution(
+            await _rule(trigger_type="customer_response_overdue", **opted_in), lead_id,
+            trigger_type="customer_response_overdue", start_source="system",
+        )
+        by_hand = await _execution(await _rule(**opted_in), lead_id, flow_state=WAITING, start_source="manual")
+        did_not_ask = await _execution(await _rule(), lead_id, flow_state=WAITING, start_source="system")
+        other_lead = await _execution(await _rule(**opted_in), await _lead(), flow_state=WAITING, start_source="system")
+
+        assert await SqlSchedulingStore().stop_for_team_reply(lead_id, NOW) == 2
+
+        stopped = await _row(waiting)
+        assert (stopped.status, stopped.error) == (AutomationExecutionStatus.CANCELLED, "Alguien del equipo le escribió al cliente")
+        assert (await _row(not_started)).status == AutomationExecutionStatus.CANCELLED
+        for untouched in (deadline, by_hand, did_not_ask, other_lead):
+            assert (await _row(untouched)).status == AutomationExecutionStatus.SCHEDULED

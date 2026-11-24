@@ -89,7 +89,8 @@ export const FLOW_RECIPES: FlowRecipe[] = [
         { type: AutomationTrigger.CustomerResponseOverdue, minutes: 180 },
         [message('Hola {{nombre}}, ¿pudiste ver lo que te enviamos? Si tienes alguna duda, cuéntame y te ayudo.')],
         // Pasadas 24 h WhatsApp rechaza un mensaje libre: mejor no intentarlo.
-        { require_open_window: true },
+        // Y si una vendedora ya retomó la conversación, el recordatorio sobra.
+        { require_open_window: true, stop_when_team_replies: true },
       ),
     }),
   },
