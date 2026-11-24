@@ -211,10 +211,15 @@ export function AutomationsPage() {
   const automaticFlows = visualRules.filter(rule => rule.trigger_type !== TriggerType.Manual)
   const sequenceFlows = visualRules.filter(rule => rule.trigger_type === TriggerType.Manual)
   const attention = useAttention()
-  // Se entra en Automáticas y no en Por atender: un fallo todavía no se puede
-  // marcar como resuelto, así que esa lista casi nunca está vacía y abrir
-  // siempre ahí taparía la tarea más frecuente, que es editar.
-  const tab: AutomationsTab = chosenTab ?? 'automatic'
+  // Se entra donde hay algo que decidir: en «Por atender» si hay pendientes
+  // y, si no, en lo que más se edita. Se decide una vez, al terminar de
+  // cargar: descartar el último aviso no debe mover a la persona de sección.
+  const [landingTab, setLandingTab] = useState<AutomationsTab | null>(null)
+  if (landingTab === null && !attention.isLoading) setLandingTab(attention.count > 0 ? 'attention' : 'automatic')
+  const tab: AutomationsTab = chosenTab ?? landingTab ?? 'automatic'
+  // Hasta saber si hay pendientes no se dibuja ninguna sección: mostrar una y
+  // saltar a otra medio segundo después desorienta.
+  const landingUndecided = chosenTab === null && landingTab === null
   // Sin total todavía (o con un backend anterior) vale la señal de siempre:
   // la lista llegó llena.
   const historyTruncated = historyTotal !== undefined ? executions.length < historyTotal : executions.length >= historyLimit
@@ -458,7 +463,7 @@ export function AutomationsPage() {
         <nav className="mb-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-wa-border bg-white/75 p-1.5 shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark/75" aria-label="Secciones de automatizaciones">
           {TABS.map(({ key, label, icon: Icon }) => {
             const count = { attention: attention.count, automatic: simpleRules.length + automaticFlows.length, sequences: sequenceFlows.length, activity: null }[key]
-            const selected = tab === key
+            const selected = !landingUndecided && tab === key
             return (
               <button key={key} type="button" onClick={() => setTab(key)} aria-current={selected ? 'page' : undefined} className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${selected ? 'bg-wa-primary-strong text-white shadow-sm' : 'text-wa-muted hover:bg-wa-hover dark:text-wa-muted-dark dark:hover:bg-wa-head-dark'}`}>
                 <Icon className="h-3.5 w-3.5" />{label}
@@ -471,7 +476,9 @@ export function AutomationsPage() {
 
         {error && !formOpen && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
-        {tab === 'attention' ? (
+        {landingUndecided ? (
+          <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
+        ) : tab === 'attention' ? (
           <AttentionPanel groups={attention.groups} isLoading={attention.isLoading} onOpenChat={openExecutionChat} onSeeActivity={() => setTab('activity')} />
         ) : tab === 'automatic' ? (
           isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : (

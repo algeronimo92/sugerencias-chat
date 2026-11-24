@@ -199,6 +199,7 @@ export function execution(rule: Flow, overrides: Partial<Execution> = {}): Execu
     started_by_name: ADMIN.name,
     window_override_at: null,
     window_override_by_name: null,
+    attention_dismissed_at: null,
     ...overrides,
   }
 }

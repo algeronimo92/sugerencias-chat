@@ -9,6 +9,7 @@ from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 from app.modules.automations.public import (
     cancel_automation_execution,
+    dismiss_automation_execution,
     create_visual_flow,
     create_automation_rule,
     delete_automation_rule,
@@ -344,6 +345,16 @@ async def post_cancel_execution(execution_id: int, user: User = Depends(require_
     item = await cancel_automation_execution(execution_id)
     if item is None:
         raise HTTPException(409, "Solo se pueden cancelar ejecuciones programadas, en curso o pausadas")
+    return item
+
+
+@router.post("/executions/{execution_id}/dismiss", response_model=AutomationExecutionItem)
+async def post_dismiss_execution(execution_id: int, admin: User = Depends(require_automations_manage)):
+    """Saca una ejecución de «Por atender» sin tocarla: alguien la vio y no
+    hay nada que hacer. Si vuelve a fallar, vuelve a aparecer."""
+    item = await dismiss_automation_execution(execution_id)
+    if item is None:
+        raise HTTPException(409, "Solo se descartan ejecuciones fallidas o en pausa")
     return item
 
 

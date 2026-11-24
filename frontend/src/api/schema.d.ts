@@ -4291,6 +4291,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/automations/executions/{execution_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Dismiss Execution
+         * @description Saca una ejecución de «Por atender» sin tocarla: alguien la vio y no
+         *     hay nada que hacer. Si vuelve a fallar, vuelve a aparecer.
+         */
+        post: operations["post_dismiss_execution_api_automations_executions__execution_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/automations/executions/{execution_id}/pause": {
         parameters: {
             query?: never;
@@ -5151,6 +5172,8 @@ export interface components {
             started_by_name?: string | null;
             /** Window Override At */
             window_override_at?: string | null;
+            /** Attention Dismissed At */
+            attention_dismissed_at?: string | null;
             /** Window Override By Name */
             window_override_by_name?: string | null;
         };
@@ -18538,6 +18561,37 @@ export interface operations {
         };
     };
     post_cancel_execution_api_automations_executions__execution_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationExecutionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_dismiss_execution_api_automations_executions__execution_id__dismiss_post: {
         parameters: {
             query?: never;
             header?: never;

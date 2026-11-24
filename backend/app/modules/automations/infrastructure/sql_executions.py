@@ -316,6 +316,7 @@ class SqlExecutionStore:
                 finished_at=None,
                 error=None,
                 error_code=None,
+                attention_dismissed_at=None,
                 attempts=0,
                 window_override_by_user_id=override_by_user_id,
                 window_override_at=now if override_by_user_id is not None else None,
@@ -335,6 +336,16 @@ class SqlExecutionStore:
             ).values(**_resume_values(now)))
         return result.rowcount or 0
 
+    async def dismiss(self, execution_id: int, now: datetime) -> bool:
+        async with session_scope() as session:
+            result = await session.execute(update(AutomationExecution).where(
+                AutomationExecution.id == execution_id,
+                AutomationExecution.status.in_([
+                    AutomationExecutionStatus.FAILED, AutomationExecutionStatus.PAUSED,
+                ]),
+            ).values(attention_dismissed_at=now))
+        return bool(result.rowcount)
+
     async def pause(self, execution_id: int, now: datetime) -> bool:
         async with session_scope() as session:
             result = await session.execute(update(AutomationExecution).where(
@@ -344,6 +355,7 @@ class SqlExecutionStore:
                 status=AutomationExecutionStatus.PAUSED,
                 paused_at=now,
                 pause_scope=PAUSE_SCOPE_EXECUTION,
+                attention_dismissed_at=None,
                 error=None,
             ))
         return bool(result.rowcount)

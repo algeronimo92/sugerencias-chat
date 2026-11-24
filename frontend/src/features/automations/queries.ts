@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { isoDateOffset, todayISODate } from '../../shared/utils/datetime'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
+import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchAutomationRules, cancelExecution, createAutomation, dismissExecution, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
 import { AutomationExecutionStatus } from './domain/automationCatalog'
@@ -171,6 +171,14 @@ export function useAutomationExecution(executionId: number | null) {
     queryKey: executionKeys.detail(executionId),
     queryFn: () => fetchAutomationExecution(executionId),
     enabled: executionId !== null,
+  })
+}
+
+/** «Ya lo vi, no hay nada que hacer»: la saca de «Por atender». */
+export function useDismissExecution() {
+  return useMutation({
+    mutationFn: dismissExecution,
+    onSuccess: invalidateAutomations,
   })
 }
 

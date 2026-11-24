@@ -65,6 +65,10 @@ class ExecutionStore(Protocol):
         """Descongela lo que la regla anterior dejó pausado con el lead
         (pause_scope 'lead' o NULL); hoy nada nuevo se congela así."""
 
+    async def dismiss(self, execution_id: int, now: datetime) -> bool:
+        """Saca de «Por atender» una ejecución failed o paused. No la cambia
+        de estado. False si no está en ninguno de los dos."""
+
     async def pause(self, execution_id: int, now: datetime) -> bool: ...
 
     async def resume(self, execution_id: int, now: datetime) -> bool: ...

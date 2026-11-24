@@ -277,6 +277,17 @@ async def resume_automation_execution(execution_id: int) -> dict | None:
     return await executions.view(execution_id)
 
 
+async def dismiss_automation_execution(execution_id: int) -> dict | None:
+    """Marca como vista una ejecución de «Por atender»: no hay nada que hacer
+    con ella. No cambia su estado ni la reintenta."""
+    executions = automation_ports().executions
+    async with unit_of_work():
+        if not await executions.dismiss(execution_id, _now()):
+            return None
+        await _changed()
+    return await executions.view(execution_id)
+
+
 async def cancel_automation_execution(execution_id: int) -> dict | None:
     executions = automation_ports().executions
     async with unit_of_work():

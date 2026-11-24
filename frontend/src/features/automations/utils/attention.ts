@@ -6,8 +6,8 @@ import type { AutomationExecution } from '../types'
  *  (en DermicaPro había cinco congeladas desde hacía dos y tres meses). */
 export const LONG_PAUSE_DAYS = 7
 
-/** Hasta cuándo un fallo sigue pidiendo atención. No hay forma de marcarlo
- *  como resuelto, así que sin este corte la lista no se vaciaría nunca. */
+/** Hasta cuándo un fallo sigue pidiendo atención si nadie lo descarta: uno
+ *  de hace una semana ya no se arregla reintentando. */
 export const ATTENTION_WINDOW_DAYS = 3
 
 export type AttentionCause = 'service_window' | 'no_seller' | 'failed' | 'long_pause'
@@ -47,6 +47,8 @@ const ORDER: AttentionCause[] = ['service_window', 'failed', 'no_seller', 'long_
 const NO_SELLER = /no tiene vendedor/i
 
 function causeOf(execution: AutomationExecution, now: number): AttentionCause | null {
+  // Alguien ya la vio y decidió dejarla así.
+  if (execution.attention_dismissed_at) return null
   if (execution.status === AutomationExecutionStatus.Paused) {
     const pausedAt = execution.paused_at ? new Date(execution.paused_at).getTime() : null
     return pausedAt !== null && now - pausedAt > LONG_PAUSE_DAYS * 86_400_000 ? 'long_pause' : null

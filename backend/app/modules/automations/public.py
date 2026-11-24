@@ -6,6 +6,7 @@ eventos y supervisión; el resto del motor es interno.
 
 from app.modules.automations.application.management import (
     cancel_automation_execution,
+    dismiss_automation_execution,
     create_automation_rule,
     create_visual_flow,
     delete_automation_rule,
