@@ -61,7 +61,8 @@ TABLE_GROUPS: dict[str, tuple[str, ...]] = {
         "admin_totp_recovery_codes", "auth_action_tokens", "email_notification_log", "trusted_devices",
         "auth_sessions",
     ),
-    "automations": ("automation_rules", "automation_flow_versions", "automation_round_robin_state", "automation_executions"),
+    "automations": ("automation_rules", "automation_flow_versions", "automation_round_robin_state", "automation_executions",
+                    "automation_execution_messages"),
     "catalogs": (
         "lead_tags", "lead_services", "service_packages", "template_categories", "custom_field_definitions",
         "message_templates", "template_user_state", "template_attachments",

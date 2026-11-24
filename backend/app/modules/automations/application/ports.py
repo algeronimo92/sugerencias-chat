@@ -65,6 +65,26 @@ class ExecutionStore(Protocol):
         """Descongela lo que la regla anterior dejó pausado con el lead
         (pause_scope 'lead' o NULL); hoy nada nuevo se congela así."""
 
+    async def track_messages(self, execution_id: int, message_ids: list[int], now: datetime) -> None:
+        """Anota que la ejecución encoló esos mensajes, todavía sin enviar.
+        Repetir un mensaje ya anotado no cambia nada."""
+
+    async def record_message_state(self, message_id: int, state: str, now: datetime) -> int | None:
+        """Lo último que se supo de un mensaje. Solo avanza (ver
+        ``domain.delivery.advance``) y actualiza el resumen de su ejecución.
+        Devuelve el id de la ejecución, o None si el mensaje no es de ninguna."""
+
+    async def queued_message_ids(self, after_id: int, limit: int) -> list[tuple[int, list[int]]]:
+        """Para reconciliar: las siguientes ``limit`` ejecuciones después de
+        ``after_id`` con los ids de mensaje que sus pasos dejaron anotados."""
+
+    async def tracked_message_states(self, execution_ids: list[int]) -> dict[int, dict[int, str]]:
+        """Lo que la proyección tiene anotado de cada ejecución."""
+
+    async def replace_message_states(self, execution_id: int, states: dict[int, str], now: datetime) -> None:
+        """Deja esos mensajes exactamente en ese estado (sin la regla de solo
+        avanzar: la fuente manda) y recalcula el resumen."""
+
     async def dismiss(self, execution_id: int, now: datetime) -> bool:
         """Saca de «Por atender» una ejecución failed o paused. No la cambia
         de estado. False si no está en ninguno de los dos."""

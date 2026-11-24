@@ -138,6 +138,11 @@ class AutomationExecution(Base):
     # defecto. Se limpia cuando la ejecución vuelve a moverse (reintento,
     # pausa): si vuelve a fallar, vuelve a pedir atención.
     attention_dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Qué pasó con los mensajes que mandó: 'pending', 'delivered' o 'failed';
+    # NULL si no mandó ninguno. Es un resumen de automation_execution_messages
+    # guardado acá para poder filtrar y contar sin agrupar en cada consulta.
+    # No lo escribe el motor: `status` sigue diciendo solo si recorrió sus pasos.
+    delivery_state: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint("pause_scope IN ('lead', 'execution')", name="ck_automation_executions_pause_scope"),
@@ -173,4 +178,43 @@ class AutomationExecution(Base):
             "start_source IN ('system', 'manual', 'flow')",
             name="ck_automation_executions_start_source",
         ),
+        CheckConstraint(
+            "delivery_state IN ('pending', 'delivered', 'failed')",
+            name="ck_automation_executions_delivery_state",
+        ),
+        # Lo que no se entregó o sigue enviando es una fracción mínima: el
+        # índice solo las cubre a ellas, que es lo que se busca.
+        Index(
+            "idx_automation_executions_undelivered",
+            "delivery_state", created_at.desc(),
+            postgresql_where=text("delivery_state IN ('pending', 'failed')"),
+        ),
     )
+
+
+class AutomationExecutionMessage(Base):
+    """Un mensaje que encoló una ejecución y lo último que se supo de él.
+
+    Los avisos de envío (`MessageSent`, `MessageFailed`…) traen el id del
+    mensaje y no el de la ejecución: esta tabla es el puente. `message_id` es
+    el id de `wsp_messages`, sin clave foránea: esa tabla es de conversaciones
+    y acá solo se guarda la referencia.
+    """
+
+    __tablename__ = "automation_execution_messages"
+
+    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    execution_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("automation_executions.id", ondelete="CASCADE"),
+    )
+    state: Mapped[str] = mapped_column(Text, default="pending", server_default="pending")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('pending', 'sent', 'delivered', 'read', 'failed')",
+            name="ck_automation_execution_messages_state",
+        ),
+        Index("idx_automation_execution_messages_execution", execution_id),
+    )
+
