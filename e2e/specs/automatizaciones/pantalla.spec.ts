@@ -114,21 +114,31 @@ test('pausar un flujo pide confirmación y dice qué pasa con lo que está en cu
   ])
 })
 
-test('la actividad avisa cuando hay más ejecuciones de las que muestra', async ({ page, api }, info) => {
-  // El listado trae 200 como máximo y los días normales superan las 300:
-  // se leía «200 resultados» como si fuera todo.
-  const full = Array.from({ length: 200 }, (_, index) => execution(FLOWS[index % FLOWS.length], { id: 1000 + index, status: 'completed' }))
-  api.on('get', '/api/automations/executions', byStatus(full))
+test('la actividad dice cuántas hay en total y deja cargar más', async ({ page, api }, info) => {
+  // El listado traía 200 como máximo y los días normales superan las 300:
+  // se leía «200 resultados» como si fuera todo, sin forma de ver el resto.
+  const all = Array.from({ length: 320 }, (_, index) => execution(FLOWS[index % FLOWS.length], { id: 1000 + index, status: 'completed' }))
+  api
+    .on('get', '/api/automations/executions', ({ url }) => (
+      url.searchParams.get('status') ? [] : all.slice(0, Number(url.searchParams.get('limit') ?? 200))
+    ))
+    .on('get', '/api/automations/executions/count', ({ url }) => ({ total: url.searchParams.get('status') ? 0 : all.length }))
 
   // El enlace viejo (`?tab=history`) sigue llevando a la actividad.
   await page.goto('/automations?tab=history')
 
-  const notice = page.getByRole('status').filter({ hasText: 'Hay más ejecuciones de las que se muestran' })
+  const notice = page.getByRole('status').filter({ hasText: 'Se muestran las 200 más recientes de 320' })
   // La cabecera de la página lo deja bajo el pliegue en el celular.
   await notice.scrollIntoViewIfNeeded()
   await expectFullyOnScreen(notice)
-  await expect(page.getByText('Las 200 más recientes', { exact: true })).toBeVisible()
+  await expect(page.getByText('200 de 320', { exact: true })).toBeVisible()
   await page.screenshot({ path: `test-results/automatizaciones-historial-${info.project.name}.png` })
+
+  await notice.getByRole('button', { name: 'Cargar 200 más' }).click()
+
+  // Ya están todas: se va el aviso y el contador dice el total.
+  await expect(page.getByText('320 resultados', { exact: true })).toBeVisible()
+  await expect(notice).toHaveCount(0)
 })
 
 test('la actividad distingue lo que alguien canceló de lo que no aplicó', async ({ page, api }, info) => {

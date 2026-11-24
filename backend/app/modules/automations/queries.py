@@ -163,6 +163,55 @@ async def get_automation_rule(rule_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
+def _filter_executions(
+    stmt,
+    *,
+    rule_id: int | None,
+    status: str | None,
+    execution_id: int | None,
+    exclude_skipped: bool,
+    lead_id: str | None,
+    start_source: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    active: bool | None,
+    started_by_user_id: int | None,
+    started_by_anyone: bool,
+    owner_id: int | None,
+):
+    """Los filtros del historial, compartidos por la lista y por su total:
+    si cada una armara los suyos, «200 de 1.234» podría contar otra cosa."""
+    if owner_id is not None:
+        stmt = stmt.where(Lead.vendedor_id == owner_id)
+    if rule_id is not None:
+        stmt = stmt.where(AutomationExecution.rule_id == rule_id)
+    if status:
+        stmt = stmt.where(AutomationExecution.status == status)
+    elif exclude_skipped:
+        stmt = stmt.where(AutomationExecution.status != AutomationExecutionStatus.SKIPPED)
+    elif active is not None:
+        # Un status puntual manda sobre este filtro rápido, igual que ya pasa
+        # arriba con exclude_skipped.
+        stmt = stmt.where(AutomationExecution.status.in_(ACTIVE_EXECUTION_STATUSES) if active
+                           else AutomationExecution.status.not_in(ACTIVE_EXECUTION_STATUSES))
+    if execution_id is not None:
+        stmt = stmt.where(AutomationExecution.id == execution_id)
+    if lead_id is not None:
+        stmt = stmt.where(AutomationExecution.lead_id == lead_id)
+    if start_source is not None:
+        stmt = stmt.where(AutomationExecution.start_source == start_source)
+    if started_by_user_id is not None:
+        stmt = stmt.where(AutomationExecution.started_by_user_id == started_by_user_id)
+    elif started_by_anyone:
+        # "Todo el equipo" es la unión de los "mis envíos" de cada persona:
+        # lo que alguien inició a mano, sin los disparos del sistema.
+        stmt = stmt.where(AutomationExecution.started_by_user_id.is_not(None))
+    if date_from is not None and date_to is not None:
+        range_start, range_end = local_day_range_utc(date_from, date_to)
+        stmt = stmt.where(AutomationExecution.created_at >= range_start, AutomationExecution.created_at < range_end)
+    return stmt
+
+
 async def list_automation_executions(
     rule_id: int | None = None,
     status: str | None = None,
@@ -220,38 +269,41 @@ async def list_automation_executions(
         # aporta fila y el nombre queda en NULL.
         parent_rule, parent_rule.id == AutomationExecution.event_payload["parent_rule_id"].as_integer(),
     )
-    if owner_id is not None:
-        stmt = stmt.where(Lead.vendedor_id == owner_id)
-    if rule_id is not None:
-        stmt = stmt.where(AutomationExecution.rule_id == rule_id)
-    if status:
-        stmt = stmt.where(AutomationExecution.status == status)
-    elif exclude_skipped:
-        stmt = stmt.where(AutomationExecution.status != AutomationExecutionStatus.SKIPPED)
-    elif active is not None:
-        # Un status puntual manda sobre este filtro rápido, igual que ya pasa
-        # arriba con exclude_skipped.
-        stmt = stmt.where(AutomationExecution.status.in_(ACTIVE_EXECUTION_STATUSES) if active
-                           else AutomationExecution.status.not_in(ACTIVE_EXECUTION_STATUSES))
-    if execution_id is not None:
-        stmt = stmt.where(AutomationExecution.id == execution_id)
-    if lead_id is not None:
-        stmt = stmt.where(AutomationExecution.lead_id == lead_id)
-    if start_source is not None:
-        stmt = stmt.where(AutomationExecution.start_source == start_source)
-    if started_by_user_id is not None:
-        stmt = stmt.where(AutomationExecution.started_by_user_id == started_by_user_id)
-    elif started_by_anyone:
-        # "Todo el equipo" es la unión de los "mis envíos" de cada persona:
-        # lo que alguien inició a mano, sin los disparos del sistema.
-        stmt = stmt.where(AutomationExecution.started_by_user_id.is_not(None))
-    if date_from is not None and date_to is not None:
-        range_start, range_end = local_day_range_utc(date_from, date_to)
-        stmt = stmt.where(AutomationExecution.created_at >= range_start, AutomationExecution.created_at < range_end)
+    stmt = _filter_executions(
+        stmt, rule_id=rule_id, status=status, execution_id=execution_id, exclude_skipped=exclude_skipped,
+        lead_id=lead_id, start_source=start_source, date_from=date_from, date_to=date_to, active=active,
+        started_by_user_id=started_by_user_id, started_by_anyone=started_by_anyone, owner_id=owner_id,
+    )
     stmt = stmt.order_by(AutomationExecution.created_at.desc(), AutomationExecution.id.desc()).limit(limit)
     async with session_scope() as session:
         rows = (await session.execute(stmt)).mappings().all()
     return [_execution_dict(row) for row in rows]
+
+
+async def count_automation_executions(
+    rule_id: int | None = None,
+    status: str | None = None,
+    exclude_skipped: bool = False,
+    lead_id: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    active: bool | None = None,
+    started_by_user_id: int | None = None,
+    started_by_anyone: bool = False,
+    owner_id: int | None = None,
+) -> int:
+    """Cuántas ejecuciones cumplen los filtros, sin el tope de la lista. El
+    historial mostraba «200 resultados» en días de más de 300 y nadie sabía
+    que faltaban."""
+    # El lead solo hace falta para acotar a los de un vendedor.
+    stmt = select(func.count(AutomationExecution.id)).outerjoin(Lead, Lead.id == AutomationExecution.lead_id)
+    stmt = _filter_executions(
+        stmt, rule_id=rule_id, status=status, execution_id=None, exclude_skipped=exclude_skipped,
+        lead_id=lead_id, start_source=None, date_from=date_from, date_to=date_to, active=active,
+        started_by_user_id=started_by_user_id, started_by_anyone=started_by_anyone, owner_id=owner_id,
+    )
+    async with session_scope() as session:
+        return await session.scalar(stmt) or 0
 
 
 async def get_automation_execution(execution_id: int) -> dict | None:

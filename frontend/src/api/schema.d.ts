@@ -4208,6 +4208,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/automations/executions/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Executions Count
+         * @description Cuántas ejecuciones hay con los mismos filtros y el mismo alcance que
+         *     la lista, sin su tope.
+         */
+        get: operations["get_executions_count_api_automations_executions_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/automations/executions/{execution_id}": {
         parameters: {
             query?: never;
@@ -5070,6 +5091,11 @@ export interface components {
          * @enum {string}
          */
         AutomationBuilderMode: "simple" | "visual";
+        /** AutomationExecutionCount */
+        AutomationExecutionCount: {
+            /** Total */
+            total: number;
+        };
         /** AutomationExecutionItem */
         AutomationExecutionItem: {
             /** Id */
@@ -18392,6 +18418,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomationExecutionItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_executions_count_api_automations_executions_count_get: {
+        parameters: {
+            query?: {
+                rule_id?: number | null;
+                chat_id?: string | null;
+                status?: string | null;
+                exclude_skipped?: boolean;
+                active?: boolean | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                mine?: boolean;
+                started_by?: number | null;
+                team?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationExecutionCount"];
                 };
             };
             /** @description Validation Error */

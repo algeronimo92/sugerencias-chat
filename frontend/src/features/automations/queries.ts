@@ -1,9 +1,9 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { isoDateOffset, todayISODate } from '../../shared/utils/datetime'
 import { useChatSocketConnected } from '../../realtime/useRealtime'
 import { queryClient } from '../../shared/queryClient'
-import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
+import { fetchAutomationExecution, fetchAutomationExecutions, fetchAutomationExecutionsCount, fetchAutomationRules, cancelExecution, createAutomation, createVisualFlow, deleteAutomation, duplicateAutomation, fetchFlowVersions, fetchManualFlows, pauseExecution, publishVisualFlow, restoreFlowVersion, resumeExecution, retryExecution, saveVisualFlow, simulateVisualFlow, startManualFlow, updateAutomation } from './api'
 import type { AutomationExecutionFilters, AutomationRule } from './types'
 import { automationKeys, executionKeys } from './keys'
 import { AutomationExecutionStatus } from './domain/automationCatalog'
@@ -56,11 +56,13 @@ export function useAutomationRuleSummaries() {
 // en curso" y su botón de cancelar no queden congelados.
 const ACTIVE_EXECUTION_POLL_MS = 12_000
 
-export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false, startedBy, team }: AutomationExecutionFilters = {}) {
+export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false, startedBy, team, limit }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }),
-    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }),
+    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, limit }),
+    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, limit }),
+    // Al cargar más, la lista anterior sigue a la vista mientras llega la nueva.
+    placeholderData: limit ? keepPreviousData : undefined,
     refetchInterval: (query) => {
       if (connected) return false
       if (chatId) {
@@ -77,6 +79,16 @@ export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped
       }
       return 60_000
     },
+  })
+}
+
+/** Cuántas ejecuciones hay con esos filtros, sin el tope de la lista: lo
+ *  que deja decir «200 de 1.234» en vez de «200 resultados». */
+export function useAutomationExecutionsCount(filters: AutomationExecutionFilters, enabled = true) {
+  return useQuery({
+    queryKey: executionKeys.count(filters),
+    queryFn: () => fetchAutomationExecutionsCount(filters),
+    enabled,
   })
 }
 

@@ -30,6 +30,7 @@ from app.modules.automations.infrastructure.worker import (
     wait_for_automation_work,
 )
 from app.modules.automations.queries import (
+    count_automation_executions,
     get_automation_execution,
     get_automation_rule,
     list_automation_executions,

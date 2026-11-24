@@ -117,3 +117,46 @@ async def test_history_can_scope_to_anything_started_by_a_person(monkeypatch):
     sql = await _history_sql(monkeypatch, started_by_anyone=True)
 
     assert "automation_executions.started_by_user_id IS NOT NULL" in sql
+
+
+async def _count_sql(monkeypatch, **filters) -> str:
+    statements = []
+
+    class FakeSession:
+        async def scalar(self, statement):
+            statements.append(statement)
+            return 1234
+
+    @asynccontextmanager
+    async def session_scope():
+        yield FakeSession()
+
+    monkeypatch.setattr(queries, "session_scope", session_scope)
+    assert await queries.count_automation_executions(**filters) == 1234
+    return str(statements[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+
+@pytest.mark.asyncio
+async def test_the_total_counts_with_the_same_filters_as_the_list_and_no_limit(monkeypatch):
+    """El historial decía «200 resultados» en días de más de 300: el total
+    tiene que salir de los mismos filtros, sin el tope de la lista."""
+    filters = dict(
+        rule_id=7, exclude_skipped=True, date_from=date(2026, 11, 23), date_to=date(2026, 11, 23),
+        started_by_user_id=5, owner_id=9,
+    )
+
+    listed = await _history_sql(monkeypatch, limit=200, **filters)
+    counted = await _count_sql(monkeypatch, **filters)
+
+    where = lambda sql: sql.split("WHERE", 1)[1].split("ORDER BY")[0].strip()  # noqa: E731
+    assert where(counted) == where(listed)
+    assert counted.lstrip().lower().startswith("select count(")
+    assert "LIMIT" not in counted
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_status_also_wins_in_the_total(monkeypatch):
+    sql = await _count_sql(monkeypatch, status=AutomationExecutionStatus.FAILED, exclude_skipped=True)
+
+    assert "automation_executions.status = 'failed'" in sql
+    assert "automation_executions.status != 'skipped'" not in sql

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.automations.domain.types import AutomationBuilderMode
 from app.modules.auth.public import User
-from app.modules.automations.schemas import AutomationExecutionItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
+from app.modules.automations.schemas import AutomationExecutionCount, AutomationExecutionItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
 from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 from app.modules.automations.public import (
@@ -15,6 +15,7 @@ from app.modules.automations.public import (
     duplicate_automation_rule,
     get_automation_execution,
     get_automation_rule,
+    count_automation_executions,
     list_automation_executions,
     list_automation_rules,
     list_flow_versions,
@@ -201,26 +202,11 @@ async def post_start_manual_flow(
     return item
 
 
-@router.get("/executions", response_model=list[AutomationExecutionItem])
-async def get_executions(
-    rule_id: int | None = None,
-    chat_id: str | None = None,
-    status: str | None = Query(default=None, pattern="^(scheduled|running|paused|completed|failed|skipped|cancelled)$"),
-    exclude_skipped: bool = False,
-    active: bool | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    # Fuerza el historial a "lo que yo mismo inicié", sin importar el rol —
-    # es lo que usa la pantalla "Flujos enviados" del vendedor.
-    mine: bool = False,
-    # Con ``team.supervise``: lo que inició otra persona (`started_by`) o cualquiera del
-    # equipo (`team`). Nació porque la dueña abría "Flujos enviados" con su
-    # cuenta, veía cero y creía que ese día no había salido ningún flujo.
-    started_by: int | None = Query(default=None, ge=1),
-    team: bool = False,
-    limit: int = Query(default=100, ge=1, le=500),
-    user: User = Depends(require_automations_run),
-):
+async def _history_scope(
+    user: User, *, chat_id: str | None, mine: bool, started_by: int | None, team: bool,
+) -> dict:
+    """De quién son las ejecuciones que este usuario puede ver con esos
+    filtros. Lo comparten la lista y su total."""
     is_admin = can(user, Permission.TEAM_SUPERVISE)
     if (started_by is not None or team) and not is_admin:
         raise HTTPException(403, "Tu rol no puede ver los flujos que envió otra persona.")
@@ -237,6 +223,38 @@ async def get_executions(
         initiator, any_initiator = None, True
     else:
         initiator, any_initiator = (user.id if scope_to_self else None), False
+    return {
+        "started_by_user_id": initiator,
+        "started_by_anyone": any_initiator,
+        "owner_id": await seller_scope(user),
+    }
+
+
+_STATUS_FILTER = "^(scheduled|running|paused|completed|failed|skipped|cancelled)$"
+
+
+@router.get("/executions", response_model=list[AutomationExecutionItem])
+async def get_executions(
+    rule_id: int | None = None,
+    chat_id: str | None = None,
+    status: str | None = Query(default=None, pattern=_STATUS_FILTER),
+    exclude_skipped: bool = False,
+    active: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    # Fuerza el historial a "lo que yo mismo inicié", sin importar el rol —
+    # es lo que usa la pantalla "Flujos enviados" del vendedor.
+    mine: bool = False,
+    # Con ``team.supervise``: lo que inició otra persona (`started_by`) o cualquiera del
+    # equipo (`team`). Nació porque la dueña abría "Flujos enviados" con su
+    # cuenta, veía cero y creía que ese día no había salido ningún flujo.
+    started_by: int | None = Query(default=None, ge=1),
+    team: bool = False,
+    # Hasta 1000: «Cargar más» del historial pide de a 200.
+    limit: int = Query(default=100, ge=1, le=1000),
+    user: User = Depends(require_automations_run),
+):
+    scope = await _history_scope(user, chat_id=chat_id, mine=mine, started_by=started_by, team=team)
     return await list_automation_executions(
         rule_id,
         status,
@@ -246,10 +264,33 @@ async def get_executions(
         active=active,
         date_from=date_from,
         date_to=date_to,
-        started_by_user_id=initiator,
-        started_by_anyone=any_initiator,
-        owner_id=await seller_scope(user),
+        **scope,
     )
+
+
+# Antes que /executions/{execution_id}: si no, «count» se leería como un id.
+@router.get("/executions/count", response_model=AutomationExecutionCount)
+async def get_executions_count(
+    rule_id: int | None = None,
+    chat_id: str | None = None,
+    status: str | None = Query(default=None, pattern=_STATUS_FILTER),
+    exclude_skipped: bool = False,
+    active: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    mine: bool = False,
+    started_by: int | None = Query(default=None, ge=1),
+    team: bool = False,
+    user: User = Depends(require_automations_run),
+):
+    """Cuántas ejecuciones hay con los mismos filtros y el mismo alcance que
+    la lista, sin su tope."""
+    scope = await _history_scope(user, chat_id=chat_id, mine=mine, started_by=started_by, team=team)
+    total = await count_automation_executions(
+        rule_id, status, exclude_skipped=exclude_skipped, lead_id=chat_id, active=active,
+        date_from=date_from, date_to=date_to, **scope,
+    )
+    return {"total": total}
 
 
 @router.get("/executions/{execution_id}", response_model=AutomationExecutionItem)
