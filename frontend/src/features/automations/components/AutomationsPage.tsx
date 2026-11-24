@@ -44,20 +44,20 @@ function actionLabel(value: AutomationActionResult['type']) {
   return automationStepLabel(value)
 }
 
-type AutomationsTab = 'attention' | 'automatic' | 'sequences' | 'activity'
+type AutomationsTab = 'attention' | 'flows' | 'activity'
+// Cómo empieza: lo único que distingue a una automatización de otra en la lista.
+type StartFilter = 'all' | 'automatic' | 'team'
 
 // Qué responde cada sección, en una línea, arriba de su contenido.
 const SECTION_COPY: Record<AutomationsTab, { title: string; hint: string }> = {
   attention: { title: 'Por atender', hint: 'Lo que no salió como debía y espera una decisión. Cuando esta lista está vacía, todo marcha.' },
-  automatic: { title: 'Empiezan solas', hint: 'Lo que el sistema hace solo cuando pasa algo: llega un cliente, cambia de etapa, nadie responde.' },
-  sequences: { title: 'Las lanza tu equipo', hint: 'Los mensajes ya armados que tu equipo lanza con un toque desde el chat.' },
+  flows: { title: 'Tus automatizaciones', hint: 'Todas en un solo lugar. Unas empiezan solas cuando pasa algo y otras las lanza tu equipo desde el chat: es lo único que cambia entre ellas.' },
   activity: { title: 'Actividad', hint: 'Todo lo que corrió, con su resultado.' },
 }
 
 const TABS: { key: AutomationsTab; label: string; icon: typeof History }[] = [
   { key: 'attention', label: 'Por atender', icon: AlertTriangle },
-  { key: 'automatic', label: 'Empiezan solas', icon: Bot },
-  { key: 'sequences', label: 'Las lanza tu equipo', icon: Send },
+  { key: 'flows', label: 'Tus automatizaciones', icon: GitBranch },
   { key: 'activity', label: 'Actividad', icon: History },
 ]
 
@@ -134,21 +134,24 @@ export function AutomationsPage() {
   const executionTable = useReactTable({ data: executions, columns: historyColumns, getCoreRowModel: getCoreRowModel() })
   // Un flujo borrado ya no está en la lista: "Ver en el flujo" solo va a los que siguen.
   const visualRuleIds = new Set(rules.map(rule => rule.id))
-  // Lo que corre solo y lo que lanza una persona son tareas distintas de
-  // gente distinta: se separaban por cómo estaban construidas («Reglas» y
-  // «Flujos visuales»), que es un detalle de implementación.
+  // Estaban en dos secciones («Empiezan solas» y «Las lanza tu equipo») y se
+  // leían como dos cosas distintas, cuando es la misma con otro inicio: al
+  // cambiarle el inicio a una, desaparecía de la lista donde estaba. Ahora es
+  // una lista con una etiqueta por tarjeta y un filtro.
   // Una automatización que lanza a otra («Bienvenida» a las de cada servicio)
   // no se veía en ningún lado: había que abrir el editor de cada una.
   const launchers = useMemo(() => launchersByRule(rules), [rules])
-  const automaticFlows = rules.filter(rule => rule.trigger_type !== TriggerType.Manual)
-  const sequenceFlows = rules.filter(rule => rule.trigger_type === TriggerType.Manual)
+  const [startFilter, setStartFilter] = useState<StartFilter>('all')
+  const teamCount = rules.filter(rule => rule.trigger_type === TriggerType.Manual).length
+  const startCounts: Record<StartFilter, number> = { all: rules.length, automatic: rules.length - teamCount, team: teamCount }
+  const shownFlows = startFilter === 'all' ? rules : rules.filter(rule => (rule.trigger_type === TriggerType.Manual) === (startFilter === 'team'))
   const attention = useAttention()
   // Se entra donde hay algo que decidir: en «Por atender» si hay pendientes
   // y, si no, en lo que más se edita. Se decide una vez, al terminar de
   // cargar: descartar el último aviso no debe mover a la persona de sección.
   const [landingTab, setLandingTab] = useState<AutomationsTab | null>(null)
-  if (landingTab === null && !attention.isLoading) setLandingTab(attention.count > 0 ? 'attention' : 'automatic')
-  const tab: AutomationsTab = chosenTab ?? landingTab ?? 'automatic'
+  if (landingTab === null && !attention.isLoading) setLandingTab(attention.count > 0 ? 'attention' : 'flows')
+  const tab: AutomationsTab = chosenTab ?? landingTab ?? 'flows'
   // Hasta saber si hay pendientes no se dibuja ninguna sección: mostrar una y
   // saltar a otra medio segundo después desorienta.
   const landingUndecided = chosenTab === null && landingTab === null
@@ -191,7 +194,7 @@ export function AutomationsPage() {
   if (!isLoading && ruleUrl.key !== shownRule) {
     setShownRule(ruleUrl.key)
     const { rule, highlight, block } = ruleUrl
-    if (rule) { setTab(rule.trigger_type === TriggerType.Manual ? 'sequences' : 'automatic'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
+    if (rule) { setTab('flows'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
   }
 
   async function importFlow(flowDefinition: AutomationFlowDefinition, name: string) {
@@ -287,8 +290,6 @@ export function AutomationsPage() {
     )
   }
 
-  // Las automáticas y las secuencias del equipo son el mismo tipo de flujo
-  // con distinto disparador: comparten tarjeta.
   function flowCards(list: AutomationRule[], empty: { title: string; text: string; action: string } | null) {
     if (list.length === 0) {
       return empty && <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark"><Bot className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm font-semibold text-gray-700 dark:text-wa-text-dark">{empty.title}</p><p className="mx-auto mt-1 max-w-md text-xs text-wa-muted">{empty.text}</p><button type="button" onClick={() => setRecipePickerOpen(true)} className="mt-4 rounded-lg bg-wa-primary px-3 py-2 text-xs font-semibold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" />{empty.action}</button></div>
@@ -297,7 +298,7 @@ export function AutomationsPage() {
             const nodes = 'nodes' in rule.flow_definition ? rule.flow_definition.nodes.length : 0
             const hasPublished = !!rule.published_flow_definition
             const hasDraftChanges = hasPublished && !areFlowDefinitionsEqual(rule.flow_definition, rule.published_flow_definition)
-            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} {nodes === 1 ? 'paso' : 'pasos'} · {triggerLabel(rule.trigger_type)}</p>{launchers.get(rule.id) && <p className="mt-0.5 text-[11px] text-wa-muted">También la lanza: {launchers.get(rule.id)!.map(name => `«${name}»`).join(', ')}</p>}<p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && toggleControl(rule)}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicada · v${rule.flow_version}` : hasPublished ? 'Pausada' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar pasos →</button></div></div></div></article>
+            return <article key={rule.id} className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-wa-panel-dark ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border dark:border-wa-border-dark'}`}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><GitBranch className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-[11px] text-wa-muted">{nodes} {nodes === 1 ? 'paso' : 'pasos'}{rule.trigger_type !== TriggerType.Manual && ` · ${triggerLabel(rule.trigger_type)}`}</p>{launchers.get(rule.id) && <p className="mt-0.5 text-[11px] text-wa-muted">También la lanza: {launchers.get(rule.id)!.map(name => `«${name}»`).join(', ')}</p>}<p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Abrir el editor" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{hasPublished && toggleControl(rule)}{deleteControl(rule)}</div></div><div className="mt-3 flex flex-wrap gap-1.5"><span className="inline-flex items-center gap-1 rounded-full bg-wa-field px-2 py-1 text-[10px] font-semibold text-gray-600 dark:bg-wa-head-dark dark:text-gray-300">{rule.trigger_type === TriggerType.Manual ? <Send className="h-3 w-3" aria-hidden="true" /> : <Bot className="h-3 w-3" aria-hidden="true" />}{rule.trigger_type === TriggerType.Manual ? 'La lanza tu equipo' : 'Empieza sola'}</span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : hasPublished ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-wa-field text-gray-600 dark:bg-wa-head-dark dark:text-gray-300'}`}>{rule.is_active ? `Publicada · v${rule.flow_version}` : hasPublished ? 'Pausada' : 'Borrador'}</span>{hasDraftChanges && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Cambios sin publicar</span>}</div><div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span><button type="button" onClick={() => ruleUrl.open(rule.id)} className="font-semibold text-wa-primary-strong">Editar pasos →</button></div></div></div></article>
     })}</div>
   }
 
@@ -314,7 +315,7 @@ export function AutomationsPage() {
         </div>
         <nav aria-label="Secciones de automatizaciones" className="flex gap-1 overflow-x-auto pb-2 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0">
           {TABS.map(({ key, label, icon: Icon }) => {
-            const count = { attention: attention.count, automatic: automaticFlows.length, sequences: sequenceFlows.length, activity: null }[key]
+            const count = { attention: attention.count, flows: rules.length, activity: null }[key]
             const selected = !landingUndecided && tab === key
             return (
               <button key={key} type="button" onClick={() => setTab(key)} aria-current={selected ? 'page' : undefined} className={`flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-selected font-semibold text-fg' : 'text-fg hover:bg-subtle'}`}>
@@ -335,7 +336,7 @@ export function AutomationsPage() {
             <p className="mt-1 max-w-2xl text-sm text-fg-muted">{SECTION_COPY[tab].hint}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-              {(tab === 'automatic' || tab === 'sequences') && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
+              {tab === 'flows' && <button type="button" onClick={() => setImportFlowOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa-border bg-white/85 px-4 text-sm font-bold text-wa-text shadow-sm transition hover:border-wa-primary/40 hover:bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark/85 dark:text-white"><FileJson className="h-4 w-4" />Importar JSON</button>}
               <button type="button" onClick={() => setRecipePickerOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa-primary-strong px-4 text-sm font-bold text-white shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-wa-primary"><Plus className="h-4 w-4" />Nueva automatización</button>
           </div>
         </header>
@@ -346,14 +347,23 @@ export function AutomationsPage() {
           <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
         ) : tab === 'attention' ? (
           <AttentionPanel groups={attention.groups} isLoading={attention.isLoading} onOpenChat={openExecutionChat} onSeeActivity={() => setTab('activity')} />
-        ) : tab === 'automatic' ? (
+        ) : tab === 'flows' ? (
           isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : rulesError ?? (
             <div className="space-y-4">
-              {flowCards(automaticFlows, { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo: dar la bienvenida, hacer seguimiento, avisar a tu equipo.', action: 'Crear la primera' })}
+              {rules.length > 0 && (
+                <div role="group" aria-label="Filtrar por cómo empiezan" className="flex flex-wrap gap-1.5">
+                  {([['all', 'Todas'], ['automatic', 'Empiezan solas'], ['team', 'Las lanza tu equipo']] as const).map(([key, label]) => (
+                    <button key={key} type="button" aria-pressed={startFilter === key} onClick={() => setStartFilter(key)} className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${startFilter === key ? 'border-transparent bg-selected font-semibold text-fg' : 'border-line text-fg-muted hover:bg-subtle'}`}>
+                      {label}<span className="tabular-nums text-fg-muted">{startCounts[key]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {rules.length > 0 && shownFlows.length === 0
+                ? <p className="rounded-2xl border border-dashed border-line px-6 py-10 text-center text-sm text-fg-muted">{startFilter === 'team' ? 'Ninguna la lanza tu equipo todavía. Se crea eligiendo que empiece con «La lanza tu equipo desde el chat».' : 'Ninguna empieza sola todavía.'}</p>
+                : flowCards(shownFlows, { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo (dar la bienvenida, hacer seguimiento) y lo que tu equipo lanza con un toque desde el chat (precios, evidencias, indicaciones).', action: 'Crear la primera' })}
             </div>
           )
-        ) : tab === 'sequences' ? (
-          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : rulesError ?? flowCards(sequenceFlows, { title: 'Tu equipo todavía no tiene automatizaciones para lanzar', text: 'Son los mensajes que tu equipo lanza con un toque desde el chat: precios, evidencias, indicaciones. Se crean eligiendo que empiecen con «La lanza tu equipo desde el chat».', action: 'Crear la primera' })
         ) : (
           <div className="overflow-hidden rounded-2xl border border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark">
             <div className="flex flex-wrap items-end gap-3 border-b border-wa-border bg-wa-hover/60 p-3 dark:border-wa-border-dark dark:bg-wa-head-dark/40">
@@ -470,7 +480,7 @@ export function AutomationsPage() {
       </main>
       </div>
 
-      {recipePickerOpen && <RecipePicker section={tab === 'sequences' ? 'sequences' : 'automatic'} onClose={() => setRecipePickerOpen(false)} onChoose={starter => { setRecipePickerOpen(false); setFlowBuilder({ starter: starter ?? undefined }) }} />}
+      {recipePickerOpen && <RecipePicker section={startFilter === 'team' ? 'sequences' : 'automatic'} onClose={() => setRecipePickerOpen(false)} onChoose={starter => { setRecipePickerOpen(false); setFlowBuilder({ starter: starter ?? undefined }) }} />}
       {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} initialBlock={flowBuilder.block} starter={flowBuilder.starter} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
       {importFlowOpen && <ImportFlowJsonDialog
         title="Importar automatización desde JSON"

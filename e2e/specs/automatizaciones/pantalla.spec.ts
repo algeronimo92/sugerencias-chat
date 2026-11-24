@@ -26,26 +26,34 @@ test.beforeEach(({ api }) => {
     .on('get', '/api/media-library', [])
 })
 
-test('la pantalla separa lo que corre solo de lo que lanza el equipo', async ({ page }, info) => {
+test('todas las automatizaciones están en una lista y un filtro las separa por cómo empiezan', async ({ page }, info) => {
   await page.goto('/automations')
 
-  // Antes se separaba por cómo estaban hechas («Reglas» y «Flujos visuales»):
-  // la bienvenida automática quedaba mezclada entre las secuencias del equipo.
+  // Eran dos secciones («Empiezan solas» y «Las lanza tu equipo») y se leían
+  // como dos cosas distintas: es la misma con otro inicio.
   const tabs = page.getByRole('navigation', { name: 'Secciones de automatizaciones' })
-  await expect(tabs.getByRole('button', { name: /Empiezan solas/ })).toHaveAttribute('aria-current', 'page')
+  await expect(tabs.getByRole('button', { name: /Tus automatizaciones/ })).toHaveAttribute('aria-current', 'page')
+  await expect(tabs.getByRole('button', { name: /Las lanza tu equipo/ })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toBeVisible()
-  await expect(page.getByRole('heading', { name: FLOWS[0].name })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: FLOWS[0].name })).toBeVisible()
+  // Cada tarjeta dice cómo empieza, sin abrir el editor.
+  await expect(page.getByRole('article').filter({ hasText: BIENVENIDA.name })).toContainText('Empieza sola')
+  await expect(page.getByRole('article').filter({ hasText: FLOWS[0].name })).toContainText('La lanza tu equipo')
   // Sin pendientes, «Por atender» no lleva contador: un 0 se leería como aviso.
   await expect(tabs.getByRole('button', { name: 'Por atender', exact: true })).toBeVisible()
   await expectNoPageOverflow(page)
-  await page.screenshot({ path: `test-results/automatizaciones-automaticas-${info.project.name}.png` })
+  await page.screenshot({ path: `test-results/automatizaciones-lista-unica-${info.project.name}.png` })
 
-  await tabs.getByRole('button', { name: /Las lanza tu equipo/ }).click()
+  const filter = page.getByRole('group', { name: 'Filtrar por cómo empiezan' })
+  await filter.getByRole('button', { name: /Las lanza tu equipo/ }).click()
   await expect(page.getByRole('heading', { name: FLOWS[0].name })).toBeVisible()
   await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toHaveCount(0)
+  await filter.getByRole('button', { name: /Empiezan solas/ }).click()
+  await expect(page.getByRole('heading', { name: BIENVENIDA.name })).toBeVisible()
+  await expect(page.getByRole('heading', { name: FLOWS[0].name })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Nueva automatización' })).toBeVisible()
   await expectNoPageOverflow(page)
-  await page.screenshot({ path: `test-results/automatizaciones-secuencias-${info.project.name}.png` })
+  await page.screenshot({ path: `test-results/automatizaciones-filtro-${info.project.name}.png` })
 })
 
 test('la tarjeta dice qué otra automatización la lanza', async ({ page, api }, info) => {
