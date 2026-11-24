@@ -1,7 +1,7 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../../shared/queryClient'
-import { completeAllTasks, createTask, fetchTasks, updateTask } from '../api'
-import type { TaskStatus } from '../types'
+import { completeAllTasks, createTask, fetchTasks, fetchTasksPage, updateTask } from '../api'
+import type { TaskPageQuery, TaskStatus } from '../types'
 import { taskKeys } from '../keys'
 
 export type { TaskInput } from '../types'
@@ -10,6 +10,16 @@ export function useTasks(status?: TaskStatus, leadId?: string, assignedUserId?: 
   return useQuery({
     queryKey: taskKeys.list(status, leadId, assignedUserId, allUsers),
     queryFn: () => fetchTasks(leadId, assignedUserId, allUsers),
+  })
+}
+
+/** Una página de la bandeja de pendientes. Mientras llega la siguiente se
+ *  sigue viendo la anterior, como en la lista de embudos. */
+export function useTasksPage(query: TaskPageQuery) {
+  return useQuery({
+    queryKey: taskKeys.page(query),
+    queryFn: () => fetchTasksPage(query),
+    placeholderData: keepPreviousData,
   })
 }
 

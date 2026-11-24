@@ -6,7 +6,7 @@ import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useKanbanStagePage, type KanbanPage } from '../../kanban-queries'
 import type { Chat, LeadStage, LeadStageDefinition } from '../../types'
 import { LeadRow } from './LeadRow'
-import { Pagination } from './Pagination'
+import { Pagination } from '../../../../shared/ui/Pagination'
 
 interface StageLeadListProps {
   stage: LeadStageDefinition

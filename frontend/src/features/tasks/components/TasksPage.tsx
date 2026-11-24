@@ -1,17 +1,19 @@
 import { RefreshCw, RotateCcw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { can } from '../../../shared/permissions'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { usePageSize } from '../../../shared/hooks/usePageSize'
 import { Button } from '../../../shared/ui/Button'
+import { Pagination } from '../../../shared/ui/Pagination'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
 import { TaskStatusValue } from '../domain/taskCatalog'
 import { useUsers } from '../../platform/public/useUsers'
-import { useCompleteAllTasks, useTasks, useUpdateTask } from '../hooks/useTasks'
+import { useCompleteAllTasks, useTasksPage, useUpdateTask } from '../hooks/useTasks'
 import type { LeadTask, TaskStatus } from '../types'
-import { TASK_GROUPS, bucketOf, buildSections, matchesQuery, pendingSummary, type GroupKey } from './taskListModel'
+import { TASK_GROUPS, buildSections, pendingSummary, type GroupKey } from './taskListModel'
 import { CompleteAllBar, TaskFilters, TaskGroupChips, TaskListBody } from './TasksPageParts'
 
 function scopeLabelFor(assignee: string, people: { id: number; name: string }[], assignedUserId: number | undefined) {
@@ -27,30 +29,45 @@ function assigneeScope(assignee: string) {
   return { allUsers, assignedUserId }
 }
 
-/** Búsqueda y grupo sobre las pendientes que ya llegaron: se resuelven en
- *  memoria (ver taskListModel.ts). */
-function useTaskView(tasks: LeadTask[], search: string, group: GroupKey) {
-  const query = search.trim().toLowerCase()
-  const searched = useMemo(
-    () => (query ? tasks.filter(task => matchesQuery(task, query)) : tasks),
-    [tasks, query],
-  )
+/** Medianoche local de mañana, en ISO: hasta ahí llega "Para hoy". La zona
+ *  horaria es la del navegador, la misma con la que se agrupa por día. */
+function localDayEnd() {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
+}
 
-  const counts = useMemo(() => {
-    const result = {} as Record<GroupKey, number>
-    for (const item of TASK_GROUPS) {
-      result[item.key] = searched.filter(task => item.matches(bucketOf(task))).length
-    }
-    return result
-  }, [searched])
+const EMPTY_COUNTS: Record<GroupKey, number> = { all: 0, overdue: 0, today: 0, upcoming: 0 }
 
-  const activeGroup = TASK_GROUPS.find(item => item.key === group) ?? TASK_GROUPS[0]
-  const visible = useMemo(
-    () => searched.filter(task => activeGroup.matches(bucketOf(task))),
-    [searched, activeGroup],
-  )
-  const sections = useMemo(() => buildSections(visible), [visible])
-  return { query, searched, counts, activeGroup, visible, sections }
+/** Búsqueda, grupo y página se resuelven en el servidor: con más de 500
+ *  pendientes la lista en memoria dejaba fuera al resto sin avisar. */
+function useTaskView({ search, group, assignedUserId, allUsers }: { search: string; group: GroupKey; assignedUserId: number | undefined; allUsers: boolean }) {
+  const [pageSize, setPageSize] = usePageSize('tareas:filas')
+  const [requestedPage, setRequestedPage] = useState(0)
+  const query = useDeferredValue(search.trim())
+  const dayEnd = localDayEnd()
+  // Otro filtro es otra lista: se vuelve a la primera página.
+  useEffect(() => setRequestedPage(0), [query, group, assignedUserId, allUsers, pageSize])
+
+  const [knownTotal, setKnownTotal] = useState(0)
+  // Si se completan tareas y la última página deja de existir, se muestra la
+  // última que quede en vez de una vacía (igual que en embudos).
+  const pageCount = Math.max(1, Math.ceil(knownTotal / pageSize))
+  const page = Math.min(requestedPage, pageCount - 1)
+  const result = useTasksPage({
+    dayEnd, search: query, bucket: group === 'all' ? undefined : group,
+    assignedUserId, allUsers, offset: page * pageSize, limit: pageSize,
+  })
+  const total = result.data?.total ?? 0
+  useEffect(() => setKnownTotal(total), [total])
+
+  const items = useMemo(() => result.data?.items ?? [], [result.data])
+  const sections = useMemo(() => buildSections(items), [items])
+  return {
+    ...result, query, page, pageSize, total, sections, isEmpty: items.length === 0,
+    counts: result.data?.counts ?? EMPTY_COUNTS,
+    pendingTotal: result.data?.pending_total ?? 0,
+    setPage: setRequestedPage, setPageSize,
+  }
 }
 
 function PendingActions({ isFiltered, isFetching, onReset, onRefresh }: { isFiltered: boolean; isFetching: boolean; onReset: () => void; onRefresh: () => void }) {
@@ -87,16 +104,18 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
   const [search, setSearch] = useState('')
 
   const { allUsers, assignedUserId } = assigneeScope(assignee)
-  const { data: tasks = [], isLoading, isFetching, isError, error, refetch } =
-    useTasks('pending', undefined, assignedUserId, allUsers)
+  const {
+    isLoading, isFetching, isError, error, refetch, query, page, pageSize, total, sections, isEmpty,
+    counts, pendingTotal, setPage, setPageSize,
+  } = useTaskView({ search, group, assignedUserId, allUsers })
   const updateTask = useUpdateTask()
   const completeAll = useCompleteAllTasks()
-
-  const { query, searched, counts, activeGroup, visible, sections } = useTaskView(tasks, search, group)
+  const activeGroup = TASK_GROUPS.find(item => item.key === group) ?? TASK_GROUPS[0]
+  const listRef = useRef<HTMLElement>(null)
 
   const isFiltered = group !== 'all' || query !== '' || assignee !== 'mine'
   const listReady = !isError && !isLoading
-  const showCompleteAll = tasks.length > 0 && listReady
+  const showCompleteAll = pendingTotal > 0 && listReady
   const busyId = updateTask.isPending ? updateTask.variables?.id ?? null : null
   const scopeLabel = scopeLabelFor(assignee, users, assignedUserId)
 
@@ -104,6 +123,11 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
     setGroup('all')
     setSearch('')
     setAssignee('mine')
+  }
+
+  function goToPage(next: number) {
+    setPage(next)
+    listRef.current?.scrollIntoView({ block: 'start' })
   }
 
   function setStatus(id: number, status: TaskStatus, done: () => void) {
@@ -149,39 +173,45 @@ export function TasksPage({ onOpenChat }: { onOpenChat: (chatId: string) => void
           </p>
         </header>
 
-        {(tasks.length > 0 || isAdmin) && !isError && (
+        {(pendingTotal > 0 || isAdmin) && !isError && (
           <TaskFilters
-            showSearch={tasks.length > 0} canChooseAssignee={isAdmin}
+            showSearch={pendingTotal > 0} canChooseAssignee={isAdmin}
             search={search} onSearch={setSearch} assignee={assignee} onAssignee={setAssignee}
             people={users} meId={me?.id}
           />
         )}
 
-        {searched.length > 0 && !isError && <TaskGroupChips group={group} counts={counts} onSelect={setGroup} />}
+        {counts.all > 0 && !isError && <TaskGroupChips group={group} counts={counts} onSelect={setGroup} />}
 
-        <section className="mt-5" aria-busy={isFetching}>
+        <section ref={listRef} className="mt-5 scroll-mt-4" aria-busy={isFetching}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-wa-text dark:text-white">Pendientes</h2>
               <p aria-live="polite" className="mt-0.5 text-sm text-wa-muted dark:text-wa-muted-dark">
-                {pendingSummary({ isLoading, isError, visible: visible.length, total: tasks.length, isFiltered, scopeLabel, group: activeGroup })}
+                {pendingSummary({ isLoading, isError, visible: total, total: pendingTotal, isFiltered, scopeLabel, group: activeGroup })}
               </p>
             </div>
             <PendingActions isFiltered={isFiltered} isFetching={isFetching} onReset={resetFilters} onRefresh={() => { void refetch() }} />
           </div>
 
           {showCompleteAll && (
-            <CompleteAllBar total={tasks.length} scopeLabel={scopeLabel} pending={completeAll.isPending} onConfirm={handleCompleteAll} />
+            <CompleteAllBar total={pendingTotal} scopeLabel={scopeLabel} pending={completeAll.isPending} onConfirm={handleCompleteAll} />
           )}
 
           <div className="overflow-hidden rounded-xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark">
             <TaskListBody
-              isLoading={isLoading} isError={isError} error={error} sections={sections} isEmpty={visible.length === 0}
+              isLoading={isLoading} isError={isError} error={error} sections={sections} isEmpty={isEmpty}
               isFiltered={isFiltered} query={query} search={search} group={activeGroup} scopeLabel={scopeLabel}
               busyId={busyId}
               onRetry={() => { void refetch() }} onReset={resetFilters} onGoToChats={() => navigate('/')}
               onComplete={handleComplete} onOpenChat={onOpenChat}
             />
+            {total > 0 && !isError && (
+              <Pagination
+                page={page} pageSize={pageSize} total={total} noun={{ one: 'tarea', many: 'tareas' }}
+                onPageChange={goToPage} onPageSizeChange={setPageSize}
+              />
+            )}
           </div>
         </section>
       </main>

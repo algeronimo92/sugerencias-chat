@@ -14,10 +14,11 @@ import type { LeadTask, TaskType } from '../types'
  * peso: en tres columnas lo vencido ocupaba el mismo espacio que lo que vence
  * la semana que viene, y el ancho de escritorio se iba en truncar texto.
  *
- * El backend ya devuelve las pendientes ordenadas por vencimiento (500 máx.),
- * así que el recorte por grupo y la búsqueda se resuelven en memoria: los
- * contadores cuentan sobre el mismo conjunto que se ve y cambiar de grupo no
- * cuesta un viaje de red.
+ * La búsqueda, el grupo y la página los resuelve el backend
+ * (`/api/tasks/page`), que devuelve las pendientes ordenadas por vencimiento
+ * junto con los contadores de cada grupo. Antes se traían 500 y se filtraba
+ * en memoria: en un negocio con más de 500 pendientes las demás no se veían.
+ * Aquí solo se agrupa por día la página que llegó.
  * ------------------------------------------------------------------------- */
 
 export type Bucket = 'overdue' | 'today' | 'upcoming'
@@ -169,11 +170,6 @@ export function buildSections(tasks: LeadTask[]): Section[] {
     else sections.push({ id: `day-${key}`, title: dayLabel(key), icon: CalendarDays, tone: 'info', items: [task] })
   }
   return sections
-}
-
-export function matchesQuery(task: LeadTask, query: string) {
-  return [task.title, task.lead_name, task.description, task.assigned_user_name, TASK_TYPE_LABELS[task.task_type]]
-    .some(value => value?.toLowerCase().includes(query))
 }
 
 /** "3 tareas de 10 · Mis tareas · Vencidas": qué se ve y de quién. */

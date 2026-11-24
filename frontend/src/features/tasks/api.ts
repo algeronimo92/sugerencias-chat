@@ -1,11 +1,25 @@
 import client from '../../shared/http/client'
 import type { ApiResponse } from '../../shared/http/contract'
-import type { LeadTask, TaskInput, TaskStatus } from './types'
+import type { LeadTask, TaskInput, TaskPage, TaskPageQuery, TaskStatus } from './types'
 
 
 export async function fetchTasks(leadId: string | undefined, assignedUserId: number | undefined, allUsers: boolean): Promise<LeadTask[]> {
   return (await client.get<ApiResponse<'/api/tasks', 'get'>>('/api/tasks', {
       params: { status, lead_id: leadId, assigned_user_id: assignedUserId, all_users: allUsers || undefined },
+    })).data
+}
+
+export async function fetchTasksPage(query: TaskPageQuery): Promise<TaskPage> {
+  return (await client.get<ApiResponse<'/api/tasks/page', 'get'>>('/api/tasks/page', {
+      params: {
+        day_end: query.dayEnd,
+        search: query.search || undefined,
+        bucket: query.bucket,
+        assigned_user_id: query.assignedUserId,
+        all_users: query.allUsers || undefined,
+        offset: query.offset,
+        limit: query.limit,
+      },
     })).data
 }
 
