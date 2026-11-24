@@ -1,8 +1,9 @@
-"""La revisión que retira las reglas simples, contra PostgreSQL.
+"""Las revisiones que retiran las reglas simples, en un schema sin las
+tablas de cada negocio.
 
-El backend dejó de mirar ``builder_mode``: una regla simple que quedara viva
-pasaría por flujo sin bloques y fallaría en cada disparo. La revisión la
-archiva y cancela lo que tenía pendiente, sin tocar los flujos.
+``scripts.migrate`` corre cada revisión también en ``public``, que en
+producción no tiene ``automation_rules``. El 2026-11-08 un deploy falló por
+una revisión que lo daba por hecho (ver ``test_knowledge_migrations_postgres``).
 """
 
 from __future__ import annotations
@@ -11,73 +12,33 @@ import importlib.util
 import secrets
 from pathlib import Path
 
+import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import select, text, update
+from sqlalchemy import text
 
-from app.db.models.automations import AutomationExecution, AutomationRule
-from app.db.uow import session_scope
-from app.tenancy.context import tenant_context, validate_schema_name
-from tests.postgres_fixtures import app_engine, pg_dsn, tenant  # noqa: F401
-from tests.test_automation_store_postgres import _execution, _rule
+from tests.postgres_fixtures import app_engine, pg_dsn  # noqa: F401
 
-REVISION = Path(__file__).resolve().parent.parent / "alembic" / "versions" / "a3d7e5c19f42_reglas_simples_retiradas.py"
+VERSIONS = Path(__file__).resolve().parent.parent / "alembic" / "versions"
+REVISIONS = ("a3d7e5c19f42_reglas_simples_retiradas", "c8f2b6d04a17_borra_columnas_reglas_simples")
 
 
-def _revision():
-    spec = importlib.util.spec_from_file_location("reglas_simples_retiradas", REVISION)
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-async def _upgrade(app_engine, schema: str) -> None:  # noqa: F811
-    def run(connection) -> None:
-        connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-        with Operations.context(MigrationContext.configure(connection)):
-            _revision().upgrade()
-
-    async with app_engine.begin() as connection:
-        await connection.run_sync(run)
-
-
-async def test_a_leftover_simple_rule_is_archived_and_its_pending_work_cancelled(app_engine, tenant) -> None:  # noqa: F811
-    with tenant_context(tenant):
-        simple = await _rule(name="Regla vieja")
-        flow = await _rule(name="Flujo")
-        async with session_scope() as session:
-            await session.execute(update(AutomationRule).where(AutomationRule.id == simple).values(builder_mode="simple"))
-        pending = await _execution(simple, None)
-        finished = await _execution(simple, None, status="completed")
-        of_the_flow = await _execution(flow, None)
-
-    await _upgrade(app_engine, validate_schema_name(tenant.schema_name))
-
-    with tenant_context(tenant):
-        async with session_scope() as session:
-            rules = {
-                row.id: row for row in (await session.execute(select(AutomationRule))).scalars()
-            }
-            statuses = {
-                row.id: (row.status, row.error) for row in (await session.execute(select(AutomationExecution))).scalars()
-            }
-    assert rules[simple].deleted_at is not None and rules[simple].is_active is False
-    assert rules[flow].deleted_at is None and rules[flow].is_active is True
-    assert statuses[pending][0] == "cancelled" and "reglas simples" in statuses[pending][1]
-    assert statuses[finished][0] == "completed"
-    assert statuses[of_the_flow][0] == "scheduled"
-
-
-async def test_runs_on_a_schema_without_automation_tables(app_engine) -> None:  # noqa: F811
-    """``scripts.migrate`` también recorre public, que en producción no tiene
-    las tablas de cada negocio."""
+@pytest.mark.parametrize("revision", REVISIONS)
+async def test_runs_on_a_schema_without_automation_tables(app_engine, revision) -> None:  # noqa: F811
+    module = _load(revision)
     schema = f"sin_automatizaciones_{secrets.token_hex(4)}"
 
     def run(connection) -> None:
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
         with Operations.context(MigrationContext.configure(connection)):
-            module = _revision()
             module.upgrade()
             module.downgrade()
 
