@@ -54,6 +54,10 @@ class AutomationRuleItem(BaseModel):
     updated_at: str
 
 
+class AutomationExecutionCount(BaseModel):
+    total: int
+
+
 class AutomationExecutionItem(BaseModel):
     id: int
     rule_id: int

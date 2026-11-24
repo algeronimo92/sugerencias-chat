@@ -301,6 +301,9 @@ export interface AutomationExecutionFilters {
   chatId?: string
   status?: AutomationExecutionStatusValue
   excludeSkipped?: boolean
+  /** Cuántas trae la lista (por defecto EXECUTIONS_PAGE_LIMIT). «Cargar más»
+   *  del historial lo sube de a una página. El total no lo usa. */
+  limit?: number
   /** true = solo ejecuciones no terminales (scheduled/running/paused), false
    *  = solo terminales (completed/failed/skipped). Se ignora en el backend
    *  si `status` también viene informado. */

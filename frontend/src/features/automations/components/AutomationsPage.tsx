@@ -24,7 +24,7 @@ import { useUsers } from '../../platform/public/useUsers'
 import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowFailure, type AutomationExecutionStatusValue } from '../domain/automationCatalog'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue, isTaskPriority, isTaskType } from '../../tasks/public/taskCatalog'
 import {
-useAttention,useAutomationExecutions,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
+useAttention,useAutomationExecutions,useAutomationExecutionsCount,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
 useDeleteAutomation,useDuplicateAutomation,useRetryExecution,useUpdateAutomation,
 } from '../queries'
 import type {
@@ -32,7 +32,7 @@ AutomationAction,AutomationActionResult,AutomationActionType,AutomationCondition
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
 import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, readableExecutionError } from '../utils/automationExecutions'
-import { EXECUTIONS_PAGE_LIMIT } from '../api'
+import { EXECUTIONS_MAX_LIMIT, EXECUTIONS_PAGE_LIMIT } from '../api'
 import { AttentionPanel } from './AttentionPanel'
 import { RecipePicker } from './RecipePicker'
 import type { FlowStarter } from '../domain/flowRecipes'
@@ -149,14 +149,21 @@ export function AutomationsPage() {
   const [historyDateFrom, setHistoryDateFrom] = useState(todayISODate)
   const [historyDateTo, setHistoryDateTo] = useState(todayISODate)
   const excludeSkipped = hideSkipped && historyStatus !== AutomationExecutionStatus.Skipped
-  const { data: executions = [], isLoading: executionsLoading, isFetching: executionsFetching } = useAutomationExecutions({
+  const historyFilters = {
     ruleId: historyRuleId ?? undefined,
     status: historyStatus ?? undefined,
     excludeSkipped,
     active: historyActive ?? undefined,
     dateFrom: historyDateFrom,
     dateTo: historyDateTo,
-  })
+  }
+  // Cuántas se piden. Vuelve a una página cuando cambian los filtros: lo
+  // cargado de más era de otra búsqueda.
+  const historyFilterKey = JSON.stringify(historyFilters)
+  const [historyPaging, setHistoryPaging] = useState({ key: historyFilterKey, limit: EXECUTIONS_PAGE_LIMIT })
+  const historyLimit = historyPaging.key === historyFilterKey ? historyPaging.limit : EXECUTIONS_PAGE_LIMIT
+  const { data: executions = [], isLoading: executionsLoading, isFetching: executionsFetching } = useAutomationExecutions({ ...historyFilters, limit: historyLimit })
+  const { data: historyTotal } = useAutomationExecutionsCount(historyFilters)
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
   const { data: leadServices = [] } = useLeadServices()
@@ -208,7 +215,10 @@ export function AutomationsPage() {
   // marcar como resuelto, así que esa lista casi nunca está vacía y abrir
   // siempre ahí taparía la tarea más frecuente, que es editar.
   const tab: AutomationsTab = chosenTab ?? 'automatic'
-  const historyTruncated = executions.length >= EXECUTIONS_PAGE_LIMIT
+  // Sin total todavía (o con un backend anterior) vale la señal de siempre:
+  // la lista llegó llena.
+  const historyTruncated = historyTotal !== undefined ? executions.length < historyTotal : executions.length >= historyLimit
+  const canLoadMore = historyTruncated && historyLimit < EXECUTIONS_MAX_LIMIT
   const activeRulesCount = rules.filter(rule => rule.is_active).length
   const totalExecutions = rules.reduce((total, rule) => total + rule.execution_count, 0)
   const today = todayISODate()
@@ -512,9 +522,9 @@ export function AutomationsPage() {
                 Ocultar las que no aplicaron
               </label>
               {hasCustomHistoryFilters && <button type="button" onClick={resetHistoryFilters} className="min-h-9 rounded-lg px-3 py-2 text-xs font-semibold text-wa-primary-strong hover:bg-green-50 dark:text-wa-primary dark:hover:bg-green-950/40">Limpiar filtros</button>}
-              <span className="ml-auto flex min-h-9 items-center gap-1.5 text-[11px] text-wa-muted">{executionsFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{historyTruncated ? `Las ${EXECUTIONS_PAGE_LIMIT} más recientes` : `${executions.length} resultados`}</span>
+              <span className="ml-auto flex min-h-9 items-center gap-1.5 text-[11px] text-wa-muted">{executionsFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{historyTruncated ? (historyTotal !== undefined ? `${executions.length.toLocaleString('es-PE')} de ${historyTotal.toLocaleString('es-PE')}` : `Las ${executions.length} más recientes`) : `${executions.length} resultados`}</span>
             </div>
-            {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />Hay más ejecuciones de las que se muestran: estas son las {EXECUTIONS_PAGE_LIMIT} más recientes. Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.</p>}
+            {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className="flex-1">{historyTotal !== undefined ? `Se muestran las ${executions.length.toLocaleString('es-PE')} más recientes de ${historyTotal.toLocaleString('es-PE')}.` : 'Hay más ejecuciones de las que se muestran.'} {canLoadMore ? 'Puedes cargar más o acotar con una automatización, un estado o un rango de fechas más corto.' : 'Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.'}</span>{canLoadMore && <button type="button" disabled={executionsFetching} onClick={() => setHistoryPaging({ key: historyFilterKey, limit: Math.min(historyLimit + EXECUTIONS_PAGE_LIMIT, EXECUTIONS_MAX_LIMIT) })} className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-800 dark:bg-transparent dark:text-amber-100">Cargar {EXECUTIONS_PAGE_LIMIT} más</button>}</p>}
             {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
               <details key={execution.id} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
                 <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>

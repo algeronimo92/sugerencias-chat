@@ -221,6 +221,7 @@ export function crmDefaults(api: MockApi) {
     })
     .on('get', '/api/automations/manual', FLOWS)
     .on('get', '/api/automations/executions', [])
+    .on('get', '/api/automations/executions/count', { total: 0 })
     .on('get', '/api/chats/{chat_id}/messages', {
       items: [
         message(),
