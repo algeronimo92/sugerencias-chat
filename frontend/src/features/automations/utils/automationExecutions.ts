@@ -1,7 +1,7 @@
 import {
 AUTOMATION_TRIGGERS,AutomationExecutionStatus,type AutomationExecutionStatusValue,
 } from '../domain/automationCatalog'
-import type { AutomationExecution, AutomationExecutionFilters, AutomationTrigger } from '../types'
+import type { AutomationActionResult, AutomationExecution, AutomationExecutionFilters, AutomationTrigger } from '../types'
 
 /** Helpers de presentación compartidos por las vistas que listan ejecuciones
  *  de automatizaciones: el Historial de admin (AutomationsPage) y "Flujos
@@ -155,3 +155,42 @@ export function heldByManualFlow<T extends Pick<AutomationExecution, 'id' | 'sta
     && execution.parent_execution_id !== other.id,
   )
 }
+
+export interface StepLookups {
+  stageName: (key: string) => string
+  userName: (id: number) => string | undefined
+  tagName: (id: number) => string | undefined
+}
+
+/**
+ * Qué hizo exactamente un paso que no manda mensajes.
+ *
+ * El historial decía «3. Cambiar etapa · Hecho»: a cuál, había que abrir el
+ * flujo para saberlo. El resultado del paso ya trae el dato; faltaba decirlo
+ * con nombres en vez de ids. `null` si el paso no tiene nada que agregar.
+ */
+export function stepResultDetail(result: AutomationActionResult, lookups: StepLookups): string | null {
+  const user = result.user_id != null ? lookups.userName(result.user_id) ?? 'alguien que ya no está en el equipo' : null
+  const tag = result.tag_id != null ? `«${lookups.tagName(result.tag_id) ?? 'una etiqueta eliminada'}»` : null
+  const skipped = result.status === AutomationExecutionStatus.Skipped
+  switch (result.type) {
+    case 'change_stage':
+      return result.stage ? `A la etapa «${lookups.stageName(result.stage)}»` : null
+    case 'assign_seller':
+      return user ? `A ${user}` : null
+    case 'notify':
+      return user ? `A ${user}` : null
+    case 'add_tag':
+      return tag
+    case 'remove_tag':
+      return tag ? (skipped ? `El lead no tenía ${tag}` : tag) : null
+    case 'create_task':
+      return result.task_id != null ? `Tarea n.º ${result.task_id}` : null
+    case 'change_service':
+      return result.service ? `«${result.service}»` : 'Sin servicio'
+    default:
+      // Lo que el motor explicó por su cuenta al omitir un paso.
+      return typeof result.detail === 'string' && result.detail ? result.detail : null
+  }
+}
+

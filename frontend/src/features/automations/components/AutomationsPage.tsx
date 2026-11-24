@@ -31,7 +31,7 @@ import type {
 AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
-import { EXECUTION_OUTCOME_LABELS, stepStatusLabel, executionActorLabel, executionOutcome, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionOutcome, outcomeFilter, readableExecutionError, type ExecutionOutcomeValue } from '../utils/automationExecutions'
+import { EXECUTION_OUTCOME_LABELS, stepStatusLabel, executionActorLabel, executionOutcome, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionOutcome, outcomeFilter, readableExecutionError, stepResultDetail, type ExecutionOutcomeValue, type StepLookups } from '../utils/automationExecutions'
 import { EXECUTIONS_MAX_LIMIT, EXECUTIONS_PAGE_LIMIT } from '../api'
 import { AttentionPanel } from './AttentionPanel'
 import { RecipePicker } from './RecipePicker'
@@ -198,6 +198,12 @@ export function AutomationsPage() {
   const activeUsers = users.filter(user => user.is_active)
   const stageCatalog = useLeadStageCatalog()
   const automaticTemplates = useMemo(() => templates.filter(isAutomaticTemplate), [templates])
+  // Para decir «a la etapa Agendado» o «a Ana» en el detalle de un paso, en vez de ids.
+  const stepLookups = useMemo<StepLookups>(() => ({
+    stageName: key => stageCatalog.label(key),
+    userName: id => users.find(user => user.id === id)?.name,
+    tagName: id => tags.find(tag => tag.id === id)?.name,
+  }), [stageCatalog, users, tags])
   const historyColumns = useMemo<ColumnDef<AutomationExecution>[]>(() => [
     { id: 'rule', accessorFn: execution => execution.rule_name },
     { id: 'lead', accessorFn: execution => execution.lead_name ?? execution.lead_id ?? '' },
@@ -539,7 +545,7 @@ export function AutomationsPage() {
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>
                   {execution.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-red-700 dark:bg-red-950/40 dark:text-red-300">{readableExecutionError(execution.error)}</p>}
-                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{stepStatusLabel(result.status)}{result.error ? ` · ${readableExecutionError(String(result.error))}` : ''}</span>{Array.isArray(result.message_ids) && <MessageMarks executionId={execution.id} messageIds={result.message_ids} enabled={openExecutions.has(execution.id)} />}{result.node_id && visualRuleIds.has(execution.rule_id) && <button type="button" onClick={() => ruleUrl.open(execution.rule_id, String(result.node_id))} title="Abre el flujo en el bloque de este paso" className="ml-2 inline-flex items-center gap-1 font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><LocateFixed className="h-3 w-3" aria-hidden="true" />Ver en el flujo</button>}</div>)}</div>
+                  <div className="mt-2 space-y-1">{execution.action_results.map((result, index) => <div key={index} className="rounded-lg border border-wa-border bg-white px-3 py-2 dark:border-wa-border-dark dark:bg-wa-panel-dark"><span className="font-semibold">{String(result.position ?? index + 1)}. {actionLabel(result.type)}</span><span className="ml-2 text-wa-muted">{stepStatusLabel(result.status)}{result.error ? ` · ${readableExecutionError(String(result.error))}` : ''}{!result.error && stepResultDetail(result, stepLookups) ? ` · ${stepResultDetail(result, stepLookups)}` : ''}</span>{Array.isArray(result.message_ids) && <MessageMarks executionId={execution.id} messageIds={result.message_ids} enabled={openExecutions.has(execution.id)} />}{result.node_id && visualRuleIds.has(execution.rule_id) && <button type="button" onClick={() => ruleUrl.open(execution.rule_id, String(result.node_id))} title="Abre el flujo en el bloque de este paso" className="ml-2 inline-flex items-center gap-1 font-semibold text-wa-primary-strong hover:underline dark:text-wa-primary"><LocateFixed className="h-3 w-3" aria-hidden="true" />Ver en el flujo</button>}</div>)}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {execution.lead_id && <button
                       type="button"

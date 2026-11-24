@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AutomationExecution } from '../types'
-import { executionOutcome, executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, outcomeFilter, readableExecutionError, stepStatusLabel } from './automationExecutions'
+import { executionOutcome, executionStatusLabel, heldByManualFlow, INTERNAL_ERROR_MESSAGE, outcomeFilter, readableExecutionError, stepResultDetail, stepStatusLabel } from './automationExecutions'
 
 describe('executionStatusLabel', () => {
   it('tells a cancelled run apart from one that did not apply', () => {
@@ -89,5 +89,37 @@ describe('executionOutcome', () => {
     expect(outcomeFilter('sending')).toEqual({ status: 'completed', delivery: 'pending' })
     expect(outcomeFilter('undelivered')).toEqual({ status: 'completed', delivery: 'failed' })
     expect(outcomeFilter('failed')).toEqual({ status: 'failed' })
+  })
+})
+
+describe('stepResultDetail', () => {
+  const lookups = {
+    stageName: (key: string) => ({ agendado: 'Agendado' }[key] ?? key),
+    userName: (id: number) => ({ 7: 'Ana' }[id]),
+    tagName: (id: number) => ({ 3: 'Pidió precio' }[id]),
+  }
+  const detail = (result: Record<string, unknown>) => stepResultDetail(result as never, lookups)
+
+  it('says what a non-message step actually did, with names instead of ids', () => {
+    expect(detail({ type: 'change_stage', status: 'completed', stage: 'agendado' })).toBe('A la etapa «Agendado»')
+    expect(detail({ type: 'assign_seller', status: 'completed', user_id: 7 })).toBe('A Ana')
+    expect(detail({ type: 'notify', status: 'completed', user_id: 7 })).toBe('A Ana')
+    expect(detail({ type: 'add_tag', status: 'completed', tag_id: 3 })).toBe('«Pidió precio»')
+    expect(detail({ type: 'create_task', status: 'completed', task_id: 41 })).toBe('Tarea n.º 41')
+    expect(detail({ type: 'change_service', status: 'completed', service: 'Hifu' })).toBe('«Hifu»')
+  })
+
+  it('explains a skipped step instead of leaving a bare «Omitido»', () => {
+    expect(detail({ type: 'remove_tag', status: 'skipped', tag_id: 3 })).toBe('El lead no tenía «Pidió precio»')
+  })
+
+  it('does not break when what it referred to no longer exists', () => {
+    expect(detail({ type: 'assign_seller', status: 'completed', user_id: 99 })).toBe('A alguien que ya no está en el equipo')
+    expect(detail({ type: 'add_tag', status: 'completed', tag_id: 99 })).toBe('«una etiqueta eliminada»')
+  })
+
+  it('adds nothing to steps that have nothing to add', () => {
+    expect(detail({ type: 'send_message', status: 'completed', message_ids: [1] })).toBeNull()
+    expect(detail({ type: 'wait', status: 'scheduled', seconds: 60 })).toBeNull()
   })
 })
