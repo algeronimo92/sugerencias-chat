@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, type ComponentProps } from "react";
 import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
@@ -102,6 +102,12 @@ const NewAppointmentPage = lazy(() =>
     default: module.NewAppointmentPage,
   })),
 );
+// El panel de "Separar cita" de la agenda: se baja recién al abrirlo.
+const LeadAppointmentLauncher = lazy(() =>
+  import("../features/appointments/public/LeadAppointmentLauncher").then((module) => ({
+    default: module.LeadAppointmentLauncher,
+  })),
+);
 const IssueReportsPage = lazy(() =>
   import("../features/issue-reports/page").then((module) => ({
     default: module.IssueReportsPage,
@@ -134,9 +140,24 @@ function TasksRoute() {
   return <TasksPage onOpenChat={(id) => navigate(`/chat/${id}`)} />;
 }
 
+// Suspense propio: mientras baja el panel, la agenda sigue a la vista en vez
+// de cambiarse por el cargador de la ruta.
+function ContactAppointmentPanel(props: ComponentProps<typeof LeadAppointmentLauncher>) {
+  return (
+    <Suspense fallback={null}>
+      <LeadAppointmentLauncher {...props} />
+    </Suspense>
+  );
+}
+
 function ContactsRoute() {
   const navigate = useNavigate();
-  return <ContactsPage onOpenChat={(id) => navigate(`/chat/${id}`)} />;
+  return (
+    <ContactsPage
+      onOpenChat={(id) => navigate(`/chat/${id}`)}
+      AppointmentPanel={ContactAppointmentPanel}
+    />
+  );
 }
 
 function IssueReportsRoute() {

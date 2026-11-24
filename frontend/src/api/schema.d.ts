@@ -15209,6 +15209,7 @@ export interface operations {
                 search?: string | null;
                 origen?: components["schemas"]["ContactOrigin"] | null;
                 tag?: string | null;
+                initial?: string | null;
                 has_lead?: boolean | null;
                 removed_in_app?: boolean | null;
                 consent?: boolean | null;

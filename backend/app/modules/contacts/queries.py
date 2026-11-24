@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Select, and_, case, exists, func, or_, select
+from sqlalchemy import Select, and_, case, exists, func, not_, or_, select
 
 from app.core.time_format import iso_utc
 from app.db.models.contacts import (
@@ -54,6 +54,33 @@ def _visible_contact(owner_id: int | None):
     return True if owner_id is None else Contact.lead_id.is_(None) | Contact.lead_id.in_(lead_ids_owned_by(owner_id))
 
 
+# Las letras del filtro A-Z. La Ñ es una letra aparte en español: "Ñique" no
+# aparece bajo la N. Las vocales con tilde sí cuentan como la vocal ("Ángela"
+# bajo la A), como en cualquier agenda de teléfono.
+INITIAL_LETTERS = tuple("abcdefghijklmnñopqrstuvwxyz")
+_FOLDS = {
+    "a": "áàâäãÁÀÂÄÃA", "e": "éèêëÉÈÊËE", "i": "íìîïÍÌÎÏI", "o": "óòôöõÓÒÔÖÕO", "u": "úùûüÚÙÛÜU",
+    "c": "çÇC", "ñ": "Ñ",
+}
+# translate() y no lower(): lower() depende del locale de la base y con "C"
+# solo baja el ASCII, así que "Ñ" o "Á" quedarían sin plegar.
+_FOLD_FROM = "".join(_FOLDS.values()) + "BDFGHJKLMNPQRSTVWXYZ"
+_FOLD_TO = "".join(letter * len(chars) for letter, chars in _FOLDS.items()) + "bdfghjklmnpqrstvwxyz"
+
+
+def _initial_condition(initial: str):
+    """El contacto cuyo nombre visible empieza con `initial` (una letra o "#").
+
+    El nombre visible es el de la lista: el nombre o, sin él, el usuario de
+    WhatsApp. Quien solo tiene número cae en "#".
+    """
+    name = func.coalesce(func.nullif(func.btrim(Contact.nombre), ""), func.btrim(Contact.username), "")
+    first = func.translate(func.left(name, 1), _FOLD_FROM, _FOLD_TO)
+    if initial == "#":
+        return not_(first.in_(INITIAL_LETTERS))
+    return first == initial.lower()
+
+
 def _escaped(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -63,6 +90,7 @@ async def list_contacts(
     search: str | None = None,
     origen: str | None = None,
     tag: str | None = None,
+    initial: str | None = None,
     has_lead: bool | None = None,
     removed_in_app: bool | None = None,
     consent: bool | None = None,
@@ -84,6 +112,8 @@ async def list_contacts(
         conditions.append(Contact.origen == origen)
     if tag:
         conditions.append(Contact.etiquetas.any(tag))
+    if initial:
+        conditions.append(_initial_condition(initial))
     if has_lead is not None:
         conditions.append(Contact.lead_id.is_not(None) if has_lead else Contact.lead_id.is_(None))
     if removed_in_app is not None:

@@ -23,6 +23,8 @@ export interface ContactFilters {
   search: string
   origen: ContactOrigin | ''
   tag: string
+  /** Inicial del nombre (una letra, "Ñ" o "#"); vacío = todas. */
+  initial: string
   hasLead: '' | 'yes' | 'no'
   consent: '' | 'yes' | 'no'
   removedInApp: boolean

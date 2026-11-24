@@ -1,12 +1,11 @@
 import { FileSpreadsheet, Plus, RotateCcw, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ComponentType } from 'react'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
 import { EmptyState } from '../../../shared/ui/EmptyState'
-import { Skeleton } from '../../../shared/ui/Skeleton'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useMe } from '../../auth/public/queries'
-import { can } from '../../../shared/permissions'
+import { can, useCan } from '../../../shared/permissions'
 import { CONTACTS_PAGE_SIZE } from '../api'
 import { EMPTY_FILTERS, hasActiveFilters } from '../domain/filters'
 import { contactsLabel } from '../domain/selection'
@@ -14,10 +13,11 @@ import { useContacts, usePromoteContact } from '../hooks/useContacts'
 import { useSelection } from '../hooks/useSelection'
 import type { Contact, ContactFilters } from '../types'
 import { ContactFormDialog } from './ContactFormDialog'
-import { ContactList } from './ContactList'
+import { ContactList, ContactListSkeleton } from './ContactList'
 import { ContactsBulkBar } from './ContactsBulkBar'
 import { ContactsFilterBar } from './ContactsFilterBar'
 import { CsvImportDialog } from './CsvImportDialog'
+import { InitialFilter } from './InitialFilter'
 import { ImportReviewDialog } from './ImportReviewDialog'
 import { Pager } from './Pager'
 import { PendingImports } from './PendingImports'
@@ -30,7 +30,7 @@ function ContactsResults({ filters, page, isFiltered, listProps }: {
 }) {
   const { data, isLoading, isError, error } = useContacts(filters, page)
   if (isLoading) {
-    return <div className="space-y-2">{[0, 1, 2, 3].map(index => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}</div>
+    return <ContactListSkeleton />
   }
   if (isError) return <EmptyState icon={Users} title="No se pudo cargar la agenda" description={extractErrorMessage(error)} />
   if (!data?.items.length) {
@@ -45,16 +45,32 @@ function ContactsResults({ filters, page, isFiltered, listProps }: {
   return <ContactList contacts={data.items} {...listProps} />
 }
 
+/** El panel de "Separar cita". Lo pone `app/`: citas es una capa superior a
+ *  contactos y esta feature no puede importarla. */
+export type ContactAppointmentPanel = ComponentType<{
+  leadId: string
+  name: string | null
+  phone: string | null
+  onClose: () => void
+}>
+
+interface Props {
+  onOpenChat: (leadId: string) => void
+  AppointmentPanel?: ContactAppointmentPanel
+}
+
 /** La agenda del negocio: todos, hayan escrito o no. Un lead es un contacto
  *  que entró al embudo; desde acá se pasa con un clic. */
-export function ContactsPage({ onOpenChat }: { onOpenChat: (leadId: string) => void }) {
+export function ContactsPage({ onOpenChat, AppointmentPanel }: Props) {
   const { data: me } = useMe()
+  const allowed = useCan()
   const isAdmin = can(me, 'contacts.import')
   const [filters, setFilters] = useState<ContactFilters>(EMPTY_FILTERS)
   const [page, setPage] = useState(0)
   const [editing, setEditing] = useState<Contact | null | 'new'>(null)
   const [importing, setImporting] = useState(false)
   const [reviewing, setReviewing] = useState<string | null>(null)
+  const [scheduling, setScheduling] = useState<Contact | null>(null)
   const selection = useSelection()
   // La misma consulta que ContactsResults (React Query la comparte): solo el total.
   const { data, isLoading, isError } = useContacts(filters, page)
@@ -81,19 +97,21 @@ export function ContactsPage({ onOpenChat }: { onOpenChat: (leadId: string) => v
     selected: selection.selected,
     onToggle: selection.toggle,
     onToggleAll: () => selection.togglePage((data?.items ?? []).map(contact => contact.id)),
-    onEdit: setEditing,
+    onEdit: allowed('contacts.edit') ? setEditing : undefined,
+    onSchedule: AppointmentPanel && allowed('appointments.edit') ? setScheduling : undefined,
     onOpenChat,
     onPromote: promoteOne,
     promotingId: promote.isPending ? (promote.variables ?? null) : null,
   }
 
   return (
-    <div className="h-full overflow-x-hidden overflow-y-auto bg-wa-app dark:bg-wa-app-dark">
-      <main className="mx-auto w-full max-w-[1200px] px-4 py-4 pb-24 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+    <div className="h-full overflow-x-hidden overflow-y-auto bg-canvas">
+      {/* 1280 y no 1200: deja ~270 px por tarjeta en la cuadrícula de 4. */}
+      <main className="mx-auto w-full max-w-[1280px] px-4 py-4 pb-24 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-wa-text dark:text-white">Contactos</h1>
-            <p className="mt-1.5 hidden max-w-prose text-sm leading-6 text-wa-muted sm:block dark:text-wa-muted-dark">
+            <h1 className="text-2xl font-semibold tracking-tight text-fg">Contactos</h1>
+            <p className="mt-1.5 hidden max-w-prose text-sm leading-6 text-fg-muted sm:block">
               Tu agenda completa. Importa desde el celular o un CSV y pasa a lead a quien quieras atender.
             </p>
           </div>
@@ -113,9 +131,10 @@ export function ContactsPage({ onOpenChat }: { onOpenChat: (leadId: string) => v
 
         {isAdmin && <PendingImports onReview={setReviewing} />}
         <ContactsFilterBar filters={filters} onChange={patch} />
+        <InitialFilter value={filters.initial} onChange={initial => patch({ initial })} />
 
         <div className="mb-3 mt-5 flex items-center justify-between gap-2">
-          <p aria-live="polite" className="text-sm text-wa-muted dark:text-wa-muted-dark">
+          <p aria-live="polite" className="text-sm text-fg-muted">
             {isLoading ? 'Cargando contactos…' : isError ? 'Listado no disponible' : contactsLabel(total)}
           </p>
           {isFiltered && (
@@ -138,6 +157,14 @@ export function ContactsPage({ onOpenChat }: { onOpenChat: (leadId: string) => v
         <CsvImportDialog onClose={() => setImporting(false)} onCreated={batchId => { setImporting(false); setReviewing(batchId) }} />
       )}
       {reviewing && <ImportReviewDialog batchId={reviewing} onClose={() => setReviewing(null)} />}
+      {scheduling?.lead_id && AppointmentPanel && (
+        <AppointmentPanel
+          leadId={scheduling.lead_id}
+          name={scheduling.nombre}
+          phone={scheduling.telefono}
+          onClose={() => setScheduling(null)}
+        />
+      )}
     </div>
   )
 }
