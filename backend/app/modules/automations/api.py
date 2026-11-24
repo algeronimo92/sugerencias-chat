@@ -240,6 +240,9 @@ async def get_executions(
     chat_id: str | None = None,
     status: str | None = Query(default=None, pattern=_STATUS_FILTER),
     exclude_skipped: bool = False,
+    # Por la entrega de sus mensajes: ok (salieron o no mandó ninguno),
+    # pending (en cola) o failed (alguno no se entregó).
+    delivery: str | None = Query(default=None, pattern="^(ok|pending|failed)$"),
     active: bool | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -265,6 +268,7 @@ async def get_executions(
         active=active,
         date_from=date_from,
         date_to=date_to,
+        delivery=delivery,
         **scope,
     )
 
@@ -276,6 +280,9 @@ async def get_executions_count(
     chat_id: str | None = None,
     status: str | None = Query(default=None, pattern=_STATUS_FILTER),
     exclude_skipped: bool = False,
+    # Por la entrega de sus mensajes: ok (salieron o no mandó ninguno),
+    # pending (en cola) o failed (alguno no se entregó).
+    delivery: str | None = Query(default=None, pattern="^(ok|pending|failed)$"),
     active: bool | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -289,7 +296,7 @@ async def get_executions_count(
     scope = await _history_scope(user, chat_id=chat_id, mine=mine, started_by=started_by, team=team)
     total = await count_automation_executions(
         rule_id, status, exclude_skipped=exclude_skipped, lead_id=chat_id, active=active,
-        date_from=date_from, date_to=date_to, **scope,
+        date_from=date_from, date_to=date_to, delivery=delivery, **scope,
     )
     return {"total": total}
 
@@ -354,7 +361,7 @@ async def post_dismiss_execution(execution_id: int, admin: User = Depends(requir
     hay nada que hacer. Si vuelve a fallar, vuelve a aparecer."""
     item = await dismiss_automation_execution(execution_id)
     if item is None:
-        raise HTTPException(409, "Solo se descartan ejecuciones fallidas o en pausa")
+        raise HTTPException(409, "Solo se descartan ejecuciones fallidas, en pausa o con mensajes sin entregar")
     return item
 
 

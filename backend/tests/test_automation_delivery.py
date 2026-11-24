@@ -176,3 +176,36 @@ class TestReconcile:
         # Reconciliar dos veces no cambia nada: ya coincide.
         again = await reconcile_delivery(apply=True, executions=world, source=self._source)
         assert not again.corrected
+
+
+async def test_the_script_wires_the_app_before_reconciling(monkeypatch, capsys):
+    """La primera corrida en producción murió con «los puertos no están
+    configurados»: un script no pasa por el arranque de la API."""
+    from types import SimpleNamespace
+
+    from app.modules.automations.application.delivery import ReconcileReport
+    from scripts import reconcile_delivery as script
+
+    order: list[str] = []
+
+    async def context_for(hostname):
+        return SimpleNamespace(organization_id="o", schema_name="tenant_x", hostname=hostname)
+
+    async def reconcile(*, apply):
+        order.append(f"reconcile apply={apply}")
+        return ReconcileReport(executions=3, with_messages=1)
+
+    async def close():
+        order.append("close")
+
+    monkeypatch.setattr(script, "configure", lambda: order.append("configure"))
+    monkeypatch.setattr(script, "_context_for", context_for)
+    monkeypatch.setattr(script, "reconcile_delivery", reconcile)
+    monkeypatch.setattr(script, "close_engine", close)
+    monkeypatch.setattr(script, "tenant_context", lambda context: __import__("contextlib").nullcontext())
+    monkeypatch.setattr("sys.argv", ["reconcile_delivery", "--hostname", "clinica.test"])
+
+    assert await script._main() == 0
+
+    assert order == ["configure", "reconcile apply=False", "close"]
+    assert "nada que corregir" in capsys.readouterr().out

@@ -160,3 +160,18 @@ async def test_an_explicit_status_also_wins_in_the_total(monkeypatch):
 
     assert "automation_executions.status = 'failed'" in sql
     assert "automation_executions.status != 'skipped'" not in sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("delivery", "expected"), [
+    ("failed", "automation_executions.delivery_state = 'failed'"),
+    ("pending", "automation_executions.delivery_state = 'pending'"),
+    # «ok» incluye las que no mandaron ningún mensaje: tampoco tienen nada sin entregar.
+    ("ok", "automation_executions.delivery_state IS NULL OR automation_executions.delivery_state = 'delivered'"),
+])
+async def test_the_history_filters_by_what_happened_to_the_messages(monkeypatch, delivery, expected):
+    listed = await _history_sql(monkeypatch, status=AutomationExecutionStatus.COMPLETED, delivery=delivery, limit=200)
+    counted = await _count_sql(monkeypatch, status=AutomationExecutionStatus.COMPLETED, delivery=delivery)
+
+    assert expected in listed and expected in counted
+    assert "automation_executions.status = 'completed'" in listed

@@ -6,7 +6,7 @@ const NOW = new Date('2026-11-23T15:00:00Z').getTime()
 const daysAgo = (days: number) => new Date(NOW - days * 86_400_000).toISOString()
 
 function execution(overrides: Partial<AutomationExecution>): AutomationExecution {
-  return { id: 1, status: 'failed', error: null, error_code: null, rule_deleted: false, paused_at: null, attention_dismissed_at: null, ...overrides } as AutomationExecution
+  return { id: 1, status: 'failed', error: null, error_code: null, rule_deleted: false, paused_at: null, attention_dismissed_at: null, delivery_state: null, ...overrides } as AutomationExecution
 }
 
 describe('groupAttention', () => {
@@ -25,6 +25,17 @@ describe('groupAttention', () => {
       ['no_seller', [1]],
     ])
     expect(attentionCount(groups)).toBe(4)
+  })
+
+  it('a completed run with an undelivered message asks for attention too', () => {
+    const groups = groupAttention([
+      execution({ id: 1, status: 'completed', delivery_state: 'failed' }),
+      execution({ id: 2, status: 'completed', delivery_state: 'delivered' }),
+      execution({ id: 3, status: 'completed', delivery_state: 'pending' }),
+      execution({ id: 4, status: 'completed', delivery_state: 'failed', attention_dismissed_at: '2026-11-23T10:00:00Z' }),
+    ], NOW)
+
+    expect(groups.map(group => [group.cause, group.executions.map(item => item.id)])).toEqual([['undelivered', [1]]])
   })
 
   it('a pause only asks for attention once it has been forgotten', () => {

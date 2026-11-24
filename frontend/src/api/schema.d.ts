@@ -5174,6 +5174,8 @@ export interface components {
             window_override_at?: string | null;
             /** Attention Dismissed At */
             attention_dismissed_at?: string | null;
+            /** Delivery State */
+            delivery_state?: string | null;
             /** Window Override By Name */
             window_override_by_name?: string | null;
         };
@@ -18420,6 +18422,7 @@ export interface operations {
                 chat_id?: string | null;
                 status?: string | null;
                 exclude_skipped?: boolean;
+                delivery?: string | null;
                 active?: boolean | null;
                 date_from?: string | null;
                 date_to?: string | null;
@@ -18461,6 +18464,7 @@ export interface operations {
                 chat_id?: string | null;
                 status?: string | null;
                 exclude_skipped?: boolean;
+                delivery?: string | null;
                 active?: boolean | null;
                 date_from?: string | null;
                 date_to?: string | null;

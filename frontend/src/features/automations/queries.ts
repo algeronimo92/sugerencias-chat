@@ -56,11 +56,11 @@ export function useAutomationRuleSummaries() {
 // en curso" y su botón de cancelar no queden congelados.
 const ACTIVE_EXECUTION_POLL_MS = 12_000
 
-export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, active, dateFrom, dateTo, mine = false, startedBy, team, limit }: AutomationExecutionFilters = {}) {
+export function useAutomationExecutions({ ruleId, chatId, status, excludeSkipped = false, delivery, active, dateFrom, dateTo, mine = false, startedBy, team, limit }: AutomationExecutionFilters = {}) {
   const connected = useChatSocketConnected()
   return useQuery({
-    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, limit }),
-    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, limit }),
+    queryKey: executionKeys.list({ ruleId, chatId, status, excludeSkipped, delivery, active, dateFrom, dateTo, mine, startedBy, team, limit }),
+    queryFn: () => fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, delivery, active, dateFrom, dateTo, mine, startedBy, team, limit }),
     // Al cargar más, la lista anterior sigue a la vista mientras llega la nueva.
     placeholderData: limit ? keepPreviousData : undefined,
     refetchInterval: (query) => {
@@ -264,9 +264,16 @@ export function useAttention() {
   })
   // Sin fechas: una pausa olvidada es justamente la que empezó hace mucho.
   const paused = useAutomationExecutions({ status: AutomationExecutionStatus.Paused })
+  // Recorrieron sus pasos pero algún mensaje no le llegó al cliente.
+  const undelivered = useAutomationExecutions({
+    status: AutomationExecutionStatus.Completed,
+    delivery: 'failed',
+    dateFrom: isoDateOffset(-ATTENTION_WINDOW_DAYS),
+    dateTo: todayISODate(),
+  })
   const groups = useMemo(
-    () => groupAttention([...(failed.data ?? []), ...(paused.data ?? [])], Date.now()),
-    [failed.data, paused.data],
+    () => groupAttention([...(failed.data ?? []), ...(undelivered.data ?? []), ...(paused.data ?? [])], Date.now()),
+    [failed.data, undelivered.data, paused.data],
   )
-  return { groups, count: attentionCount(groups), isLoading: failed.isLoading || paused.isLoading }
+  return { groups, count: attentionCount(groups), isLoading: failed.isLoading || paused.isLoading || undelivered.isLoading }
 }

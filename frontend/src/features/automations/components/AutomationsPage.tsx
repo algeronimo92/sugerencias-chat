@@ -21,7 +21,7 @@ import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import { MediaAssetField } from '../../media/public/MediaAssetField'
 import { useMediaLibrary } from '../../media/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
-import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowFailure, type AutomationExecutionStatusValue } from '../domain/automationCatalog'
+import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowFailure } from '../domain/automationCatalog'
 import { TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue, isTaskPriority, isTaskType } from '../../tasks/public/taskCatalog'
 import {
 useAttention,useAutomationExecutions,useAutomationExecutionsCount,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
@@ -31,7 +31,7 @@ import type {
 AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,AutomationTrigger,
 } from '../types'
-import { EXECUTION_STATUS_LABELS, stepStatusLabel, executionActorLabel, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionStatus, readableExecutionError } from '../utils/automationExecutions'
+import { EXECUTION_OUTCOME_LABELS, stepStatusLabel, executionActorLabel, executionOutcome, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionOutcome, outcomeFilter, readableExecutionError, type ExecutionOutcomeValue } from '../utils/automationExecutions'
 import { EXECUTIONS_MAX_LIMIT, EXECUTIONS_PAGE_LIMIT } from '../api'
 import { AttentionPanel } from './AttentionPanel'
 import { RecipePicker } from './RecipePicker'
@@ -140,7 +140,7 @@ export function AutomationsPage() {
   const navigate = useNavigate()
   const { data: rules = [], isLoading } = useAutomationRules()
   const [historyRuleId, setHistoryRuleId] = useState<number | null>(null)
-  const [historyStatus, setHistoryStatus] = useState<AutomationExecutionStatusValue | null>(null)
+  const [historyStatus, setHistoryStatus] = useState<ExecutionOutcomeValue | null>(null)
   const [hideSkipped, setHideSkipped] = useState(true)
   // Toggle rápido activo/finalizado/todos. Es mutuamente excluyente con el
   // selector de estado puntual: elegir uno limpia el otro para que no
@@ -151,7 +151,9 @@ export function AutomationsPage() {
   const excludeSkipped = hideSkipped && historyStatus !== AutomationExecutionStatus.Skipped
   const historyFilters = {
     ruleId: historyRuleId ?? undefined,
-    status: historyStatus ?? undefined,
+    // «Completada», «Enviando…» y «No se entregó» son el mismo estado del
+    // motor con distinta entrega: el filtro pide lo que la etiqueta muestra.
+    ...(historyStatus ? outcomeFilter(historyStatus) : {}),
     excludeSkipped,
     active: historyActive ?? undefined,
     dateFrom: historyDateFrom,
@@ -241,7 +243,7 @@ export function AutomationsPage() {
     setHistoryDateTo(today)
   }
 
-  function setHistoryStatusFilter(value: AutomationExecutionStatusValue | null) {
+  function setHistoryStatusFilter(value: ExecutionOutcomeValue | null) {
     setHistoryStatus(value)
     if (value !== null) setHistoryActive(null)
   }
@@ -501,9 +503,9 @@ export function AutomationsPage() {
                 </Select>
               </label>
               <label className="grid min-w-44 flex-1 gap-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">Estado
-                <Select value={historyStatus ?? ''} onChange={event => setHistoryStatusFilter(isExecutionStatus(event.target.value) ? event.target.value : null)} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
+                <Select value={historyStatus ?? ''} onChange={event => setHistoryStatusFilter(isExecutionOutcome(event.target.value) ? event.target.value : null)} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs font-normal normal-case tracking-normal text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark">
                   <option value="">Todos los estados</option>
-                  {Object.entries(EXECUTION_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {Object.entries(EXECUTION_OUTCOME_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </Select>
               </label>
               <div className="grid gap-1 text-[10px] font-semibold uppercase tracking-wide text-wa-muted">Actividad
@@ -529,7 +531,7 @@ export function AutomationsPage() {
             {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className="flex-1">{historyTotal !== undefined ? `Se muestran las ${executions.length.toLocaleString('es-PE')} más recientes de ${historyTotal.toLocaleString('es-PE')}.` : 'Hay más ejecuciones de las que se muestran.'} {canLoadMore ? 'Puedes cargar más o acotar con una automatización, un estado o un rango de fechas más corto.' : 'Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.'}</span>{canLoadMore && <button type="button" disabled={executionsFetching} onClick={() => setHistoryPaging({ key: historyFilterKey, limit: Math.min(historyLimit + EXECUTIONS_PAGE_LIMIT, EXECUTIONS_MAX_LIMIT) })} className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-800 dark:bg-transparent dark:text-amber-100">Cargar {EXECUTIONS_PAGE_LIMIT} más</button>}</p>}
             {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
               <details key={execution.id} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(execution.status)}`}>{execution.status === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Failed ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(execution.status)}`}>{executionStatusLabel(execution.status)}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(executionOutcome(execution))}`}>{executionOutcome(execution) === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : (execution.status === AutomationExecutionStatus.Failed || executionOutcome(execution) === 'undelivered') ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(executionOutcome(execution))}`}>{executionStatusLabel(executionOutcome(execution))}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
                 {execution.rule_deleted && <div className="border-t border-wa-border bg-amber-50 px-4 py-2 text-[11px] text-amber-700 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-300">Automatización eliminada · historial conservado solo para auditoría.</div>}
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>

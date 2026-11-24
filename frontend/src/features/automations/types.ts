@@ -301,6 +301,9 @@ export interface AutomationExecutionFilters {
   chatId?: string
   status?: AutomationExecutionStatusValue
   excludeSkipped?: boolean
+  /** Por la entrega de sus mensajes: `ok` (salieron, o no mandó ninguno),
+   *  `pending` (en cola) o `failed` (alguno no se entregó). */
+  delivery?: 'ok' | 'pending' | 'failed'
   /** Cuántas trae la lista (por defecto EXECUTIONS_PAGE_LIMIT). «Cargar más»
    *  del historial lo sube de a una página. El total no lo usa. */
   limit?: number

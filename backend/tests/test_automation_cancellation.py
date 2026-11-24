@@ -164,3 +164,15 @@ async def test_only_failures_and_pauses_can_be_dismissed(in_memory_automations, 
 
     assert await dismiss_automation_execution(5) is None
     assert in_memory_automations.published == []
+
+
+async def test_a_completed_execution_whose_message_was_not_delivered_can_be_dismissed(in_memory_automations):
+    """Recorrió sus pasos pero un mensaje no salió: aparece en «Por atender»
+    y, como cualquier aviso de ahí, se puede descartar."""
+    from app.modules.automations.application.management import dismiss_automation_execution
+
+    store = in_memory_automations.executions
+    store.add(stored_execution(id=5, status=AutomationExecutionStatus.COMPLETED, delivery_state="failed"))
+
+    assert await dismiss_automation_execution(5) is not None
+    assert store.executions[5].status == AutomationExecutionStatus.COMPLETED

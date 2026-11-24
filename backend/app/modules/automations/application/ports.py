@@ -86,8 +86,8 @@ class ExecutionStore(Protocol):
         avanzar: la fuente manda) y recalcula el resumen."""
 
     async def dismiss(self, execution_id: int, now: datetime) -> bool:
-        """Saca de «Por atender» una ejecución failed o paused. No la cambia
-        de estado. False si no está en ninguno de los dos."""
+        """Saca de «Por atender» una ejecución failed, paused o con mensajes
+        sin entregar. No la cambia de estado. False si no es ninguna."""
 
     async def pause(self, execution_id: int, now: datetime) -> bool: ...
 

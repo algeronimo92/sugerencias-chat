@@ -10,7 +10,7 @@ export const LONG_PAUSE_DAYS = 7
  *  de hace una semana ya no se arregla reintentando. */
 export const ATTENTION_WINDOW_DAYS = 3
 
-export type AttentionCause = 'service_window' | 'no_seller' | 'failed' | 'long_pause'
+export type AttentionCause = 'service_window' | 'undelivered' | 'no_seller' | 'failed' | 'long_pause'
 
 export interface AttentionGroup {
   cause: AttentionCause
@@ -24,6 +24,10 @@ const GROUPS: Record<AttentionCause, Pick<AttentionGroup, 'title' | 'hint'>> = {
   service_window: {
     title: 'Frenadas por la ventana de 24 horas',
     hint: 'Pasaron más de 24 h desde el último mensaje del cliente y WhatsApp ya no deja escribirle libremente.',
+  },
+  undelivered: {
+    title: 'Mensajes que no se entregaron',
+    hint: 'El flujo recorrió todos sus pasos, pero WhatsApp no entregó algún mensaje. Abre el chat para ver cuál y escribirle al cliente.',
   },
   no_seller: {
     title: 'Falta una vendedora',
@@ -40,7 +44,7 @@ const GROUPS: Record<AttentionCause, Pick<AttentionGroup, 'title' | 'hint'>> = {
 }
 
 // El orden es el de la urgencia: lo que no le llegó al cliente va primero.
-const ORDER: AttentionCause[] = ['service_window', 'failed', 'no_seller', 'long_pause']
+const ORDER: AttentionCause[] = ['service_window', 'undelivered', 'failed', 'no_seller', 'long_pause']
 
 // El backend solo da código propio a la ventana de 24 h; el resto de causas
 // se reconoce por su texto (domain/execution.py y application/actions.py).
@@ -52,6 +56,9 @@ function causeOf(execution: AutomationExecution, now: number): AttentionCause | 
   if (execution.status === AutomationExecutionStatus.Paused) {
     const pausedAt = execution.paused_at ? new Date(execution.paused_at).getTime() : null
     return pausedAt !== null && now - pausedAt > LONG_PAUSE_DAYS * 86_400_000 ? 'long_pause' : null
+  }
+  if (execution.status === AutomationExecutionStatus.Completed) {
+    return execution.delivery_state === 'failed' ? 'undelivered' : null
   }
   if (execution.status !== AutomationExecutionStatus.Failed) return null
   // Una automatización eliminada no se puede reintentar: no hay nada que decidir.

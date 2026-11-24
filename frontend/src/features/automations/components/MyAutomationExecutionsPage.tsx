@@ -21,7 +21,7 @@ isServiceWindowFailure,type AutomationExecutionStatusValue,
 import { useAutomationExecutions, useCancelExecution, useManualFlows } from '../queries'
 import type { AutomationActionResult, AutomationExecution } from '../types'
 import { followedBranchText } from '../domain/flowBranches'
-import { executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
+import { executionOutcome, executionStatusLabel, executionTriggerLabel, formatExecutionDate } from '../utils/automationExecutions'
 import { isoDateOffset, todayISODate } from '../../../shared/utils/datetime'
 import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
@@ -190,7 +190,8 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
   showSender: boolean
 }) {
   const navigate = useNavigate()
-  const tone = statusTone(execution.status)
+  // Una completada cuyo mensaje no salió no es un éxito: va en rojo.
+  const tone = executionOutcome(execution) === 'undelivered' ? 'danger' : statusTone(execution.status)
   const Icon = statusIcon(execution.status)
   const isActive = ACTIVE_EXECUTION_STATUSES.includes(execution.status)
   const failed = execution.status === AutomationExecutionStatus.Failed
@@ -236,7 +237,7 @@ function ExecutionRow({ execution, onCancel, isCancelling, viewerId, showSender 
         )}
 
         <span className="shrink-0 lg:w-28">
-          <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(execution.status)}</Badge>
+          <Badge variant={BADGE_VARIANT[tone]} size="md" className="text-xs">{executionStatusLabel(executionOutcome(execution))}</Badge>
         </span>
 
         <span

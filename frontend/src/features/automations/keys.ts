@@ -17,13 +17,13 @@ export const automationKeys = {
 
 export const executionKeys = {
   all: ['automation-executions'] as const,
-  list: ({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, limit }: AutomationExecutionFilters) => [
-    'automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped, active ?? 'all',
+  list: ({ ruleId, chatId, status, excludeSkipped, delivery, active, dateFrom, dateTo, mine, startedBy, team, limit }: AutomationExecutionFilters) => [
+    'automation-executions', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', delivery ?? 'any', excludeSkipped, active ?? 'all',
     dateFrom ?? 'none', dateTo ?? 'none', mine, startedBy ?? 'none', team ?? false, limit ?? 'default',
   ] as const,
   // Bajo `automation-executions`: lo que refresca la lista refresca su total.
-  count: ({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters) => [
-    'automation-executions', 'count', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', excludeSkipped ?? false, active ?? 'all',
+  count: ({ ruleId, chatId, status, excludeSkipped, delivery, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters) => [
+    'automation-executions', 'count', ruleId ?? 'all', chatId ?? 'all', status ?? 'all', delivery ?? 'any', excludeSkipped ?? false, active ?? 'all',
     dateFrom ?? 'none', dateTo ?? 'none', mine ?? false, startedBy ?? 'none', team ?? false,
   ] as const,
   detail: (executionId: number | null) => ['automation-executions', 'by-id', executionId] as const,

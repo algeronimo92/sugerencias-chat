@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from app.db.models.automations import AutomationExecution, AutomationExecutionMessage, AutomationFlowVersion, AutomationRoundRobinState, AutomationRule
 from app.db.uow import session_scope
 from app.modules.automations.domain.types import AutomationExecutionStatus, ExecutionStartSource
-from app.modules.automations.domain.delivery import MessageDeliveryState, advance, message_ids_in, summarize
+from app.modules.automations.domain.delivery import ExecutionDeliveryState, MessageDeliveryState, advance, message_ids_in, summarize
 from app.modules.automations.domain.execution import Execution, Rule, initial_flow_state
 from app.modules.automations.domain.limits import PAUSE_SCOPE_EXECUTION
 from app.modules.automations.queries import get_automation_execution
@@ -424,9 +424,14 @@ class SqlExecutionStore:
         async with session_scope() as session:
             result = await session.execute(update(AutomationExecution).where(
                 AutomationExecution.id == execution_id,
-                AutomationExecution.status.in_([
-                    AutomationExecutionStatus.FAILED, AutomationExecutionStatus.PAUSED,
-                ]),
+                or_(
+                    AutomationExecution.status.in_([
+                        AutomationExecutionStatus.FAILED, AutomationExecutionStatus.PAUSED,
+                    ]),
+                    # Recorrió sus pasos pero algún mensaje no se entregó:
+                    # también aparece en «Por atender».
+                    AutomationExecution.delivery_state == ExecutionDeliveryState.FAILED,
+                ),
             ).values(attention_dismissed_at=now))
         return bool(result.rowcount)
 

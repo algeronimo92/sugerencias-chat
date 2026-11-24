@@ -38,20 +38,20 @@ export const EXECUTIONS_PAGE_LIMIT = 200
 export const EXECUTIONS_MAX_LIMIT = 1000
 
 /** Cuántas ejecuciones hay con esos filtros, sin el tope de la lista. */
-export async function fetchAutomationExecutionsCount({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters): Promise<number> {
+export async function fetchAutomationExecutionsCount({ ruleId, chatId, status, excludeSkipped, delivery, active, dateFrom, dateTo, mine, startedBy, team }: AutomationExecutionFilters): Promise<number> {
   const { data } = await client.get<ApiResponse<'/api/automations/executions/count', 'get'>>('/api/automations/executions/count', {
     params: {
-      rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, active,
+      rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, delivery, active,
       date_from: dateFrom, date_to: dateTo, mine, started_by: startedBy, team,
     },
   })
   return data.total
 }
 
-export async function fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, active, dateFrom, dateTo, mine, startedBy, team, limit }: AutomationExecutionFilters): Promise<AutomationExecution[]> {
+export async function fetchAutomationExecutions({ ruleId, chatId, status, excludeSkipped, delivery, active, dateFrom, dateTo, mine, startedBy, team, limit }: AutomationExecutionFilters): Promise<AutomationExecution[]> {
   const { data } = await client.get<ApiResponse<'/api/automations/executions', 'get'>>('/api/automations/executions', {
       params: {
-        rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, active,
+        rule_id: ruleId, chat_id: chatId, status, exclude_skipped: excludeSkipped, delivery, active,
         date_from: dateFrom, date_to: dateTo, mine, started_by: startedBy, team, limit: limit ?? EXECUTIONS_PAGE_LIMIT,
       },
     })

@@ -180,10 +180,14 @@ class InMemoryExecutionStore:
             self.messages[message_id] = (execution_id, state)
 
     async def dismiss(self, execution_id, now):
-        return self._transition(
-            execution_id, {AutomationExecutionStatus.FAILED, AutomationExecutionStatus.PAUSED},
-            attention_dismissed_at=now,
-        )
+        execution = self.executions.get(execution_id)
+        if execution is None:
+            return False
+        dismissable = execution.status in {AutomationExecutionStatus.FAILED, AutomationExecutionStatus.PAUSED}
+        if not dismissable and getattr(execution, "delivery_state", None) != "failed":
+            return False
+        execution.attention_dismissed_at = now
+        return True
 
     async def cancel(self, execution_id, now):
         return self._transition(
