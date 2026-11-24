@@ -357,10 +357,21 @@ class SqlExecutionStore:
             return
         async with session_scope() as session:
             await session.execute(pg_insert(AutomationExecutionMessage).values([
-                {"message_id": message_id, "execution_id": execution_id, "state": MessageDeliveryState.PENDING, "updated_at": now}
+                {
+                    "message_id": message_id, "execution_id": execution_id, "state": MessageDeliveryState.PENDING,
+                    "updated_at": now, "created_at": now,
+                }
                 for message_id in message_ids
             ]).on_conflict_do_nothing(index_elements=[AutomationExecutionMessage.message_id]))
             await _refresh_delivery(session, execution_id)
+
+    async def messages_queued_for_lead_since(self, lead_id: str, since: datetime) -> int:
+        async with session_scope() as session:
+            return await session.scalar(
+                select(func.count(AutomationExecutionMessage.message_id))
+                .join(AutomationExecution, AutomationExecution.id == AutomationExecutionMessage.execution_id)
+                .where(AutomationExecution.lead_id == lead_id, AutomationExecutionMessage.created_at >= since)
+            ) or 0
 
     async def record_message_state(self, message_id: int, state: str, now: datetime) -> int | None:
         async with session_scope() as session:

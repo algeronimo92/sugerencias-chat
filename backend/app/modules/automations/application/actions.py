@@ -395,6 +395,27 @@ SERVICE_WINDOW_ACTIONS = frozenset({
 })
 
 
+DAILY_CAP_REACHED = "Este cliente ya recibió el máximo de mensajes automáticos de hoy ({cap}). No se envió nada más."
+
+
+async def _require_under_daily_cap(deps: AutomationDeps, lead_id: str, execution_id: int) -> None:
+    """El tope de mensajes automáticos por cliente en 24 horas, si el negocio
+    puso uno. Varias automatizaciones sobre el mismo lead podían sumar una
+    ráfaga que ninguna, por separado, mandaba.
+
+    Lo que ya encoló esta misma ejecución no cuenta contra ella: reintentar
+    un paso devuelve el mismo mensaje, no manda otro."""
+    cap = await deps.daily_message_cap()
+    if not cap:
+        return
+    since = deps.now() - timedelta(hours=24)
+    sent = await deps.executions.messages_queued_for_lead_since(lead_id, since)
+    if sent >= cap:
+        own = len((await deps.executions.tracked_message_states([execution_id])).get(execution_id, {}))
+        if sent - own >= cap:
+            raise StepFailed(DAILY_CAP_REACHED.format(cap=cap))
+
+
 def with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -> AutomationDeps:
     """Claves de deduplicación estables por ejecución y paso: un reintento
     tras un crash no vuelve a encolar lo que ya quedó en la outbox."""
@@ -403,6 +424,7 @@ def with_outbox_dedupe(deps: AutomationDeps, execution_id: int, position: int) -
     async def enqueue_messages(chat_id: str, items: list[dict]) -> list[dict]:
         scope = f"automation:{execution_id}:{position}:{next(calls)}"
         keyed = [{**item, "dedupe_key": f"{scope}:{index}"} for index, item in enumerate(items)]
+        await _require_under_daily_cap(deps, chat_id, execution_id)
         # En la misma transacción que encola: la cola de envío no ve el
         # mensaje hasta el commit, así que su aviso de «enviado» nunca puede
         # llegar antes de que la ejecución sepa que ese mensaje es suyo.

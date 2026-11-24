@@ -589,3 +589,23 @@ async def test_a_team_reply_stops_only_the_system_follow_ups_that_asked_for_it(t
         assert (await _row(not_started)).status == AutomationExecutionStatus.CANCELLED
         for untouched in (deadline, by_hand, did_not_ask, other_lead):
             assert (await _row(untouched)).status == AutomationExecutionStatus.SCHEDULED
+
+
+async def test_counts_the_automated_messages_a_lead_got_in_the_window(tenant):
+    """La base del tope diario: lo que las automatizaciones le encolaron a un
+    cliente, de cualquier flujo, desde un momento dado."""
+    with tenant_context(tenant):
+        lead_id = await _lead()
+        first = await _execution(await _rule(), lead_id)
+        second = await _execution(await _rule(), lead_id)
+        other = await _execution(await _rule(), await _lead())
+        store = SqlExecutionStore()
+        await store.track_messages(first, [9301, 9302], NOW - timedelta(hours=30))
+        await store.track_messages(first, [9303], NOW - timedelta(hours=2))
+        await store.track_messages(second, [9304], NOW - timedelta(minutes=5))
+        await store.track_messages(other, [9305], NOW)
+        # Un acuse cambia updated_at, no cuándo se encoló.
+        await store.record_message_state(9301, "read", NOW)
+
+        assert await store.messages_queued_for_lead_since(lead_id, NOW - timedelta(hours=24)) == 2
+        assert await store.messages_queued_for_lead_since(lead_id, NOW - timedelta(hours=48)) == 4

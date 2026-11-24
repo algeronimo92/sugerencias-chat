@@ -254,6 +254,16 @@ export interface AutomationActionResult {
   branch?: string
   conditions?: WaitAnyCondition[]
   message_ids?: number[]
+  /** Lo que hizo un paso que no manda mensajes: a qué etapa movió, a quién
+   *  asignó o avisó, qué etiqueta tocó, qué tarea creó. */
+  stage?: string
+  user_id?: number | null
+  tag_id?: number
+  task_id?: number
+  service?: string | null
+  /** Explicación del propio motor cuando un paso se omitió. */
+  detail?: string
+  reason?: string
 }
 
 /** Un mensaje que mandó una ejecución y lo último que se supo de él. */

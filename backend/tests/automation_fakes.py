@@ -31,6 +31,8 @@ class InMemoryExecutionStore:
         self.children: list[dict] = []
         self.due: list[int] = []
         self.lead_resumes: list[str] = []
+        # lead_id -> mensajes automáticos de las últimas 24 h.
+        self.queued_for_lead: dict[str, int] = {}
         # message_id -> (execution_id, estado de entrega).
         self.messages: dict[int, tuple[int, str]] = {}
         self._ids = itertools.count(1000)
@@ -154,6 +156,9 @@ class InMemoryExecutionStore:
     async def track_messages(self, execution_id, message_ids, now):
         for message_id in message_ids:
             self.messages.setdefault(message_id, (execution_id, "pending"))
+
+    async def messages_queued_for_lead_since(self, lead_id, since):
+        return self.queued_for_lead.get(lead_id, 0)
 
     async def record_message_state(self, message_id, state, now):
         if message_id not in self.messages:

@@ -209,3 +209,55 @@ async def test_the_script_wires_the_app_before_reconciling(monkeypatch, capsys):
 
     assert order == ["configure", "reconcile apply=False", "close"]
     assert "nada que corregir" in capsys.readouterr().out
+
+
+class TestDailyCap:
+    """Varias automatizaciones sobre el mismo cliente podían sumar una ráfaga
+    de mensajes que ninguna mandaba por separado."""
+
+    @staticmethod
+    def _deps(deps, executions, *, cap, already):
+        async def enqueue(chat_id, items):
+            return [{"id": 800 + index, **item} for index, item in enumerate(items)]
+
+        async def daily_cap():
+            return cap
+
+        executions.queued_for_lead["chat-1"] = already
+        return dataclasses.replace(deps, enqueue_messages=enqueue, daily_message_cap=daily_cap)
+
+    async def test_at_the_cap_nothing_else_is_queued_and_the_step_says_why(self, deps, executions):
+        from app.modules.automations.domain.errors import StepFailed
+
+        wrapped = with_outbox_dedupe(self._deps(deps, executions, cap=3, already=3), execution_id=5, position=1)
+
+        with pytest.raises(StepFailed, match="máximo de mensajes automáticos de hoy \\(3\\)"):
+            await wrapped.enqueue_messages("chat-1", [{"message": {}}])
+        assert executions.messages == {}
+
+    async def test_below_the_cap_or_without_one_messages_go_out(self, deps, executions):
+        below = with_outbox_dedupe(self._deps(deps, executions, cap=3, already=2), execution_id=5, position=1)
+        assert len(await below.enqueue_messages("chat-1", [{"message": {}}])) == 1
+
+        no_cap = with_outbox_dedupe(self._deps(deps, executions, cap=None, already=500), execution_id=6, position=1)
+        assert len(await no_cap.enqueue_messages("chat-1", [{"message": {}}])) == 1
+
+    async def test_retrying_a_step_does_not_count_its_own_messages_against_it(self, deps, executions):
+        # Los tres mensajes del tope son de esta misma ejecución: reintentar
+        # un paso devuelve el mismo mensaje, no manda otro.
+        executions.messages.update({1: (5, "sent"), 2: (5, "sent"), 3: (5, "failed")})
+        wrapped = with_outbox_dedupe(self._deps(deps, executions, cap=3, already=3), execution_id=5, position=1)
+
+        assert len(await wrapped.enqueue_messages("chat-1", [{"message": {}}])) == 1
+
+
+class TestDailyCapSetting:
+    @pytest.mark.parametrize(("stored", "expected"), [("", None), ("  ", None), ("0", None), ("abc", None), ("5", 5), (" 12 ", 12)])
+    async def test_reads_the_cap_or_none(self, monkeypatch, stored, expected):
+        from unittest.mock import AsyncMock
+
+        from app.modules.automations.application import deps as deps_module
+
+        monkeypatch.setattr(deps_module, "get_effective", AsyncMock(return_value=stored))
+
+        assert await deps_module.daily_message_cap() == expected

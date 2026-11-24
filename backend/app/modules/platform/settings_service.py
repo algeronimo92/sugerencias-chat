@@ -305,6 +305,14 @@ SETTING_DEFS: list[SettingDef] = [
         boolean=True,
         hidden=True,
     ),
+    # Vacío es sin tope. Lo lee el motor antes de encolar cada mensaje.
+    SettingDef(
+        "automation_daily_message_cap",
+        "Máximo de mensajes automáticos por cliente en 24 horas (vacío: sin tope)",
+        "automations",
+        "Automatizaciones",
+        secret=False,
+    ),
     # JSON del horario semanal; lo edita la tarjeta «Horario de atención» por
     # su propia ruta, que lo valida (app/modules/platform/business_hours.py).
     SettingDef("business_hours", "Horario de atención", "general", "General", secret=False, hidden=True),
@@ -589,6 +597,11 @@ async def update_settings(values: dict[str, str]) -> None:
         except ValueError as exc:
             raise ValueError("El horario de atención no es válido") from exc
         values["business_hours"] = serialize_days(parse_days(raw_hours))
+    if "automation_daily_message_cap" in values:
+        cap = values["automation_daily_message_cap"].strip()
+        if cap and not (cap.isdigit() and 1 <= int(cap) <= 200):
+            raise ValueError("El máximo de mensajes automáticos debe ser un número entre 1 y 200, o quedar vacío")
+        values["automation_daily_message_cap"] = cap
     if "auto_assign_leads_enabled" in values:
         enabled = values["auto_assign_leads_enabled"].strip().lower()
         if enabled not in {"", "true", "false"}:
