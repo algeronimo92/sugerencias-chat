@@ -122,6 +122,20 @@ export function sentMessage(content: string, overrides: Partial<Message> = {}): 
 
 /** Un flujo manual como los que lista "Iniciar flujo". Los nombres largos son
  *  a propósito: son los que se cortaban en el celular. */
+// Por JSON: el contrato tipa el flujo como JSON abierto, sin los literales.
+const MINIMAL_FLOW = JSON.parse(JSON.stringify({
+  conditions: {},
+  nodes: [
+    { id: 'trigger-1', type: 'trigger', position: { x: 70, y: 220 }, data: { trigger_type: 'manual' } },
+    { id: 'action-1', type: 'action', position: { x: 390, y: 220 }, data: { action: { type: 'send_message', text: 'Hola {{nombre}}' } } },
+    { id: 'end-1', type: 'end', position: { x: 710, y: 220 }, data: { label: 'Fin', close_conversation: false } },
+  ],
+  edges: [
+    { id: 'e1', source: 'trigger-1', target: 'action-1', source_handle: 'next' },
+    { id: 'e2', source: 'action-1', target: 'end-1', source_handle: 'next' },
+  ],
+}))
+
 export function flow(id: number, name: string): Flow {
   return {
     id,
@@ -131,8 +145,9 @@ export function flow(id: number, name: string): Flow {
     conditions: {},
     actions: [],
     builder_mode: 'visual',
-    flow_definition: {},
-    published_flow_definition: {},
+    flow_definition: MINIMAL_FLOW,
+    // Publicado de verdad: el backend nunca manda una versión publicada vacía.
+    published_flow_definition: MINIMAL_FLOW,
     flow_version: 1,
     delay_minutes: 0,
     max_executions_per_hour: null,
