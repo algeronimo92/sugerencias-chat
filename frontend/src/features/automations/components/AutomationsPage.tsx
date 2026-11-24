@@ -1,7 +1,7 @@
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import {
-Activity,AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
-FileJson,GitBranch,History,Loader2,LocateFixed,MessageCircle,Pencil,Plus,RotateCcw,Save,ShieldCheck,
+AlertTriangle,Ban,Bot,CheckCircle2,ChevronDown,Clock3,Copy,
+FileJson,GitBranch,History,Loader2,LocateFixed,MessageCircle,Pencil,Plus,RotateCcw,ShieldCheck,
 Send,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -11,25 +11,17 @@ import { Checkbox } from '../../../shared/ui/Checkbox'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { useTemplates } from '../../templates/public/useTemplates'
-import { isAutomaticTemplate } from '../domain/automaticTemplates'
-import { templateOptions } from './templateOptions'
-import { INITIAL_LEAD_STAGE, conditionStageOptions, stageOptions } from '../../leads/public/leadStageMeta'
 import { useTags } from '../../catalogs/public/useTags'
-import { useLeadServices } from '../../catalogs/public/useLeadServices'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
-import { MediaAssetField } from '../../media/public/MediaAssetField'
-import { useMediaLibrary } from '../../media/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
-import { AUTOMATION_ACTION_LABELS as ACTION_LABELS, AutomationActionType as ActionType, AutomationBuilderMode, AutomationExecutionStatus, AutomationRecipient, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, assertNever, automationStepLabel, isAutomationActionType, isAutomationTrigger, isServiceWindowFailure } from '../domain/automationCatalog'
-import { TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue, isTaskPriority, isTaskType } from '../../tasks/public/taskCatalog'
+import { AutomationBuilderMode, AutomationExecutionStatus, AutomationTrigger as TriggerType, automationStepLabel, isServiceWindowFailure } from '../domain/automationCatalog'
 import {
-useAttention,useAutomationExecutions,useAutomationExecutionsCount,useAutomationRules,useCancelExecution,useCreateAutomation,useCreateVisualFlow,
+useAttention,useAutomationExecutions,useAutomationExecutionsCount,useAutomationRules,useCancelExecution,useCreateVisualFlow,
 useDeleteAutomation,useDuplicateAutomation,useRetryExecution,useUpdateAutomation,
 } from '../queries'
 import type {
-AutomationAction,AutomationActionResult,AutomationActionType,AutomationConditions,AutomationExecution,
-AutomationFlowDefinition,AutomationRule,AutomationTrigger,
+AutomationActionResult,AutomationExecution,
+AutomationFlowDefinition,AutomationRule,
 } from '../types'
 import { EXECUTION_OUTCOME_LABELS, stepStatusLabel, executionActorLabel, executionOutcome, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionOutcome, outcomeFilter, readableExecutionError, stepResultDetail, type ExecutionOutcomeValue, type StepLookups } from '../utils/automationExecutions'
 import { EXECUTIONS_MAX_LIMIT, EXECUTIONS_PAGE_LIMIT } from '../api'
@@ -39,93 +31,15 @@ import { MessageMarks } from './MessageMarks'
 import type { FlowStarter } from '../domain/flowRecipes'
 import { todayISODate } from '../../../shared/utils/datetime'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
-import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { VisualFlowBuilder } from './VisualFlowBuilder'
-import { HIGHLIGHT_RING, ServiceHighlightNotice, type ServiceHighlight } from './ServiceHighlightNotice'
-import { actionTypeOptions } from './actionTypeOptions'
-import { actionNamesService, conditionsNameService, ruleServiceSummary } from '../domain/serviceReferences'
+import type { ServiceHighlight } from './ServiceHighlightNotice'
 import { useRuleUrl } from '../hooks/useRuleUrl'
-
-function defaultAction(type: AutomationActionType): AutomationAction {
-  switch (type) {
-    case ActionType.CreateTask:
-      return { type, title: 'Dar seguimiento a {{nombre}}', description: '', task_type: TaskTypeValue.FollowUp, priority: TaskPriorityValue.Normal, due_minutes: 60, remind_minutes_before: 15, assigned_user_id: null }
-    case ActionType.AssignSeller:
-      return { type, user_id: null }
-    case ActionType.AddTag:
-    case ActionType.RemoveTag:
-      return { type, tag_id: null }
-    case ActionType.ChangeStage:
-      // La etapa inicial existe en todo negocio; el resto las define cada uno.
-      return { type, stage: INITIAL_LEAD_STAGE }
-    case ActionType.Notify:
-      return { type, recipient: AutomationRecipient.Seller, user_id: null, title: 'Seguimiento pendiente', body: 'Revisa el lead {{nombre}}.' }
-    case ActionType.SendTemplate:
-      return { type, template_id: null }
-    case ActionType.SendMessage:
-      return { type, text: '' }
-    case ActionType.ChangeService:
-      return { type, service: null }
-    case ActionType.SetConversationState:
-      return { type, state: 'closed' }
-    case ActionType.SendAudio:
-      return { type, media_asset_id: null }
-    case ActionType.SendAttachment:
-      return { type, media_asset_id: null }
-    case ActionType.SendMedia:
-      return { type, media_asset_id: null, caption: '' }
-    case ActionType.ReactToLastCustomerMessage:
-      return { type, emoji: '❤️' }
-    default:
-      return assertNever(type)
-  }
-}
-
-interface RuleForm {
-  name: string
-  triggerType: AutomationTrigger
-  triggerMinutes: number
-  delayMinutes: number
-  maxExecutionsPerHour: number | null
-  conditions: AutomationConditions
-  actions: AutomationAction[]
-  isActive: boolean
-}
-
-const EMPTY_FORM: RuleForm = {
-  name: '', triggerType: TriggerType.LeadCreated, triggerMinutes: 30, delayMinutes: 0, maxExecutionsPerHour: null,
-  conditions: { stage: null, origin_contains: '', service_contains: '', seller_id: null, tag_id: null, require_open_window: false, business_hours_only: false, cooldown_minutes: null },
-  actions: [defaultAction(ActionType.CreateTask)], isActive: true,
-}
 
 const triggerLabel = executionTriggerLabel
 
 function actionLabel(value: AutomationActionResult['type']) {
   return automationStepLabel(value)
-}
-
-function validateForm(form: RuleForm) {
-  const errors: string[] = []
-  if (!form.name.trim()) errors.push('Escribe un nombre para la regla (hasta 120 caracteres).')
-  if (RESPONSE_OVERDUE_TRIGGERS.has(form.triggerType) && (!form.triggerMinutes || form.triggerMinutes < 1 || form.triggerMinutes > 43200)) errors.push('El tiempo sin respuesta debe estar entre 1 minuto y 30 días.')
-  if (!form.actions.length || form.actions.length > 10) errors.push('Agrega entre 1 y 10 acciones.')
-  form.actions.forEach((action, index) => {
-    const prefix = `Acción ${index + 1}`
-    if (action.type === ActionType.CreateTask && (!action.title.trim() || !action.due_minutes || action.due_minutes < 1)) errors.push(`${prefix}: escribe el título de la tarea (hasta 160 caracteres) y un vencimiento de 1 minuto a 30 días.`)
-    if (action.type === ActionType.CreateTask && action.remind_minutes_before >= action.due_minutes) errors.push(`${prefix}: el recordatorio debe ser antes del vencimiento; pon menos minutos en «Recordar antes».`)
-    if (action.type === ActionType.AssignSeller && !action.user_id) errors.push(`${prefix}: elige el vendedor que se asignará.`)
-    if ((action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && !action.tag_id) errors.push(`${prefix}: elige la etiqueta.`)
-    if (action.type === ActionType.Notify && (!action.title.trim() || !action.body.trim())) errors.push(`${prefix}: escribe el título (hasta 160 caracteres) y el contenido (hasta 1000) de la notificación.`)
-    if (action.type === ActionType.Notify && action.recipient === AutomationRecipient.Specific && !action.user_id) errors.push(`${prefix}: elige a qué usuario se le avisará.`)
-    if (action.type === ActionType.SendTemplate && !action.template_id) errors.push(`${prefix}: elige la plantilla que se enviará.`)
-    if (action.type === ActionType.SendMessage && !action.text.trim()) errors.push(`${prefix}: escribe el mensaje que se enviará.`)
-    if (action.type === ActionType.ReactToLastCustomerMessage && (!action.emoji.trim() || action.emoji.length > 16)) errors.push(`${prefix}: elige el emoji de la reacción.`)
-    if ((action.type === ActionType.SendAudio || action.type === ActionType.SendAttachment) && !action.media_asset_id) errors.push(`${prefix}: elige el archivo que se enviará.`)
-    if (action.type === ActionType.SendMedia && !action.media_asset_id) errors.push(`${prefix}: elige el archivo que se enviará.`)
-    if (action.type === ActionType.SendMedia && action.caption.length > 1024) errors.push(`${prefix}: el texto que acompaña al archivo puede tener hasta 1024 caracteres.`)
-  })
-  return errors
 }
 
 type AutomationsTab = 'attention' | 'automatic' | 'sequences' | 'activity'
@@ -177,10 +91,6 @@ export function AutomationsPage() {
   const { data: historyTotal } = useAutomationExecutionsCount(historyFilters)
   const { data: users = [] } = useUsers(true)
   const { data: tags = [] } = useTags()
-  const { data: leadServices = [] } = useLeadServices()
-  const { data: templates = [] } = useTemplates(true)
-  const { data: mediaAssets = [] } = useMediaLibrary()
-  const create = useCreateAutomation()
   const createVisualFlow = useCreateVisualFlow()
   const update = useUpdateAutomation()
   const duplicate = useDuplicateAutomation()
@@ -191,21 +101,14 @@ export function AutomationsPage() {
   // enviados": sin él, quien llegaba buscando el historial caía en Reglas.
   const [searchParams] = useSearchParams()
   const [chosenTab, setTab] = useState<AutomationsTab | null>(() => searchParams.get('tab') === 'history' ? 'activity' : null)
-  const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [formOpen, setFormOpen] = useState(false)
   const [flowBuilder, setFlowBuilder] = useState<{ rule?: AutomationRule; highlight?: ServiceHighlight; block?: string; starter?: FlowStarter } | null>(null)
   // Crear empieza por elegir qué se quiere lograr, no por un lienzo en blanco.
   const [recipePickerOpen, setRecipePickerOpen] = useState(false)
   // Qué ejecuciones tienen el detalle abierto: solo esas piden las marcas de sus mensajes.
   const [openExecutions, setOpenExecutions] = useState<ReadonlySet<number>>(new Set())
-  // Llegada desde Catálogos: qué servicio resaltar en la regla abierta.
-  const [formHighlight, setFormHighlight] = useState<ServiceHighlight | null>(null)
   const [importFlowOpen, setImportFlowOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const activeUsers = users.filter(user => user.is_active)
   const stageCatalog = useLeadStageCatalog()
-  const automaticTemplates = useMemo(() => templates.filter(isAutomaticTemplate), [templates])
   // Para decir «a la etapa Agendado» o «a Ana» en el detalle de un paso, en vez de ids.
   const stepLookups = useMemo<StepLookups>(() => ({
     stageName: key => stageCatalog.label(key),
@@ -219,10 +122,6 @@ export function AutomationsPage() {
     { id: 'createdAt', accessorFn: execution => execution.created_at },
   ], [])
   const executionTable = useReactTable({ data: executions, columns: historyColumns, getCoreRowModel: getCoreRowModel() })
-  const isSaving = create.isPending || update.isPending
-  // Ya no se crean reglas simples: todo nace como flujo, desde una receta o
-  // de cero. Las que existan se siguen listando, editando y ejecutando.
-  const simpleRules = rules.filter(rule => rule.builder_mode !== AutomationBuilderMode.Visual)
   const visualRules = rules.filter(rule => rule.builder_mode === AutomationBuilderMode.Visual)
   // Solo los flujos tienen bloques: "Ver en el flujo" del historial va a ellos.
   const visualRuleIds = new Set(visualRules.map(rule => rule.id))
@@ -272,26 +171,6 @@ export function AutomationsPage() {
     if (leadId) navigate(`/chat/${encodeURIComponent(leadId)}`)
   }
 
-  function openEdit(rule: AutomationRule, highlight: ServiceHighlight | null = null) {
-    setEditingId(rule.id); setFormHighlight(highlight)
-    setForm({
-      name: rule.name,
-      triggerType: rule.trigger_type,
-      triggerMinutes: rule.trigger_config.minutes ?? 30,
-      delayMinutes: rule.delay_minutes,
-      maxExecutionsPerHour: rule.max_executions_per_hour,
-      conditions: { ...EMPTY_FORM.conditions, ...rule.conditions },
-      actions: rule.actions,
-      isActive: rule.is_active,
-    })
-    setError(null); setFormOpen(true)
-  }
-
-  function closeForm() {
-    if (isSaving) return
-    setFormOpen(false); setEditingId(null); setError(null); setFormHighlight(null); ruleUrl.close()
-  }
-
   // La URL dice qué automatización está abierta (?automatizacion=<id>, y el
   // realce si viene de Catálogos). Se abre al renderizar, no en un efecto, y
   // una vez por valor: abrir o cerrar desde la lista solo cambia la URL.
@@ -301,56 +180,12 @@ export function AutomationsPage() {
     setShownRule(ruleUrl.key)
     const { rule, highlight, block } = ruleUrl
     if (rule?.builder_mode === AutomationBuilderMode.Visual) { setTab(rule.trigger_type === TriggerType.Manual ? 'sequences' : 'automatic'); setFlowBuilder({ rule, highlight: highlight ?? undefined, block: block ?? undefined }) }
-    else if (rule) { setTab('automatic'); openEdit(rule, highlight) }
   }
-  // Se marca solo lo que pidió Catálogos: la acción que asigna el servicio o la condición que filtra por su nombre.
-  const actionService = formHighlight?.part === 'action' ? formHighlight.service : null
-  const conditionHighlighted = formHighlight?.part === 'condition' && conditionsNameService(form.conditions, formHighlight.service)
-  const highlightedActions = form.actions.filter(action => actionService !== null && actionNamesService(action, actionService)).length
 
   async function importFlow(flowDefinition: AutomationFlowDefinition, name: string) {
     const created = await createVisualFlow.mutateAsync({ name, flow_definition: flowDefinition })
     toast.success('Flujo importado')
     setFlowBuilder({ rule: created })
-  }
-
-  function setAction(index: number, nextAction: AutomationAction) {
-    setForm(current => ({ ...current, actions: current.actions.map((action, actionIndex) => actionIndex === index ? nextAction : action) }))
-  }
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault(); setError(null)
-    const errors = validateForm(form)
-    if (errors.length) { setError(errors.join('\n')); return }
-    const input = {
-      name: form.name.trim(),
-      trigger_type: form.triggerType,
-      trigger_config: RESPONSE_OVERDUE_TRIGGERS.has(form.triggerType) ? { minutes: Number(form.triggerMinutes) } : {},
-      conditions: {
-        stage: form.conditions.stage || null,
-        origin_contains: form.conditions.origin_contains?.trim() || null,
-        service_contains: form.conditions.service_contains?.trim() || null,
-        seller_id: form.conditions.seller_id || null,
-        tag_id: form.conditions.tag_id || null,
-        require_open_window: !!form.conditions.require_open_window,
-        business_hours_only: !!form.conditions.business_hours_only,
-        cooldown_minutes: form.conditions.cooldown_minutes || null,
-      },
-      actions: form.actions,
-      delay_minutes: Number(form.delayMinutes) || 0,
-      max_executions_per_hour: form.maxExecutionsPerHour || null,
-      is_active: form.isActive,
-      // Solo los flujos visuales de trigger manual usan visible_to_sellers
-      // (se edita desde VisualFlowBuilder); una regla "simple" nunca aplica.
-      visible_to_sellers: false,
-    }
-    const successMessage = editingId == null ? 'Automatización creada' : 'Automatización actualizada'
-    const options = {
-      onSuccess: () => { toast.success(successMessage); closeForm() },
-      onError: (reason: Error) => setError(extractErrorMessage(reason)),
-    }
-    if (editingId == null) create.mutate(input, options)
-    else update.mutate({ id: editingId, ...input }, options)
   }
 
   function toggleRule(rule: AutomationRule) {
@@ -467,7 +302,7 @@ export function AutomationsPage() {
         </div>
         <nav aria-label="Secciones de automatizaciones" className="flex gap-1 overflow-x-auto pb-2 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0">
           {TABS.map(({ key, label, icon: Icon }) => {
-            const count = { attention: attention.count, automatic: simpleRules.length + automaticFlows.length, sequences: sequenceFlows.length, activity: null }[key]
+            const count = { attention: attention.count, automatic: automaticFlows.length, sequences: sequenceFlows.length, activity: null }[key]
             const selected = !landingUndecided && tab === key
             return (
               <button key={key} type="button" onClick={() => setTab(key)} aria-current={selected ? 'page' : undefined} className={`flex h-10 shrink-0 items-center gap-3 rounded-lg px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-selected font-semibold text-fg' : 'text-fg hover:bg-subtle'}`}>
@@ -493,7 +328,7 @@ export function AutomationsPage() {
           </div>
         </header>
 
-        {error && !formOpen && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
+        {error && <div className="mb-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
         {landingUndecided ? (
           <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div>
@@ -502,15 +337,7 @@ export function AutomationsPage() {
         ) : tab === 'automatic' ? (
           isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : (
             <div className="space-y-4">
-              {simpleRules.length > 0 && <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))' }}>{simpleRules.map(rule => (
-            <article key={rule.id} className={`rounded-2xl border bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-wa-panel-dark/90 ${rule.is_active ? 'border-green-200 dark:border-green-900' : 'border-wa-border opacity-75 dark:border-wa-border-dark'}`}>
-              <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rule.is_active ? 'bg-green-100 text-wa-primary-strong dark:bg-green-950 dark:text-green-300' : 'bg-wa-field text-wa-muted dark:bg-wa-head-dark'}`}><Bot className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-sm font-semibold text-wa-text dark:text-white">{rule.name}</h2><p className="mt-0.5 text-xs text-wa-muted">Cuando: {triggerLabel(rule.trigger_type)}{rule.trigger_config.minutes ? ` · ${rule.trigger_config.minutes} min` : ''}</p><p className="mt-0.5 text-[10px] text-wa-muted">Creada por {rule.created_by_name}</p></div><div className="flex gap-1"><button type="button" onClick={() => ruleUrl.open(rule.id)} title="Editar" className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 dark:hover:bg-wa-head-dark"><Pencil className="h-3.5 w-3.5" /></button><button type="button" disabled={duplicate.isPending} aria-busy={duplicate.isPending && duplicate.variables === rule.id} onClick={() => duplicateRule(rule)} title={duplicate.isPending && duplicate.variables === rule.id ? 'Duplicando…' : 'Duplicar'} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field hover:text-gray-700 disabled:cursor-wait disabled:opacity-40 dark:hover:bg-wa-head-dark">{duplicate.isPending && duplicate.variables === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}</button>{toggleControl(rule)}{deleteControl(rule)}</div></div>
-                <div className="mt-3 flex flex-wrap gap-1.5">{rule.actions.map((action, index) => <span key={index} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{index + 1}. {ACTION_LABELS[action.type]}</span>)}{rule.delay_minutes > 0 && <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">Espera {rule.delay_minutes} min</span>}{rule.max_executions_per_hour && <span className="rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Máx. {rule.max_executions_per_hour}/h</span>}</div>
-                <div className="mt-3 flex items-center justify-between border-t border-wa-border pt-3 text-[10px] text-wa-muted dark:border-wa-border-dark"><span>{rule.execution_count} ejecuciones · última {formatDate(rule.last_execution_at)}</span>{rule.last_execution_status && <span className={`rounded-full px-2 py-0.5 ${executionTone(rule.last_execution_status)}`}>{executionStatusLabel(rule.last_execution_status)}</span>}</div>
-              </div></div>
-            </article>
-              ))}</div>}
-              {flowCards(automaticFlows, simpleRules.length > 0 ? null : { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo: dar la bienvenida, hacer seguimiento, avisar a tu equipo.', action: 'Crear la primera' })}
+              {flowCards(automaticFlows, { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo: dar la bienvenida, hacer seguimiento, avisar a tu equipo.', action: 'Crear la primera' })}
             </div>
           )
         ) : tab === 'sequences' ? (
@@ -631,34 +458,6 @@ export function AutomationsPage() {
       </main>
       </div>
 
-      {formOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onMouseDown={event => { if (event.target === event.currentTarget) closeForm() }}><form onSubmit={submit} className="automation-form flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-wa-border bg-white shadow-2xl dark:border-wa-border-dark dark:bg-wa-panel-dark">
-        <header className="flex items-center justify-between border-b border-wa-border px-5 py-4 dark:border-wa-border-dark"><h2 className="font-semibold text-wa-text dark:text-white">{editingId == null ? 'Nueva automatización' : 'Editar automatización'}</h2><button type="button" onClick={closeForm} className="rounded-lg p-2 text-wa-muted hover:bg-wa-field dark:hover:bg-wa-head-dark"><XCircle className="h-5 w-5" /></button></header>
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-          {formHighlight && <ServiceHighlightNotice highlight={formHighlight} where={ruleServiceSummary(conditionHighlighted, highlightedActions)} doneHint="Guarda la regla" />}
-          <section className="grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Nombre<input required maxLength={120} value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} placeholder="Ej. Seguimiento de leads nuevos" className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Disparador<Select value={form.triggerType} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) setForm(current => ({ ...current, triggerType: value })) }} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark">{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(form.triggerType) && <label className="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Minutos de espera<input required type="number" min={1} max={43200} value={form.triggerMinutes} onChange={event => setForm(current => ({ ...current, triggerMinutes: Number(event.target.value) }))} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark" /></label>}<label className="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Retrasar toda la regla (minutos)<input type="number" min={0} max={10080} value={form.delayMinutes} onChange={event => setForm(current => ({ ...current, delayMinutes: Number(event.target.value) }))} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Máximo de ejecuciones por hora<input type="number" min={1} max={1000} placeholder="Sin límite" value={form.maxExecutionsPerHour ?? ''} onChange={event => setForm(current => ({ ...current, maxExecutionsPerHour: event.target.value ? Number(event.target.value) : null }))} className="rounded-lg border border-wa-border bg-white px-3 py-2 text-sm dark:border-wa-border-dark dark:bg-wa-head-dark" /></label></section>
-
-          <section><h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-wa-text-dark"><GitBranch className="h-3.5 w-3.5" />Condiciones opcionales</h3><div className="grid gap-3 rounded-xl border border-wa-border p-3 dark:border-wa-border-dark md:grid-cols-3"><label className="grid gap-1 text-[11px] text-wa-muted">Etapa<Select value={form.conditions.stage ?? ''} onChange={event => { const stage = event.target.value || null; setForm(current => ({ ...current, conditions: { ...current.conditions, stage } })) }} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Cualquiera</option>{conditionStageOptions(stageCatalog, form.conditions.stage).map(stage => <option key={stage.key} value={stage.key}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}</Select></label><label className="grid gap-1 text-[11px] text-wa-muted">Origen contiene<input maxLength={120} value={form.conditions.origin_contains ?? ''} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, origin_contains: event.target.value } }))} placeholder="Facebook" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label data-highlighted={conditionHighlighted || undefined} className={`grid gap-1 text-[11px] text-wa-muted ${conditionHighlighted ? HIGHLIGHT_RING : ''}`}>Servicio de interés contiene<input maxLength={120} value={form.conditions.service_contains ?? ''} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, service_contains: event.target.value } }))} placeholder="Limpieza" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-[11px] text-wa-muted">Vendedor<Select value={form.conditions.seller_id ?? ''} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, seller_id: event.target.value ? Number(event.target.value) : null } }))} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Cualquiera</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select></label><label className="grid gap-1 text-[11px] text-wa-muted">Etiqueta<Select value={form.conditions.tag_id ?? ''} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, tag_id: event.target.value ? Number(event.target.value) : null } }))} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Cualquiera</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select></label><div className="flex flex-col justify-end gap-2 pb-1"><label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!form.conditions.require_open_window} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, require_open_window: event.target.checked } }))} />Ventana de WhatsApp abierta</label><label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300"><Checkbox checked={!!form.conditions.business_hours_only} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, business_hours_only: event.target.checked } }))} />Solo en el horario de atención</label></div><label className="grid gap-1 text-[11px] text-wa-muted md:col-span-3">No repetir para el mismo lead durante (minutos)<input type="number" min={1} max={43200} placeholder="Sin límite" value={form.conditions.cooldown_minutes ?? ''} onChange={event => setForm(current => ({ ...current, conditions: { ...current.conditions, cooldown_minutes: event.target.value ? Number(event.target.value) : null } }))} className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label></div></section>
-
-          <section><div className="mb-2 flex items-center justify-between"><h3 className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-wa-text-dark"><Activity className="h-3.5 w-3.5" />Acciones en orden</h3><button type="button" disabled={form.actions.length >= 10} onClick={() => setForm(current => ({ ...current, actions: [...current.actions, defaultAction(ActionType.CreateTask)] }))} className="flex items-center gap-1 text-xs font-semibold text-wa-primary-strong disabled:opacity-40 dark:text-wa-primary"><Plus className="h-3.5 w-3.5" />Agregar</button></div><div className="space-y-3">{form.actions.map((action, index) => <div key={index} data-highlighted={(actionService !== null && actionNamesService(action, actionService)) || undefined} className="rounded-xl border border-violet-200 bg-violet-50/30 p-3 data-[highlighted=true]:ring-2 data-[highlighted=true]:ring-amber-400 data-[highlighted=true]:ring-offset-2 dark:border-violet-900 dark:bg-violet-950/10 dark:ring-offset-wa-panel-dark"><div className="mb-3 flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-[10px] font-bold text-white">{index + 1}</span><Select value={action.type} onChange={event => { if (isAutomationActionType(event.target.value)) setAction(index, defaultAction(event.target.value)) }} className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-xs dark:border-violet-900 dark:bg-wa-head-dark">{actionTypeOptions()}</Select><button type="button" disabled={form.actions.length === 1} onClick={() => setForm(current => ({ ...current, actions: current.actions.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-red-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button></div>
-            {action.type === ActionType.CreateTask && <div className="grid gap-2 md:grid-cols-3"><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark md:col-span-2">Título de la tarea<input required maxLength={160} value={action.title} onChange={event => setAction(index, { ...action, title: event.target.value })} placeholder="Ej. Dar seguimiento a {{nombre}}" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Tipo de tarea<Select value={action.task_type} onChange={event => { const value = event.target.value; if (isTaskType(value)) setAction(index, { ...action, task_type: value }) }} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark">{TASK_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</Select></label><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark md:col-span-3">Descripción<input maxLength={1000} value={action.description ?? ''} onChange={event => setAction(index, { ...action, description: event.target.value })} placeholder="Opcional" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Vence en minutos<input type="number" min={1} max={43200} value={action.due_minutes} onChange={event => setAction(index, { ...action, due_minutes: Number(event.target.value) })} className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Recordar antes (min)<input type="number" min={0} value={action.remind_minutes_before} onChange={event => setAction(index, { ...action, remind_minutes_before: Number(event.target.value) })} className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Responsable<Select value={action.assigned_user_id ?? ''} onChange={event => setAction(index, { ...action, assigned_user_id: event.target.value ? Number(event.target.value) : null })} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Vendedor del lead</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select></label><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Prioridad<Select value={action.priority} onChange={event => { const value = event.target.value; if (isTaskPriority(value)) setAction(index, { ...action, priority: value }) }} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value={TaskPriorityValue.Low}>Baja</option><option value={TaskPriorityValue.Normal}>Normal</option><option value={TaskPriorityValue.High}>Alta</option></Select></label></div>}
-            {action.type === ActionType.AssignSeller && <Select required value={action.user_id ?? ''} onChange={event => setAction(index, { ...action, user_id: Number(event.target.value) || null })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona vendedor</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}
-            {(action.type === ActionType.AddTag || action.type === ActionType.RemoveTag) && <Select required value={action.tag_id ?? ''} onChange={event => setAction(index, { ...action, tag_id: Number(event.target.value) || null })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona etiqueta</option>{tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</Select>}
-            {action.type === ActionType.ChangeStage && <Select value={action.stage} onChange={event => setAction(index, { ...action, stage: event.target.value })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark">{stageOptions(stageCatalog, action.stage).map(stage => <option key={stage.key} value={stage.key} disabled={!stage.is_active}>{stage.is_active ? stage.name : `${stage.name} (inactiva)`}</option>)}</Select>}
-            {action.type === ActionType.Notify && <div className="grid gap-2 md:grid-cols-2"><Select value={action.recipient} onChange={event => setAction(index, { ...action, recipient: event.target.value === AutomationRecipient.Specific ? AutomationRecipient.Specific : AutomationRecipient.Seller, user_id: null })} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value={AutomationRecipient.Seller}>Vendedor del lead</option><option value={AutomationRecipient.Specific}>Usuario específico</option></Select>{action.recipient === AutomationRecipient.Specific && <Select required value={action.user_id ?? ''} onChange={event => setAction(index, { ...action, user_id: Number(event.target.value) || null })} className="rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona usuario</option>{activeUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>}<input required maxLength={160} value={action.title} onChange={event => setAction(index, { ...action, title: event.target.value })} placeholder="Título" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark md:col-span-2" /><textarea required maxLength={1000} rows={2} value={action.body} onChange={event => setAction(index, { ...action, body: event.target.value })} placeholder="Contenido de la notificación" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark md:col-span-2" /></div>}
-            {action.type === ActionType.SendTemplate && <Select required value={action.template_id ?? ''} onChange={event => setAction(index, { ...action, template_id: Number(event.target.value) || null })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Selecciona plantilla</option>{templateOptions(automaticTemplates)}</Select>}
-            {action.type === ActionType.SendMessage && <textarea required rows={3} value={action.text} onChange={event => setAction(index, { ...action, text: event.target.value })} placeholder="Escribe el mensaje a enviar..." className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" />}
-            {action.type === ActionType.ChangeService && <Select value={action.service ?? ''} onChange={event => setAction(index, { ...action, service: event.target.value || null })} className="w-full rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="">Quitar servicio de interés</option>{action.service && !leadServices.some(service => service.name === action.service) && <option value={action.service}>{action.service} (valor actual)</option>}{leadServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</Select>}
-            {action.type === ActionType.SetConversationState && <Select value={action.state} onChange={event => setAction(index, { ...action, state: event.target.value === 'open' ? 'open' : 'closed' })} className="w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark"><option value="open">Abrir conversación</option><option value="closed">Cerrar conversación</option></Select>}
-            {action.type === ActionType.SendAudio && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} kind="audio" onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
-            {action.type === ActionType.SendAttachment && <MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => setAction(index, { ...action, media_asset_id: id })} />}
-            {action.type === ActionType.SendMedia && <div className="space-y-2"><MediaAssetField mediaAssetId={action.media_asset_id} mediaAssets={mediaAssets} onChange={id => setAction(index, { ...action, media_asset_id: id })} /><label className="grid gap-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">Caption o texto acompañante<textarea rows={3} maxLength={1024} value={action.caption} onChange={event => setAction(index, { ...action, caption: event.target.value })} placeholder="Ej. Hola {{nombre}}, mira este contenido…" className="rounded-lg border border-wa-border px-2.5 py-2 text-xs dark:border-wa-border-dark dark:bg-wa-head-dark" /></label></div>}
-            {action.type === ActionType.ReactToLastCustomerMessage && <AutomationReactionPicker emoji={action.emoji} onChange={emoji => setAction(index, { ...action, emoji })} />}
-          </div>)}</div></section>
-
-          {error && <div className="whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
-        </div>
-        <footer className="flex items-center justify-between gap-3 border-t border-wa-border px-5 py-3.5 dark:border-wa-border-dark"><label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Checkbox checked={form.isActive} onChange={event => setForm(current => ({ ...current, isActive: event.target.checked }))} />Activar al guardar</label><div className="flex gap-2"><button type="button" onClick={closeForm} className="rounded-lg px-3 py-2 text-sm text-wa-muted">Cancelar</button><button type="submit" disabled={isSaving} className="flex items-center gap-1.5 rounded-lg bg-wa-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar regla</button></div></footer>
-      </form></div>}
       {recipePickerOpen && <RecipePicker section={tab === 'sequences' ? 'sequences' : 'automatic'} onClose={() => setRecipePickerOpen(false)} onChoose={starter => { setRecipePickerOpen(false); setFlowBuilder({ starter: starter ?? undefined }) }} />}
       {flowBuilder && <VisualFlowBuilder rule={flowBuilder.rule} highlight={flowBuilder.highlight} initialBlock={flowBuilder.block} starter={flowBuilder.starter} onClose={() => { setFlowBuilder(null); ruleUrl.close() }} />}
       {importFlowOpen && <ImportFlowJsonDialog

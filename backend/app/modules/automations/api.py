@@ -4,14 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.modules.automations.domain.types import AutomationBuilderMode
 from app.modules.auth.public import User
-from app.modules.automations.schemas import AutomationExecutionCount, AutomationExecutionItem, AutomationExecutionMessageItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleCreate, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
+from app.modules.automations.schemas import AutomationExecutionCount, AutomationExecutionItem, AutomationExecutionMessageItem, AutomationExecutionRetryRequest, AutomationFlowCreate, AutomationFlowSimulation, AutomationFlowSimulationRequest, AutomationFlowUpdate, AutomationFlowVersionItem, AutomationRuleItem, AutomationRuleUpdate, ManualFlowStartRequest
 from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.ports.visibility import ensure_lead_visible, require_visible_lead, seller_scope
 from app.modules.automations.public import (
     cancel_automation_execution,
     dismiss_automation_execution,
     create_visual_flow,
-    create_automation_rule,
     delete_automation_rule,
     duplicate_automation_rule,
     get_automation_execution,
@@ -31,7 +30,6 @@ from app.modules.automations.public import (
     simulate_visual_flow,
     start_manual_flow_execution,
     update_automation_rule,
-    validate_automation_rule,
 )
 
 require_automations_manage = require_permission(Permission.AUTOMATIONS_MANAGE)
@@ -43,13 +41,6 @@ router = APIRouter(prefix="/api/automations", tags=["automations"], dependencies
 @router.get("", response_model=list[AutomationRuleItem])
 async def get_rules(_admin: User = Depends(require_automations_manage)):
     return await list_automation_rules()
-
-
-@router.post("", response_model=AutomationRuleItem, status_code=201)
-async def post_rule(body: AutomationRuleCreate, admin: User = Depends(require_automations_manage)):
-    values = await validate_automation_rule(body.model_dump())
-    item = await create_automation_rule(values, admin.id)
-    return item
 
 
 @router.post("/{rule_id}/duplicate", response_model=AutomationRuleItem, status_code=201)
@@ -130,7 +121,7 @@ async def patch_rule(
     requested = body.model_dump(exclude_unset=True)
     if current["builder_mode"] == AutomationBuilderMode.VISUAL:
         # Una regla visual no tiene actions/conditions propias: mandarla por
-        # validate_automation_rule fallaría con un error confuso.
+        # la validación de reglas simples fallaría con un error confuso.
         if not set(requested) <= {"is_active", "name", "max_executions_per_hour", "visible_to_sellers"}:
             raise HTTPException(400, "Los flujos visuales se editan desde el constructor de flujos")
         values: dict = {}
@@ -153,16 +144,10 @@ async def patch_rule(
     elif set(requested) == {"is_active"} and requested["is_active"] is False:
         item = await update_automation_rule(rule_id, requested)
     else:
-        merged = {
-            key: requested.get(key, current[key])
-            for key in (
-                "name", "trigger_type", "trigger_config", "conditions",
-                "actions", "delay_minutes", "max_executions_per_hour", "is_active",
-                "visible_to_sellers",
-            )
-        }
-        normalized = await validate_automation_rule(merged)
-        item = await update_automation_rule(rule_id, normalized)
+        # Las reglas simples se retiraron: todo se crea y se edita como flujo
+        # visual. A una que quedara de antes solo se la puede pausar o
+        # eliminar; ninguna otra edición tiene ya pantalla que la pida.
+        raise HTTPException(400, "Las reglas simples ya no se editan. Crea un flujo desde una receta y elimina esta.")
     if item is None:
         raise HTTPException(404, "Automatización no encontrada")
     return item
