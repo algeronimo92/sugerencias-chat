@@ -7,8 +7,10 @@ Send,Trash2,XCircle,
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
+import { ErrorState } from '../../../shared/ui/EmptyState'
 import { Select } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
 import { useTags } from '../../catalogs/public/useTags'
@@ -23,7 +25,7 @@ import type {
 AutomationActionResult,AutomationExecution,
 AutomationFlowDefinition,AutomationRule,
 } from '../types'
-import { EXECUTION_OUTCOME_LABELS, stepStatusLabel, executionActorLabel, executionOutcome, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionOutcome, outcomeFilter, readableExecutionError, stepResultDetail, type ExecutionOutcomeValue, type StepLookups } from '../utils/automationExecutions'
+import { EXECUTION_OUTCOME_LABELS, stepStatusLabel, executionLeadLabel, executionOriginLabel, executionOutcome, executionStatusLabel, executionTone, executionTriggerLabel, formatExecutionDate as formatDate, isExecutionOutcome, outcomeFilter, readableExecutionError, stepResultDetail, type ExecutionOutcomeValue, type StepLookups } from '../utils/automationExecutions'
 import { EXECUTIONS_MAX_LIMIT, EXECUTIONS_PAGE_LIMIT } from '../api'
 import { AttentionPanel } from './AttentionPanel'
 import { RecipePicker } from './RecipePicker'
@@ -61,7 +63,15 @@ const TABS: { key: AutomationsTab; label: string; icon: typeof History }[] = [
 
 export function AutomationsPage() {
   const navigate = useNavigate()
-  const { data: rules = [], isLoading } = useAutomationRules()
+  const { data: rules = [], isLoading, isError, refetch } = useAutomationRules()
+  // Un fallo de carga se veía igual que «todavía no hay automatizaciones».
+  const rulesError = isError && rules.length === 0 ? (
+    <ErrorState
+      title="No se pudieron cargar las automatizaciones"
+      description="Siguen guardadas: lo que falló fue la carga. Revisa tu conexión y vuelve a intentar."
+      action={<Button variant="secondary" onClick={() => void refetch()}>Reintentar</Button>}
+    />
+  ) : null
   const [historyRuleId, setHistoryRuleId] = useState<number | null>(null)
   const [historyStatus, setHistoryStatus] = useState<ExecutionOutcomeValue | null>(null)
   const [hideSkipped, setHideSkipped] = useState(true)
@@ -117,7 +127,7 @@ export function AutomationsPage() {
   }), [stageCatalog, users, tags])
   const historyColumns = useMemo<ColumnDef<AutomationExecution>[]>(() => [
     { id: 'rule', accessorFn: execution => execution.rule_name },
-    { id: 'lead', accessorFn: execution => execution.lead_name ?? execution.lead_id ?? '' },
+    { id: 'lead', accessorFn: execution => executionLeadLabel(execution) },
     { id: 'status', accessorFn: execution => execution.status },
     { id: 'createdAt', accessorFn: execution => execution.created_at },
   ], [])
@@ -334,13 +344,13 @@ export function AutomationsPage() {
         ) : tab === 'attention' ? (
           <AttentionPanel groups={attention.groups} isLoading={attention.isLoading} onOpenChat={openExecutionChat} onSeeActivity={() => setTab('activity')} />
         ) : tab === 'automatic' ? (
-          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : (
+          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : rulesError ?? (
             <div className="space-y-4">
               {flowCards(automaticFlows, { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo: dar la bienvenida, hacer seguimiento, avisar a tu equipo.', action: 'Crear la primera' })}
             </div>
           )
         ) : tab === 'sequences' ? (
-          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : flowCards(sequenceFlows, { title: 'Todavía no hay secuencias', text: 'Son los mensajes que tu equipo lanza con un toque desde el chat: precios, evidencias, indicaciones. Se crean eligiendo el disparador «Inicio manual (vendedor)».', action: 'Crear la primera' })
+          isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : rulesError ?? flowCards(sequenceFlows, { title: 'Todavía no hay secuencias', text: 'Son los mensajes que tu equipo lanza con un toque desde el chat: precios, evidencias, indicaciones. Se crean eligiendo el disparador «Inicio manual (vendedor)».', action: 'Crear la primera' })
         ) : (
           <div className="overflow-hidden rounded-2xl border border-wa-border bg-white dark:border-wa-border-dark dark:bg-wa-panel-dark">
             <div className="flex flex-wrap items-end gap-3 border-b border-wa-border bg-wa-hover/60 p-3 dark:border-wa-border-dark dark:bg-wa-head-dark/40">
@@ -379,7 +389,7 @@ export function AutomationsPage() {
             {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className="flex-1">{historyTotal !== undefined ? `Se muestran las ${executions.length.toLocaleString('es-PE')} más recientes de ${historyTotal.toLocaleString('es-PE')}.` : 'Hay más ejecuciones de las que se muestran.'} {canLoadMore ? 'Puedes cargar más o acotar con una automatización, un estado o un rango de fechas más corto.' : 'Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.'}</span>{canLoadMore && <button type="button" disabled={executionsFetching} onClick={() => setHistoryPaging({ key: historyFilterKey, limit: Math.min(historyLimit + EXECUTIONS_PAGE_LIMIT, EXECUTIONS_MAX_LIMIT) })} className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-800 dark:bg-transparent dark:text-amber-100">Cargar {EXECUTIONS_PAGE_LIMIT} más</button>}</p>}
             {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
               <details key={execution.id} onToggle={event => { const open = event.currentTarget.open; setOpenExecutions(current => { const next = new Set(current); if (open) next.add(execution.id); else next.delete(execution.id); return next }) }} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(executionOutcome(execution))}`}>{executionOutcome(execution) === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : (execution.status === AutomationExecutionStatus.Failed || executionOutcome(execution) === 'undelivered') ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{execution.lead_name || execution.lead_id || 'Lead eliminado'} · {triggerLabel(execution.trigger_type)} · Ejecutada por {executionActorLabel(execution)} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(executionOutcome(execution))}`}>{executionStatusLabel(executionOutcome(execution))}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(executionOutcome(execution))}`}>{executionOutcome(execution) === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : (execution.status === AutomationExecutionStatus.Failed || executionOutcome(execution) === 'undelivered') ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{executionLeadLabel(execution)} · {executionOriginLabel(execution)}{execution.start_source === 'system' ? ` · ${triggerLabel(execution.trigger_type)}` : ''} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(executionOutcome(execution))}`}>{executionStatusLabel(executionOutcome(execution))}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
                 {execution.rule_deleted && <div className="border-t border-wa-border bg-amber-50 px-4 py-2 text-[11px] text-amber-700 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-300">Automatización eliminada · historial conservado solo para auditoría.</div>}
                 <div className="bg-wa-hover px-4 py-3 text-xs dark:bg-wa-app-dark/60">
                   <p className="text-wa-muted">Programada: {formatDate(execution.scheduled_for)} · Finalizada: {formatDate(execution.finished_at)}</p>

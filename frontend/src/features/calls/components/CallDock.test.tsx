@@ -102,6 +102,19 @@ describe('preparar el dispositivo', () => {
     preparation.prepared = true
   })
 
+  it('se puede apartar sin perderlo: queda un botón que lo vuelve a abrir', async () => {
+    const user = userEvent.setup()
+    preparation.prepared = false
+    renderDock(center())
+
+    await user.click(screen.getByRole('button', { name: 'Ahora no' }))
+    expect(screen.queryByRole('region', { name: 'Preparar este dispositivo para llamadas' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Preparar este dispositivo para llamadas' }))
+    expect(screen.getByRole('region', { name: 'Preparar este dispositivo para llamadas' })).toBeInTheDocument()
+    preparation.prepared = true
+  })
+
   it('con el micrófono bloqueado dice cómo habilitarlo', async () => {
     const user = userEvent.setup()
     preparation.prepared = false

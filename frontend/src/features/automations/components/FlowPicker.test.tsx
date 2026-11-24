@@ -11,6 +11,7 @@ import type { PropsWithChildren } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { FlowPicker } from './FlowPicker'
+import { recentSends } from '../utils/automationExecutions'
 import type { AutomationRule } from '../types'
 
 const onChoose = vi.fn()
@@ -91,5 +92,50 @@ describe('FlowPicker', () => {
 
     expect(screen.getByText('Ya en curso')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Bienvenida guiada/ })).toBeDisabled()
+  })
+
+  it('avisa que el lead ya recibió ese flujo y quién lo lanzó, sin bloquearlo', async () => {
+    vi.mocked(useManualFlows).mockReturnValue({
+      data: [flow({ id: 9, name: 'Hollywood peel' })],
+      isLoading: false,
+    } as never)
+    vi.mocked(useAutomationExecutions).mockReturnValue({
+      data: [{
+        id: 1, rule_id: 9, start_source: 'flow', status: 'completed', parent_rule_name: 'Bienvenida',
+        created_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+      }],
+    } as never)
+    const user = userEvent.setup()
+    render(<FlowPicker chatId={CHAT_ID} onChoose={onChoose} />, { wrapper })
+
+    await user.click(screen.getByRole('button', { name: 'Iniciar un flujo para este lead' }))
+
+    expect(screen.getByText('Ya se envió hace 5 min · La lanzó «Bienvenida»')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hollywood peel/ })).toBeEnabled()
+  })
+})
+
+describe('recentSends', () => {
+  const now = Date.parse('2026-11-24T15:00:00Z')
+  const sent = (overrides: object) => ({
+    id: 1, rule_id: 9, start_source: 'manual', status: 'completed', started_by_name: 'Ana',
+    created_at: '2026-11-24T13:00:00Z', ...overrides,
+  }) as never
+
+  it('toma el envío más reciente de cada flujo', () => {
+    const notes = recentSends([sent({}), sent({ id: 2, created_at: '2026-11-24T14:59:40Z', start_source: 'system' })], now)
+    expect(notes.get(9)).toBe('Ya se envió hace un momento · Empezó sola')
+  })
+
+  it('cuenta en horas pasada la primera', () => {
+    expect(recentSends([sent({})], now).get(9)).toBe('Ya se envió hace 2 h · La lanzó Ana')
+  })
+
+  it('ignora lo que no envió nada y lo de más de un día', () => {
+    const notes = recentSends([
+      sent({ status: 'failed' }), sent({ status: 'cancelled' }), sent({ status: 'skipped' }),
+      sent({ created_at: '2026-11-23T14:00:00Z' }),
+    ], now)
+    expect(notes.size).toBe(0)
   })
 })

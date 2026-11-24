@@ -4,6 +4,7 @@ import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopov
 import { Tooltip } from '../../../shared/ui/Tooltip'
 import { useAutomationExecutions, useManualFlows } from '../queries'
 import type { AutomationExecution } from '../types'
+import { recentSends } from '../utils/automationExecutions'
 import type { ChosenFlow } from './FlowStartConfirmation'
 
 interface Props {
@@ -82,6 +83,9 @@ function FlowList({ chatId, onChoose }: {
   // duplica el pedido mientras el panel esté montado.
   const { data: executions = [] } = useAutomationExecutions({ chatId })
   const activeRuleIds = activeSellerRuleIds(executions)
+  // La lista vive unos segundos abierta: la hora de montaje alcanza.
+  const [openedAt] = useState(() => Date.now())
+  const sentNotes = recentSends(executions, openedAt)
 
   return (
     <div className="absolute inset-x-0 bottom-full z-30 mb-2 rounded-xl border border-line bg-surface-raised p-2 shadow-popover sm:left-auto sm:w-72 sm:max-w-full">
@@ -97,6 +101,7 @@ function FlowList({ chatId, onChoose }: {
         )}
         {flows.map((flow) => {
           const alreadyRunning = activeRuleIds.has(flow.id)
+          const sentNote = alreadyRunning ? undefined : sentNotes.get(flow.id)
           return (
             <button
               key={flow.id}
@@ -106,7 +111,10 @@ function FlowList({ chatId, onChoose }: {
               className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left outline-none hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Workflow className="h-4 w-4 shrink-0 text-accent-strong" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{flow.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-fg">{flow.name}</span>
+                {sentNote && <span className="block truncate text-xs text-warning-fg">{sentNote}</span>}
+              </span>
               {alreadyRunning && <span className="shrink-0 text-xs font-medium text-fg-muted">Ya en curso</span>}
             </button>
           )
