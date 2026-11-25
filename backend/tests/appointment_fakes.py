@@ -22,7 +22,11 @@ class FakeAppointments:
         self.order: list[str] = []
         self._ids = itertools.count(41)
 
-    async def add(self, values: dict) -> dict:
+    async def add(self, values: dict) -> dict | None:
+        request_id = values.get("client_request_id")
+        # Como el índice único: mira las filas, no ``by_client_request``.
+        if request_id is not None and any(row.get("client_request_id") == request_id for row in self.rows.values()):
+            return None
         self.order.append("saved")
         appointment_id = next(self._ids)
         self.rows[appointment_id] = {
@@ -36,8 +40,12 @@ class FakeAppointments:
         row = self.rows.get(appointment_id)
         return dict(row) if row else None
 
+    async def by_client_request(self, client_request_id: str) -> dict | None:
+        found = [row for row in self.rows.values() if row.get("client_request_id") == client_request_id]
+        return dict(found[0]) if found else None
+
     async def latest_real(self) -> dict | None:
-        real = [row for row in self.rows.values() if not row.get("test_mode") and not row.get("dismissed_at")]
+        real =[row for row in self.rows.values() if not row.get("test_mode") and not row.get("dismissed_at")]
         return dict(real[-1]) if real else None
 
     async def set_dismissed(self, appointment_id: int, *, user_id: int | None, reason: str | None) -> dict | None:

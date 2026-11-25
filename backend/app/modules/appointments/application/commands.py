@@ -107,8 +107,16 @@ async def create_appointment(
     cita, actividad, nota interna, etapa y los datos que el vendedor corrigió). Sin él, el
     lead se adivina por teléfono y no se toca; si ningún lead tiene ese
     teléfono se crea uno, que se entera de la cita como si viniera de su
-    ficha. Con dos candidatos no se vincula ni se crea: sería un duplicado."""
+    ficha. Con dos candidatos no se vincula ni se crea: sería un duplicado.
+
+    Un ``client_request_id`` ya visto es un reintento de la misma cita (la
+    respuesta anterior se perdió): se devuelve la guardada sin repetir el
+    calendario, n8n ni los avisos."""
     ports = appointment_ports()
+    if request.client_request_id is not None:
+        existing = await ports.repository.by_client_request(request.client_request_id)
+        if existing is not None:
+            return _already_registered(existing)
     if lead is not None:
         if not await ports.leads.exists(lead.lead_id):
             raise AppointmentLeadNotFound()
@@ -123,6 +131,11 @@ async def create_appointment(
         appointment = await ports.repository.add(request.record(
             created_by_user_id=created_by_user_id, lead_id=lead_id,
         ))
+        if appointment is None:
+            # Otro pedido con el mismo identificador la guardó mientras
+            # tanto (dos envíos a la vez): ese hace el resto.
+            existing = await ports.repository.by_client_request(request.client_request_id)
+            return _already_registered(existing)
         if lead is not None and not request.test_mode:
             await ports.leads.register(
                 lead.lead_id, actor_user_id=created_by_user_id, appointment=appointment,
@@ -161,6 +174,18 @@ async def create_appointment(
         "appointment": appointment, "eventLink": result.event_link,
         "calendarSyncStatus": appointment["calendar_sync_status"],
         "integrationErrors": result.integration_errors,
+    }
+
+
+def _already_registered(appointment: dict) -> dict:
+    """La respuesta para un reintento: la misma forma que un alta, con la cita
+    tal como quedó. ``alreadyRegistered`` deja que el formulario lo diga."""
+    return {
+        "success": True, "alreadyRegistered": True,
+        "message": appointment.get("message") or "La cita ya estaba guardada",
+        "appointment": appointment, "eventLink": appointment.get("event_link"),
+        "calendarSyncStatus": appointment["calendar_sync_status"],
+        "integrationErrors": [],
     }
 
 

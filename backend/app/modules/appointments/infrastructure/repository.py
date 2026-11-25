@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import case, func, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.appointments import Appointment, AppointmentNotice
 from app.db.models.leads import Lead
@@ -31,17 +32,26 @@ _INTEGRATION_FIELDS = (
 
 
 class SqlAppointmentRepository:
-    async def add(self, values: dict) -> dict:
+    async def add(self, values: dict) -> dict | None:
+        # Si otro pedido con el mismo identificador todavía no confirmó, el
+        # INSERT espera a que lo haga y entonces no inserta nada: nunca quedan
+        # dos filas, ni un error que el formulario mostraría como fallo.
+        stmt = pg_insert(Appointment).values(**{
+            **values,
+            "fecha": date.fromisoformat(values["fecha"]),
+            "adelanto": Decimal(str(values["adelanto"])),
+            "created_at": datetime.now(timezone.utc),
+        }).on_conflict_do_nothing(index_elements=[Appointment.client_request_id]).returning(Appointment.id)
         async with session_scope() as session:
-            appointment_id = (await session.execute(
-                insert(Appointment).values(**{
-                    **values,
-                    "fecha": date.fromisoformat(values["fecha"]),
-                    "adelanto": Decimal(str(values["adelanto"])),
-                    "created_at": datetime.now(timezone.utc),
-                }).returning(Appointment.id)
-            )).scalar_one()
-        return await self.get(appointment_id)
+            appointment_id = (await session.execute(stmt)).scalar_one_or_none()
+        return None if appointment_id is None else await self.get(appointment_id)
+
+    async def by_client_request(self, client_request_id: str) -> dict | None:
+        async with session_scope() as session:
+            row = (
+                await session.execute(_query().where(Appointment.client_request_id == client_request_id))
+            ).mappings().one_or_none()
+        return _serialize(row) if row is not None else None
 
     async def get(self, appointment_id: int) -> dict | None:
         async with session_scope() as session:

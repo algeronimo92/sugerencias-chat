@@ -55,6 +55,14 @@ class Appointment(Base):
     dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dismissed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     dismissed_reason: Mapped[str | None] = mapped_column(Text)
+    # Identificador que el formulario manda en cada intento de guardar la misma
+    # cita: un reintento con el mismo valor devuelve la cita ya guardada en vez
+    # de crear otra. Guardar tarda varios segundos (calendario, n8n, avisos) y
+    # cuando la conexión se cortaba en ese rato, el reintento creaba una
+    # segunda cita con sus avisos y su evento: ~30 pares entre octubre y
+    # noviembre de 2026 (las citas 425 y 426, entre otras). NULL en las citas
+    # anteriores y en los clientes que no lo mandan.
+    client_request_id: Mapped[str | None] = mapped_column(PG_UUID(as_uuid=False))
 
     __table_args__ = (
         CheckConstraint(
@@ -77,6 +85,9 @@ class Appointment(Base):
         # Citas del período por quien las registró: lo que agrupa el
         # dashboard del vendedor (leads/dashboard/appointments_queries.py).
         Index("idx_appointments_creator_created", created_by_user_id, created_at.desc()),
+        # Único: dos pedidos simultáneos con el mismo identificador no pueden
+        # dejar dos filas. Los NULL no chocan entre sí.
+        Index("uq_appointments_client_request_id", client_request_id, unique=True),
     )
 
 

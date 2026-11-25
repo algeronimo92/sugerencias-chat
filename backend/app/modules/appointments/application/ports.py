@@ -13,9 +13,14 @@ from app.modules.appointments.domain.calendar_event import EventContent
 
 
 class AppointmentRepository(Protocol):
-    async def add(self, values: dict) -> dict: ...
+    async def add(self, values: dict) -> dict | None:
+        """La cita guardada, o None si ya había una con el mismo
+        ``client_request_id`` (otro intento de guardar la misma cita)."""
 
     async def get(self, appointment_id: int) -> dict | None: ...
+
+    async def by_client_request(self, client_request_id: str) -> dict | None:
+        """La cita que se guardó con ese identificador de intento, si existe."""
 
     async def latest_real(self) -> dict | None:
         """La última cita que no es de prueba ni está desestimada (para las

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -136,5 +136,50 @@ describe('NewAppointmentPage: validación por campo', () => {
     const hours = screen.getAllByRole('option').map(option => option.textContent)
     expect(hours.slice(0, 2)).toEqual(['Elige la hora', '07:00'])
     expect(hours).toContain('06:30')
+  })
+})
+
+describe('NewAppointmentPage: reintentar no duplica la cita', () => {
+  afterEach(() => {
+    localStorage.clear()
+    mocks.mutate.mockReset()
+  })
+
+  async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
+    fireEvent.change(screen.getByLabelText('Nombre completo *'), { target: { value: 'Edwin' } })
+    fireEvent.change(screen.getByLabelText('Teléfono *'), { target: { value: '963331169' } })
+    await user.type(screen.getByRole('combobox', { name: 'Tratamiento *' }), 'consul')
+    await user.click(screen.getByRole('option', { name: 'Consulta' }))
+    await user.click(screen.getByLabelText('Responsable *'))
+    await user.click(screen.getByRole('option', { name: 'Asesor' }))
+    fireEvent.change(screen.getByLabelText('Fecha de la cita *'), { target: { value: '2026-11-27' } })
+    await user.click(screen.getByLabelText('Hora *'))
+    await user.click(screen.getByRole('option', { name: '09:00' }))
+    await user.click(screen.getByRole('button', { name: 'Separar cita' }))
+  }
+
+  type Call = [{ clientRequestId: string }, { onSuccess: (value: unknown) => void; onError: (error: unknown) => void }]
+  const call = (index: number) => mocks.mutate.mock.calls[index] as Call
+
+  // Citas 425 y 426: la respuesta se perdió en un corte, se vio un error y
+  // el segundo "Separar cita" creó otra con sus avisos.
+  it('manda el mismo intento al volver a guardar tras un error, y uno nuevo para la cita siguiente', async () => {
+    const user = userEvent.setup()
+    render(<NewAppointmentPage />)
+
+    await fillAndSubmit(user)
+    const first = call(0)[0].clientRequestId
+    expect(first).toMatch(/^[0-9a-f-]{36}$/)
+
+    act(() => call(0)[1].onError(new Error('Network Error')))
+    await user.click(screen.getByRole('button', { name: 'Separar cita' }))
+    expect(call(1)[0].clientRequestId).toBe(first)
+
+    act(() => call(1)[1].onSuccess({
+      success: true, alreadyRegistered: true, message: null, integrationErrors: [], calendarSyncStatus: 'synced',
+      appointment: { id: 425 },
+    }))
+    await fillAndSubmit(user)
+    expect(call(2)[0].clientRequestId).not.toBe(first)
   })
 })

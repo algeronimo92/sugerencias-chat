@@ -57,6 +57,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export function appointmentResultMessage(result: AppointmentResult): { text: string; tone: 'success' | 'info' } {
+  if (result.alreadyRegistered) return { text: 'Esta cita ya se había guardado. No se creó otra ni se volvió a avisar.', tone: 'info' }
   if (result.integrationErrors?.length) return { text: result.message ?? 'La cita se guardó, pero una integración necesita atención.', tone: 'info' }
   return { text: result.message ?? 'Cita guardada correctamente.', tone: 'success' }
 }
@@ -74,6 +75,22 @@ function writeDraft(key: string, draft: Draft): boolean {
 
 function removeDraft(key: string) {
   try { localStorage.removeItem(key) } catch { /* sin almacenamiento: nada que borrar */ }
+}
+
+// El identificador del intento vive junto al borrador: si tras un error se
+// cierra el panel o se recarga la página y se vuelve a guardar desde el
+// borrador, sigue siendo el mismo intento.
+const attemptKey = (draftKey: string) => `${draftKey}:intento`
+
+function readAttempt(draftKey: string): string | null {
+  try { return localStorage.getItem(attemptKey(draftKey)) } catch { return null }
+}
+
+function writeAttempt(draftKey: string, id: string | null) {
+  try {
+    if (id) localStorage.setItem(attemptKey(draftKey), id)
+    else localStorage.removeItem(attemptKey(draftKey))
+  } catch { /* sin almacenamiento: el intento vale mientras el panel siga abierto */ }
 }
 
 /**
@@ -125,6 +142,13 @@ export function useAppointmentForm(draftKey: string) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [result, setResult] = useState<AppointmentResult | null>(null)
   const createAppointment = useCreateAppointment()
+  // Identificador del intento de guardar esta cita. Se conserva tras un error
+  // y se renueva solo cuando la cita se guardó o el formulario se vació:
+  // guardar tarda varios segundos, y si la conexión se cortaba en ese rato
+  // la cita ya estaba guardada aunque acá se viera un error; el reintento
+  // creaba otra con sus avisos y su evento (citas 425 y 426, entre ~30 pares).
+  const attemptId = useRef<string | null>(null)
+  const setAttempt = useCallback((id: string | null) => { attemptId.current = id; writeAttempt(draftKey, id) }, [draftKey])
   // ``dirty``: hay cambios del usuario sin pasar al borrador. ``hasDraft``:
   // existe un borrador guardado de este formulario (restaurado o escrito).
   const [dirty, setDirty] = useState(false)
@@ -162,16 +186,20 @@ export function useAppointmentForm(draftKey: string) {
   const load = useCallback((values: Partial<AppointmentFormValues>, custom: Record<string, unknown> = {}, fromDraft = false) => {
     setForm({ ...EMPTY_APPOINTMENT_FORM, ...values })
     setCustomFields(custom)
+    // Desde el borrador sigue el intento que se cortó; lo demás es otra cita.
+    if (fromDraft) attemptId.current = readAttempt(draftKey)
+    else setAttempt(null)
     setDirty(false)
     setHasDraft(fromDraft)
-  }, [])
+  }, [draftKey, setAttempt])
 
   /** Borra el borrador guardado; el contenido en pantalla lo decide quien llama. */
   const discardDraft = useCallback(() => {
     removeDraft(draftKey)
+    setAttempt(null)
     setDirty(false)
     setHasDraft(false)
-  }, [draftKey])
+  }, [draftKey, setAttempt])
 
   function acceptFile(file: File) {
     setFileError(null)
@@ -247,6 +275,7 @@ export function useAppointmentForm(draftKey: string) {
       try { prepared = { contentType: attachment.type, dataBase64: await fileToBase64(attachment), filename: attachment.name } }
       catch { setError('No se pudo preparar el adjunto.'); return }
     }
+    if (!attemptId.current) setAttempt(crypto.randomUUID())
     createAppointment.mutate({
       nombreCompleto: form.nombreCompleto.trim(), dni: '', telefono: form.telefono.trim(),
       tratamiento: form.servicio.trim(), detalle: form.detalle.trim(), fecha: form.fecha,
@@ -254,7 +283,7 @@ export function useAppointmentForm(draftKey: string) {
       customFields: Object.fromEntries(definitions.map(field => [
         field.key,
         customFields[field.key] ?? (field.field_type === 'boolean' ? false : null),
-      ])), comprobante: prepared, testMode, leadId, leadUpdates,
+      ])), comprobante: prepared, testMode, leadId, leadUpdates, clientRequestId: attemptId.current,
     }, {
       onSuccess: value => {
         const feedback = appointmentResultMessage(value)

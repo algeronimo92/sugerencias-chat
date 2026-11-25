@@ -4999,6 +4999,8 @@ export interface components {
             /** Lead Id */
             lead_id?: string | null;
             lead_updates?: components["schemas"]["AppointmentLeadUpdates"] | null;
+            /** Client Request Id */
+            client_request_id?: string | null;
         };
         /**
          * AppointmentCreated
@@ -5017,6 +5019,11 @@ export interface components {
             calendarSyncStatus: string;
             /** Integrationerrors */
             integrationErrors: string[];
+            /**
+             * Alreadyregistered
+             * @default false
+             */
+            alreadyRegistered: boolean;
         } & {
             [key: string]: unknown;
         };
