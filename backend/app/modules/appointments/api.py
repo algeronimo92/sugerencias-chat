@@ -191,7 +191,7 @@ async def post_appointment(body: AppointmentCreate, user: User = Depends(require
         fecha=body.fecha, hora=body.hora, vendedor=body.vendedor, dni=body.dni, detalle=body.detalle,
         adelanto=body.adelanto, duration_minutes=body.duration_minutes, custom_fields=custom_fields,
         comprobante_filename=body.comprobante.filename if body.comprobante else None,
-        test_mode=body.test_mode,
+        test_mode=body.test_mode, client_request_id=body.client_request_id,
     )
     return await commands.create_appointment(request, created_by_user_id=user.id, files=files, lead=lead)
 

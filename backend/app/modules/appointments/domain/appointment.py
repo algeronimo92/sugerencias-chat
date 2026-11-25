@@ -33,6 +33,8 @@ class AppointmentRequest:
     custom_fields: dict[str, Any] = field(default_factory=dict)
     comprobante_filename: str | None = None
     test_mode: bool = False
+    # El mismo en cada reintento de guardar esta cita (ver ``Appointment``).
+    client_request_id: str | None = None
 
     @property
     def effective_dni(self) -> str:
@@ -89,6 +91,7 @@ class AppointmentRequest:
             "message": "Cita guardada en la app",
             "event_link": None,
             "calendar_sync_status": "skipped" if self.test_mode else "pending",
+            "client_request_id": self.client_request_id,
         }
 
     def n8n_form(self) -> dict:

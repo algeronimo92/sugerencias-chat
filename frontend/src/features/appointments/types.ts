@@ -26,6 +26,9 @@ export interface CreateAppointmentInput {
   leadId?: string | null
   /** Lo que el vendedor corrigió y pidió llevar también al lead. */
   leadUpdates?: LeadUpdatesInput | null
+  /** El mismo en cada reintento de guardar esta cita: si la anterior ya se
+   *  guardó, el backend la devuelve en vez de crear otra. */
+  clientRequestId?: string | null
 }
 
 /** Resultado de registrar una cita; trae además lo que devolvió el workflow

@@ -44,6 +44,13 @@ class AppointmentCreate(BaseModel):
     # Lo que el vendedor corrigió en la cita y pidió llevar también al lead.
     # Solo vale con ``lead_id``.
     lead_updates: AppointmentLeadUpdates | None = None
+    # El formulario manda el mismo valor en cada reintento de guardar esta
+    # cita: si ya se guardó (la respuesta se perdió en un corte de conexión),
+    # se devuelve esa en vez de crear otra con sus avisos y su evento.
+    client_request_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+    )
 
 
 class AppointmentDismiss(BaseModel):
@@ -124,6 +131,9 @@ class AppointmentCreated(BaseModel):
     eventLink: str | None = None
     calendarSyncStatus: str
     integrationErrors: list[str]
+    # True cuando el pedido era un reintento de una cita ya guardada: no se
+    # volvió a crear ni a avisar.
+    alreadyRegistered: bool = False
 
 
 class CalendarEventField(BaseModel):

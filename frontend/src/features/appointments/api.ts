@@ -27,6 +27,7 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
       test_mode: input.testMode,
       lead_id: input.leadId ?? null,
       lead_updates: input.leadUpdates ?? null,
+      client_request_id: input.clientRequestId ?? null,
     })).data
 }
 
