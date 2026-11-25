@@ -5,6 +5,8 @@ FileJson,GitBranch,History,Loader2,LocateFixed,MessageCircle,Pencil,Plus,RotateC
 Send,Trash2,XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useListPagination } from '../../../shared/hooks/useListPagination'
+import { Pagination } from '../../../shared/ui/Pagination'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '../../../shared/ui/Button'
@@ -132,6 +134,10 @@ export function AutomationsPage() {
     { id: 'createdAt', accessorFn: execution => execution.created_at },
   ], [])
   const executionTable = useReactTable({ data: executions, columns: historyColumns, getCoreRowModel: getCoreRowModel() })
+  // Pagina lo que ya llegó: el servidor entrega por bloques («Cargar más») y
+  // la barra reparte ese bloque en páginas como en el embudo.
+  const executionRows = executionTable.getRowModel().rows
+  const activityPagination = useListPagination(executionRows, 'actividad:filas', historyFilterKey)
   // Un flujo borrado ya no está en la lista: "Ver en el flujo" solo va a los que siguen.
   const visualRuleIds = new Set(rules.map(rule => rule.id))
   // Estaban en dos secciones («Empiezan solas» y «Las lanza tu equipo») y se
@@ -145,6 +151,7 @@ export function AutomationsPage() {
   const teamCount = rules.filter(rule => rule.trigger_type === TriggerType.Manual).length
   const startCounts: Record<StartFilter, number> = { all: rules.length, automatic: rules.length - teamCount, team: teamCount }
   const shownFlows = startFilter === 'all' ? rules : rules.filter(rule => (rule.trigger_type === TriggerType.Manual) === (startFilter === 'team'))
+  const flowsPagination = useListPagination(shownFlows, 'automatizaciones:filas', startFilter)
   const attention = useAttention()
   // Se entra donde hay algo que decidir: en «Por atender» si hay pendientes
   // y, si no, en lo que más se edita. Se decide una vez, al terminar de
@@ -361,7 +368,12 @@ export function AutomationsPage() {
               )}
               {rules.length > 0 && shownFlows.length === 0
                 ? <p className="rounded-2xl border border-dashed border-line px-6 py-10 text-center text-sm text-fg-muted">{startFilter === 'team' ? 'Ninguna la lanza tu equipo todavía. Se crea eligiendo que empiece con «La lanza tu equipo desde el chat».' : 'Ninguna empieza sola todavía.'}</p>
-                : flowCards(shownFlows, { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo (dar la bienvenida, hacer seguimiento) y lo que tu equipo lanza con un toque desde el chat (precios, evidencias, indicaciones).', action: 'Crear la primera' })}
+                : <>{flowCards(flowsPagination.pageItems, { title: 'Todavía no hay automatizaciones', text: 'Lo que el sistema hace solo (dar la bienvenida, hacer seguimiento) y lo que tu equipo lanza con un toque desde el chat (precios, evidencias, indicaciones).', action: 'Crear la primera' })}
+                  {shownFlows.length > 0 && (
+                    <div className="overflow-hidden rounded-xl border border-wa-border dark:border-wa-border-dark">
+                      <Pagination page={flowsPagination.page} pageSize={flowsPagination.pageSize} total={flowsPagination.total} noun={{ one: 'automatización', many: 'automatizaciones' }} onPageChange={flowsPagination.setPage} onPageSizeChange={flowsPagination.setPageSize} />
+                    </div>
+                  )}</>}
             </div>
           )
         ) : (
@@ -400,7 +412,7 @@ export function AutomationsPage() {
               <span className="ml-auto flex min-h-9 items-center gap-1.5 text-[11px] text-wa-muted">{executionsFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{historyTruncated ? (historyTotal !== undefined ? `${executions.length.toLocaleString('es-PE')} de ${historyTotal.toLocaleString('es-PE')}` : `Las ${executions.length} más recientes`) : `${executions.length} resultados`}</span>
             </div>
             {historyTruncated && <p role="status" className="flex items-start gap-2 border-b border-wa-border bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className="flex-1">{historyTotal !== undefined ? `Se muestran las ${executions.length.toLocaleString('es-PE')} más recientes de ${historyTotal.toLocaleString('es-PE')}.` : 'Hay más ejecuciones de las que se muestran.'} {canLoadMore ? 'Puedes cargar más o acotar con una automatización, un estado o un rango de fechas más corto.' : 'Para ver el resto, elige una automatización, un estado o un rango de fechas más corto.'}</span>{canLoadMore && <button type="button" disabled={executionsFetching} onClick={() => setHistoryPaging({ key: historyFilterKey, limit: Math.min(historyLimit + EXECUTIONS_PAGE_LIMIT, EXECUTIONS_MAX_LIMIT) })} className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-800 dark:bg-transparent dark:text-amber-100">Cargar {EXECUTIONS_PAGE_LIMIT} más</button>}</p>}
-            {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : executionTable.getRowModel().rows.map(({ original: execution }) => (
+            {executionsLoading ? <div className="flex justify-center px-4 py-16"><Loader2 className="h-6 w-6 animate-spin text-wa-muted" /></div> : executions.length === 0 ? <p className="px-4 py-16 text-center text-sm text-wa-muted">No hay ejecuciones que coincidan con estos filtros.</p> : activityPagination.pageItems.map(({ original: execution }) => (
               <details key={execution.id} onToggle={event => { const open = event.currentTarget.open; setOpenExecutions(current => { const next = new Set(current); if (open) next.add(execution.id); else next.delete(execution.id); return next }) }} className="group border-b border-wa-border last:border-0 dark:border-wa-border-dark">
                 <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-wa-hover dark:hover:bg-wa-head-dark/60"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${executionTone(executionOutcome(execution))}`}>{executionOutcome(execution) === AutomationExecutionStatus.Completed ? <CheckCircle2 className="h-4 w-4" /> : (execution.status === AutomationExecutionStatus.Failed || executionOutcome(execution) === 'undelivered') ? <XCircle className="h-4 w-4" /> : execution.status === AutomationExecutionStatus.Skipped ? <AlertTriangle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-800 dark:text-wa-text-dark">{execution.rule_name}</span><span className="block truncate text-[10px] text-wa-muted">{executionLeadLabel(execution)} · {executionOriginLabel(execution)}{execution.start_source === 'system' ? ` · ${triggerLabel(execution.trigger_type)}` : ''} · {formatDate(execution.created_at)}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${executionTone(executionOutcome(execution))}`}>{executionStatusLabel(executionOutcome(execution))}</span><ChevronDown className="h-4 w-4 text-wa-muted transition-transform group-open:rotate-180" /></summary>
                 {execution.rule_deleted && <div className="border-t border-wa-border bg-amber-50 px-4 py-2 text-[11px] text-amber-700 dark:border-wa-border-dark dark:bg-amber-950/30 dark:text-amber-300">Automatización eliminada · historial conservado solo para auditoría.</div>}
@@ -475,6 +487,9 @@ export function AutomationsPage() {
                 </div>
               </details>
             ))}
+            {!executionsLoading && executions.length > 0 && (
+              <Pagination page={activityPagination.page} pageSize={activityPagination.pageSize} total={activityPagination.total} noun={{ one: 'ejecución', many: 'ejecuciones' }} onPageChange={activityPagination.setPage} onPageSizeChange={activityPagination.setPageSize} />
+            )}
           </div>
         )}
       </main>

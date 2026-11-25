@@ -2,9 +2,11 @@ import { AlertTriangle, Check, Loader2, RefreshCw, Save, Search, X } from 'lucid
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
+import { useListPagination } from '../hooks/useListPagination'
 import { extractErrorMessage } from '../utils/errors'
 import { Button } from './Button'
 import { Input } from './Input'
+import { Pagination } from './Pagination'
 import { Skeleton } from './Skeleton'
 
 /**
@@ -93,6 +95,9 @@ export function CatalogPanel<T>({
     () => (normalizedQuery ? items.filter(item => getName(item).toLowerCase().includes(normalizedQuery)) : items),
     [items, normalizedQuery, getName],
   )
+  // Cambiar la búsqueda o un filtro del panel (el origen en Servicios cambia
+  // `items`) vuelve a la primera página.
+  const pagination = useListPagination(visible, `catalogo:${pluralNoun}:filas`, `${normalizedQuery}|${items.length}`)
 
   return (
     <div>
@@ -175,7 +180,7 @@ export function CatalogPanel<T>({
         )
       ) : (
         <ul className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2 lg:gap-3">
-          {visible.map(item => {
+          {pagination.pageItems.map(item => {
             const id = getId(item)
             const active = isActive(item)
             const changed = hasChanges(item)
@@ -229,7 +234,18 @@ export function CatalogPanel<T>({
           })}
         </ul>
       )}
-
+      {!isLoading && !error && visible.length > 0 && (
+        <div className="mt-3 overflow-hidden rounded-xl border border-wa-border dark:border-wa-border-dark">
+          <Pagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            noun={{ one: singularNoun, many: pluralNoun }}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
+        </div>
+      )}
     </div>
   )
 }

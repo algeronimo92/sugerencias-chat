@@ -1,5 +1,7 @@
 import { File as FileIcon, FileText, Film, FolderOpen, Images, Loader2, Pencil, Search, Trash2, UploadCloud, X } from 'lucide-react'
 import { useDeferredValue, useRef, useState } from 'react'
+import { useListPagination } from '../../../shared/hooks/useListPagination'
+import { Pagination } from '../../../shared/ui/Pagination'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
@@ -52,6 +54,7 @@ export function MediaLibraryPage() {
   const deferredSearch = useDeferredValue(search.trim())
   const [kind, setKind] = useState<MediaAssetKind | ''>('')
   const { data = [], isLoading } = useMediaLibrary(deferredSearch, kind)
+  const pagination = useListPagination(data, 'archivos:filas', `${deferredSearch}|${kind}`)
   const upload = useUploadMediaAsset()
   const rename = useRenameMediaAsset()
   const remove = useDeleteMediaAsset()
@@ -218,8 +221,9 @@ export function MediaLibraryPage() {
           {isLoading ? <div className="flex justify-center py-20"><Loader2 className="h-7 w-7 animate-spin text-wa-primary-strong" /></div> : data.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-wa-border bg-white/70 px-6 py-14 text-center dark:border-wa-border-dark dark:bg-wa-panel-dark/60"><FileIcon className="mx-auto h-10 w-10 text-wa-muted" /><h3 className="mt-4 text-sm font-bold text-wa-text dark:text-white">No hay archivos que coincidan</h3><p className="mt-1 text-xs text-wa-muted">Prueba otra búsqueda, cambia el tipo o sube un archivo nuevo.</p></div>
           ) : (
+            <>
             <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))' }}>
-              {data.map(asset => {
+              {pagination.pageItems.map(asset => {
                 const url = resolveMediaUrl(asset.media_url) ?? '#'
                 const typeLabel = asset.content_type.startsWith('image/') ? 'Imagen' : asset.content_type.startsWith('video/') ? 'Video' : asset.content_type.startsWith('audio/') ? 'Audio' : 'Documento'
                 return <article key={asset.id} className="group overflow-hidden rounded-2xl border border-wa-border bg-white/90 shadow-sm transition hover:-translate-y-0.5 hover:border-wa-primary/35 hover:shadow-md dark:border-wa-border-dark dark:bg-wa-head-dark/90">
@@ -240,6 +244,10 @@ export function MediaLibraryPage() {
                 </article>
               })}
             </div>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-wa-border dark:border-wa-border-dark">
+              <Pagination page={pagination.page} pageSize={pagination.pageSize} total={pagination.total} noun={{ one: 'archivo', many: 'archivos' }} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+            </div>
+            </>
           )}
         </section>
       </main>
