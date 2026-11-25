@@ -332,7 +332,7 @@ export function MainLayout() {
             renderNotifications={(expanded) => notificationCenter(expanded ? "toolbar" : "rail")}
             extras={
               <>
-                <PwaUpdateChip />
+                <PwaUpdateChip compact />
                 <OnboardingReopenButton enabled={isAdmin} className={headerIconButtonClass.replace("h-10 w-10", "h-9 w-9")} />
               </>
             }
