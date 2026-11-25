@@ -3,7 +3,7 @@ import {
 AlertTriangle,Ban,CheckCircle2,ChevronDown,Clock3,Layers,Loader2,MessageSquare,
 PauseCircle,PlayCircle,RefreshCw,RotateCcw,Send,SkipForward,Workflow,XCircle,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { can } from '../../../shared/permissions'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -27,6 +27,8 @@ import { useMe } from '../../auth/public/queries'
 import { useUsers } from '../../platform/public/useUsers'
 import { PERIODS, type PeriodKey, type SenderKey } from '../domain/executionHistoryFilters'
 import { ExecutionHistoryFilters } from './ExecutionHistoryFilters'
+import { useListPagination } from '../../../shared/hooks/useListPagination'
+import { Pagination } from '../../../shared/ui/Pagination'
 
 /* ---------------------------------------------------------------------------
  * Vocabulario de la pantalla
@@ -405,7 +407,28 @@ export function MyAutomationExecutionsPage() {
     () => executions.filter(execution => activeGroup.matches(execution.status)),
     [executions, activeGroup],
   )
-  const days = useMemo(() => groupByDay(visible), [visible])
+  // Se pagina la lista ya filtrada y después se agrupa por día: un día puede
+  // quedar repartido entre dos páginas, y su cabecera cuenta el día completo.
+  const pagination = useListPagination(
+    visible,
+    'envios:filas',
+    `${sender}|${ruleId}|${dateFrom}|${dateTo}|${group}`,
+  )
+  const days = useMemo(() => groupByDay(pagination.pageItems), [pagination.pageItems])
+  const dayTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const execution of visible) {
+      const key = dayKey(execution.created_at)
+      totals.set(key, (totals.get(key) ?? 0) + 1)
+    }
+    return totals
+  }, [visible])
+  const listRef = useRef<HTMLElement>(null)
+
+  function goToPage(next: number) {
+    pagination.setPage(next)
+    listRef.current?.scrollIntoView({ block: 'start' })
+  }
 
   const isFiltered = period !== 'today' || ruleId !== null || group !== 'all' || senderChoice !== null
   const flowName = flows.find(flow => flow.id === ruleId)?.name
@@ -495,7 +518,7 @@ export function MyAutomationExecutionsPage() {
           </section>
         )}
 
-        <section className="mt-5" aria-busy={isFetching}>
+        <section ref={listRef} className="mt-5 scroll-mt-4" aria-busy={isFetching}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-wa-text dark:text-white">Historial</h2>
@@ -595,7 +618,7 @@ export function MyAutomationExecutionsPage() {
                   <h3 className="flex items-center gap-3 border-b border-wa-border bg-wa-app/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-wa-muted dark:border-wa-border-dark dark:bg-wa-app-dark/60 dark:text-wa-muted-dark sm:px-4">
                     {dayLabel(day.key)}
                     <span className="font-normal normal-case tracking-normal">
-                      {day.items.length} {day.items.length === 1 ? 'envío' : 'envíos'}
+                      {dayTotals.get(day.key) ?? day.items.length} {(dayTotals.get(day.key) ?? day.items.length) === 1 ? 'envío' : 'envíos'}
                     </span>
                   </h3>
                   {day.items.map(execution => (
@@ -610,6 +633,16 @@ export function MyAutomationExecutionsPage() {
                   ))}
                 </section>
               ))
+            )}
+            {!isLoading && !isError && visible.length > 0 && (
+              <Pagination
+                page={pagination.page}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                noun={{ one: 'envío', many: 'envíos' }}
+                onPageChange={goToPage}
+                onPageSizeChange={pagination.setPageSize}
+              />
             )}
           </div>
         </section>

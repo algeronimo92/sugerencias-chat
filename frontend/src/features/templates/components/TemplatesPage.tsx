@@ -1,10 +1,12 @@
 import { Download, FileText, Plus, TriangleAlert } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useListPagination } from '../../../shared/hooks/useListPagination'
 import { Button } from '../../../shared/ui/Button'
 import { EmptyState, ErrorState } from '../../../shared/ui/EmptyState'
 import { PageHeader } from '../../../shared/ui/PageHeader'
+import { Pagination } from '../../../shared/ui/Pagination'
 import { Spinner } from '../../../shared/ui/Spinner'
 import { cn } from '../../../shared/utils/cn'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -86,9 +88,11 @@ interface ListProps {
   onClearFilters: () => void
   onDuplicate: (template: MessageTemplate) => void
   onDiscardUnsent: (template: MessageTemplate) => void
+  /** La barra de páginas, al pie de la tabla. */
+  footer?: ReactNode
 }
 
-function TemplatesTable({ templates, query, highlightId, unsentIds, onClearFilters, onDuplicate, onDiscardUnsent }: ListProps) {
+function TemplatesTable({ templates, query, highlightId, unsentIds, onClearFilters, onDuplicate, onDiscardUnsent, footer }: ListProps) {
   const actions = useTemplateRowActions()
   return (
     <section aria-label="Plantillas del equipo" className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -120,6 +124,7 @@ function TemplatesTable({ templates, query, highlightId, unsentIds, onClearFilte
           ))}
         </ul>
       )}
+      {templates.length > 0 && footer}
     </section>
   )
 }
@@ -164,6 +169,16 @@ export function TemplatesPage() {
   const [unsentIds, setUnsentIds] = useState<ReadonlySet<number>>(() => new Set(templateIdsWithDraft()))
   const highlightId = (location.state as { highlightId?: number } | null)?.highlightId
   const visible = sortByUse(filterTemplates(data, filters))
+  const pagination = useListPagination(visible, 'plantillas:filas', JSON.stringify(filters))
+  // Al volver del editor se resalta la plantilla guardada: se abre la página
+  // donde quedó, una sola vez, para no pelear con quien después cambia de página.
+  const jumpedToHighlight = useRef(false)
+  useEffect(() => {
+    if (jumpedToHighlight.current || highlightId === undefined || data.length === 0) return
+    jumpedToHighlight.current = true
+    const index = visible.findIndex(template => template.id === highlightId)
+    if (index >= 0) pagination.setPage(Math.floor(index / pagination.pageSize))
+  })
   const counts: Record<TypeFilter, number> = {
     all: data.length,
     internal: data.filter(template => template.template_type === 'internal').length,
@@ -210,13 +225,23 @@ export function TemplatesPage() {
           {placeholder ?? (
             <>
               <TemplatesTable
-                templates={visible}
+                templates={pagination.pageItems}
                 query={filters.query.trim()}
                 highlightId={highlightId}
                 onClearFilters={() => setFilters(NO_FILTERS)}
                 unsentIds={unsentIds}
                 onDuplicate={template => navigate(NEW_PATH, { state: { copyOf: template.id } })}
                 onDiscardUnsent={discardUnsent}
+                footer={
+                  <Pagination
+                    page={pagination.page}
+                    pageSize={pagination.pageSize}
+                    total={pagination.total}
+                    noun={{ one: 'plantilla', many: 'plantillas' }}
+                    onPageChange={pagination.setPage}
+                    onPageSizeChange={pagination.setPageSize}
+                  />
+                }
               />
               <p className="px-1 text-xs text-fg-muted">{summary}, las más usadas primero. El estado de Meta se actualiza solo.</p>
             </>
