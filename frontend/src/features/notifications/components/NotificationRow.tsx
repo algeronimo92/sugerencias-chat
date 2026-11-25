@@ -1,4 +1,4 @@
-import { MessageSquareLock } from 'lucide-react'
+import { IMPORTANCE_STYLE, notificationIcon, notificationImportance } from '../importance'
 import type { UserNotification } from '../types'
 import { ServiceWindowOverrideAction } from './ServiceWindowOverrideAction'
 
@@ -20,23 +20,28 @@ interface Props {
 
 export function NotificationRow({ notification, isAdmin, onOpen }: Props) {
   const isRead = !!notification.read_at
+  const style = IMPORTANCE_STYLE[notificationImportance(notification)]
+  const Icon = notificationIcon(notification)
   return (
     <div
-      className={`border-b border-wa-border transition-colors last:border-b-0 dark:border-wa-border-dark ${isRead ? 'hover:bg-wa-hover dark:hover:bg-wa-head-dark/60' : 'bg-violet-50/70 hover:bg-violet-100/70 dark:bg-violet-950/20 dark:hover:bg-violet-950/35'}`}
+      className={`border-b border-l-[3px] border-b-wa-border ${style.bar} transition-colors last:border-b-0 dark:border-b-wa-border-dark ${isRead ? 'hover:bg-wa-hover dark:hover:bg-wa-head-dark/60' : 'bg-violet-50/70 hover:bg-violet-100/70 dark:bg-violet-950/20 dark:hover:bg-violet-950/35'}`}
     >
       <button
         type="button"
         onClick={() => onOpen(notification)}
         className="flex w-full gap-3 px-4 py-3 text-left"
       >
-        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-          <MessageSquareLock className="h-4 w-4" />
+        <span className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${style.badge}`}>
+          <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
           {!isRead && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className={`block text-xs ${isRead ? 'font-medium text-gray-700 dark:text-gray-300' : 'font-semibold text-wa-text dark:text-white'}`}>{notification.title}</span>
           <span className="mt-0.5 block line-clamp-2 text-[11px] leading-relaxed text-wa-muted dark:text-wa-muted-dark">{notification.body}</span>
-          <span className="mt-1 block text-[10px] text-wa-muted">{notificationTime(notification.created_at)}</span>
+          <span className="mt-1 block text-[10px] text-wa-muted">
+            {style.label && <span className={`font-semibold ${style.text}`}>{style.label} · </span>}
+            {notificationTime(notification.created_at)}
+          </span>
         </span>
       </button>
       <ServiceWindowOverrideAction notification={notification} isAdmin={isAdmin} />
