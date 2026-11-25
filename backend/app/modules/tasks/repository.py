@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 from app.modules.tasks.types import TaskStatus, TaskType
 from app.db.models.leads import Lead
 from app.db.models.tasks import LeadTask
-from app.db.models.auth import User
 from app.core.time_format import iso_utc
 from app.modules.tasks.policies import new_task_values, task_update_values
 from app.modules.tasks.queries import get_task
@@ -42,62 +41,31 @@ async def update_task(task_id: int, values: dict, user_id: int):
     return await get_task(task_id) if result.rowcount else None
 
 
-async def complete_reply_tasks(lead_id: str, user_id: int) -> int:
-    """Completa los seguimientos que una respuesta real del vendedor satisface.
+async def complete_reply_tasks(lead_id: str, replied_by_user_id: int | None) -> int:
+    """Completa los seguimientos del lead que una respuesta humana satisface.
 
-    No toca llamadas, citas, cotizaciones ni tareas de otro responsable. La
-    outbox llama a este helper recién después del ACK de WhatsApp, por lo que
-    un envío fallido no hace desaparecer trabajo pendiente.
+    Cuenta la respuesta de cualquiera del equipo, no solo la del responsable:
+    la tarea pide que el cliente reciba atención, y eso ya pasó. Antes se
+    filtraba por responsable y Pendientes se llenaba de seguimientos vencidos
+    de clientes que otra persona ya había atendido.
+
+    ``replied_by_user_id`` es quien respondió, aunque no fuera el responsable;
+    ``None`` cuando el mensaje salió del teléfono y Meta no dice quién escribió.
+    No toca llamadas, citas ni cotizaciones. Se llama recién después del ACK de
+    WhatsApp o del eco: un envío fallido no hace desaparecer trabajo pendiente.
     """
     now = datetime.now(timezone.utc)
     stmt = (
         update(LeadTask)
         .where(
             LeadTask.lead_id == lead_id,
-            LeadTask.assigned_user_id == user_id,
             LeadTask.status == TaskStatus.PENDING,
             LeadTask.task_type.in_([TaskType.FOLLOW_UP, TaskType.WHATSAPP]),
         )
         .values(
             status=TaskStatus.COMPLETED,
             completed_at=now,
-            completed_by_user_id=user_id,
-            updated_at=now,
-        )
-    )
-    async with session_scope() as session:
-        result = await session.execute(stmt)
-        await session.flush()
-    return result.rowcount
-
-
-async def complete_assigned_seller_reply_tasks(lead_id: str) -> int:
-    """Completa seguimientos cuando la respuesta humana llegó desde WhatsApp.
-
-    Un mensaje enviado desde un dispositivo vinculado no trae el usuario del
-    CRM que lo escribió. En ese caso la atribución segura es el vendedor que
-    tiene asignado el lead. Si el lead no tiene vendedor, o el usuario asignado
-    no tiene rol de vendedor, no se completa ninguna tarea.
-    """
-    now = datetime.now(timezone.utc)
-    seller_id = (
-        select(Lead.vendedor_id)
-        .join(User, User.id == Lead.vendedor_id)
-        .where(Lead.id == lead_id, User.role == "vendedor")
-        .scalar_subquery()
-    )
-    stmt = (
-        update(LeadTask)
-        .where(
-            LeadTask.lead_id == lead_id,
-            LeadTask.assigned_user_id == seller_id,
-            LeadTask.status == TaskStatus.PENDING,
-            LeadTask.task_type.in_([TaskType.FOLLOW_UP, TaskType.WHATSAPP]),
-        )
-        .values(
-            status=TaskStatus.COMPLETED,
-            completed_at=now,
-            completed_by_user_id=seller_id,
+            completed_by_user_id=replied_by_user_id,
             updated_at=now,
         )
     )

@@ -719,7 +719,7 @@ FOREIGN_TABLES = {
     "app/modules/leads/assignment.py": {"auth"},
     "app/modules/leads/infrastructure/repository.py": {"auth", "catalogs"},
     "app/modules/media/media_library_queries.py": {"auth", "catalogs"},
-    "app/modules/tasks/repository.py": {"auth", "leads"},
+    "app/modules/tasks/repository.py": {"leads"},
     # Integridad entre módulos que la base no puede expresar sola: si lo que
     # se guarda o se borra está referenciado del otro lado.
     "app/modules/automations/infrastructure/sql_references.py": {"auth", "catalogs", "media"},
