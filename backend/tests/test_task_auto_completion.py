@@ -30,51 +30,47 @@ def _sessionmaker(session):
     return lambda: (lambda: _SessionContext(session))
 
 
-async def test_reply_completion_only_targets_sellers_follow_up_tasks(monkeypatch):
+def _capture_statements(monkeypatch, rowcount):
     statements = []
     session = AsyncMock()
 
     async def execute(statement):
         statements.append(statement)
-        return SimpleNamespace(rowcount=2)
+        return SimpleNamespace(rowcount=rowcount)
 
     session.execute = execute
     patch_session_scope(monkeypatch, task_service, _sessionmaker(session))
+    return statements, session
+
+
+async def test_a_reply_from_anyone_completes_the_leads_follow_up_tasks(monkeypatch):
+    """Cuenta la respuesta de cualquiera del equipo, no solo la del
+    responsable: el cliente ya recibió atención."""
+    statements, session = _capture_statements(monkeypatch, rowcount=2)
 
     completed = await task_service.complete_reply_tasks("lead-1", 7)
 
     assert completed == 2
+    where = str(statements[0].whereclause)
+    assert "assigned_user_id" not in where
+    assert "lead_tasks.lead_id" in where
     params = statements[0].compile().params
     assert "lead-1" in params.values()
-    assert 7 in params.values()
+    assert params["completed_by_user_id"] == 7
     assert "pending" in params.values()
     assert "completed" in params.values()
     assert any(value == ["seguimiento", "whatsapp"] for value in params.values())
     session.flush.assert_awaited_once()
 
 
-async def test_external_reply_targets_the_seller_assigned_to_the_lead(monkeypatch):
-    statements = []
-    session = AsyncMock()
+async def test_a_reply_from_the_phone_completes_without_attributing_it(monkeypatch):
+    statements, _session = _capture_statements(monkeypatch, rowcount=1)
 
-    async def execute(statement):
-        statements.append(statement)
-        return SimpleNamespace(rowcount=1)
+    assert await task_service.complete_reply_tasks("lead-1", None) == 1
 
-    session.execute = execute
-    patch_session_scope(monkeypatch, task_service, _sessionmaker(session))
-
-    completed = await task_service.complete_assigned_seller_reply_tasks("lead-1")
-
-    assert completed == 1
-    sql = str(statements[0].compile())
     params = statements[0].compile().params
-    assert "leads.vendedor_id" in sql
-    assert "users.role" in sql
-    assert "lead-1" in params.values()
-    assert "vendedor" in params.values()
-    assert any(value == ["seguimiento", "whatsapp"] for value in params.values())
-    session.flush.assert_awaited_once()
+    assert params["completed_by_user_id"] is None
+    assert "assigned_user_id" not in str(statements[0].whereclause)
 
 
 async def test_successful_human_message_completes_tasks_and_broadcasts(monkeypatch):
@@ -110,9 +106,9 @@ async def test_task_completion_failure_does_not_fail_an_already_sent_message(mon
     await dispatch_after_commit([MessageSent(chat_id="lead-1", message_id=20, actor_user_id=7)])
 
 
-async def test_a_reply_from_the_phone_completes_the_assigned_sellers_tasks(monkeypatch):
+async def test_an_echo_from_the_phone_completes_tasks_but_a_client_message_does_not(monkeypatch):
     complete = AsyncMock(return_value=1)
-    monkeypatch.setattr(task_subscribers, "complete_assigned_seller_reply_tasks", complete)
+    monkeypatch.setattr(task_subscribers, "complete_reply_tasks", complete)
     monkeypatch.setattr(task_subscribers.manager, "broadcast", AsyncMock())
     echo = ProviderMessageStored(chat_id="lead-1", message_id=3, wa_message_id="WA-3", inbound=False, conversational=True)
     inbound = ProviderMessageStored(chat_id="lead-1", message_id=4, wa_message_id="WA-4", inbound=True, conversational=True)
@@ -120,7 +116,7 @@ async def test_a_reply_from_the_phone_completes_the_assigned_sellers_tasks(monke
     await task_subscribers.reply_sent_from_the_phone(echo)
     await task_subscribers.reply_sent_from_the_phone(inbound)
 
-    complete.assert_awaited_once_with("lead-1")
+    complete.assert_awaited_once_with("lead-1", None)
 
 
 @pytest.mark.asyncio
