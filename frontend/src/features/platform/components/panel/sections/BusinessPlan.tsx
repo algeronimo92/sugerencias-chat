@@ -14,7 +14,8 @@ function tope(valor: number | null | undefined, unidad: string): string {
 }
 
 function resumen(paquete: Paquete): string[] {
-  const funciones = FEATURES.filter((feature) => paquete.features.includes(feature)).map((feature) => FEATURE_LABELS[feature])
+  const incluidas = new Set<string>(paquete.features)
+  const funciones = FEATURES.filter((feature) => incluidas.has(feature)).map((feature) => FEATURE_LABELS[feature])
   return [
     tope(paquete.max_seats, 'personas atendiendo'),
     paquete.max_active_automations == null
