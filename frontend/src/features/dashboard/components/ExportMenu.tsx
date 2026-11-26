@@ -2,7 +2,7 @@ import { Download, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
-import { featureUpsell, useFeature } from '../../../shared/plan'
+import { useFeature, useFeatureUpsell } from '../../../shared/plan'
 import { Button } from '../../../shared/ui/Button'
 import { downloadDashboardExport } from '../api'
 import type { DashboardExportReport } from '../types'
@@ -54,6 +54,7 @@ export function ExportMenu({ isAdmin, days }: Props) {
   const [pending, setPending] = useState<DashboardExportReport | null>(null)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
   const hasFeature = useFeature()
+  const upsell = useFeatureUpsell()
   // El respaldo completo va en todos los paquetes; los reportes, desde Esencial.
   const withReports = hasFeature('dashboard.reports_export')
   const reports = REPORTS.filter((report) => (isAdmin || !report.adminOnly) && (withReports || report.id === 'respaldo'))
@@ -120,7 +121,7 @@ export function ExportMenu({ isAdmin, days }: Props) {
           ))}
           {!withReports && (
             <p className="px-2 pb-1 pt-1.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">
-              {featureUpsell('dashboard.reports_export')}
+              {upsell('dashboard.reports_export')}
             </p>
           )}
           <p className="px-2 pb-1 pt-1.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">

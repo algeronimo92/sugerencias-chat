@@ -1,5 +1,5 @@
 import { Loader2, Trash2 } from 'lucide-react'
-import { featureUpsell, useFeature } from '../../../shared/plan'
+import { useFeature, useFeatureUpsell } from '../../../shared/plan'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import type { SettingItem } from '../types'
 import type { SettingsDraft } from '../settingsDraft'
@@ -30,6 +30,7 @@ function ExcludedSellersSetting({ item, form: { draft, setField } }: SettingProp
 
 function BooleanSetting({ item, form: { draft, setField } }: SettingProps) {
   const hasFeature = useFeature()
+  const upsell = useFeatureUpsell()
   // El reparto automático depende del paquete: sin él, la casilla queda
   // apagada y explica desde qué paquete viene (el backend igual no reparte).
   if (item.key === AUTO_ASSIGN_KEY && !hasFeature('leads.auto_assign')) {
@@ -39,7 +40,7 @@ function BooleanSetting({ item, form: { draft, setField } }: SettingProps) {
           <Checkbox checked={false} disabled onCheckedChange={() => {}} />
           {item.label}
         </label>
-        <p className="mt-1 pl-6 text-[11px] text-wa-muted dark:text-wa-muted-dark">{featureUpsell('leads.auto_assign')}</p>
+        <p className="mt-1 pl-6 text-[11px] text-wa-muted dark:text-wa-muted-dark">{upsell('leads.auto_assign')}</p>
       </div>
     )
   }

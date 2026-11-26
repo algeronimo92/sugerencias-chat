@@ -64,7 +64,7 @@ describe('ExportMenu', () => {
     const items = await openMenu()
     expect(items).toHaveLength(1)
     expect(items[0]).toContain('Respaldo completo')
-    expect(screen.getByText(/Reportes en Excel viene desde el paquete Esencial/)).toBeInTheDocument()
+    expect(screen.getByText(/no incluye los reportes en Excel. Viene desde el paquete Esencial/)).toBeInTheDocument()
   })
 
   it('tells the user when the download fails and keeps the menu open', async () => {

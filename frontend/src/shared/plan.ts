@@ -28,6 +28,18 @@ export const FEATURE_LABELS: Record<Feature, string> = {
   'catalogs.erp_sync': 'Precios sincronizados con tu sistema',
 }
 
+/** Lo mismo con artículo, para armar la frase del aviso. */
+const FEATURE_PHRASES: Record<Feature, string> = {
+  'leads.auto_assign': 'el reparto automático de leads',
+  'catalogs.custom_fields': 'los campos propios en la ficha',
+  'appointments.notice_sender': 'el número aparte para los avisos de cita',
+  'dashboard.reports_export': 'los reportes en Excel',
+  'meta.conversions': 'los eventos de conversión a Meta',
+  'catalogs.erp_sync': 'los precios sincronizados con tu sistema',
+}
+
+const PLAN_NAMES: Record<string, string> = { basico: 'Básico', esencial: 'Esencial', profesional: 'Profesional' }
+
 /** El paquete más barato que trae cada función, para el aviso de "viene desde". */
 export const FEATURE_MIN_PLAN: Record<Feature, string> = {
   'leads.auto_assign': 'Esencial',
@@ -38,7 +50,7 @@ export const FEATURE_MIN_PLAN: Record<Feature, string> = {
   'catalogs.erp_sync': 'Profesional',
 }
 
-type Who = Pick<AuthUser, 'features'> | null | undefined
+type Who = Pick<AuthUser, 'features' | 'plan'> | null | undefined
 
 /**
  * Si el negocio de la sesión tiene la función. Una respuesta de /me sin
@@ -57,7 +69,18 @@ export function useFeature(): (feature: Feature) => boolean {
   return useCallback((feature: Feature) => hasFeature(me, feature), [me])
 }
 
-/** Texto para lo que el paquete no trae. */
-export function featureUpsell(feature: Feature): string {
-  return `${FEATURE_LABELS[feature]} viene desde el paquete ${FEATURE_MIN_PLAN[feature]}. Para cambiar de paquete, contacta al equipo de CliniVentas.`
+/**
+ * Aviso de lo que el paquete no trae: qué falta, desde qué paquete viene y a
+ * quién pedirlo. Es la misma frase que arma el backend (`plans.upsell`).
+ */
+export function featureUpsell(feature: Feature, plan?: string | null): string {
+  const current = plan ? PLAN_NAMES[plan] : undefined
+  const missing = current ? `Tu paquete ${current} no incluye ${FEATURE_PHRASES[feature]}.` : `Tu paquete no incluye ${FEATURE_PHRASES[feature]}.`
+  return `${missing} Viene desde el paquete ${FEATURE_MIN_PLAN[feature]}: pide el cambio al equipo de CliniVentas.`
+}
+
+/** `featureUpsell` con el paquete de la sesión. */
+export function useFeatureUpsell(): (feature: Feature) => string {
+  const { data: me } = useMe()
+  return useCallback((feature: Feature) => featureUpsell(feature, me?.plan), [me])
 }

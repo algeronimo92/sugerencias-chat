@@ -1,7 +1,7 @@
 import { Link2, Link2Off, Loader2, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { featureUpsell, useFeature } from '../../../shared/plan'
+import { useFeature, useFeatureUpsell } from '../../../shared/plan'
 import { Button } from '../../../shared/ui/Button'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { extractErrorMessage } from '../../../shared/utils/errors'
@@ -35,6 +35,7 @@ export function ErpSyncCard() {
   const { data: status, isLoading } = useErpSyncStatus()
   const runSync = useRunErpSync()
   const hasFeature = useFeature()
+  const upsell = useFeatureUpsell()
 
   function handleSync() {
     runSync.mutate(undefined, {
@@ -63,7 +64,7 @@ export function ErpSyncCard() {
         <div>
           <p className="text-sm font-semibold text-wa-text dark:text-wa-text-dark">Precios sincronizados con tu sistema</p>
           <p className="mt-1 text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-            {featureUpsell('catalogs.erp_sync')}
+            {upsell('catalogs.erp_sync')}
             {status.configured && ' Los precios que ya se trajeron se quedan, pero no se vuelven a sincronizar.'}
           </p>
         </div>

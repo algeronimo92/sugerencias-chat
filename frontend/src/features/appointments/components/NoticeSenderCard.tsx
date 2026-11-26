@@ -1,7 +1,7 @@
 import { Check, Link2, Loader2, Send } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { featureUpsell, useFeature } from '../../../shared/plan'
+import { useFeature, useFeatureUpsell } from '../../../shared/plan'
 import { Button } from '../../../shared/ui/Button'
 import { IntegrationCard } from '../../../shared/ui/IntegrationCard'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
@@ -23,6 +23,7 @@ function numberLabel(number: SenderNumber): string {
 export function NoticeSenderCard() {
   const { data, isLoading, isError, error } = useNoticeSender()
   const hasFeature = useFeature()
+  const upsell = useFeatureUpsell()
   const included = hasFeature('appointments.notice_sender')
   // Sin la función en el paquete, los avisos salen del número del CRM aunque
   // haya otro guardado de antes.
@@ -37,7 +38,7 @@ export function NoticeSenderCard() {
     >
       {!included ? (
         <p className="text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
-          Los avisos salen del número del CRM. {featureUpsell('appointments.notice_sender')}
+          Los avisos salen del número del CRM. {upsell('appointments.notice_sender')}
         </p>
       ) : isLoading ? (
         <Loader2 className="mx-auto h-4 w-4 animate-spin text-wa-muted" aria-label="Cargando números" />
