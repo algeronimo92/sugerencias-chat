@@ -115,6 +115,11 @@ export type AccesoBase = Delivered<ApiSchemas['DbAccessStatus']>;
 /** Credenciales del login del negocio: la contraseña solo llega una vez. */
 export type CredencialesBase = Delivered<ApiSchemas['DbAccessCredentials']>;
 
+/** Un paquete del catálogo (Básico, Esencial, Profesional) y qué trae. */
+export type Paquete = Delivered<ApiSchemas['PlanItem']>;
+export type PaqueteId = Paquete['id'];
+export type PaqueteNegocio = Delivered<ApiSchemas['OrganizationPlanItem']>;
+
 export type AsistenteNegocio = {
   enabled: boolean;
   monthly_quota: number | null;

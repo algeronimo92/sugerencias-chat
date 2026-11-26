@@ -15,6 +15,7 @@ from app.modules.catalogs.schemas import (
 )
 from app.modules.catalogs.erp_catalog import ErpCatalogError, sync_catalog, sync_status, test_catalog
 from app.modules.auth.public import Permission, require_permission
+from app.modules.platform.ports.plan import Feature, require_feature
 from app.modules.catalogs.queries import list_lead_services
 from app.modules.catalogs.service import (
     ErpManagedError,
@@ -30,6 +31,7 @@ from app.modules.catalogs.service import (
 )
 
 require_catalogs_manage = require_permission(Permission.CATALOGS_MANAGE)
+require_erp_sync = Depends(require_feature(Feature.ERP_SYNC))
 # El chat y la ficha del lead los listan para elegir.
 require_leads_view = require_permission(Permission.LEADS_VIEW)
 
@@ -53,14 +55,14 @@ async def get_erp_sync_status(_admin: User = Depends(require_catalogs_manage)):
     return await sync_status()
 
 
-@router.post("/erp-sync/test", response_model=ErpTestResult)
+@router.post("/erp-sync/test", response_model=ErpTestResult, dependencies=[require_erp_sync])
 async def test_erp_connection(body: ErpTestRequest, _admin: User = Depends(require_catalogs_manage)):
     """Pide el catálogo y lo valida sin guardar nada: para probar una URL
     antes de conectarla."""
     return await test_catalog(body.url)
 
 
-@router.post("/erp-sync", response_model=ErpSyncStatus)
+@router.post("/erp-sync", response_model=ErpSyncStatus, dependencies=[require_erp_sync])
 async def run_erp_sync(_admin: User = Depends(require_catalogs_manage)):
     """Sincroniza ahora con el ERP. Si falla, el estado queda anotado igual."""
     try:

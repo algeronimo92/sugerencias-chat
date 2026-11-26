@@ -14,7 +14,9 @@ from app.db.models.control import Organization, OrganizationDomain, TenantSchema
 from app.db.session import control_session
 from app.modules.ai.public import AIEntitlement, count_usage_this_month, get_entitlement
 from app.modules.auth.public import business_db_access, reset_business_login, team_summary
+from app.modules.platform.entitlements import invalidate_plan_cache
 from app.modules.platform.onboarding import onboarding_status
+from app.modules.platform.plans import PlanId, plan_spec
 from app.modules.platform.settings_service import (
     PLATFORM_MANAGED_TENANT_KEYS,
     SETTING_DEFS,
@@ -56,6 +58,7 @@ async def list_organizations() -> dict:
                     "status": organization.status,
                     "schema_name": organization.schema_name,
                     "storage_prefix": organization.storage_prefix,
+                    "plan": plan_spec(organization.plan).id.value,
                     "ai_enabled": organization.ai_enabled,
                     "ai_monthly_quota": organization.ai_monthly_quota,
                     "created_at": organization.created_at.isoformat()
@@ -157,6 +160,35 @@ async def update_organization_ai(organization_id: UUID, entitlement: AIEntitleme
         organization.ai_enabled = entitlement.enabled
         organization.ai_monthly_quota = entitlement.monthly_quota
     return await organization_ai(organization_id)
+
+
+async def organization_plan(organization_id: UUID) -> dict:
+    async with control_session() as session:
+        organization = await session.get(Organization, str(organization_id))
+        if organization is None:
+            raise OrganizationNotFoundError(str(organization_id))
+        return {"plan": plan_spec(organization.plan).id.value}
+
+
+async def update_organization_plan(organization_id: UUID, plan: PlanId) -> dict:
+    """Asigna el paquete y le pone la IA que ese paquete trae.
+
+    La IA se pisa a propósito: cambiar de paquete es volver a lo que el
+    paquete dice. Una excepción (más cupo, IA en Básico) se vuelve a dar
+    después desde la sección de IA. No se borra ni se apaga nada del
+    negocio: si queda por encima de un tope, solo no puede sumar más.
+    """
+
+    spec = plan_spec(plan)
+    async with control_session() as session:
+        organization = await session.get(Organization, str(organization_id))
+        if organization is None:
+            raise OrganizationNotFoundError(str(organization_id))
+        organization.plan = spec.id.value
+        organization.ai_enabled = spec.ai_enabled
+        organization.ai_monthly_quota = spec.ai_monthly_quota
+    invalidate_plan_cache(organization_id)
+    return {"plan": spec.id.value}
 
 
 _MANAGED_DEFS = [d for d in SETTING_DEFS if d.key in PLATFORM_MANAGED_TENANT_KEYS]

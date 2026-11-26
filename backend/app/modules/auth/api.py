@@ -16,6 +16,7 @@ from app.modules.auth.auth_service import (
     verify_password,
 )
 from app.modules.auth.roles_service import permissions_for_role
+from app.modules.platform.ports.plan import current_plan
 from app.modules.auth.users_service import get_user_by_email
 from app.modules.auth.admin_totp import (
     TotpSetupError,
@@ -57,11 +58,16 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 async def _to_user_out(user: User) -> UserOut:
+    plan = await current_plan()
     return UserOut(
         id=user.id, email=user.email, name=user.name, role=user.role,
         can_handle_calls=bool(getattr(user, "can_handle_calls", False)),
         # El login no pasa por get_current_user: se lee la matriz acá.
         permissions=sorted(await permissions_for_role(user.role)),
+        plan=plan.id.value,
+        features=sorted(plan.features),
+        max_seats=plan.max_seats,
+        max_active_automations=plan.max_active_automations,
     )
 
 

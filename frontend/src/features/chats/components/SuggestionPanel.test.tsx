@@ -8,6 +8,8 @@ import type { Chat } from '../../leads/types'
 import { SuggestionPanel } from './SuggestionPanel'
 
 // La ficha del lead no es parte de lo que se prueba acá.
+// El negocio tiene IA; sin IA el panel queda solo con la ficha (CopilotWithoutAi.test).
+vi.mock('../../ai/public/useAiUsage', () => ({ useAiAvailable: () => true }))
 vi.mock('./ScheduledMessageCard', () => ({ ScheduledMessageCard: () => null }))
 vi.mock('../../leads/public/LeadActivityPanel', () => ({ LeadActivityPanel: () => null }))
 vi.mock('../../leads/public/LeadInfo', () => ({ LeadInfo: () => <section aria-label="Datos" /> }))

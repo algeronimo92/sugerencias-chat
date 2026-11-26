@@ -8,7 +8,7 @@ CRM comprometido no pueda alcanzarlas (ver app/tenancy/middleware.py).
 from __future__ import annotations
 
 import logging
-from app.modules.platform.schemas import (DbAccessCredentials, DbAccessStatus, NewOrganizationResult, LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, OrganizationOverview, PlatformEmailStatus, PlatformEmailUpdate)
+from app.modules.platform.schemas import (DbAccessCredentials, DbAccessStatus, NewOrganizationResult, LoginBody, DomainBody, NewOrganizationBody, StarterPackResult, PlatformSettingItem, UpdatePlatformSettingsBody, OrganizationAIBody, OrganizationAIItem, OrganizationPlanBody, OrganizationPlanItem, PlanItem, OrganizationIntegrationItem, BrandingBody, BrandingLogoBody, BrandingItem, OperatorItem, OrganizationList, KnowledgeTemplateBody, KnowledgeTemplateItem, KnowledgeTemplateUpdate, EmailTestResult, OrganizationOverview, PlatformEmailStatus, PlatformEmailUpdate)
 
 import base64
 import binascii
@@ -34,6 +34,8 @@ from app.modules.platform.platform_organizations import (
     update_organization_integrations,
 )
 from app.modules.platform.platform_organizations import list_organizations as listar_organizaciones
+from app.modules.platform.platform_organizations import organization_plan, update_organization_plan
+from app.modules.platform.plans import PLANS
 from app.modules.platform.starter_pack import apply_starter_pack
 from app.modules.platform.platform_settings import list_platform_settings, update_platform_settings
 from app.core.errors import Invalid, Unavailable
@@ -329,6 +331,48 @@ async def put_organization_ai(organization_id: UUID, body: OrganizationAIBody):
             organization_id,
             AIEntitlement(enabled=body.enabled, monthly_quota=body.monthly_quota),
         )
+    except OrganizationNotFoundError as exc:
+        raise _organization_not_found() from exc
+
+
+@router.get("/plans", dependencies=protected, response_model=list[PlanItem])
+async def get_plans():
+    """El catálogo de paquetes, para que el panel muestre qué trae cada uno."""
+    return [
+        PlanItem(
+            id=spec.id,
+            name=spec.name,
+            features=sorted(spec.features),
+            max_seats=spec.max_seats,
+            max_active_automations=spec.max_active_automations,
+            ai_enabled=spec.ai_enabled,
+            ai_monthly_quota=spec.ai_monthly_quota,
+        )
+        for spec in PLANS.values()
+    ]
+
+
+@router.get(
+    "/organizations/{organization_id}/plan",
+    dependencies=protected,
+    response_model=OrganizationPlanItem,
+)
+async def get_organization_plan(organization_id: UUID):
+    try:
+        return await organization_plan(organization_id)
+    except OrganizationNotFoundError as exc:
+        raise _organization_not_found() from exc
+
+
+@router.put(
+    "/organizations/{organization_id}/plan",
+    dependencies=protected,
+    response_model=OrganizationPlanItem,
+)
+async def put_organization_plan(organization_id: UUID, body: OrganizationPlanBody):
+    """Cambia el paquete y le pone la IA de ese paquete (cupo incluido)."""
+    try:
+        return await update_organization_plan(organization_id, body.plan)
     except OrganizationNotFoundError as exc:
         raise _organization_not_found() from exc
 

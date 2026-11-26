@@ -247,6 +247,12 @@ class InMemoryRuleStore:
         rule.update(values)
         return True
 
+    async def count_active(self, *, exclude_rule_id=None):
+        return sum(
+            1 for rule_id, rule in self.rules.items()
+            if rule.get("is_active") and not rule.get("deleted_at") and rule_id != exclude_rule_id
+        )
+
     async def lock_active_statuses(self, rule_id):
         rule = self.rules.get(rule_id)
         if rule is None or rule.get("deleted_at"):

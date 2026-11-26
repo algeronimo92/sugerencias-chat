@@ -10,9 +10,11 @@ const TABS: { id: PanelTab; label: string; icon: typeof UserRound }[] = [
 
 /** Pestañas "Ficha" y "Copiloto IA" del panel del lead, con el botón para
  *  pedir otras sugerencias cuando el copiloto está a la vista. */
-export function LeadPanelTabs({ tab, onChange, canRegenerate, isGenerating, onRegenerate }: {
+export function LeadPanelTabs({ tab, onChange, canRegenerate, isGenerating, onRegenerate, tabs }: {
   tab: PanelTab
   onChange: (tab: PanelTab) => void
+  /** Las pestañas a mostrar; sin IA en el paquete, solo la ficha. */
+  tabs?: PanelTab[]
   canRegenerate: boolean
   isGenerating: boolean
   onRegenerate: () => void
@@ -21,14 +23,16 @@ export function LeadPanelTabs({ tab, onChange, canRegenerate, isGenerating, onRe
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
+    if (visible.length < 2) return
     const next = tab === 'ficha' ? 'copiloto' : 'ficha'
     onChange(next)
     document.getElementById(`tab-lead-${next}`)?.focus()
   }
+  const visible = TABS.filter(({ id }) => !tabs || tabs.includes(id))
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-2">
       <div role="tablist" aria-label="Panel del lead" className="flex h-full items-end gap-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {visible.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             id={`tab-lead-${id}`}

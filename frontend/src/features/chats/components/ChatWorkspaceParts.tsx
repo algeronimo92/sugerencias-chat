@@ -5,6 +5,7 @@ import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
 import { Button } from "../../../shared/ui/Button";
 import { PageLoader } from "../../../shared/ui/PageLoader";
 import { Spinner } from "../../../shared/ui/Spinner";
+import { useAiAvailable } from "../../ai/public/useAiUsage";
 import type { Chat } from "../../leads/types";
 import type { ChatSuggestions } from "../hooks/useChatWorkspace";
 import { ChatThread } from "./ChatThread";
@@ -192,6 +193,11 @@ export function SuggestionsColumn({ selectedChat, suggestions, canConnect, onUse
   canConnect: boolean;
   onUse: () => void;
 }) {
+  // Sin IA en el paquete y sin chat abierto la columna sería solo una
+  // invitación a una función que el negocio no tiene: se quita y la
+  // conversación usa ese ancho. Con un chat abierto queda la ficha del lead.
+  const aiAvailable = useAiAvailable();
+  if (!selectedChat && !aiAvailable) return null;
   return (
     <div className="h-full w-80 shrink-0 overflow-hidden rounded-2xl border border-wa-border bg-white shadow-sm dark:border-wa-border-dark dark:bg-wa-panel-dark 2xl:w-[340px]">
       {selectedChat ? (

@@ -1,6 +1,7 @@
 import { History, Loader2, Megaphone } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useFeature, useFeatureUpsell } from '../../../shared/plan'
 import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Input } from '../../../shared/ui/Input'
@@ -161,8 +162,12 @@ function ConversionsBody({ data }: { data: MetaConversionsStatus }) {
  *  Meta. Diseño: docs/analisis/14-diseno-api-conversiones-meta-ctwa.md. */
 export function MetaConversionsPanel() {
   const { data, isLoading, isError } = useMetaConversions()
+  const hasFeature = useFeature()
+  const upsell = useFeatureUpsell()
   let body
-  if (isLoading) body = <p className={`text-xs ${muted}`}>Cargando…</p>
+  // Lo ya informado se sigue viendo en el historial; encender pide el paquete.
+  if (!hasFeature('meta.conversions')) body = <p className={`text-xs ${muted}`}>{upsell('meta.conversions')}</p>
+  else if (isLoading) body = <p className={`text-xs ${muted}`}>Cargando…</p>
   else if (isError || !data) body = <p className="text-xs text-red-600 dark:text-red-400">No se pudo cargar el estado de las conversiones.</p>
   else body = <ConversionsBody data={data} />
 

@@ -34,6 +34,8 @@ from app.modules.platform.schemas import (
     WhatsappStatusItem,
 )
 from app.modules.platform.settings_service import get_effective_many, update_settings
+from app.modules.platform.entitlements import ensure_feature
+from app.modules.platform.plans import Feature
 
 require_settings_manage = require_permission(Permission.SETTINGS_MANAGE)
 
@@ -188,6 +190,9 @@ async def update_whatsapp_conversions(body: MetaConversionsUpdate, user: User = 
     aceptar las Condiciones de las herramientas comerciales de Meta (queda
     quién y cuándo) y obtener el dataset de la WABA: si el token no tiene
     ``whatsapp_business_manage_events``, Meta lo rechaza acá y no se enciende."""
+    # Apagarlo siempre se puede; encenderlo depende del paquete.
+    if body.enabled:
+        await ensure_feature(Feature.META_CONVERSIONS)
     values: dict[str, str] = {}
     if body.test_event_code is not None:
         values[TEST_CODE_KEY] = body.test_event_code.strip()

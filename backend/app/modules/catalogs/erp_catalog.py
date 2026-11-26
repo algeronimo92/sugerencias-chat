@@ -38,6 +38,7 @@ from app.db.models.catalogs import LeadService, ServicePackage
 from app.db.uow import current_session, unit_of_work
 from app.modules.catalogs import repository
 from app.modules.catalogs.errors import LeadServiceAlreadyExistsError
+from app.modules.platform.ports.plan import Feature, has_feature
 from app.modules.platform.ports.settings_service import get_effective_many, update_settings
 
 logger = logging.getLogger(__name__)
@@ -357,6 +358,9 @@ async def erp_catalog_tick() -> None:
     desde la última sincronización que terminó bien."""
     values = await get_effective_many(("erp_catalog_url", "erp_catalog_synced_at"))
     if not values["erp_catalog_url"].strip():
+        return
+    # Un negocio que bajó de paquete conserva la URL, pero ya no se sincroniza.
+    if not await has_feature(Feature.ERP_SYNC):
         return
     last = _parse_ts(values["erp_catalog_synced_at"])
     if last is not None and (datetime.now(timezone.utc) - last).total_seconds() < SYNC_INTERVAL_SECONDS:

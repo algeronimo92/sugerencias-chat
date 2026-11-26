@@ -5,6 +5,7 @@ from sqlalchemy import false, func, insert, select, true, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import User
+from app.modules.auth.types import UserRole
 from app.modules.auth.errors import (
     EmailAlreadyExistsError,
     LastAdminError,
@@ -35,6 +36,22 @@ async def get_user_by_email(email: str) -> User | None:
     stmt = select(User).where(User.email == email)
     async with session_scope() as session:
         return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def count_seats(*, exclude_user_id: int | None = None, exclude_email: str | None = None) -> int:
+    """Personas que ocupan lugar en el paquete: todo rol menos el de solo
+    lectura, activas o con la invitación pendiente (el lugar queda reservado
+    hasta que la acepten o se cancele). Las desactivadas no ocupan."""
+    stmt = select(func.count()).select_from(User).where(
+        User.role != UserRole.ANALYST,
+        (User.is_active.is_(true())) | (User.activated_at.is_(None)),
+    )
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+    if exclude_email is not None:
+        stmt = stmt.where(User.email != exclude_email)
+    async with session_scope() as session:
+        return int(await session.scalar(stmt) or 0)
 
 
 async def list_users() -> list[dict]:

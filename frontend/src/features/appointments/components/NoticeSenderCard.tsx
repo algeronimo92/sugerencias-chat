@@ -1,6 +1,7 @@
 import { Check, Link2, Loader2, Send } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useFeature, useFeatureUpsell } from '../../../shared/plan'
 import { Button } from '../../../shared/ui/Button'
 import { IntegrationCard } from '../../../shared/ui/IntegrationCard'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
@@ -21,7 +22,12 @@ function numberLabel(number: SenderNumber): string {
  *  del portfolio del negocio. Lo que le respondan no abre chats en el CRM. */
 export function NoticeSenderCard() {
   const { data, isLoading, isError, error } = useNoticeSender()
-  const chosen = data?.numbers.find(number => number.id === data.phone_number_id) ?? null
+  const hasFeature = useFeature()
+  const upsell = useFeatureUpsell()
+  const included = hasFeature('appointments.notice_sender')
+  // Sin la función en el paquete, los avisos salen del número del CRM aunque
+  // haya otro guardado de antes.
+  const chosen = included ? data?.numbers.find(number => number.id === data.phone_number_id) ?? null : null
   return (
     <IntegrationCard
       id="numero-de-avisos"
@@ -30,7 +36,11 @@ export function NoticeSenderCard() {
       state={chosen ? 'connected' : 'unconfigured'}
       stateLabel={chosen ? numberLabel(chosen) : 'Número del CRM'}
     >
-      {isLoading ? (
+      {!included ? (
+        <p className="text-sm leading-6 text-wa-muted dark:text-wa-muted-dark">
+          Los avisos salen del número del CRM. {upsell('appointments.notice_sender')}
+        </p>
+      ) : isLoading ? (
         <Loader2 className="mx-auto h-4 w-4 animate-spin text-wa-muted" aria-label="Cargando números" />
       ) : isError || !data ? (
         <p role="alert" className="text-xs text-red-500 dark:text-red-400">

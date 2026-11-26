@@ -132,6 +132,9 @@ class RuleStore(Protocol):
 
     async def publish(self, rule_id: int, values: dict, *, version: int, now: datetime) -> None: ...
 
+    async def count_active(self, *, exclude_rule_id: int | None = None) -> int:
+        """Reglas encendidas y no borradas, para el tope del paquete."""
+
     async def flow_targets(self) -> dict[int, dict]:
         """Reglas no borradas por id, para validar las invocaciones."""
 

@@ -17,6 +17,8 @@ from app.integrations.llm.catalog import (
     validate_overrides,
 )
 from app.modules.platform import settings_repository
+from app.modules.platform.entitlements import ensure_feature
+from app.modules.platform.plans import Feature
 from app.core.config import settings as env_settings
 from app.db.models.settings import AppSetting
 from app.core.secret_cipher import (
@@ -611,6 +613,8 @@ async def update_settings(values: dict[str, str]) -> None:
         enabled = values["auto_assign_leads_enabled"].strip().lower()
         if enabled not in {"", "true", "false"}:
             raise ValueError("El reparto automático debe ser true o false")
+        if enabled == "true":
+            await ensure_feature(Feature.AUTO_ASSIGN)
         values["auto_assign_leads_enabled"] = enabled
     if "sellers_see_only_assigned_leads" in values:
         enabled = values["sellers_see_only_assigned_leads"].strip().lower()

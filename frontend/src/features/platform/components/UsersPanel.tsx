@@ -357,6 +357,8 @@ export function UsersPanel() {
   const [formOpen, setFormOpen] = useState<boolean | null>(null)
   const showForm = formOpen ?? (users !== undefined && users.length <= 1)
   // Lo que pide acción (invitaciones pendientes) arriba; lo apagado, al final.
+  // Lugares del paquete: quienes atienden, activos o invitados (solo lectura no cuenta).
+  const seats = users?.filter((u) => u.role !== 'analista' && (u.is_active || u.invitation_pending)).length
   const sorted = users ? [...users].sort((a, b) => STATUS_RANK[statusOf(a)] - STATUS_RANK[statusOf(b)] || a.name.localeCompare(b.name)) : []
 
   return (
@@ -370,6 +372,9 @@ export function UsersPanel() {
           Nuevo usuario
         </Button>
       </div>
+      {me?.max_seats != null && seats !== undefined && (
+        <p className="text-xs text-wa-muted dark:text-wa-muted-dark">{seats} de {me.max_seats} personas atendiendo en tu paquete. Las cuentas de solo lectura no cuentan.</p>
+      )}
       {showForm && <NewUserForm onSent={() => setFormOpen(false)} />}
 
       {isLoading && (

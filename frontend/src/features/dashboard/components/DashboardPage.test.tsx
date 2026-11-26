@@ -10,6 +10,8 @@ import type { DashboardMetrics, DashboardScope } from '../types'
 const requestedScopes: (DashboardScope | null)[] = []
 const requests: { days: number; scope: DashboardScope | null; sellerId: number | null }[] = []
 
+// La sesión solo dice el paquete; sin `features` trae todo.
+vi.mock('../../../shared/auth', async (importOriginal) => ({ ...(await importOriginal<object>()), useMe: () => ({ data: { role: 'admin' } }) }))
 vi.mock('../hooks/useDashboard', () => ({
   useDashboard: (days: number, scope: DashboardScope | null, sellerId: number | null = null) => {
     requestedScopes.push(scope)

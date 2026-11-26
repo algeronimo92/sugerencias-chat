@@ -51,6 +51,8 @@ export const platformKeys = {
   dbAccess: (organizationId: string) => ['platform', 'organizations', organizationId, 'db-access'] as const,
   branding: (organizationId: string) => ['platform', 'organizations', organizationId, 'branding'] as const,
   ai: (organizationId: string) => ['platform', 'organizations', organizationId, 'ai'] as const,
+  plan: (organizationId: string) => ['platform', 'organizations', organizationId, 'plan'] as const,
+  plans: ['platform', 'plans'] as const,
   integrations: (organizationId: string) => ['platform', 'organizations', organizationId, 'integrations'] as const,
   knowledgeTemplates: ['platform', 'knowledge-templates'] as const,
 }

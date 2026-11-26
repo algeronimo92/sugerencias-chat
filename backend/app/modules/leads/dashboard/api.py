@@ -5,6 +5,7 @@ from app.modules.leads.schemas import DashboardMetrics
 from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.dashboard.export import ANALYST_REPORTS, XLSX_MEDIA_TYPE, ExportReport, build_export
 from app.modules.leads.dashboard.queries import SCOPE_MINE, SCOPE_TEAM, get_dashboard_metrics
+from app.modules.platform.ports.plan import Feature, ensure_feature
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -46,6 +47,9 @@ async def export_report(
     personal_data = can(user, Permission.DASHBOARD_EXPORT_PERSONAL_DATA)
     if not personal_data and report not in ANALYST_REPORTS:
         raise HTTPException(403, "Este reporte trae datos de pacientes: tu rol no puede exportarlo")
+    # El respaldo completo va en todos los paquetes: los datos son del negocio.
+    if report != ExportReport.BACKUP:
+        await ensure_feature(Feature.REPORTS_EXPORT)
     exported = await build_export(report, days, user.id, personal_data=personal_data)
     return Response(
         content=exported.content,

@@ -209,7 +209,7 @@ async def test_platform_entitlement_blocks_generation_before_creating_a_job(
     assert exc.value.status_code == status
     assert exc.value.detail["code"] == code
     # El mensaje es para el vendedor: explica el motivo, no un código técnico.
-    assert "plan" in exc.value.detail["message"] or "este mes" in exc.value.detail["message"]
+    assert "paquete" in exc.value.detail["message"] or "este mes" in exc.value.detail["message"]
     create.assert_not_awaited()
 
 
@@ -348,7 +348,9 @@ async def test_quota_counts_only_up_to_the_limit(monkeypatch):
     await ai_access.ensure_ai_available()
     summary = await ai_access.usage_summary()
 
-    assert summary == {"enabled": True, "monthly_quota": 10, "used_this_month": 9, "remaining": 1}
+    assert summary == {
+        "enabled": True, "monthly_quota": 10, "used_this_month": 9, "remaining": 1, "unavailable_reason": None,
+    }
 
 
 def test_quota_month_starts_at_utc_midnight_of_day_one():

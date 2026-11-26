@@ -33,10 +33,10 @@ function renderPage() {
 }
 
 describe('AiAssistantPage', () => {
-  let usage: AIUsage = { enabled: true, monthly_quota: 100, used_this_month: 40, remaining: 60 }
+  let usage: AIUsage = { enabled: true, monthly_quota: 100, used_this_month: 40, remaining: 60, unavailable_reason: null }
 
   beforeEach(() => {
-    usage = { enabled: true, monthly_quota: 100, used_this_month: 40, remaining: 60 }
+    usage = { enabled: true, monthly_quota: 100, used_this_month: 40, remaining: 60, unavailable_reason: null }
     for (const method of Object.values(api)) method.mockReset()
     api.get.mockImplementation((url: string) => {
       if (url === '/api/suggestions/usage') return Promise.resolve({ data: usage })
@@ -68,11 +68,15 @@ describe('AiAssistantPage', () => {
     })))
   })
 
-  it('avisa cuando el plan no incluye el asistente', async () => {
-    usage = { enabled: false, monthly_quota: null, used_this_month: 0, remaining: null }
+  it('avisa cuando el paquete no incluye el asistente y a cuál subir', async () => {
+    usage = {
+      enabled: false, monthly_quota: null, used_this_month: 0, remaining: null,
+      unavailable_reason: 'Tu paquete Básico no incluye las sugerencias y el análisis de leads con IA. Viene desde el paquete Esencial: pide el cambio al equipo de CliniVentas.',
+    }
     renderPage()
 
-    expect(await screen.findByText(/no está incluido en el plan/)).toBeInTheDocument()
+    expect(await screen.findByText(/Tu paquete Básico no incluye las sugerencias/)).toBeInTheDocument()
+    expect(screen.getByText(/Viene desde el paquete Esencial/)).toBeInTheDocument()
   })
 
   it('crea documentos de conocimiento', async () => {

@@ -23,6 +23,7 @@ from app.modules.automations.application.validation import validate_visual_flow
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.flow_definition import normalize_visual_draft
 from app.modules.automations.domain.errors import AutomationConflict, InvalidAutomation
+from app.modules.platform.ports.plan import current_plan, ensure_automation_slot
 
 _DEADLINE_FIELDS = {"is_active", "trigger_type", "trigger_config"}
 
@@ -38,6 +39,15 @@ async def _changed(*, wake: bool = False) -> None:
 async def _backfill_if_deadline_rule(item: dict | None) -> None:
     if item and item["is_active"] and item["trigger_type"] == AutomationTrigger.CUSTOMER_RESPONSE_OVERDUE:
         await backfill_customer_response_deadlines(item["id"])
+
+
+async def _ensure_slot_to_turn_on(rule_id: int, currently_active: bool) -> None:
+    """El paquete puede limitar cuántas reglas hay encendidas a la vez. Una que
+    ya estaba encendida no ocupa un lugar nuevo (republicarla no cuenta)."""
+    if currently_active or (await current_plan()).max_active_automations is None:
+        return
+    rules = automation_ports().rules
+    await ensure_automation_slot(lambda: rules.count_active(exclude_rule_id=rule_id))
 
 
 # --- Reglas -----------------------------------------------------------------
@@ -70,6 +80,10 @@ async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
 
 async def update_automation_rule(rule_id: int, values: dict) -> dict | None:
     rules = automation_ports().rules
+    if values.get("is_active"):
+        current = await rules.get(rule_id)
+        if current is not None:
+            await _ensure_slot_to_turn_on(rule_id, bool(current.get("is_active")))
     if values:
         values = {**values, "updated_at": _now()}
         async with unit_of_work():
@@ -144,6 +158,8 @@ async def publish_visual_flow(rule_id: int) -> dict | None:
     )
     if validated["flow_definition"] == current["published_flow_definition"]:
         raise InvalidAutomation("No hay cambios para publicar: esta versión ya está publicada.")
+    # Publicar también enciende la regla.
+    await _ensure_slot_to_turn_on(rule_id, bool(current.get("is_active")))
     rules = automation_ports().rules
     async with unit_of_work():
         await rules.publish(rule_id, validated, version=current["flow_version"] + 1, now=_now())
