@@ -1,7 +1,11 @@
 """Recordatorios de cita leídos de Google Calendar.
 
 Revision ID: b8e4d2a6c193
-Revises: a3c7e1f95b20
+Revises: c8d2f6a4e913
+
+Nació sobre a3c7e1f95b20 al mismo tiempo que c8d2f6a4e913 (paquete por
+negocio) y quedaron dos heads: el deploy del 2026-11-26 se cortó al
+planificar las migraciones, sin aplicar ninguna, y por eso se reencadenó acá.
 
 Cada recordatorio (un día, cinco horas, una hora antes, o lo que configure
 el negocio) queda en ``appointment_reminders``. La clave única evento +
@@ -18,7 +22,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b8e4d2a6c193"
-down_revision: Union[str, None] = "a3c7e1f95b20"
+down_revision: Union[str, None] = "c8d2f6a4e913"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
