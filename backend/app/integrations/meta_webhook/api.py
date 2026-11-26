@@ -5,8 +5,8 @@ suscripción se valida con el verify token y cada POST con la firma HMAC del
 cuerpo crudo (``X-Hub-Signature-256``), las dos contra la configuración de la
 plataforma. El negocio se resuelve después, por evento, desde el inbox.
 
-Si n8n queda delante, tiene que reenviar el cuerpo y la firma sin tocarlos:
-cualquier cambio en el cuerpo invalida la firma.
+La firma se calcula sobre los bytes crudos: un proxy que reescriba el cuerpo
+(lo que hacía el relay de n8n si perdía el Raw Body) la invalida.
 """
 
 import json

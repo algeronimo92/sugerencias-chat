@@ -98,19 +98,6 @@ async def fetch_lead_raw(chat_id: str) -> dict | None:
     return _json_safe_row(dict(row))
 
 
-async def fetch_messages_raw(chat_id: str, limit: int = 500) -> list[dict]:
-    """Filas crudas de ``wsp_messages`` de un chat, más recientes primero.
-    Reemplaza al nodo Postgres ``get messages`` de n8n."""
-    async with session_scope() as session:
-        rows = (
-            await session.execute(
-                text("SELECT * FROM wsp_messages WHERE chat_id = :chat_id ORDER BY id DESC LIMIT :limit"),
-                {"chat_id": chat_id, "limit": limit},
-            )
-        ).mappings().all()
-    return [_json_safe_row(dict(row)) for row in rows]
-
-
 def _lead_label(nombre: str | None, telefono: str | None) -> str:
     return (nombre or "").strip() or (telefono or "").strip() or "Sin nombre"
 

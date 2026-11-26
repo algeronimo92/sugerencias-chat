@@ -1,9 +1,7 @@
 from fastapi import Depends, Header, HTTPException, Query
 
-from app.modules.leads.public import fetch_lead_raw, fetch_messages_raw
-from app.modules.conversations.ports.message_queries import fetch_last_wa_message_id
 from app.integrations.n8n.common import webhooks_router
-from app.modules.ai.ports.ai_assistant_service import (fetch_tenant_config, list_ai_catalog)
+from app.modules.ai.ports.ai_assistant_service import (fetch_tenant_config)
 from app.modules.ai.ports.ai_context import (fetch_analysis_context)
 from app.modules.ai.ports.ai_job_tokens import (AIJobClaims, require_ai_job_context)
 from app.modules.ai.ports.ai_jobs import (AIJobConflict, AIJobExpired, AIJobNotFound, finish_ai_job, record_ai_job_step, start_ai_job)
@@ -28,32 +26,6 @@ def _raise_job_http_error(exc: Exception) -> None:
             detail=f"Job IA ya finalizado (estado {status}); pide uno nuevo desde el CRM",
         ) from exc
     raise HTTPException(status_code=409, detail="Job IA no coincide con la operacion") from exc
-
-
-@router.get("/lead-raw")
-async def lead_raw_webhook(chat_id: str):
-    """Reemplaza los nodos Postgres `get lead1` / `try to get lead`: fila
-    cruda de `leads`. `{}` si no existe -el mismo shape que devolvía el nodo
-    Postgres con `alwaysOutputData`- para que el chequeo `{{ $json }}` vacío
-    de los IF de n8n siga funcionando sin tocarlos."""
-    lead = await fetch_lead_raw(chat_id)
-    return lead or {}
-
-
-@router.get("/lead-messages-raw")
-async def lead_messages_raw_webhook(chat_id: str, limit: int = 500):
-    """Reemplaza al nodo Postgres `get messages` (contexto del copiloto de
-    ventas, workflow `sugerencia`): últimos `limit` mensajes de un chat,
-    crudos y más recientes primero."""
-    return {"messages": await fetch_messages_raw(chat_id, limit=limit)}
-
-
-@router.get("/last-message-raw")
-async def last_message_raw_webhook(chat_id: str):
-    """Reemplaza al nodo Postgres `ultimo mensaje1`: el wa_message_id del
-    último mensaje del chat. `{}` si el chat todavía no tiene ninguno."""
-    wa_message_id = await fetch_last_wa_message_id(chat_id)
-    return {"wa_message_id": wa_message_id} if wa_message_id else {}
 
 
 @router.get("/analysis-context")
@@ -98,22 +70,3 @@ async def analysis_context_webhook(
         "stages": await list_stages_for_ai(),
         "tenant_config": await fetch_tenant_config(),
     }
-
-
-@router.get("/catalog")
-async def ai_catalog_webhook(
-    x_job_id: str = Header(alias="X-Job-Id"),
-    claims: AIJobClaims = Depends(require_ai_job_context),
-):
-    """Catalog from the job schema; tenant/schema are never accepted in input."""
-
-    if claims.job_id != x_job_id or claims.operation != "analyst":
-        raise HTTPException(status_code=403, detail="Job IA fuera de alcance")
-    try:
-        await start_ai_job(x_job_id, operation=claims.operation)
-    except (AIJobNotFound, AIJobExpired, AIJobConflict) as exc:
-        _raise_job_http_error(exc)
-    # La moneda viaja con los precios: la herramienta la lee sola, sin
-    # depender de que el agente cruce el dato con el perfil del negocio.
-    currency = (await fetch_tenant_config()).get("moneda")
-    return {"currency": currency, "services": await list_ai_catalog()}

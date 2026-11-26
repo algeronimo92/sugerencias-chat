@@ -8,9 +8,8 @@ import pytest
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "n8n"
 ANALYST_PATH = FIXTURE_ROOT / "analista.json"
-META_PATH = FIXTURE_ROOT / "meta-cloud-api.json"
 CONFIG_PATH = FIXTURE_ROOT / "config.json"
-EXPORTS = (ANALYST_PATH, META_PATH, CONFIG_PATH)
+EXPORTS = (ANALYST_PATH, CONFIG_PATH)
 
 
 def load(path: Path) -> dict:
@@ -62,36 +61,6 @@ def test_exports_are_inactive_sanitized_and_have_valid_graphs():
                 for branch in branches:
                     for edge in branch:
                         assert edge["node"] in by_name, (path.name, edge["node"])
-
-
-def test_meta_workflow_is_only_a_relay_to_the_backend():
-    """Si n8n queda delante de Meta, solo transporta: reenvía el challenge, el
-    cuerpo crudo y la firma al endpoint directo y responde lo que respondió
-    el backend. No normaliza, no arma identidades ni tipos."""
-    workflow = load(META_PATH)
-    by_name = nodes(workflow)
-    code_nodes = [node for node in workflow["nodes"] if node["type"] == "n8n-nodes-base.code"]
-    assert [node["name"] for node in code_nodes] == ["preparar cuerpo crudo Meta"]
-    raw_code = code_nodes[0]["parameters"]["jsCode"]
-    assert "raw_body: raw" in raw_code and "JSON.parse" not in raw_code
-
-    forward_post = by_name["reenviar evento al backend"]
-    assert forward_post["parameters"]["url"].endswith("'/api/webhooks/meta/whatsapp' }}")
-    assert forward_post["parameters"]["body"] == "={{ $json.raw_body }}"
-    assert forward_post["parameters"]["contentType"] == "raw"
-    assert header_names(forward_post) == {"x-hub-signature-256"}
-    assert has_path(workflow, "Meta eventos (POST)", "reenviar evento al backend")
-    assert targets(workflow, "reenviar evento al backend") == ["responder a Meta"]
-    assert by_name["responder a Meta"]["parameters"]["options"]["responseCode"] == "={{ $json.statusCode }}"
-
-    forward_get = by_name["reenviar verificacion al backend"]
-    assert forward_get["parameters"]["method"] == "GET"
-    assert forward_get["parameters"]["url"].endswith("'/api/webhooks/meta/whatsapp' }}")
-    assert targets(workflow, "reenviar verificacion al backend") == ["responder verificacion a Meta"]
-
-    text = META_PATH.read_text(encoding="utf-8")
-    for removed in ("normalizar", "s.whatsapp.net", "@lid", "resolve-whatsapp-identity", "meta-events/inbox"):
-        assert removed not in text
 
 
 def test_analyst_is_sql_free_on_demand_and_revision_guarded():

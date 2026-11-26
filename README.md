@@ -277,9 +277,16 @@ worker lo procesa: resuelve el negocio por `phone_number_id` (o por la WABA en
 los cambios de plantillas), guarda el mensaje con su `type` y subtipo
 literales y el objeto completo en `provider_payload`, baja los adjuntos y
 dispara las automatizaciones. Un reintento de Meta se descarta por el hash del
-cambio y por el `wa_message_id` único. Si n8n tiene que quedar delante, el
-workflow `meta-cloud-api` es un relay que reenvía cuerpo y firma sin
-modificarlos.
+cambio y por el `wa_message_id` único. n8n no participa: Meta llama directo al
+backend.
+
+Para registrarlo (una vez por app de Meta, sirve a todos los negocios): en la
+app del Tech Provider, WhatsApp → Configuración → Webhook, Callback URL
+`https://<cualquier subdominio>.cliniventas.com/api/webhooks/meta/whatsapp`
+y el mismo verify token del panel de plataforma; suscribir el campo `messages`
+y los de plantillas que se usen. Antes de guardar se puede probar el challenge:
+`curl "https://<subdominio>.cliniventas.com/api/webhooks/meta/whatsapp?hub.mode=subscribe&hub.verify_token=<token>&hub.challenge=ok"`
+tiene que devolver `ok`.
 
 **Identidad.** Un contacto se identifica con los valores exactos de Meta:
 `wa_id` (su teléfono) y `user_id` (identificador por negocio), en

@@ -9,21 +9,12 @@ from app.tenancy.context import TenantContext, get_current_tenant
 from uuid import uuid4
 
 
-def test_inbox_and_signed_ai_paths_are_self_scoped() -> None:
+def test_signed_ai_paths_are_self_scoped() -> None:
     assert dependencies.integration_path_is_self_scoped(
-        "/api/webhooks/meta-events/inbox"
-    )
-    assert dependencies.integration_path_is_self_scoped(
-        "/api/webhooks/meta-events/inbox/00000000-0000-0000-0000-000000000001/complete"
+        "/api/webhooks/analysis-context"
     )
     assert dependencies.integration_path_is_self_scoped(
         "/api/webhooks/analysis-jobs/job/apply"
-    )
-    assert dependencies.integration_path_is_self_scoped(
-        "/api/webhooks/meta/verify-challenge"
-    )
-    assert dependencies.integration_path_is_self_scoped(
-        "/api/webhooks/meta/verify-signature"
     )
     assert not dependencies.integration_path_is_self_scoped(
         "/api/webhooks/save-inbound-message"

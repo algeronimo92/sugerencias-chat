@@ -4412,86 +4412,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/lead-touch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Lead Touch Webhook
-         * @description Llamado por un cron de n8n justo después de mandarle al cliente un
-         *     mensaje de seguimiento (recordatorio de cita, cadencia de nutrición,
-         *     etc.) — incrementa `leads.toques_seguimiento` y actualiza
-         *     `fecha_ultimo_toque`.
-         */
-        post: operations["lead_touch_webhook_api_webhooks_lead_touch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/lead-stage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Lead Stage Webhook
-         * @description Llamado por n8n cuando el agente analista termina de analizar el lead.
-         *
-         *     Reemplaza el UPDATE directo a ``leads.estado`` que hacía el workflow: al
-         *     pasar por acá el cambio queda auditado en ``lead_activity`` (con el
-         *     razonamiento del agente y la foto del último mensaje del cliente), se
-         *     notifica a los paneles abiertos y se disparan las automatizaciones de
-         *     cambio de etapa.
-         *
-         *     Se avisa a los paneles incluso cuando la etapa no se mueve: el agente
-         *     también reescribe el resto de los campos del lead, y mantener la etapa es
-         *     su respuesta más frecuente. Sin ese aviso, un nombre recién deducido de la
-         *     conversación no aparecía en pantalla hasta el siguiente mensaje.
-         */
-        post: operations["lead_stage_webhook_api_webhooks_lead_stage_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/lead-analysis": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Lead Analysis Webhook
-         * @description Reemplaza el UPDATE directo del nodo `update lead`: deja el cambio
-         *     auditado en lead_activity y avisa a los paneles abiertos.
-         *
-         *     Contrato PATCH: un campo ausente se conserva y un ``null`` explicito
-         *     limpia una columna nullable. ``con_especialista`` es NOT NULL y por eso no
-         *     acepta ``null``. ``context_revision`` sigue opcional para compatibilidad
-         *     con el workflow anterior, pero el workflow a demanda debe enviarla.
-         */
-        post: operations["lead_analysis_webhook_api_webhooks_lead_analysis_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/webhooks/analysis-jobs/{job_id}/apply": {
         parameters: {
             query?: never;
@@ -4512,92 +4432,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/webhooks/lead-inbound-activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Lead Inbound Activity Webhook
-         * @description Reemplaza el UPDATE directo del nodo `update lead4`.
-         */
-        post: operations["lead_inbound_activity_webhook_api_webhooks_lead_inbound_activity_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/lead-raw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Lead Raw Webhook
-         * @description Reemplaza los nodos Postgres `get lead1` / `try to get lead`: fila
-         *     cruda de `leads`. `{}` si no existe -el mismo shape que devolvía el nodo
-         *     Postgres con `alwaysOutputData`- para que el chequeo `{{ $json }}` vacío
-         *     de los IF de n8n siga funcionando sin tocarlos.
-         */
-        get: operations["lead_raw_webhook_api_webhooks_lead_raw_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/lead-messages-raw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Lead Messages Raw Webhook
-         * @description Reemplaza al nodo Postgres `get messages` (contexto del copiloto de
-         *     ventas, workflow `sugerencia`): últimos `limit` mensajes de un chat,
-         *     crudos y más recientes primero.
-         */
-        get: operations["lead_messages_raw_webhook_api_webhooks_lead_messages_raw_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/last-message-raw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Last Message Raw Webhook
-         * @description Reemplaza al nodo Postgres `ultimo mensaje1`: el wa_message_id del
-         *     último mensaje del chat. `{}` si el chat todavía no tiene ninguno.
-         */
-        get: operations["last_message_raw_webhook_api_webhooks_last_message_raw_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/webhooks/analysis-context": {
         parameters: {
             query?: never;
@@ -4610,26 +4444,6 @@ export interface paths {
          * @description Contexto allowlist para un job analyst creado por el backend.
          */
         get: operations["analysis_context_webhook_api_webhooks_analysis_context_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/webhooks/catalog": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Ai Catalog Webhook
-         * @description Catalog from the job schema; tenant/schema are never accepted in input.
-         */
-        get: operations["ai_catalog_webhook_api_webhooks_catalog_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7642,37 +7456,6 @@ export interface components {
             /** Razonamiento */
             razonamiento?: string | null;
         };
-        /**
-         * LeadAnalysisWebhookBody
-         * @description Campos del lead que escribe el agente analista de n8n. Todo opcional:
-         *     solo se actualiza lo que el agente resolvió en esa corrida.
-         */
-        LeadAnalysisWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Context Revision */
-            context_revision?: string | null;
-            /** Job Id */
-            job_id?: string | null;
-            /** Nombre */
-            nombre?: string | null;
-            /** Telefono */
-            telefono?: string | null;
-            /** Servicio Interes */
-            servicio_interes?: string | null;
-            /** Notas */
-            notas?: string | null;
-            /** Razon Perdido */
-            razon_perdido?: string | null;
-            /** Fecha Recontacto */
-            fecha_recontacto?: string | null;
-            /** Tipo Objecion */
-            tipo_objecion?: string | null;
-            /** Proxima Cita */
-            proxima_cita?: string | null;
-            /** Con Especialista */
-            con_especialista?: boolean | null;
-        };
         /** LeadCreate */
         LeadCreate: {
             /** Phone */
@@ -7693,18 +7476,6 @@ export interface components {
             custom_fields?: {
                 [key: string]: unknown;
             };
-        };
-        /**
-         * LeadInboundActivityWebhookBody
-         * @description Último mensaje del chat, tal como lo veía el nodo `update lead4`.
-         */
-        LeadInboundActivityWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Ultimo Emisor */
-            ultimo_emisor?: string | null;
-            /** Ultimo Mensaje At */
-            ultimo_mensaje_at?: string | null;
         };
         /** LeadMergeRequest */
         LeadMergeRequest: {
@@ -7854,20 +7625,6 @@ export interface components {
             stage: string;
             /** Razon Perdido */
             razon_perdido?: string | null;
-        };
-        /** LeadStageWebhookBody */
-        LeadStageWebhookBody: {
-            /** Chat Id */
-            chat_id: string;
-            /** Estado */
-            estado?: string | null;
-            /** Razonamiento */
-            razonamiento?: string | null;
-        };
-        /** LeadTouchWebhookBody */
-        LeadTouchWebhookBody: {
-            /** Identifier */
-            identifier: string;
         };
         /** LeadUpdate */
         LeadUpdate: {
@@ -18802,120 +18559,6 @@ export interface operations {
             };
         };
     };
-    lead_touch_webhook_api_webhooks_lead_touch_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LeadTouchWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    lead_stage_webhook_api_webhooks_lead_stage_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LeadStageWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    lead_analysis_webhook_api_webhooks_lead_analysis_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LeadAnalysisWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     apply_analysis_job_webhook_api_webhooks_analysis_jobs__job_id__apply_post: {
         parameters: {
             query?: never;
@@ -18958,195 +18601,12 @@ export interface operations {
             };
         };
     };
-    lead_inbound_activity_webhook_api_webhooks_lead_inbound_activity_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LeadInboundActivityWebhookBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    lead_raw_webhook_api_webhooks_lead_raw_get: {
-        parameters: {
-            query: {
-                chat_id: string;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    lead_messages_raw_webhook_api_webhooks_lead_messages_raw_get: {
-        parameters: {
-            query: {
-                chat_id: string;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    last_message_raw_webhook_api_webhooks_last_message_raw_get: {
-        parameters: {
-            query: {
-                chat_id: string;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     analysis_context_webhook_api_webhooks_analysis_context_get: {
         parameters: {
             query: {
                 chat_id: string;
                 limit?: number;
             };
-            header: {
-                "X-Job-Id": string;
-                authorization?: string | null;
-                "x-webhook-token"?: string | null;
-                "X-Meta-Phone-Number-Id"?: string | null;
-                "X-Meta-Waba-Id"?: string | null;
-                "X-Tenant-Context": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ai_catalog_webhook_api_webhooks_catalog_get: {
-        parameters: {
-            query?: never;
             header: {
                 "X-Job-Id": string;
                 authorization?: string | null;
