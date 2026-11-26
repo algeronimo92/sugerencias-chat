@@ -21,6 +21,7 @@ from app.modules.ai.ai_job_tokens import signing_key_configured
 from app.modules.auth.public import try_send_operational_alert
 from app.modules.platform.ports.settings_service import get_effective_many
 from app.modules.platform.public import platform_setting
+from app.modules.platform.ports.plan import ai_quota_message, ai_unavailable_message
 from app.tenancy.context import get_current_tenant
 from app.db.uow import session_scope
 from app.modules.ai.application.ports import AiUnavailable
@@ -94,7 +95,7 @@ async def usage_summary() -> dict:
     context = get_current_tenant()
     if context is None:
         # Instalación single-tenant: no hay plano de control que limite.
-        return {"enabled": True, "monthly_quota": None, "used_this_month": 0, "remaining": None}
+        return {"enabled": True, "monthly_quota": None, "used_this_month": 0, "remaining": None, "unavailable_reason": None}
     entitlement = await get_entitlement(context.organization_id)
     used = await count_usage_this_month()
     remaining = (
@@ -107,6 +108,9 @@ async def usage_summary() -> dict:
         "monthly_quota": entitlement.monthly_quota,
         "used_this_month": used,
         "remaining": remaining,
+        # La pantalla del asistente lo muestra tal cual: así el aviso de "no
+        # está en tu paquete" se escribe en un solo lugar.
+        "unavailable_reason": None if entitlement.enabled else await ai_unavailable_message(),
     }
 
 
@@ -200,12 +204,7 @@ async def ensure_ai_configured(operation: str = "rag") -> AIEntitlement:
         )
     entitlement = await get_entitlement(context.organization_id)
     if not entitlement.enabled:
-        raise AIUnavailableError(
-            "ai_disabled",
-            "El asistente IA no está incluido en el plan de este negocio. "
-            "Pide al equipo de la plataforma que lo habilite.",
-            403,
-        )
+        raise AIUnavailableError("ai_disabled", await ai_unavailable_message(), 403)
     if not await platform_ready(operation):
         raise AIUnavailableError(
             "ai_not_configured",
@@ -230,15 +229,5 @@ async def ensure_ai_available(operation: str = "rag") -> None:
         used = await count_usage_this_month()
         await _notify_quota(entitlement, used)
         if used >= entitlement.monthly_quota:
-            used_up = (
-                f"Tu negocio ya usó las {entitlement.monthly_quota} sugerencias de IA "
-                "incluidas este mes."
-                if entitlement.monthly_quota
-                else "El plan de tu negocio no incluye sugerencias de IA este mes."
-            )
-            raise AIUnavailableError(
-                "ai_quota_exceeded",
-                f"{used_up} El contador se reinicia el día 1; para ampliarlo, "
-                "contacta al equipo de la plataforma.",
-                429,
-            )
+            message = await ai_quota_message(entitlement.monthly_quota)
+            raise AIUnavailableError("ai_quota_exceeded", message, 429)

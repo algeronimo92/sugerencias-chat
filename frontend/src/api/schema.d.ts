@@ -4650,6 +4650,8 @@ export interface components {
             used_this_month: number;
             /** Remaining */
             remaining?: number | null;
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
         };
         /**
          * AccountActionPurpose

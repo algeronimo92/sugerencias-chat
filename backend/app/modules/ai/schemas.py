@@ -143,6 +143,8 @@ class AIUsage(BaseModel):
     monthly_quota: int | None = None
     used_this_month: int
     remaining: int | None = None
+    # Por qué no hay IA y a qué paquete subir; None si está habilitada.
+    unavailable_reason: str | None = None
 
 
 class LeadAnalysisResult(BaseModel):

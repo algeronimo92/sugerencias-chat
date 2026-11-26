@@ -63,7 +63,7 @@ function UsageBanner() {
   if (!data.enabled) {
     return (
       <p role="status" className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-800 dark:text-amber-200">
-        El asistente IA no está incluido en el plan de tu negocio. Puedes dejar todo preparado; las sugerencias se activarán cuando la plataforma lo habilite.
+        {data.unavailable_reason ?? 'Tu paquete no incluye el asistente IA.'} Puedes dejar todo preparado: las sugerencias se activan solas al cambiar de paquete.
       </p>
     )
   }

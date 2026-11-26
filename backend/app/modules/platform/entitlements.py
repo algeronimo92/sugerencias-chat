@@ -22,13 +22,17 @@ from app.core.errors import Conflict, Forbidden
 from app.db.models.control import Organization
 from app.db.session import control_session
 from app.modules.platform.plans import (
+    CONTACT,
     DEFAULT_PLAN,
     FEATURE_LABELS,
     PLANS,
     Feature,
     PlanSpec,
+    larger_ai_quota_than,
     minimum_plan_for,
+    minimum_plan_with_ai,
     plan_spec,
+    upsell,
 )
 from app.tenancy.context import get_current_tenant
 
@@ -94,11 +98,41 @@ async def ensure_feature(feature: Feature) -> None:
     plan = await current_plan()
     if plan.has(feature):
         return
-    needed = minimum_plan_for(feature)
-    raise PlanFeatureMissing(
-        f"{FEATURE_LABELS[feature]} no está en el paquete {plan.name}: "
-        f"viene desde {needed.name}. Para cambiar de paquete, contacta al equipo de CliniVentas."
+    raise PlanFeatureMissing(upsell(FEATURE_LABELS[feature], plan, minimum_plan_for(feature)))
+
+
+async def ai_unavailable_message() -> str:
+    """Por qué el negocio no tiene IA. Si su paquete no la trae, a cuál subir;
+    si la trae, es que la plataforma la apagó a mano (una excepción)."""
+
+    plan = await current_plan()
+    if not plan.ai_enabled:
+        return upsell("Las sugerencias y el análisis de leads con IA", plan, minimum_plan_with_ai())
+    return (
+        "Tu paquete incluye el asistente IA, pero está pausado para tu negocio. "
+        "Pide al equipo de CliniVentas que lo reactive."
     )
+
+
+async def ai_quota_message(quota: int) -> str:
+    """Cupo de IA agotado: cuándo vuelve y qué paquete trae más."""
+
+    plan = await current_plan()
+    if quota == 0:
+        # Un cupo en cero es una excepción que puso la plataforma, salvo que
+        # el paquete directamente no traiga IA.
+        if not plan.ai_enabled:
+            return upsell("Las sugerencias y el análisis de leads con IA", plan, minimum_plan_with_ai())
+        return "Este mes tu negocio no incluye generaciones de IA. Pide al equipo de CliniVentas que las habilite."
+    used_up = (
+        f"Tu negocio ya usó las {quota} generaciones de IA que incluye su paquete este mes. "
+        "El contador se reinicia el día 1."
+    )
+    bigger = larger_ai_quota_than(plan)
+    if bigger is None:
+        return f"{used_up} Para ampliarlo, habla con el equipo de CliniVentas."
+    more = "sin límite" if bigger.ai_monthly_quota is None else f"{bigger.ai_monthly_quota} al mes"
+    return f"{used_up} El paquete {bigger.name} trae {more}: {CONTACT}."
 
 
 def require_feature(feature: Feature):
@@ -128,7 +162,7 @@ async def ensure_seat_available(seats_in_use: Counter) -> None:
         return
     raise PlanLimitReached(
         f"El paquete {plan.name} incluye hasta {plan.max_seats} personas atendiendo y ya están "
-        "todas ocupadas. Desactiva a alguien, déjalo como solo lectura o cambia de paquete."
+        f"todas ocupadas. Desactiva a alguien, déjalo como solo lectura o sube de paquete: {CONTACT}."
     )
 
 
@@ -141,5 +175,5 @@ async def ensure_automation_slot(active_automations: Counter) -> None:
         return
     raise PlanLimitReached(
         f"El paquete {plan.name} permite {plan.max_active_automations} automatizaciones encendidas "
-        "a la vez. Apaga otra antes de encender esta, o cambia de paquete."
+        f"a la vez. Apaga otra antes de encender esta, o sube de paquete: {CONTACT}."
     )

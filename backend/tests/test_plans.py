@@ -173,3 +173,30 @@ class TestAutomations:
         await management.update_automation_rule(1, {"is_active": False})
         await management.update_automation_rule(4, {"is_active": True})
         assert world.rules.rules[4]["is_active"] is True
+
+
+class TestMessages:
+    async def test_basic_is_told_ai_comes_with_esencial(self, monkeypatch):
+        use_plan(monkeypatch, PlanId.BASICO)
+        message = await entitlements.ai_unavailable_message()
+        assert message.startswith("Tu paquete Básico no incluye las sugerencias")
+        assert "paquete Esencial" in message
+
+    async def test_ai_turned_off_by_hand_is_not_an_upsell(self, monkeypatch):
+        use_plan(monkeypatch, PlanId.ESENCIAL)
+        assert "pausado" in await entitlements.ai_unavailable_message()
+
+    async def test_quota_points_to_the_plan_with_more(self, monkeypatch):
+        use_plan(monkeypatch, PlanId.ESENCIAL)
+        assert "Profesional trae 3000 al mes" in await entitlements.ai_quota_message(1000)
+        use_plan(monkeypatch, PlanId.PROFESIONAL)
+        assert "Profesional" not in await entitlements.ai_quota_message(3000)
+
+    async def test_feature_message_names_current_and_needed_plan(self, monkeypatch):
+        use_plan(monkeypatch, PlanId.ESENCIAL)
+        with pytest.raises(Forbidden) as error:
+            await entitlements.ensure_feature(Feature.META_CONVERSIONS)
+        assert error.value.detail == (
+            "Tu paquete Esencial no incluye los eventos de conversión a Meta. "
+            "Viene desde el paquete Profesional: pide el cambio al equipo de CliniVentas."
+        )

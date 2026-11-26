@@ -123,10 +123,43 @@ FEATURE_LABELS: dict[Feature, str] = {
 }
 
 
+_ORDER = (PlanId.BASICO, PlanId.ESENCIAL, PlanId.PROFESIONAL)
+
+CONTACT = "pide el cambio al equipo de CliniVentas"
+
+
+def upsell(label: str, current: PlanSpec, needed: PlanSpec) -> str:
+    """El aviso de lo que el paquete no trae: qué falta, en qué paquete viene
+    y a quién pedirlo. ``label`` va con artículo ("Los reportes en Excel")."""
+
+    return (
+        f"Tu paquete {current.name} no incluye {label[0].lower()}{label[1:]}. "
+        f"Viene desde el paquete {needed.name}: {CONTACT}."
+    )
+
+
+def minimum_plan_with_ai() -> PlanSpec:
+    return next(PLANS[plan_id] for plan_id in _ORDER if PLANS[plan_id].ai_enabled)
+
+
+def larger_ai_quota_than(current: PlanSpec) -> PlanSpec | None:
+    """El paquete siguiente que trae más cupo de IA, para recomendarlo."""
+
+    for plan_id in _ORDER:
+        candidate = PLANS[plan_id]
+        if not candidate.ai_enabled or candidate.id == current.id:
+            continue
+        if candidate.ai_monthly_quota is None or (
+            current.ai_monthly_quota is not None and candidate.ai_monthly_quota > current.ai_monthly_quota
+        ):
+            return candidate
+    return None
+
+
 def minimum_plan_for(feature: Feature) -> PlanSpec:
     """El paquete más barato que trae la función, para decirlo en el aviso."""
 
-    for plan_id in (PlanId.BASICO, PlanId.ESENCIAL, PlanId.PROFESIONAL):
+    for plan_id in _ORDER:
         if PLANS[plan_id].has(feature):
             return PLANS[plan_id]
     raise ValueError(f"Ningún paquete incluye {feature}")
