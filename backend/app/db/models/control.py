@@ -25,6 +25,10 @@ class Organization(Base):
             "ai_monthly_quota IS NULL OR ai_monthly_quota >= 0",
             name="organizations_ai_monthly_quota_check",
         ),
+        CheckConstraint(
+            "plan IN ('basico', 'esencial', 'profesional')",
+            name="organizations_plan_check",
+        ),
         {"schema": "public"},
     )
 
@@ -45,8 +49,14 @@ class Organization(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Asistente IA (sugerencias y analista): lo habilita la plataforma según el
-    # plan del negocio. La cuota cuenta generaciones por mes calendario UTC;
+    # Paquete que paga el negocio: qué funciones y topes tiene
+    # (``app/modules/platform/plans.py``).
+    plan: Mapped[str] = mapped_column(
+        Text, nullable=False, default="profesional", server_default="profesional"
+    )
+    # Asistente IA (sugerencias y analista): al asignar el paquete toma los
+    # valores de ese paquete, y la plataforma puede cambiarlos después como
+    # excepción. La cuota cuenta generaciones por mes calendario UTC;
     # NULL significa sin tope.
     ai_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
