@@ -31,6 +31,7 @@ from app.modules.appointments.infrastructure.integrations import (
 from app.modules.appointments.infrastructure.repository import (
     SqlAppointmentLeads,
     SqlAppointmentNotices,
+    SqlAppointmentReminders,
     SqlAppointmentRepository,
 )
 from app.modules.automations.application.ports import AutomationPorts, provide_automation_ports
@@ -133,6 +134,7 @@ def register_adapters() -> None:
         staff=TeamDirectory(),
         notices=SqlAppointmentNotices(),
         senders=MetaNoticeSenders(),
+        reminders=SqlAppointmentReminders(),
     ))
     provide_automation_ports(AutomationPorts(
         executions=SqlExecutionStore(),

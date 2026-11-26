@@ -22,6 +22,9 @@ const NoticeCard = lazy(() =>
 const NoticeSenderCard = lazy(() =>
   import('../features/appointments/public/NoticeCard').then(module => ({ default: module.NoticeSenderCard })),
 )
+const ReminderCard = lazy(() =>
+  import('../features/appointments/public/NoticeCard').then(module => ({ default: module.ReminderCard })),
+)
 
 /**
  * Conexiones con servicios externos, en orden fijo: WhatsApp (sin él no hay
@@ -96,6 +99,7 @@ export function IntegrationsPage() {
               <NoticeSenderCard />
               <NoticeCard audience="client" />
               <NoticeCard audience="staff" />
+              <ReminderCard />
             </Suspense>
             <ErpIntegrationCard />
             <AiIntegrationCard />

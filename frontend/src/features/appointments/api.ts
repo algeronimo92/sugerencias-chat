@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeRetryResult, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate } from './types';
+import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeRetryResult, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate, ReminderSettings, ReminderUpdate } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
   return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
@@ -117,5 +117,15 @@ export async function copyNoticeTemplates(): Promise<NoticeSender> {
     await client.post<ApiResponse<'/api/appointments/notice-sender/templates', 'post'>>(
       '/api/appointments/notice-sender/templates',
     )
+  ).data
+}
+
+export async function fetchReminders(): Promise<ReminderSettings> {
+  return (await client.get<ApiResponse<'/api/appointments/reminders', 'get'>>('/api/appointments/reminders')).data
+}
+
+export async function saveReminders(values: ReminderUpdate): Promise<ReminderSettings> {
+  return (
+    await client.put<ApiResponse<'/api/appointments/reminders', 'put'>>('/api/appointments/reminders', values)
   ).data
 }

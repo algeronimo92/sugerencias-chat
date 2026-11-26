@@ -76,6 +76,17 @@ class FakeCalendar:
     contents: list = field(default_factory=list)
     order: list[str] | None = None
 
+    # Lo que devuelve Google Calendar al leer los eventos (None: sin conectar).
+    events: list | None = None
+    events_error: Exception | None = None
+    reads: list[tuple] = field(default_factory=list)
+
+    async def upcoming_events(self, time_min, time_max):
+        self.reads.append((time_min, time_max))
+        if self.events_error is not None:
+            raise self.events_error
+        return None if self.events is None else list(self.events)
+
     async def create_event(self, appointment: dict, content) -> dict:
         self.calls.append(appointment)
         self.contents.append(content)
@@ -262,6 +273,32 @@ class FakeSenders:
 
 
 @dataclass
+class FakeReminders:
+    rows: list[dict] = field(default_factory=list)
+    deliveries: list[dict] = field(default_factory=list)
+
+    async def claim(self, event, offset_minutes: int) -> int | None:
+        key = (event.id, offset_minutes, event.starts_at)
+        if any(row["key"] == key for row in self.rows):
+            return None
+        self.rows.append({
+            "id": len(self.rows) + 1, "key": key, "offset_minutes": offset_minutes,
+            "appointment_id": event.appointment_id, "event_summary": event.summary, "status": "pending",
+        })
+        return len(self.rows)
+
+    async def finish(self, reminder_id: int, result: dict) -> None:
+        self.rows[reminder_id - 1].update(result)
+
+    async def recent(self, limit: int) -> list[dict]:
+        return []
+
+    async def record_delivery(self, **values) -> int:
+        self.deliveries.append(values)
+        return sum(1 for row in self.rows if row.get("provider_message_id") == values["provider_message_id"])
+
+
+@dataclass
 class AppointmentWorld:
     repository: FakeAppointments
     calendar: FakeCalendar
@@ -272,6 +309,7 @@ class AppointmentWorld:
     staff: FakeStaff = field(default_factory=FakeStaff)
     notices: FakeNotices = field(default_factory=FakeNotices)
     senders: FakeSenders = field(default_factory=FakeSenders)
+    reminders: FakeReminders = field(default_factory=FakeReminders)
 
     def of(self, event_type):
         return [event for event in self.published if isinstance(event, event_type)]
@@ -304,6 +342,7 @@ def in_memory_appointments(monkeypatch) -> AppointmentWorld:
     monkeypatch.setattr(ports, "_ports", AppointmentPorts(
         repository=world.repository, calendar=world.calendar, sync=world.sync, leads=world.leads,
         messenger=world.messenger, staff=world.staff, notices=world.notices, senders=world.senders,
+        reminders=world.reminders,
     ))
     monkeypatch.setattr(uow, "get_sessionmaker", lambda: _FakeSession)
 

@@ -41,6 +41,7 @@ from app.integrations.n8n.client import close_n8n_client
 from app.integrations.storage.media_storage import storage_backend
 from app.integrations.tts_service import close_tts_client
 from app.modules.ai.public import rechunk_outdated_documents
+from app.modules.appointments.public import send_due_reminders
 from app.modules.auth.auth_service import hash_password
 from app.modules.auth.users_repository import seed_admin_if_needed
 from app.modules.automations.public import (
@@ -429,6 +430,13 @@ async def meta_costs_tick() -> None:
         logger.warning("No se pudieron sincronizar los costos de Meta: %s", exc)
 
 
+APPOINTMENT_REMINDERS_SECONDS = 60.0
+
+
+async def appointment_reminders_tick() -> None:
+    await send_due_reminders()
+
+
 # Lo que depende de este proceso: sus conexiones WebSocket y su /metrics.
 CALLS_REAPER_SECONDS = 20.0
 
@@ -453,6 +461,9 @@ BACKGROUND_LOOPS = (
     TenantLoop("calls-reaper", calls_reaper_tick, sleeping(CALLS_REAPER_SECONDS)),
     TenantLoop("scheduled-messages", scheduled_tick, sleeping(SCHEDULED_POLL_SECONDS), forget_scheduled),
     TenantLoop("meta-costs", meta_costs_tick, sleeping(META_COSTS_SYNC_SECONDS)),
+    # Recordatorios de cita leídos de Google Calendar. Cada minuto alcanza:
+    # el margen más corto de un recordatorio es de diez minutos.
+    TenantLoop("appointment-reminders", appointment_reminders_tick, sleeping(APPOINTMENT_REMINDERS_SECONDS)),
     TenantLoop("meta-conversions", conversions_tick, wait_for_conversions_work),
     # La pasada decide sola si le toca (mira la última sincronización): el
     # sondeo corto solo sirve para recoger pronto una URL recién configurada.

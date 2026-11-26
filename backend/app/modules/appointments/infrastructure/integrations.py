@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 
 import httpx
 
-from app.integrations.google_calendar import create_google_event
+from app.integrations.google_calendar import CalendarUnavailable as GoogleCalendarUnavailable
+from app.integrations.google_calendar import create_google_event, list_google_events
 from app.integrations.meta.channel import MetaAccountNumbers, MetaMessageSender
 from app.integrations.storage.media_storage import read_media_bytes, stat_media
 from app.integrations.n8n.client import post_form
@@ -16,7 +18,13 @@ from app.modules.appointments.domain.appointment import SyncResult
 from app.modules.appointments.domain.calendar_event import EventContent
 from app.integrations.whatsapp.channel import SEND_FAILURES
 from app.integrations.whatsapp.channels import current_channel
-from app.modules.appointments.domain.errors import NoticeAccountUnavailable, NoticeNotSent, NoticeSenderNotLinked
+from app.modules.appointments.domain.errors import (
+    CalendarUnavailable,
+    NoticeAccountUnavailable,
+    NoticeNotSent,
+    NoticeSenderNotLinked,
+)
+from app.modules.appointments.domain.reminders import CalendarEvent
 from app.modules.auth.ports.users import list_active_sellers, staff_phones
 from app.modules.conversations.ports.template_sending import (
     ChatMessagingError,
@@ -33,6 +41,13 @@ logger = logging.getLogger(__name__)
 class GoogleCalendar:
     async def create_event(self, appointment: dict, content: EventContent) -> dict:
         return await create_google_event(appointment, title=content.title, description=content.description)
+
+    async def upcoming_events(self, time_min: datetime, time_max: datetime) -> list[CalendarEvent] | None:
+        try:
+            items = await list_google_events(time_min, time_max)
+        except GoogleCalendarUnavailable as exc:
+            raise CalendarUnavailable(str(exc)) from exc
+        return None if items is None else [CalendarEvent(**item) for item in items]
 
 
 class N8nAppointmentSync:

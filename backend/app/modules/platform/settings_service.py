@@ -272,6 +272,11 @@ SETTING_DEFS: list[SettingDef] = [
     SettingDef("appointment_notice_phone_number_id", "Número de avisos (phone number id)", "appointments", "Avisos de cita", secret=False, hidden=True),
     SettingDef("appointment_notice_waba_id", "Cuenta de WhatsApp Business del número de avisos", "appointments", "Avisos de cita", secret=False, hidden=True),
     SettingDef("appointment_notice_registration_pin", "PIN de registro del número de avisos", "appointments", "Avisos de cita", secret=True, hidden=True),
+    # Recordatorios de cita (un día, cinco horas, una hora antes…): la lista
+    # en JSON con la anticipación, la plantilla y las variables de cada uno.
+    # Se editan solo desde su tarjeta (appointments/application/reminders.py).
+    SettingDef("appointment_reminders", "Recordatorios de cita", "appointments", "Avisos de cita", secret=False, hidden=True),
+    SettingDef("appointment_reminders_manual_events", "Recordar también los eventos cargados a mano", "appointments", "Avisos de cita", secret=False, boolean=True, hidden=True),
     # SMTP propio del negocio para invitaciones y avisos (pestaña Correo). Se
     # editan solo por app/modules/platform/email_settings.py, que valida el
     # conjunto: un host suelto sin remitente no sirve. Los nombres no

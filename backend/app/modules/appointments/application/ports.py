@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 from app.modules.appointments.domain.appointment import SyncResult
 from app.modules.appointments.domain.calendar_event import EventContent
+from app.modules.appointments.domain.reminders import CalendarEvent
 
 
 class AppointmentRepository(Protocol):
@@ -40,6 +41,11 @@ class CalendarProvider(Protocol):
         """El evento de la cita con el título y la descripción ya armados.
         ``{status, event_id, event_link, error}``; ``status`` es
         ``synced``, ``not_configured`` o ``error``. Nunca levanta."""
+
+    async def upcoming_events(self, time_min: datetime, time_max: datetime) -> list[CalendarEvent] | None:
+        """Los eventos con hora del calendario del negocio entre las dos
+        fechas, sin los cancelados. ``None`` si el calendario no está
+        conectado. Levanta ``CalendarUnavailable`` si Google no respondió."""
 
 
 class AppointmentSync(Protocol):
@@ -168,6 +174,24 @@ class NoticeLog(Protocol):
         cuántos avisos cambiaron."""
 
 
+class ReminderLog(Protocol):
+    async def claim(self, event: CalendarEvent, offset_minutes: int) -> int | None:
+        """Reserva el recordatorio de ese evento, anticipación e inicio
+        (``pending``) y devuelve su id, o None si ya estaba reservado: así
+        nunca sale dos veces."""
+
+    async def finish(self, reminder_id: int, result: dict) -> None:
+        """Deja en la reserva cómo salió: ``status`` (``sent``, ``failed``,
+        ``skipped``), ``reason``, ``recipient_name``, ``phone``,
+        ``template_id`` y ``provider_message_id``."""
+
+    async def recent(self, limit: int) -> list[dict]:
+        """Los últimos recordatorios, el más nuevo primero."""
+
+    async def record_delivery(self, *, provider_message_id: str, status: str, at: datetime | None) -> int:
+        """Como ``NoticeLog.record_delivery``, para los recordatorios."""
+
+
 @dataclass(frozen=True)
 class AppointmentPorts:
     repository: AppointmentRepository
@@ -178,6 +202,7 @@ class AppointmentPorts:
     staff: StaffDirectory
     notices: NoticeLog
     senders: NoticeSenders
+    reminders: ReminderLog
 
 
 _ports: AppointmentPorts | None = None

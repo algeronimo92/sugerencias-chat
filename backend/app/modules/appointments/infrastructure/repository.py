@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import case, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models.appointments import Appointment, AppointmentNotice
+from app.db.models.appointments import Appointment, AppointmentNotice, AppointmentReminder
 from app.db.models.leads import Lead
 from app.db.uow import session_scope
 from app.integrations.whatsapp.identity import lead_id_for_identifier
@@ -17,6 +17,7 @@ from app.modules.conversations.ports.message_queries import phoneless_chats_ment
 from app.modules.conversations.public import NoteAuthor, create_note
 from app.modules.leads.public import Actor, LeadAlreadyExists, create_lead, fetch_lead_raw, register_appointment
 from app.modules.leads.ports.visibility import seller_scope_by_id
+from app.modules.appointments.domain.reminders import CalendarEvent
 from app.modules.appointments.queries import _query, _serialize
 
 # Así se reconoce en el CRM el lead que nació de una cita cargada desde Citas.
@@ -241,6 +242,77 @@ class SqlAppointmentNotices:
             update(AppointmentNotice)
             .where(or_(*matches), current_rank < rank)
             .values(**values)
+        )
+        async with session_scope() as session:
+            result = await session.execute(stmt)
+        return result.rowcount or 0
+
+
+def _delivery_values(model, status: str, when: datetime) -> dict:
+    values: dict = {"delivery_status": status}
+    if status in ("delivered", "read"):
+        values["delivered_at"] = func.coalesce(model.delivered_at, when)
+    if status == "read":
+        values["read_at"] = func.coalesce(model.read_at, when)
+    return values
+
+
+def _current_rank(model):
+    return case(
+        *((model.delivery_status == name, value) for name, value in _DELIVERY_RANK.items()),
+        else_=0,
+    )
+
+
+class SqlAppointmentReminders:
+    async def claim(self, event: CalendarEvent, offset_minutes: int) -> int | None:
+        stmt = pg_insert(AppointmentReminder).values(
+            calendar_event_id=event.id, offset_minutes=offset_minutes, starts_at=event.starts_at,
+            appointment_id=event.appointment_id, event_summary=event.summary[:300], status="pending",
+        ).on_conflict_do_nothing(
+            index_elements=[
+                AppointmentReminder.calendar_event_id, AppointmentReminder.offset_minutes,
+                AppointmentReminder.starts_at,
+            ],
+        ).returning(AppointmentReminder.id)
+        async with session_scope() as session:
+            return (await session.execute(stmt)).scalar_one_or_none()
+
+    async def finish(self, reminder_id: int, result: dict) -> None:
+        async with session_scope() as session:
+            await session.execute(
+                update(AppointmentReminder).where(AppointmentReminder.id == reminder_id).values(
+                    status=result["status"], reason=result.get("reason"),
+                    recipient_name=result.get("recipient_name") or "", phone=result.get("phone"),
+                    template_id=result.get("template_id"),
+                    provider_message_id=result.get("provider_message_id"),
+                    delivery_status="sent" if result["status"] == "sent" else None,
+                )
+            )
+
+    async def recent(self, limit: int) -> list[dict]:
+        stmt = select(AppointmentReminder).order_by(AppointmentReminder.id.desc()).limit(limit)
+        async with session_scope() as session:
+            rows = (await session.execute(stmt)).scalars().all()
+        return [
+            {
+                "id": row.id, "offset_minutes": row.offset_minutes, "starts_at": row.starts_at.isoformat(),
+                "appointment_id": row.appointment_id, "event_summary": row.event_summary,
+                "recipient_name": row.recipient_name, "status": row.status, "reason": row.reason,
+                "delivery_status": row.delivery_status, "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+
+    async def record_delivery(self, *, provider_message_id: str, status: str, at: datetime | None) -> int:
+        when = at or datetime.now(timezone.utc)
+        stmt = (
+            update(AppointmentReminder)
+            .where(
+                AppointmentReminder.provider_message_id == provider_message_id,
+                _current_rank(AppointmentReminder) < _DELIVERY_RANK[status],
+            )
+            .values(**_delivery_values(AppointmentReminder, status, when))
         )
         async with session_scope() as session:
             result = await session.execute(stmt)

@@ -1,8 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, retryAppointmentNotices, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, syncAppointmentCalendar } from './api'
+import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, retryAppointmentNotices, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, fetchReminders, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, saveReminders, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
-import type { NoticeAudience, NoticeUpdate } from './types'
+import type { NoticeAudience, NoticeUpdate, ReminderUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
 
 export type { AppointmentAttachmentInput } from './types'
@@ -129,5 +129,21 @@ export function useCopyNoticeTemplates() {
   return useMutation({
     mutationFn: copyNoticeTemplates,
     onSuccess: (sender) => queryClient.setQueryData(appointmentKeys.noticeSender, sender),
+  })
+}
+
+export function useReminders() {
+  return useQuery({ queryKey: appointmentKeys.reminders, queryFn: fetchReminders })
+}
+
+export function useSaveReminders() {
+  return useMutation({
+    mutationFn: (values: ReminderUpdate) => saveReminders(values),
+    onSuccess: (settings) => {
+      queryClient.setQueryData(appointmentKeys.reminders, settings)
+      // Una plantilla nueva en un recordatorio también hay que copiarla a la
+      // cuenta propia del número de avisos.
+      void queryClient.invalidateQueries({ queryKey: appointmentKeys.noticeSender })
+    },
   })
 }
