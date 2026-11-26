@@ -4,6 +4,7 @@ from app.modules.auth.public import User
 from app.modules.catalogs.schemas import CustomFieldDefinitionCreate, CustomFieldDefinitionItem, CustomFieldDefinitionUpdate, CustomFieldEntity, CustomFieldValues
 from app.modules.auth.public import Permission, can, require_permission
 from app.modules.leads.ports.visibility import require_visible_lead
+from app.modules.platform.ports.plan import Feature, require_feature
 from app.modules.catalogs.custom_fields import (
     CustomFieldAlreadyExistsError,
     CustomFieldError,
@@ -22,6 +23,7 @@ require_definitions_view = require_permission(
     Permission.LEADS_VIEW, Permission.APPOINTMENTS_VIEW, Permission.CATALOGS_MANAGE,
 )
 require_leads_edit = require_permission(Permission.LEADS_EDIT)
+require_custom_fields = Depends(require_feature(Feature.CUSTOM_FIELDS))
 
 router = APIRouter(prefix="/api/custom-fields", tags=["custom-fields"], dependencies=[Depends(require_visible_lead)])
 
@@ -37,7 +39,9 @@ async def get_definitions(
     return await list_definitions(entity_type, include_inactive=include_inactive)
 
 
-@router.post("", response_model=CustomFieldDefinitionItem, status_code=201)
+# Crear o editar campos depende del paquete; los valores ya cargados se
+# siguen viendo y editando aunque el negocio baje de paquete.
+@router.post("", response_model=CustomFieldDefinitionItem, status_code=201, dependencies=[require_custom_fields])
 async def post_definition(body: CustomFieldDefinitionCreate, _admin: User = Depends(require_catalogs_manage)):
     try:
         return await create_definition(body.model_dump())
@@ -47,7 +51,7 @@ async def post_definition(body: CustomFieldDefinitionCreate, _admin: User = Depe
         raise HTTPException(400, str(exc)) from exc
 
 
-@router.patch("/{field_id}", response_model=CustomFieldDefinitionItem)
+@router.patch("/{field_id}", response_model=CustomFieldDefinitionItem, dependencies=[require_custom_fields])
 async def patch_definition(
     field_id: int,
     body: CustomFieldDefinitionUpdate,

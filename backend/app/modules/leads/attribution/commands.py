@@ -17,6 +17,7 @@ from app.integrations.meta_webhook import metrics
 from app.modules.leads.attribution import events as conversions
 from app.modules.leads.attribution import repository
 from app.modules.leads.dashboard.currency import business_currency
+from app.modules.platform.ports.plan import Feature, has_feature
 from app.modules.platform.ports.settings_service import get_effective_many
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,11 @@ def _now() -> datetime:
 
 
 async def conversions_enabled() -> bool:
-    return (await get_effective_many((ENABLED_KEY,)))[ENABLED_KEY].strip().lower() == "true"
+    # Si el negocio bajó a un paquete sin eventos a Meta, el ajuste puede haber
+    # quedado encendido: el paquete manda y no se encola nada.
+    if (await get_effective_many((ENABLED_KEY,)))[ENABLED_KEY].strip().lower() != "true":
+        return False
+    return await has_feature(Feature.META_CONVERSIONS)
 
 
 def wake() -> None:

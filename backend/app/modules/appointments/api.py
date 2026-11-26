@@ -31,11 +31,14 @@ from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.platform.public import effective_country_code
 from app.modules.auth.public import list_active_sellers
 from app.modules.leads.ports.visibility import ensure_lead_visible, seller_scope
+from app.modules.platform.ports.plan import Feature, require_feature
 
 require_appointments_view = require_permission(Permission.APPOINTMENTS_VIEW)
 require_appointments_edit = require_permission(Permission.APPOINTMENTS_EDIT)
 require_appointments_manage = require_permission(Permission.APPOINTMENTS_MANAGE)
 require_appointments_configure = require_permission(Permission.APPOINTMENTS_CONFIGURE)
+# Conectar o cambiar el número aparte para avisos depende del paquete.
+require_notice_sender = Depends(require_feature(Feature.NOTICE_SENDER))
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 
@@ -67,17 +70,17 @@ async def get_notice_sender(user: User = Depends(require_appointments_configure)
     return await notice.get_sender(user.id)
 
 
-@router.put("/notice-sender", response_model=NoticeSender)
+@router.put("/notice-sender", response_model=NoticeSender, dependencies=[require_notice_sender])
 async def put_notice_sender(body: NoticeSenderUpdate, user: User = Depends(require_appointments_configure)):
     return await notice.save_sender(body.phone_number_id, user.id)
 
 
-@router.post("/notice-sender/embedded-signup", response_model=NoticeSender)
+@router.post("/notice-sender/embedded-signup", response_model=NoticeSender, dependencies=[require_notice_sender])
 async def post_notice_sender_signup(body: NoticeSenderSignup, user: User = Depends(require_appointments_configure)):
     return await notice.link_sender(body.code, body.waba_id, body.phone_number_id, user.id, mode=body.mode)
 
 
-@router.post("/notice-sender/templates", response_model=NoticeSender)
+@router.post("/notice-sender/templates", response_model=NoticeSender, dependencies=[require_notice_sender])
 async def post_notice_sender_templates(user: User = Depends(require_appointments_configure)):
     """Copia a la cuenta del número de avisos las plantillas de los avisos
     que todavía no están ahí."""

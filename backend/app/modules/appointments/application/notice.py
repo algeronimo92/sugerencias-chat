@@ -37,6 +37,7 @@ from app.modules.appointments.domain.notice import (
 )
 from app.modules.catalogs.ports.custom_fields import list_definitions
 from app.modules.catalogs.ports.template_service import list_templates
+from app.modules.platform.ports.plan import Feature, has_feature
 from app.modules.platform.ports.settings_service import get_effective_many, update_settings
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,12 @@ SENDER_ACCOUNT_KEY = "appointment_notice_waba_id"
 
 
 async def _sender() -> str | None:
-    return ((await get_effective_many((SENDER_KEY,)))[SENDER_KEY] or "").strip() or None
+    sender = ((await get_effective_many((SENDER_KEY,)))[SENDER_KEY] or "").strip() or None
+    # Un negocio que bajó a un paquete sin número aparte conserva el ajuste,
+    # pero los avisos vuelven a salir del número del CRM.
+    if sender is not None and not await has_feature(Feature.NOTICE_SENDER):
+        return None
+    return sender
 
 
 def setting_keys(audience: Audience) -> tuple[str, str, str]:

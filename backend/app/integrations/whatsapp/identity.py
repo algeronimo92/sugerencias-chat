@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.leads import Lead, WhatsAppIdentity
 from app.modules.leads.ports.assignment import assign_next_seller, parse_excluded_ids
+from app.modules.platform.ports.plan import Feature, has_feature
 from app.modules.platform.ports.settings_service import get_effective_many
 from app.integrations.whatsapp.connection import ANY_CONNECTION
 from app.db.uow import session_scope, unit_of_work
@@ -147,7 +148,8 @@ async def _resolve_once(identity: ContactIdentity, *, create: bool) -> ResolvedI
         assignment = await get_effective_many(
             ("auto_assign_leads_enabled", "auto_assign_excluded_user_ids")
         )
-        if assignment["auto_assign_leads_enabled"] == "true":
+        # El ajuste puede seguir encendido de un paquete anterior: manda el paquete.
+        if assignment["auto_assign_leads_enabled"] == "true" and await has_feature(Feature.AUTO_ASSIGN):
             excluded = parse_excluded_ids(assignment["auto_assign_excluded_user_ids"])
     # Unidad de trabajo y no una sesión suelta: el reparto de vendedor lee en
     # esta misma transacción, la que tiene tomados los locks.
