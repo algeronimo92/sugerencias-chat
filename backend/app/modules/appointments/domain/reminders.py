@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 from app.modules.appointments.domain.notice import InvalidNotice
 
@@ -179,3 +179,42 @@ def extract_phone(*texts: str) -> str | None:
             candidates.extend(match.group(0).strip() for match in _PHONE.finditer(line))
     phones = [value for value in candidates if 8 <= len(re.sub(r"\D", "", value)) <= 15]
     return phones[0] if phones else None
+
+
+_HOURS = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$")
+
+
+@dataclass(frozen=True)
+class ReminderHours:
+    """Las citas que reciben recordatorios, por su hora de inicio en la zona
+    del negocio (los dos extremos cuentan). Pensado para el horario de
+    atención: un evento a las 21:00 es algo personal del equipo, no una cita,
+    y no tiene por qué escribirle a nadie."""
+
+    start: time
+    end: time
+
+    def covers(self, starts_at: datetime) -> bool:
+        return self.start <= starts_at.time().replace(second=0, microsecond=0) <= self.end
+
+    def to_setting(self) -> str:
+        return f"{self.start:%H:%M}-{self.end:%H:%M}"
+
+
+def parse_hours(raw: str) -> ReminderHours | None:
+    """Lo guardado en los ajustes (``09:00-19:00``). Vacío o ilegible: sin
+    horario, todas las citas."""
+    match = _HOURS.match((raw or "").strip())
+    if not match:
+        return None
+    start = time(int(match.group(1)), int(match.group(2)))
+    end = time(int(match.group(3)), int(match.group(4)))
+    return ReminderHours(start, end) if start < end else None
+
+
+def validate_hours(start: str, end: str) -> ReminderHours:
+    """Levanta ``InvalidNotice`` si el horario no se puede guardar."""
+    hours = parse_hours(f"{start}-{end}")
+    if hours is None:
+        raise InvalidNotice("El horario de las citas va de una hora a otra más tarde (por ejemplo, de 09:00 a 19:00)")
+    return hours

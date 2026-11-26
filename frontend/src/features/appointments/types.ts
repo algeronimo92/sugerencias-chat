@@ -51,6 +51,7 @@ export type NoticeSenderSignup = ApiSchemas['NoticeSenderSignup']
 export type ReminderSettings = Delivered<ApiSchemas['ReminderSettings']>
 export type ReminderUpdate = ApiSchemas['ReminderSettingsUpdate']
 export type ReminderLogItem = Delivered<ApiSchemas['ReminderLogItem']>
+export type ReminderHours = ApiSchemas['ReminderHoursItem']
 
 export interface AppointmentListItem {
   id: number

@@ -33,7 +33,7 @@ test('con el número en la app de WhatsApp Business, la admin ve que hay que mud
     .on('get', '/api/appointments/notices/client' as NoticeRoute, NOTICIAS)
     .on('get', '/api/appointments/notices/staff' as NoticeRoute, NOTICIAS)
     .on('get', '/api/appointments/reminders', {
-      include_manual_events: false, reminders: [], fields: [], templates: [], preview: null,
+      include_manual_events: false, hours: null, reminders: [], fields: [], templates: [], preview: null,
       calendar_ready: false, sender_ready: false, recent: [],
     })
     .on('get', '/api/settings/email', {

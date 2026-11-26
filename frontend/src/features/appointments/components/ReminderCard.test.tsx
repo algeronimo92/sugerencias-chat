@@ -11,6 +11,7 @@ vi.mock('../../../shared/http/client', () => ({ default: api }))
 
 const settings: ReminderSettings = {
   include_manual_events: false,
+  hours: null,
   reminders: [
     { offset_minutes: 1440, enabled: true, template_id: 7, parameters: ['{nombre_completo}', '{fecha_larga} a las {hora_12h}'] },
     { offset_minutes: 300, enabled: false, template_id: null, parameters: [] },
@@ -83,5 +84,17 @@ describe('ReminderCard', () => {
     // 1 hora: igual que el tercero.
     expect(screen.getAllByText('Ya hay un recordatorio con esa anticipación')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Guardar recordatorios' })).toBeDisabled()
+  })
+
+  it('limita los recordatorios a las citas de un horario', async () => {
+    api.put.mockImplementation(async (_url, body) => ({ data: { ...settings, ...body } }))
+    renderCard()
+    await userEvent.click(await screen.findByRole('button', { name: 'Recordatorios (3)' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Recordar solo las citas de un horario/ }))
+    expect(screen.getByLabelText('Horario de las citas: desde')).toHaveValue('09:00')
+    expect(screen.getByLabelText('Horario de las citas: hasta')).toHaveValue('19:00')
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar recordatorios' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    expect(api.put.mock.calls[0][1].hours).toEqual({ start: '09:00', end: '19:00' })
   })
 })

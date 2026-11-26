@@ -8703,6 +8703,17 @@ export interface components {
             recovery_codes: string[];
         };
         /**
+         * ReminderHoursItem
+         * @description Solo reciben recordatorios las citas que empiezan entre ``start`` y
+         *     ``end`` (``HH:MM``, los dos incluidos), en la zona del negocio.
+         */
+        ReminderHoursItem: {
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+        };
+        /**
          * ReminderItem
          * @description Un recordatorio de cita: sale ``offset_minutes`` antes del inicio del
          *     evento en Google Calendar, con su plantilla y el contenido de cada
@@ -8757,6 +8768,7 @@ export interface components {
         ReminderSettings: {
             /** Include Manual Events */
             include_manual_events: boolean;
+            hours?: components["schemas"]["ReminderHoursItem"] | null;
             /** Reminders */
             reminders: components["schemas"]["ReminderItem"][];
             /** Fields */
@@ -8775,6 +8787,7 @@ export interface components {
         ReminderSettingsUpdate: {
             /** Include Manual Events */
             include_manual_events: boolean;
+            hours?: components["schemas"]["ReminderHoursItem"] | null;
             /** Reminders */
             reminders?: components["schemas"]["ReminderItem"][];
         };

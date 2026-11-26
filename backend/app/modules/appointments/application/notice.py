@@ -54,6 +54,8 @@ SENDER_ACCOUNT_KEY = "appointment_notice_waba_id"
 # también cuentan los eventos cargados a mano en el calendario.
 REMINDERS_KEY = "appointment_reminders"
 REMINDERS_MANUAL_KEY = "appointment_reminders_manual_events"
+# Solo las citas que empiezan en ese horario (``09:00-19:00``); vacío: todas.
+REMINDERS_HOURS_KEY = "appointment_reminders_hours"
 
 
 async def _sender() -> str | None:

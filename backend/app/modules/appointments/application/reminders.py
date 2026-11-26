@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.phone_utils import PhoneValidationError, normalize_phone
 from app.modules.appointments.application.commands import match_phone
 from app.modules.appointments.application.notice import (
+    REMINDERS_HOURS_KEY,
     REMINDERS_KEY,
     REMINDERS_MANUAL_KEY,
     _fields,
@@ -37,10 +38,13 @@ from app.modules.appointments.domain.notice import Audience, InvalidNotice, as_t
 from app.modules.appointments.domain.reminders import (
     CalendarEvent,
     Reminder,
+    ReminderHours,
     due_reminders,
     dump_reminders,
     extract_phone,
+    parse_hours,
     parse_reminders,
+    validate_hours,
     validate_offsets,
 )
 from app.modules.catalogs.ports.template_service import list_templates
@@ -56,9 +60,13 @@ _CALENDAR_KEYS = ("google_calendar_enabled", "google_calendar_id", "google_calen
 _NO_USER = 0
 
 
-async def _stored() -> tuple[tuple[Reminder, ...], bool]:
-    stored = await get_effective_many((REMINDERS_KEY, REMINDERS_MANUAL_KEY))
-    return parse_reminders(stored[REMINDERS_KEY] or ""), stored[REMINDERS_MANUAL_KEY] == "true"
+async def _stored() -> tuple[tuple[Reminder, ...], bool, ReminderHours | None]:
+    stored = await get_effective_many((REMINDERS_KEY, REMINDERS_MANUAL_KEY, REMINDERS_HOURS_KEY))
+    return (
+        parse_reminders(stored[REMINDERS_KEY] or ""),
+        stored[REMINDERS_MANUAL_KEY] == "true",
+        parse_hours(stored[REMINDERS_HOURS_KEY] or ""),
+    )
 
 
 async def _calendar_ready() -> bool:
@@ -69,9 +77,10 @@ async def _calendar_ready() -> bool:
 
 
 async def get_settings(user_id: int) -> dict:
-    reminders, manual = await _stored()
+    reminders, manual, hours = await _stored()
     return {
         "include_manual_events": manual,
+        "hours": None if hours is None else {"start": f"{hours.start:%H:%M}", "end": f"{hours.end:%H:%M}"},
         "reminders": [
             {
                 "offset_minutes": item.offset_minutes, "enabled": item.enabled, "template_id": item.template_id,
@@ -88,7 +97,9 @@ async def get_settings(user_id: int) -> dict:
     }
 
 
-async def save_settings(*, include_manual_events: bool, reminders: list[dict], user_id: int) -> dict:
+async def save_settings(
+    *, include_manual_events: bool, reminders: list[dict], user_id: int, hours: dict | None = None,
+) -> dict:
     """Guarda la lista de recordatorios. Uno apagado y sin plantilla se puede
     guardar; con plantilla, exige que sea enviable y que cada variable tenga
     contenido con campos que existan. Levanta ``InvalidNotice`` si no."""
@@ -100,6 +111,7 @@ async def save_settings(*, include_manual_events: bool, reminders: list[dict], u
         for item in reminders
     ]
     validate_offsets(items)
+    window = validate_hours(hours["start"], hours["end"]) if hours is not None else None
     known_keys = {item["key"] for item in await _fields()}
     clean: list[Reminder] = []
     for item in sorted(items, key=lambda reminder: -reminder.offset_minutes):
@@ -116,6 +128,7 @@ async def save_settings(*, include_manual_events: bool, reminders: list[dict], u
     await update_settings({
         REMINDERS_KEY: dump_reminders(tuple(clean)),
         REMINDERS_MANUAL_KEY: "true" if include_manual_events else "",
+        REMINDERS_HOURS_KEY: window.to_setting() if window is not None else "",
     })
     return await get_settings(user_id)
 
@@ -124,7 +137,7 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
     """Una pasada del worker: manda los recordatorios que tocan ahora y
     devuelve cuántos terminaron en cada estado. Sin recordatorios activos,
     sin número de avisos o sin calendario no hace nada."""
-    reminders, manual = await _stored()
+    reminders, manual, hours = await _stored()
     active = tuple(item for item in reminders if item.enabled and item.template_id is not None)
     if not active:
         return {}
@@ -147,6 +160,10 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
     outcome: dict[str, int] = {}
     for event in events:
         if event.starts_at <= now or (event.appointment_id is None and not manual):
+            continue
+        if hours is not None and not hours.covers(event.starts_at):
+            # Fuera del horario elegido: se omite sin dejar registro, como un
+            # evento que no es cita.
             continue
         due = due_reminders(active, event, now)
         if not due:

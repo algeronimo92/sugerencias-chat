@@ -286,12 +286,22 @@ class ReminderLogItem(BaseModel):
     created_at: str
 
 
+class ReminderHoursItem(BaseModel):
+    """Solo reciben recordatorios las citas que empiezan entre ``start`` y
+    ``end`` (``HH:MM``, los dos incluidos), en la zona del negocio."""
+
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
 class ReminderSettings(BaseModel):
     """Los recordatorios de cita. Se leen de Google Calendar y salen desde el
     número de avisos: sin alguno de los dos (``calendar_ready``,
     ``sender_ready``) no sale ninguno."""
 
     include_manual_events: bool
+    # None: todas las citas, a cualquier hora.
+    hours: ReminderHoursItem | None = None
     reminders: list[ReminderItem]
     fields: list[NoticeField]
     templates: list[NoticeTemplate]
@@ -303,4 +313,5 @@ class ReminderSettings(BaseModel):
 
 class ReminderSettingsUpdate(BaseModel):
     include_manual_events: bool
+    hours: ReminderHoursItem | None = None
     reminders: list[ReminderItem] = Field(default_factory=list, max_length=5)
