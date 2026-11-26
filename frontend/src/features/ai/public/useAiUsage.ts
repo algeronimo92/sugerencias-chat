@@ -1,3 +1,11 @@
-// Si el negocio tiene IA y, si no, por qué (paquete o pausa): lo usa el chat
-// para no invitar a usar el Copiloto cuando el paquete no lo trae.
-export { useAiUsage } from '../queries'
+import { useAiUsage } from '../queries'
+
+/**
+ * Si el negocio tiene IA. Mientras no se sabe cuenta como sí: esconder el
+ * Copiloto y que reaparezca al cargar es peor que lo contrario, y el backend
+ * igual responde con el motivo si no la tiene.
+ */
+export function useAiAvailable(): boolean {
+  const { data } = useAiUsage()
+  return data?.enabled ?? true
+}

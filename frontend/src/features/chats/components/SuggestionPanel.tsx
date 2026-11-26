@@ -12,6 +12,7 @@ import { LeadInfo } from '../../leads/public/LeadInfo'
 import { LeadTagsPanel } from '../../leads/public/LeadTagsPanel'
 import { LeadTaskCard } from '../../tasks/public/LeadTaskCard'
 import { LeadAnalysisAction } from '../../ai/public/LeadAnalysisAction'
+import { useAiAvailable } from '../../ai/public/useAiUsage'
 import { useLeadPanelTab } from '../hooks/useLeadPanelTab'
 import { LeadPanelTabs } from './LeadPanelTabs'
 import { SuggestionCard } from './SuggestionCard'
@@ -63,7 +64,11 @@ export function SuggestionPanel(props: Props) {
   // regeneraciones del mismo lead y se descarta al cambiar de chat.
   const [instruction, setInstruction] = useState('')
   useEffect(() => setInstruction(''), [chat.chat_id])
-  const [tab, setTab] = useLeadPanelTab()
+  const [savedTab, setTab] = useLeadPanelTab()
+  // Sin IA en el paquete no hay copiloto: solo la ficha. La preferencia
+  // guardada no se pisa, para que vuelva si el negocio sube de paquete.
+  const aiAvailable = useAiAvailable()
+  const tab = aiAvailable ? savedTab : 'ficha'
   // Con la ventana de 24 h cerrada solo salen plantillas aprobadas: generar
   // texto libre gastaba IA en algo que no se podía enviar.
   const { data: customerWindow } = useCustomerServiceWindow(chat.chat_id)
@@ -78,6 +83,7 @@ export function SuggestionPanel(props: Props) {
       <LeadPanelTabs
         tab={tab}
         onChange={setTab}
+        tabs={aiAvailable ? undefined : ['ficha']}
         canRegenerate={tab === 'copiloto' && Boolean(props.data) && !props.unavailable && !windowClosed}
         isGenerating={props.isGenerating}
         onRegenerate={() => generate(true)}

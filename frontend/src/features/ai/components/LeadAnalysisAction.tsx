@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { useLeadStageCatalog } from '../../leads/public/useLeadStages'
 import { SuggestionError, useAnalyzeLead } from '../hooks/useSuggestions'
+import { useAiUsage } from '../queries'
 
 interface Props {
   chatId: string
@@ -20,8 +21,13 @@ export function LeadAnalysisAction({ chatId }: Props) {
   // El resultado es de un lead puntual: al cambiar de chat no se arrastra.
   useEffect(() => reset(), [chatId, reset])
 
+  const { data: usage } = useAiUsage()
+
   const error = analyze.error
   const retryable = !(error instanceof SuggestionError) || error.retryable
+
+  // Sin IA en el paquete el botón solo llevaría a un error: no se ofrece.
+  if (usage && !usage.enabled) return null
 
   return (
     <div className="space-y-2">
