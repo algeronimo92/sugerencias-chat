@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 from app.modules.platform import branding as branding_service
+from app.modules.platform.plans import Feature, PlanId
 
 class LoginBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -47,6 +48,22 @@ class OrganizationAIItem(BaseModel):
     enabled: bool
     monthly_quota: int | None = None
     used_this_month: int
+
+class OrganizationPlanBody(BaseModel):
+    plan: PlanId
+
+class OrganizationPlanItem(BaseModel):
+    plan: PlanId
+
+class PlanItem(BaseModel):
+    """Un paquete del catálogo, para que el panel muestre qué trae."""
+    id: PlanId
+    name: str
+    features: list[Feature]
+    max_seats: int | None = None
+    max_active_automations: int | None = None
+    ai_enabled: bool
+    ai_monthly_quota: int | None = None
 
 class OrganizationIntegrationItem(BaseModel):
     key: str
@@ -184,6 +201,7 @@ class OrganizationItem(BaseModel):
     status: str
     schema_name: str
     storage_prefix: str
+    plan: PlanId
     ai_enabled: bool
     ai_monthly_quota: int | None = None
     created_at: str | None = None

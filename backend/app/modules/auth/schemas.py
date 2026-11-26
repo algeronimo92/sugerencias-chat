@@ -36,6 +36,13 @@ class UserOut(BaseModel):
     # Los de su rol hoy (``app/modules/auth/permissions.py``). La app decide
     # qué mostrar con esto; el backend igual los exige en cada ruta.
     permissions: list[str] = []
+    # Paquete del negocio y las funciones que trae
+    # (``app/modules/platform/plans.py``). Igual que los permisos: la app
+    # esconde con esto y el backend igual lo exige.
+    plan: str | None = None
+    features: list[str] = []
+    max_seats: int | None = None
+    max_active_automations: int | None = None
 
 
 class RoleItem(BaseModel):
