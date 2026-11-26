@@ -11,7 +11,6 @@ from app.modules.leads.application.commands import (
     create_lead,
     open_conversation_from_inbound,
     register_appointment,
-    register_follow_up,
     remove_tag,
     update_lead,
 )
@@ -35,7 +34,7 @@ from app.modules.leads.domain.events import (
     LeadUpdated,
 )
 from app.modules.leads.domain.lead import Actor
-from app.modules.leads.queries import fetch_lead_raw, fetch_messages_raw, lead_ids_for_contacts
+from app.modules.leads.queries import fetch_lead_raw, lead_ids_for_contacts
 
 __all__ = [
     "Actor",
@@ -59,11 +58,9 @@ __all__ = [
     "change_stage",
     "create_lead",
     "fetch_lead_raw",
-    "fetch_messages_raw",
     "lead_ids_for_contacts",
     "open_conversation_from_inbound",
     "register_appointment",
-    "register_follow_up",
     "remove_tag",
     "update_lead",
 ]

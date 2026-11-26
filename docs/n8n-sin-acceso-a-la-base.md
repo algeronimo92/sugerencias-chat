@@ -1,5 +1,12 @@
 # Sacar a n8n de la base de datos
 
+> **Estado (2026-11-26): completado e histórico.** Meta llama directo al
+> backend (`/api/webhooks/meta/whatsapp`), las sugerencias son nativas y el
+> analista solo usa `GET /analysis-context` y `POST /analysis-jobs/{id}/apply`.
+> Los endpoints de reemplazo de esta tabla (`lead-raw`, `lead-messages-raw`,
+> `last-message-raw`, `lead-analysis`, `lead-inbound-activity`, `lead-stage`,
+> `lead-touch`, `catalog`) se borraron. Se conserva como registro.
+
 Revisión: 2026-09-17. En los exports locales actuales, `rag.json` y el webhook
 Meta usan HTTP para los datos del CRM; **`analista.json` conserva cinco nodos
 Postgres**. Los exports están ignorados por Git y no confirman el despliegue.

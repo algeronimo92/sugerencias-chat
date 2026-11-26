@@ -212,25 +212,6 @@ async def test_an_unknown_or_inactive_stage_is_rejected(world: World) -> None:
     assert await _stage_activities(world, chat_id) == []
 
 
-async def test_n8n_analyst_moves_a_lead_through_the_webhook(world: World) -> None:
-    chat_id = await world.create_lead()
-    await world.customer_says(chat_id, "Quiero agendar")
-
-    response = await world.request(
-        "POST", "/api/webhooks/lead-stage",
-        json={"chat_id": chat_id, "estado": "calificado", "razonamiento": "Pidió turno"},
-    )
-
-    assert response.status_code == 200, response.text
-    assert response.json() == {"status": "ok", "changed": True, "stage": "calificado"}
-    [activity] = await _stage_activities(world, chat_id)
-    assert (activity.actor_type, activity.actor_user_id) == ("agent", None)
-    assert activity.metadata_["reason"] == "Pidió turno"
-    assert activity.metadata_["trigger_message"]["content"] == "Quiero agendar"
-    assert await world.scalar(select(Lead.estado).where(Lead.id == chat_id)) == "calificado"
-    assert "stage_changed" in world.reasons(chat_id)
-
-
 async def test_an_automation_moves_a_lead_without_retriggering_itself(world: World) -> None:
     chat_id = await world.create_lead()
     rule_id = await _stage_rule(

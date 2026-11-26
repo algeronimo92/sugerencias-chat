@@ -1,11 +1,10 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
-from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.errors import Unauthorized
@@ -13,7 +12,6 @@ from app.modules.ai.schemas import SuggestionRequest, SuggestionResponse
 from app.integrations.n8n.webhook_schemas import (
     LeadAnalysisPatch,
     LeadAnalysisResultWebhookBody,
-    LeadAnalysisWebhookBody,
 )
 from app.modules.ai import suggestions_api as suggestions
 from app.modules.ai.application import ports as ai_ports
@@ -54,37 +52,6 @@ def test_analysis_patch_distinguishes_absent_from_explicit_null():
         "proxima_cita": None,
         "con_especialista": True,
     }
-
-
-def test_legacy_analysis_rejects_protected_database_fields():
-    with pytest.raises(ValidationError):
-        LeadAnalysisWebhookBody(
-            chat_id="lead-1",
-            nombre="Ana",
-            conversacion_version=0,
-            automatizacion_pausada=False,
-        )
-
-
-async def test_legacy_analysis_forwards_null_and_appointment_fields(monkeypatch):
-    update = AsyncMock(return_value={"id": "lead-1"})
-    patch_webhooks(monkeypatch, "update_lead", update)
-    patch_webhooks(monkeypatch, "_broadcast_lead_updated", AsyncMock())
-
-    await webhooks.lead_analysis_webhook(
-        LeadAnalysisWebhookBody(
-            chat_id="lead-1",
-            nombre=None,
-            fecha_recontacto=date(2026, 10, 2),
-            proxima_cita=datetime(2026, 10, 3, 15, 0, tzinfo=timezone.utc),
-            con_especialista=True,
-        )
-    )
-
-    values = update.await_args.args[1]
-    assert values["nombre"] is None
-    assert values["proxima_cita"].tzinfo is not None
-    assert values["con_especialista"] is True
 
 
 async def test_analysis_job_applies_one_atomic_patch(monkeypatch):
@@ -387,30 +354,6 @@ async def test_quota_counts_only_up_to_the_limit(monkeypatch):
 def test_quota_month_starts_at_utc_midnight_of_day_one():
     now = datetime(2026, 9, 23, 22, 5, tzinfo=timezone.utc)
     assert ai_access.month_start(now) == datetime(2026, 9, 1, tzinfo=timezone.utc)
-
-
-async def test_catalog_tool_returns_prices_with_the_business_currency(monkeypatch):
-    patch_webhooks(monkeypatch, "start_ai_job", AsyncMock(return_value=SimpleNamespace()))
-    patch_webhooks(monkeypatch, "fetch_tenant_config", AsyncMock(return_value={"moneda": "PEN"}))
-    patch_webhooks(monkeypatch, "list_ai_catalog", AsyncMock(return_value=[
-        {"id": 1, "name": "Limpieza facial", "price": "150.00"}
-    ]))
-
-    result = await webhooks.ai_catalog_webhook(JOB_ID, _claims("analyst"))
-
-    assert result == {
-        "currency": "PEN",
-        "services": [
-            {"id": 1, "name": "Limpieza facial", "price": "150.00"}
-        ],
-    }
-
-
-async def test_catalog_tool_only_serves_the_analyst():
-    # Las sugerencias ya no pasan por n8n: un job "rag" no tiene nada que pedir acá.
-    with pytest.raises(HTTPException) as exc:
-        await webhooks.ai_catalog_webhook(JOB_ID, _claims("rag"))
-    assert exc.value.status_code == 403
 
 
 async def test_analyst_dispatch_sends_operation_job_revision_and_tenant_token(monkeypatch):

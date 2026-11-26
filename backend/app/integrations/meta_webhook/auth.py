@@ -1,9 +1,7 @@
 """Verificación del webhook de Meta (challenge de suscripción y firma HMAC).
 
-n8n sigue recibiendo la llamada cruda de Meta, pero reenvía el challenge y la
-firma acá para no tener que guardar ``meta_verify_token``/``meta_app_secret``
-como variable de entorno propia (su plan no lo permite). El secreto vive una
-sola vez, en la configuración del backend.
+Meta llama directo al backend. ``meta_verify_token`` y ``meta_app_secret``
+viven una sola vez, en la configuración de la plataforma.
 """
 
 from __future__ import annotations

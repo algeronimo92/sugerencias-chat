@@ -245,20 +245,6 @@ async def register_no_show(lead_id: str, *, actor: Actor) -> int:
     return count
 
 
-async def register_follow_up(lead_id: str, *, actor: Actor) -> int:
-    """n8n avisa que mandó un seguimiento: suma un toque al lead."""
-    repository = lead_repository()
-    async with unit_of_work():
-        lead = await _locked(lead_id, ("toques_seguimiento",))
-        touches = lead.register_follow_up(now=_now())
-        await repository.save(lead)
-        collect(LeadUpdated(
-            lead_id=lead_id, actor=actor, fields=("toques_seguimiento", "fecha_ultimo_toque"),
-            event_type="lead_updated", values={"toques_seguimiento": touches},
-        ))
-    return touches
-
-
 async def delete_lead(lead_id: str, *, actor: Actor) -> None:
     """Borra el lead y todo lo que cuelga de él. No hay soft-delete."""
     async with unit_of_work():

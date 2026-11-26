@@ -8,17 +8,8 @@ from app.core.config import settings
 from app.tenancy.context import reset_current_tenant, set_current_tenant
 from app.tenancy.resolver import resolve_tenant_by_phone_number_id, resolve_tenant_by_waba_id
 
-_SELF_SCOPED_PATHS = frozenset(
-    {
-        "/api/webhooks/analysis-context",
-        "/api/webhooks/catalog",
-    }
-)
-_SELF_SCOPED_PREFIXES = (
-    "/api/webhooks/analysis-jobs/",
-    "/api/webhooks/meta-events/inbox",
-    "/api/webhooks/meta/verify-",
-)
+_SELF_SCOPED_PATHS = frozenset({"/api/webhooks/analysis-context"})
+_SELF_SCOPED_PREFIXES = ("/api/webhooks/analysis-jobs/",)
 
 
 def integration_path_is_self_scoped(path: str) -> bool:

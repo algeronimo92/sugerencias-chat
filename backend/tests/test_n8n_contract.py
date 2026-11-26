@@ -1,8 +1,8 @@
-"""Ningún nodo Postgres nuevo en los workflows de n8n.
+"""Ningún nodo Postgres en los workflows de n8n.
 
-Cada uno acopla el esquema de la base al workflow. Los que quedan ya tienen
-su endpoint equivalente (ver docs/n8n-sin-acceso-a-la-base.md); este test
-evita que aparezcan más mientras se completa la migración.
+Cada uno acopla el esquema de la base al workflow. El analista lee el
+contexto y aplica su resultado por la API del backend (ver
+app/integrations/n8n/api.py); este test evita que vuelva un acceso directo.
 """
 
 import json
@@ -10,23 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from main import app
-
 WORKFLOWS = sorted((Path(__file__).resolve().parent / "fixtures" / "n8n").glob("*.json"))
-
-# Nodo Postgres -> endpoint que lo reemplaza.
-# Los mensajes ya no pasan por n8n (ver app/integrations/meta_webhook/api.py): los nodos
-# que creaban el lead o guardaban el mensaje no tienen reemplazo.
-REPLACEMENTS = {
-    "update lead": "/api/webhooks/lead-analysis",
-    "update lead4": "/api/webhooks/lead-inbound-activity",
-    "get lead": "/api/webhooks/lead-raw",
-    "get lead4": "/api/webhooks/lead-raw",
-    "try to get lead": "/api/webhooks/lead-raw",
-    "get messages1": "/api/webhooks/lead-messages-raw",
-    "get messages2": "/api/webhooks/lead-messages-raw",
-    "ultimo mensaje1": "/api/webhooks/last-message-raw",
-}
 
 
 def _postgres_nodes(path: Path) -> set[str]:
@@ -43,7 +27,21 @@ def test_workflows_do_not_access_postgres_directly(workflow: Path):
     assert _postgres_nodes(workflow) == set()
 
 
-def test_the_replacement_endpoints_exist():
-    routes = {route.path for route in app.routes}
+def test_webhooks_only_serve_meta_and_the_analyst():
+    """Los mensajes de Meta entran directo; de n8n solo queda el analista.
 
-    assert set(REPLACEMENTS.values()) <= routes
+    Los endpoints que reemplazaban nodos Postgres del flujo viejo de
+    recepción (lead-raw, lead-stage, lead-touch...) se borraron cuando Meta
+    dejó de pasar por n8n: que no reaparezcan sin un consumidor real.
+    """
+    from main import app
+
+    webhook_paths = {
+        route.path for route in app.routes
+        if getattr(route, "path", "").startswith("/api/webhooks/")
+    }
+    assert webhook_paths == {
+        "/api/webhooks/meta/whatsapp",
+        "/api/webhooks/analysis-context",
+        "/api/webhooks/analysis-jobs/{job_id}/apply",
+    }

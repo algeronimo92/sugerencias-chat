@@ -5,10 +5,9 @@ inactivos, no incluyen `pinData`, secretos ni IDs de credenciales. Los JSON de l
 raiz son copias locales equivalentes para importacion manual y permanecen
 ignorados por Git.
 
-`config.json` es un sub-workflow compartido por los otros dos: expone
-`backend_url` para que `analista` y `meta-cloud-api` dejen de depender de
-`$env.BACKEND_URL` (el plan hosted de n8n del proyecto no permite crear
-variables de entorno).
+`config.json` es un sub-workflow que usa `analista`: expone `backend_url` para
+no depender de `$env.BACKEND_URL` (el plan hosted de n8n del proyecto no
+permite crear variables de entorno).
 
 El workflow de sugerencias (`rag`) se retiró en noviembre de 2026: las
 sugerencias las genera el CRM con las claves de IA de cada negocio
@@ -18,30 +17,19 @@ desactivar.
 
 ## Webhook de Meta
 
-Lo recomendado es registrar en Meta la URL del backend directamente:
-`https://<dominio del backend>/api/webhooks/meta/whatsapp`, con el verify token
-configurado en el panel de plataforma. El backend verifica el challenge y la
-firma `X-Hub-Signature-256`, guarda cada evento sin tocarlo y lo procesa (ver
-`routers/meta_webhook.py` y `services/meta_webhook/`).
-
-`meta-cloud-api.json` queda solo para instalaciones que necesiten a n8n delante
-de Meta. Es un relay: reenvia al endpoint del backend el challenge del GET y el
-cuerpo crudo del POST junto con la firma, sin normalizarlos, y responde a Meta
-lo que respondio el backend. Si el backend no guardo el evento, Meta recibe un
-error y reintenta la entrega. El Webhook POST debe conservar **Raw Body**: la
-firma se calcula sobre esos bytes y cualquier cambio la invalida.
+Meta llama directo al backend (`/api/webhooks/meta/whatsapp`, ver el README
+raíz); n8n ya no recibe ni reenvía mensajes. El relay `meta-cloud-api` se
+retiró en noviembre de 2026: si sigue importado en n8n, se puede borrar.
 
 ## Antes de activar un workflow importado
 
 1. Importar `config.json` primero y anotar el ID que le asigna n8n.
-2. En `analista` y `meta-cloud-api`, abrir cada nodo **Execute Workflow**
-   llamado "Config" (o "Config (GET)"/"Config (POST)" en `meta-cloud-api`) y
+2. En `analista`, abrir el nodo **Execute Workflow** llamado "Config" y
    apuntarlo al workflow `config.json` importado en el paso 1.
 3. Vincular la credencial **Header Auth** del Webhook expuesto por `analista`.
 4. Vincular la credencial **HTTP Header Auth** del backend a los nodos HTTP y
    HTTP Tool de `analista`. Debe aportar `X-Webhook-Token`; el workflow
-   agrega los headers de job que corresponden a cada item. Los nodos del relay
-   de Meta no la necesitan: el endpoint se autentica con la firma de Meta.
+   agrega los headers de job que corresponden a cada item.
 5. Vincular las credenciales de los modelos de lenguaje usados por `analista`.
 6. La URL del Webhook de `analista`, el token con el que el backend lo llama y las credenciales de la app de Meta (verify token y app
    secret) se cargan una sola vez en el panel de plataforma. Lo que cada negocio
