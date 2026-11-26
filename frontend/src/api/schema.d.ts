@@ -648,6 +648,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plans
+         * @description El catálogo de paquetes, para que el panel muestre qué trae cada uno.
+         */
+        get: operations["get_plans_api_platform_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/organizations/{organization_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organization Plan */
+        get: operations["get_organization_plan_api_platform_organizations__organization_id__plan_get"];
+        /**
+         * Put Organization Plan
+         * @description Cambia el paquete y le pone la IA de ese paquete (cupo incluido).
+         */
+        put: operations["put_organization_plan_api_platform_organizations__organization_id__plan_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/organizations/{organization_id}/starter-pack": {
         parameters: {
             query?: never;
@@ -6734,6 +6775,14 @@ export interface components {
          * @enum {string}
          */
         ExportReport: "separaciones" | "vendedoras" | "leads" | "respaldo";
+        /**
+         * Feature
+         * @description Funciones que no están en todos los paquetes.
+         *
+         *     Lo que está en todos no aparece: no hay nada que bloquear.
+         * @enum {string}
+         */
+        Feature: "leads.auto_assign" | "catalogs.custom_fields" | "appointments.notice_sender" | "dashboard.reports_export" | "meta.conversions" | "catalogs.erp_sync";
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /** Email */
@@ -8388,6 +8437,7 @@ export interface components {
             schema_name: string;
             /** Storage Prefix */
             storage_prefix: string;
+            plan: components["schemas"]["PlanId"];
             /** Ai Enabled */
             ai_enabled: boolean;
             /** Ai Monthly Quota */
@@ -8418,6 +8468,14 @@ export interface components {
             /** Users */
             users: number;
             setup: components["schemas"]["OnboardingStatus"];
+        };
+        /** OrganizationPlanBody */
+        OrganizationPlanBody: {
+            plan: components["schemas"]["PlanId"];
+        };
+        /** OrganizationPlanItem */
+        OrganizationPlanItem: {
+            plan: components["schemas"]["PlanId"];
         };
         /** PermissionItem */
         PermissionItem: {
@@ -8476,6 +8534,30 @@ export interface components {
         PinnedMessagesResponse: {
             /** Items */
             items: components["schemas"]["Message"][];
+        };
+        /**
+         * PlanId
+         * @enum {string}
+         */
+        PlanId: "basico" | "esencial" | "profesional";
+        /**
+         * PlanItem
+         * @description Un paquete del catálogo, para que el panel muestre qué trae.
+         */
+        PlanItem: {
+            id: components["schemas"]["PlanId"];
+            /** Name */
+            name: string;
+            /** Features */
+            features: components["schemas"]["Feature"][];
+            /** Max Seats */
+            max_seats?: number | null;
+            /** Max Active Automations */
+            max_active_automations?: number | null;
+            /** Ai Enabled */
+            ai_enabled: boolean;
+            /** Ai Monthly Quota */
+            ai_monthly_quota?: number | null;
         };
         /** PlatformEmailStatus */
         PlatformEmailStatus: {
@@ -9574,6 +9656,17 @@ export interface components {
              * @default []
              */
             permissions: string[];
+            /** Plan */
+            plan?: string | null;
+            /**
+             * Features
+             * @default []
+             */
+            features: string[];
+            /** Max Seats */
+            max_seats?: number | null;
+            /** Max Active Automations */
+            max_active_automations?: number | null;
         };
         /**
          * UserRole
@@ -10917,6 +11010,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationAIItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plans_api_platform_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanItem"][];
+                };
+            };
+        };
+    };
+    get_organization_plan_api_platform_organizations__organization_id__plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationPlanItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_plan_api_platform_organizations__organization_id__plan_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationPlanBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationPlanItem"];
                 };
             };
             /** @description Validation Error */
