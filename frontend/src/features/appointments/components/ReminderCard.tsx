@@ -55,8 +55,8 @@ function rowsOf(settings: ReminderSettings, knownKeys: Set<string>): ReminderDra
   })
 }
 
-function serialize(rows: ReminderDraft[], manual: boolean): string {
-  return JSON.stringify({ manual, rows: rows.map(row => [offsetOf(row), row.enabled, row.templateId, parametersOf(row)]) })
+function serialize(rows: ReminderDraft[]): string {
+  return JSON.stringify(rows.map(row => [offsetOf(row), row.enabled, row.templateId, parametersOf(row)]))
 }
 
 function ReminderForm({ settings }: { settings: ReminderSettings }) {
@@ -65,8 +65,11 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
   const labels = useMemo(() => pieceLabels(settings.fields), [settings.fields])
   const [initialRows] = useState(() => rowsOf(settings, knownKeys))
   const [rows, setRows] = useState(initialRows)
-  const [manual, setManual] = useState(settings.include_manual_events)
-  const [baseline, setBaseline] = useState(() => serialize(initialRows, settings.include_manual_events))
+  // Solo lo que el usuario tocó: sin cambios, manda lo guardado, y un
+  // refresco de la tarjeta (otro número de avisos) no deja un valor viejo.
+  const [manualChoice, setManualChoice] = useState<boolean | null>(null)
+  const manual = manualChoice ?? settings.include_manual_events
+  const [baseline, setBaseline] = useState(() => serialize(initialRows))
   const [open, setOpen] = useState(false)
 
   const errors = rows.map((row, index) => offsetError(offsetOf(row), rows.filter((_, other) => other !== index).map(offsetOf)))
@@ -76,7 +79,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
     const parameters = parametersOf(row)
     return !template || parameters.length !== slotsOf(template).length || !parameters.every(Boolean)
   })
-  const dirty = serialize(rows, manual) !== baseline
+  const dirty = serialize(rows) !== baseline || manual !== settings.include_manual_events
 
   const change = (apply: () => void) => {
     save.reset()
@@ -103,7 +106,8 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
       onSuccess: saved => {
         const next = rowsOf(saved, knownKeys)
         setRows(next)
-        setBaseline(serialize(next, saved.include_manual_events))
+        setBaseline(serialize(next))
+        setManualChoice(null)
       },
     },
   )
@@ -147,7 +151,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
               </Button>
             )}
             <label className="flex items-start gap-2 text-sm text-wa-text dark:text-wa-text-dark">
-              <Checkbox checked={manual} onCheckedChange={value => change(() => setManual(value))} disabled={save.isPending} />
+              <Checkbox checked={manual} onCheckedChange={value => change(() => setManualChoice(value))} disabled={save.isPending} />
               <span>
                 Recordar también los eventos cargados a mano en el calendario
                 <span className="block text-xs text-wa-muted dark:text-wa-muted-dark">
