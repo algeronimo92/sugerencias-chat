@@ -8,6 +8,8 @@ from app.modules.auth.permissions import Permission
 from app.modules.auth.roles_service import permissions_for_role, roles_with_permission
 from app.modules.auth.users_repository import EmailAlreadyExistsError
 from app.modules.auth.users_repository import LastAdminError
+from app.modules.auth.types import UserRole
+from app.modules.platform.ports.plan import current_plan, ensure_seat_available
 
 async def get_user_by_email(email: str) -> User | None:
     return await users_repository.get_user_by_email(email)
@@ -17,6 +19,36 @@ async def get_user_by_id(user_id: int) -> User | None:
 
 async def list_users() -> list[dict]:
     return await users_repository.list_users()
+
+
+def _takes_seat(role: str, *, is_active: bool, activated_at) -> bool:
+    return role != UserRole.ANALYST and (is_active or activated_at is None)
+
+
+async def ensure_seat_for_invite(email: str, role: str) -> None:
+    """Invitar a alguien que atiende le reserva un lugar del paquete. Si ya
+    tenía una invitación pendiente con ese correo, no se cuenta dos veces."""
+    if role == UserRole.ANALYST or (await current_plan()).max_seats is None:
+        return
+    await ensure_seat_available(lambda: users_repository.count_seats(exclude_email=email))
+
+
+async def ensure_seat_for_update(user_id: int, values: dict) -> None:
+    """Reactivar a alguien o pasarlo de solo lectura a un rol que atiende
+    ocupa un lugar más; bajar de rol o desactivar nunca se bloquea."""
+    if not {"role", "is_active"} & set(values) or (await current_plan()).max_seats is None:
+        return
+    user = await users_repository.get_user_by_id(user_id)
+    if user is None:
+        return
+    before = _takes_seat(user.role, is_active=user.is_active, activated_at=user.activated_at)
+    after = _takes_seat(
+        values.get("role") or user.role,
+        is_active=values.get("is_active", user.is_active),
+        activated_at=user.activated_at,
+    )
+    if after and not before:
+        await ensure_seat_available(lambda: users_repository.count_seats(exclude_user_id=user_id))
 
 
 async def role_handles_calls(role: str) -> bool:
@@ -36,6 +68,7 @@ async def update_user(user_id: int, values: dict) -> dict | None:
         user = await users_repository.get_user_by_id(user_id)
         if user is not None and not await role_handles_calls(user.role):
             raise AnalystCannotHandleCallsError()
+    await ensure_seat_for_update(user_id, values)
     return await users_repository.update_user(user_id, values)
 
 

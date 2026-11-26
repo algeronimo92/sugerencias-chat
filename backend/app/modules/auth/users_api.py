@@ -15,6 +15,7 @@ from app.modules.auth.auth_service import invalidate_user_cache, require_permiss
 from app.modules.auth.permissions import Permission
 from app.modules.auth.errors import AnalystCannotHandleCallsError, LastCallAgentError, UserAlreadyActiveError
 from app.modules.auth.users_service import (
+    ensure_seat_for_invite,
     EmailAlreadyExistsError,
     LastAdminError,
     get_user_by_id,
@@ -77,6 +78,8 @@ async def add_user(body: CreateUserRequest):
     if not body.email.strip() or not body.name.strip():
         raise HTTPException(status_code=400, detail="Nombre y correo son obligatorios")
 
+    # Antes de mandar el correo: no se invita a alguien que no va a poder entrar.
+    await ensure_seat_for_invite(body.email.strip().lower(), body.role)
     try:
         user = await invite_user(
             email=body.email.strip().lower(),
