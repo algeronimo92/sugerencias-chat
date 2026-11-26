@@ -20,7 +20,7 @@ declare global {
 
 const SDK_SCRIPT_ID = 'facebook-jssdk'
 const SDK_URL = 'https://connect.facebook.net/en_US/sdk.js'
-const GRAPH_API_VERSION = 'v26.0'
+const GRAPH_API_VERSION = 'v27.0'
 
 // El SDK de Facebook solo lo necesita este panel (vincular WhatsApp vía
 // Embedded Signup) — se carga bajo demanda acá en vez de en index.html para

@@ -381,7 +381,7 @@ async def test_upload_media_posts_multipart_and_returns_id(monkeypatch):
 
     assert media_id == "MEDIA123"
     call = fake_client.calls[0]
-    assert call["url"] == "https://graph.facebook.com/v26.0/PHONE1/media"
+    assert call["url"] == "https://graph.facebook.com/v27.0/PHONE1/media"
     assert call["files"]["file"] == ("foto.jpg", b"fake-bytes", "image/jpeg")
     assert call["data"]["messaging_product"] == "whatsapp"
 
@@ -407,7 +407,7 @@ async def test_download_media_resolves_signed_url_then_fetches_bytes(monkeypatch
 
     assert content == b"JPEG-BYTES"
     assert content_type == "image/jpeg"
-    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v26.0/MEDIA1"
+    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v27.0/MEDIA1"
     assert fake_client.calls[1]["url"] == "https://lookaside.fbsbx.com/whatsapp/MEDIA1"
     assert fake_client.calls[1]["headers"]["Authorization"] == "Bearer token-123"
 
@@ -438,10 +438,10 @@ async def test_upload_header_media_two_step_flow(monkeypatch):
     handle = await meta_service.upload_header_media(b"fake-bytes", "image/jpeg", "foo.jpg")
 
     assert handle == "HEADER_HANDLE_XYZ"
-    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v26.0/APP123/uploads"
+    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v27.0/APP123/uploads"
     assert fake_client.calls[0]["params"]["file_length"] == len(b"fake-bytes")
     assert fake_client.calls[0]["params"]["access_token"] == "token-123"
-    assert fake_client.calls[1]["url"] == "https://graph.facebook.com/v26.0/upload:SESSION1"
+    assert fake_client.calls[1]["url"] == "https://graph.facebook.com/v27.0/upload:SESSION1"
     assert fake_client.calls[1]["headers"]["Authorization"] == "OAuth token-123"
     assert fake_client.calls[1]["content"] == b"fake-bytes"
 
@@ -462,7 +462,7 @@ async def test_list_whatsapp_templates_follows_pagination(monkeypatch):
     fake_client = _FakeGraphClient([
         _FakeGraphResponse({
             "data": [{"id": "1", "name": "a"}],
-            "paging": {"next": "https://graph.facebook.com/v26.0/WABA1/message_templates?after=X"},
+            "paging": {"next": "https://graph.facebook.com/v27.0/WABA1/message_templates?after=X"},
         }),
         _FakeGraphResponse({"data": [{"id": "2", "name": "b"}], "paging": {}}),
     ])
@@ -471,8 +471,8 @@ async def test_list_whatsapp_templates_follows_pagination(monkeypatch):
     templates = await meta_service.list_whatsapp_templates()
 
     assert [t["id"] for t in templates] == ["1", "2"]
-    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v26.0/WABA1/message_templates"
-    assert fake_client.calls[1]["url"] == "https://graph.facebook.com/v26.0/WABA1/message_templates?after=X"
+    assert fake_client.calls[0]["url"] == "https://graph.facebook.com/v27.0/WABA1/message_templates"
+    assert fake_client.calls[1]["url"] == "https://graph.facebook.com/v27.0/WABA1/message_templates?after=X"
     # La URL de "next" ya trae todos los query params; no se le agregan de nuevo.
     assert fake_client.calls[1]["params"] is None
 
