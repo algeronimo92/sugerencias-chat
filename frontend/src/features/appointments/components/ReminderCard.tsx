@@ -60,33 +60,57 @@ function serialize(rows: ReminderDraft[]): string {
   return JSON.stringify(rows.map(row => [offsetOf(row), row.enabled, row.templateId, parametersOf(row)]))
 }
 
+function blankRow(current: ReminderDraft[]): ReminderDraft {
+  return {
+    key: newKey(), ...splitOffset(nextOffset(current.map(offsetOf))), enabled: false, templateId: null,
+    saved: { templateId: null, parameters: [] }, draft: { title: [], lines: [] },
+  }
+}
+
+/** Un recordatorio activo sin plantilla o con alguna variable vacía. */
+function hasIncomplete(rows: ReminderDraft[], templates: ReminderSettings['templates']): boolean {
+  return rows.some(row => {
+    if (!row.enabled) return false
+    const template = templates.find(item => item.id === row.templateId)
+    const parameters = parametersOf(row)
+    return !template || parameters.length !== slotsOf(template).length || !parameters.every(Boolean)
+  })
+}
+
+function offsetErrors(rows: ReminderDraft[]): (string | null)[] {
+  return rows.map((row, index) => offsetError(offsetOf(row), rows.filter((_, other) => other !== index).map(offsetOf)))
+}
+
+/** Un ajuste que se edita sobre lo guardado: solo se guarda lo que el
+ *  usuario tocó, así un refresco de la tarjeta (otro número de avisos) no
+ *  deja un valor viejo. ``reset`` vuelve a lo guardado. */
+function useSavedChoice<T>(saved: T) {
+  const [choice, setChoice] = useState<{ value: T } | null>(null)
+  const value = choice ? choice.value : saved
+  return {
+    value,
+    changed: JSON.stringify(value) !== JSON.stringify(saved),
+    set: (next: T) => setChoice({ value: next }),
+    reset: () => setChoice(null),
+  }
+}
+
 function ReminderForm({ settings }: { settings: ReminderSettings }) {
   const save = useSaveReminders()
   const knownKeys = useMemo(() => new Set(settings.fields.map(field => field.key)), [settings.fields])
   const labels = useMemo(() => pieceLabels(settings.fields), [settings.fields])
   const [initialRows] = useState(() => rowsOf(settings, knownKeys))
   const [rows, setRows] = useState(initialRows)
-  // Solo lo que el usuario tocó: sin cambios, manda lo guardado, y un
-  // refresco de la tarjeta (otro número de avisos) no deja un valor viejo.
-  const [manualChoice, setManualChoice] = useState<boolean | null>(null)
-  const manual = manualChoice ?? settings.include_manual_events
-  // Igual que `manualChoice`: undefined es "no lo tocó", null es "sin horario".
-  const [hoursChoice, setHoursChoice] = useState<ReminderHours | null | undefined>(undefined)
-  const hours = hoursChoice === undefined ? (settings.hours ?? null) : hoursChoice
-  const hoursInvalid = hours !== null && hours.start >= hours.end
+  const manual = useSavedChoice(settings.include_manual_events)
+  // null: sin horario, todas las citas.
+  const hours = useSavedChoice<ReminderHours | null>(settings.hours ?? null)
+  const hoursInvalid = hours.value !== null && hours.value.start >= hours.value.end
   const [baseline, setBaseline] = useState(() => serialize(initialRows))
   const [open, setOpen] = useState(false)
 
-  const errors = rows.map((row, index) => offsetError(offsetOf(row), rows.filter((_, other) => other !== index).map(offsetOf)))
-  const incomplete = rows.some(row => {
-    if (!row.enabled) return false
-    const template = settings.templates.find(item => item.id === row.templateId)
-    const parameters = parametersOf(row)
-    return !template || parameters.length !== slotsOf(template).length || !parameters.every(Boolean)
-  })
-  const dirty = serialize(rows) !== baseline
-    || manual !== settings.include_manual_events
-    || JSON.stringify(hours) !== JSON.stringify(settings.hours ?? null)
+  const errors = offsetErrors(rows)
+  const blocked = hasIncomplete(rows, settings.templates) || hoursInvalid || errors.some(Boolean)
+  const dirty = serialize(rows) !== baseline || manual.changed || hours.changed
 
   const change = (apply: () => void) => {
     save.reset()
@@ -96,16 +120,13 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
   const remove = (key: string) => change(() => setRows(current => current.filter(row => row.key !== key)))
   const add = () => change(() => {
     setOpen(true)
-    setRows(current => [...current, {
-      key: newKey(), ...splitOffset(nextOffset(current.map(offsetOf))), enabled: false, templateId: null,
-      saved: { templateId: null, parameters: [] }, draft: { title: [], lines: [] },
-    }])
+    setRows(current => [...current, blankRow(current)])
   })
 
   const submit = () => save.mutate(
     {
-      include_manual_events: manual,
-      hours,
+      include_manual_events: manual.value,
+      hours: hours.value,
       reminders: rows.map(row => ({
         offset_minutes: offsetOf(row), enabled: row.enabled, template_id: row.templateId, parameters: parametersOf(row),
       })),
@@ -115,8 +136,8 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
         const next = rowsOf(saved, knownKeys)
         setRows(next)
         setBaseline(serialize(next))
-        setManualChoice(null)
-        setHoursChoice(undefined)
+        manual.reset()
+        hours.reset()
       },
     },
   )
@@ -159,9 +180,9 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Agregar recordatorio
               </Button>
             )}
-            <ReminderHoursField value={hours} disabled={save.isPending} onChange={value => change(() => setHoursChoice(value))} />
+            <ReminderHoursField value={hours.value} disabled={save.isPending} onChange={value => change(() => hours.set(value))} />
             <label className="flex items-start gap-2 text-sm text-wa-text dark:text-wa-text-dark">
-              <Checkbox checked={manual} onCheckedChange={value => change(() => setManualChoice(value))} disabled={save.isPending} />
+              <Checkbox checked={manual.value} onCheckedChange={value => change(() => manual.set(value))} disabled={save.isPending} />
               <span>
                 Recordar también los eventos cargados a mano en el calendario
                 <span className="block text-xs text-wa-muted dark:text-wa-muted-dark">
@@ -183,7 +204,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
             <Check className="h-3.5 w-3.5" aria-hidden="true" /> Guardado
           </p>
         )}
-        <Button size="sm" disabled={!dirty || save.isPending || incomplete || hoursInvalid || errors.some(Boolean)} onClick={submit}>
+        <Button size="sm" disabled={!dirty || save.isPending || blocked} onClick={submit}>
           {save.isPending ? 'Guardando…' : 'Guardar recordatorios'}
         </Button>
       </div>
