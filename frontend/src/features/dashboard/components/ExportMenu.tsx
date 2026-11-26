@@ -2,6 +2,7 @@ import { Download, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useDismissiblePopover } from '../../../shared/hooks/useDismissiblePopover'
+import { featureUpsell, useFeature } from '../../../shared/plan'
 import { Button } from '../../../shared/ui/Button'
 import { downloadDashboardExport } from '../api'
 import type { DashboardExportReport } from '../types'
@@ -52,7 +53,10 @@ export function ExportMenu({ isAdmin, days }: Props) {
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState<DashboardExportReport | null>(null)
   const containerRef = useDismissiblePopover<HTMLDivElement>(open, () => setOpen(false))
-  const reports = REPORTS.filter((report) => isAdmin || !report.adminOnly)
+  const hasFeature = useFeature()
+  // El respaldo completo va en todos los paquetes; los reportes, desde Esencial.
+  const withReports = hasFeature('dashboard.reports_export')
+  const reports = REPORTS.filter((report) => (isAdmin || !report.adminOnly) && (withReports || report.id === 'respaldo'))
 
   async function exportReport(report: ReportOption) {
     setPending(report.id)
@@ -114,6 +118,11 @@ export function ExportMenu({ isAdmin, days }: Props) {
               </span>
             </button>
           ))}
+          {!withReports && (
+            <p className="px-2 pb-1 pt-1.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">
+              {featureUpsell('dashboard.reports_export')}
+            </p>
+          )}
           <p className="px-2 pb-1 pt-1.5 text-[11px] text-wa-muted dark:text-wa-muted-dark">
             {isAdmin
               ? 'Siempre de todo el equipo. Queda registrado quién descarga cada archivo.'

@@ -6,6 +6,9 @@ import { ExportMenu } from './ExportMenu'
 
 const download = vi.fn()
 const toastError = vi.fn()
+const session = vi.hoisted(() => ({ me: { role: 'admin' } as { role: string; features?: string[] } }))
+
+vi.mock('../../../shared/auth', () => ({ useMe: () => ({ data: session.me }) }))
 
 vi.mock('../api', () => ({
   downloadDashboardExport: (...args: unknown[]) => download(...args),
@@ -14,6 +17,7 @@ vi.mock('../api', () => ({
 vi.mock('sonner', () => ({ toast: { error: (...args: unknown[]) => toastError(...args) } }))
 
 beforeEach(() => {
+  session.me = { role: 'admin' }
   download.mockReset()
   toastError.mockReset()
   URL.createObjectURL = vi.fn(() => 'blob:archivo')
@@ -51,6 +55,16 @@ describe('ExportMenu', () => {
     expect(items).toHaveLength(2)
     expect(items.join(' ')).not.toMatch(/Leads del período|Respaldo/)
     expect(screen.getByText(/sin teléfonos ni DNI/)).toBeInTheDocument()
+  })
+
+  it('in a plan without reports offers only the full backup and says where reports come from', async () => {
+    session.me = { role: 'admin', features: [] }
+    render(<ExportMenu isAdmin days={30} />)
+
+    const items = await openMenu()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toContain('Respaldo completo')
+    expect(screen.getByText(/Reportes en Excel viene desde el paquete Esencial/)).toBeInTheDocument()
   })
 
   it('tells the user when the download fails and keeps the menu open', async () => {

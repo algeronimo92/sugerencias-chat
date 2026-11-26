@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   erpStatus: vi.fn(() => ({ configured: false }) as Record<string, unknown>),
 }))
 
+// La sesión solo dice el paquete; sin `features` trae todo.
+vi.mock('../../../shared/auth', async (importOriginal) => ({ ...(await importOriginal<object>()), useMe: () => ({ data: { role: 'admin' } }) }))
 vi.mock('../hooks/useLeadServices', () => ({
   useLeadServices: () => ({
     data: [
