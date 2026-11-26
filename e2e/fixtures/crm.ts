@@ -21,8 +21,16 @@ const ALL_PERMISSIONS = [
   'settings.manage', 'users.manage',
 ].sort()
 
+// Paquete Profesional: trae todo, para que las pruebas de pantalla vean cada
+// función (backend/app/modules/platform/plans.py).
+export const ALL_FEATURES = [
+  'catalogs.custom_fields', 'catalogs.erp_sync', 'dashboard.reports_export',
+  'appointments.notice_sender', 'leads.auto_assign', 'meta.conversions',
+].sort()
+
 export const ADMIN: User = {
   id: 1, email: 'admin@clinica.test', name: 'Admin', role: 'admin', can_handle_calls: false, permissions: ALL_PERMISSIONS,
+  plan: 'profesional', features: ALL_FEATURES, max_seats: null, max_active_automations: null,
 }
 
 export const CHAT_ID = '51999000111'
@@ -266,6 +274,10 @@ export function crmDefaults(api: MockApi) {
     .on('get', '/api/ai/profile', {
       business_name: 'Clínica Demo', business_description: null, location: null, opening_hours: null,
       currency: 'PEN', tone: null, always_rules: null, never_rules: null, updated_at: null,
+    })
+    // El negocio tiene IA: el Copiloto y su columna se muestran.
+    .on('get', '/api/suggestions/usage', {
+      enabled: true, monthly_quota: null, used_this_month: 0, remaining: null, unavailable_reason: null,
     })
     .on('get', '/api/suggestions/{chat_id}', { suggestion: null, generated_at: null, stale: false, unavailable: null })
 }
