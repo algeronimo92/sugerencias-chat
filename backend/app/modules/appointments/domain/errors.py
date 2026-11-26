@@ -66,3 +66,10 @@ class NoticeAccountUnavailable(DomainError):
 
     status_code = 409
     code = "appointment_notice_account_unavailable"
+
+
+class CalendarUnavailable(DomainError):
+    """Google Calendar no respondió al leer los eventos de los recordatorios."""
+
+    status_code = 409
+    code = "appointment_calendar_unavailable"

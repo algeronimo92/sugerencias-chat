@@ -55,7 +55,7 @@ ALL = frozenset({SELECT, INSERT, UPDATE, DELETE})
 # privilegios para nadie salvo el dueño.
 TABLE_GROUPS: dict[str, tuple[str, ...]] = {
     "ai": ("ai_jobs", "knowledge_documents", "knowledge_document_services", "ai_profile", "knowledge_chunks"),
-    "appointments": ("appointments", "appointment_notices"),
+    "appointments": ("appointments", "appointment_notices", "appointment_reminders"),
     "auth": (
         "roles", "permissions", "role_permissions", "users", "auth_login_throttles", "admin_totp",
         "admin_totp_recovery_codes", "auth_action_tokens", "email_notification_log", "trusted_devices",

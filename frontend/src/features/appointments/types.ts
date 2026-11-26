@@ -46,6 +46,12 @@ export type NoticeUpdate = ApiSchemas['NoticeSettingsUpdate']
 export type NoticeSender = Delivered<ApiSchemas['NoticeSender']>
 export type NoticeSenderSignup = ApiSchemas['NoticeSenderSignup']
 
+/** Recordatorios de cita leídos de Google Calendar: cada uno con su
+ *  anticipación, su plantilla y el contenido de cada variable. */
+export type ReminderSettings = Delivered<ApiSchemas['ReminderSettings']>
+export type ReminderUpdate = ApiSchemas['ReminderSettingsUpdate']
+export type ReminderLogItem = Delivered<ApiSchemas['ReminderLogItem']>
+
 export interface AppointmentListItem {
   id: number
   created_by_user_id: number

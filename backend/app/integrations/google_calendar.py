@@ -1,3 +1,5 @@
+import html
+import re
 from datetime import datetime, timedelta
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -288,3 +290,106 @@ async def create_google_event(appointment: dict, *, title: str, description: str
         "event_link": payload.get("htmlLink"),
         "error": None,
     }
+
+
+class CalendarUnavailable(RuntimeError):
+    """Google no respondió o rechazó la lectura de eventos."""
+
+
+_HTML_BREAK = re.compile(r"<\s*(br|/p|/div|/li)\s*/?>", re.IGNORECASE)
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def _plain(text: str | None) -> str:
+    """La descripción como texto: Google la guarda en HTML cuando se edita
+    desde su web (``<br>``, ``<b>``), y un teléfono partido por una etiqueta
+    no se reconocería."""
+    value = _HTML_BREAK.sub("\n", text or "")
+    return html.unescape(_HTML_TAG.sub("", value))
+
+
+def _event_time(value: dict | None, timezone: ZoneInfo) -> datetime | None:
+    raw = (value or {}).get("dateTime")
+    if not raw:
+        # Evento de día completo: no tiene hora a la que recordar.
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone)
+    except ValueError:
+        return None
+
+
+def _crm_appointment_id(item: dict) -> int | None:
+    raw = ((item.get("extendedProperties") or {}).get("private") or {}).get("crmAppointmentId")
+    try:
+        return int(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def list_google_events(time_min: datetime, time_max: datetime) -> list[dict] | None:
+    """Los eventos con hora del calendario del negocio que terminan después
+    de ``time_min`` y empiezan antes de ``time_max``, con las horas en la zona
+    del negocio. ``None`` si la integración está apagada o incompleta.
+    Levanta ``CalendarUnavailable`` si Google no respondió."""
+    config = await calendar_configuration()
+    required = (
+        "google_calendar_id", "google_calendar_client_id",
+        "google_calendar_client_secret", "google_calendar_refresh_token",
+    )
+    if not _enabled(config) or any(not config.get(key) for key in required):
+        return None
+    try:
+        timezone = ZoneInfo(config.get("business_timezone") or "America/Lima")
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("America/Lima")
+    events: list[dict] = []
+    params: dict[str, str | int] = {
+        "timeMin": time_min.isoformat(), "timeMax": time_max.isoformat(),
+        # Cada repetición de un evento recurrente como un evento propio.
+        "singleEvents": "true", "orderBy": "startTime", "maxResults": 250,
+    }
+    url = f"{GOOGLE_CALENDAR_API}/calendars/{quote(config['google_calendar_id'], safe='')}/events"
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            access_token = await _access_token(
+                client, config["google_calendar_client_id"], config["google_calendar_client_secret"],
+                config["google_calendar_refresh_token"],
+            )
+            # Pocas páginas bastan: la ventana es de días. El tope evita un
+            # bucle si Google devolviera siempre el mismo token.
+            for _page in range(10):
+                response = await client.get(url, headers={"Authorization": f"Bearer {access_token}"}, params=params)
+                if response.is_error:
+                    raise CalendarUnavailable(_response_error(response, "No se pudieron leer los eventos"))
+                payload = response.json()
+                events.extend(payload.get("items") or [])
+                token = payload.get("nextPageToken")
+                if not token:
+                    break
+                params["pageToken"] = token
+    except GoogleOAuthError as exc:
+        raise CalendarUnavailable(str(exc)) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise CalendarUnavailable(f"No se pudo contactar a Google Calendar: {exc}") from exc
+
+    result = []
+    for item in events:
+        if item.get("status") == "cancelled" or not item.get("id"):
+            continue
+        starts_at = _event_time(item.get("start"), timezone)
+        ends_at = _event_time(item.get("end"), timezone)
+        if starts_at is None or ends_at is None:
+            continue
+        created = item.get("created")
+        try:
+            created_at = datetime.fromisoformat(created.replace("Z", "+00:00")) if created else None
+        except ValueError:
+            created_at = None
+        result.append({
+            "id": item["id"], "starts_at": starts_at, "ends_at": ends_at,
+            "summary": item.get("summary") or "", "description": _plain(item.get("description")),
+            "location": item.get("location") or "", "created_at": created_at,
+            "appointment_id": _crm_appointment_id(item),
+        })
+    return result

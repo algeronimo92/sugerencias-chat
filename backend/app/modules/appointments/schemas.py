@@ -217,9 +217,10 @@ class NoticeSenderAccount(BaseModel):
 class NoticeSenderTemplate(BaseModel):
     """Una plantilla de los avisos y su copia en la cuenta del número de
     avisos. ``status``: el de Meta (``APPROVED``, ``PENDING``, ``REJECTED``…)
-    o ``MISSING`` si todavía no se copió."""
+    o ``MISSING`` si todavía no se copió. ``audience`` ``reminder``: la usa
+    un recordatorio de cita."""
 
-    audience: Literal["client", "staff"]
+    audience: Literal["client", "staff", "reminder"]
     template_id: int
     name: str
     status: str
@@ -256,3 +257,50 @@ class NoticeSettingsUpdate(BaseModel):
     enabled: bool
     template_id: int | None = None
     parameters: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ReminderItem(BaseModel):
+    """Un recordatorio de cita: sale ``offset_minutes`` antes del inicio del
+    evento en Google Calendar, con su plantilla y el contenido de cada
+    variable (como en los avisos)."""
+
+    offset_minutes: int = Field(ge=15, le=7 * 24 * 60)
+    enabled: bool
+    template_id: int | None = None
+    parameters: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ReminderLogItem(BaseModel):
+    """Un recordatorio que tocó mandar. ``status``: ``pending`` mientras se
+    envía, después ``sent``, ``failed`` o ``skipped`` (con ``reason``)."""
+
+    id: int
+    offset_minutes: int
+    starts_at: str
+    appointment_id: int | None = None
+    event_summary: str
+    recipient_name: str
+    status: Literal["pending", "sent", "failed", "skipped"]
+    reason: str | None = None
+    delivery_status: Literal["sent", "delivered", "read", "failed"] | None = None
+    created_at: str
+
+
+class ReminderSettings(BaseModel):
+    """Los recordatorios de cita. Se leen de Google Calendar y salen desde el
+    número de avisos: sin alguno de los dos (``calendar_ready``,
+    ``sender_ready``) no sale ninguno."""
+
+    include_manual_events: bool
+    reminders: list[ReminderItem]
+    fields: list[NoticeField]
+    templates: list[NoticeTemplate]
+    preview: NoticePreview | None = None
+    calendar_ready: bool
+    sender_ready: bool
+    recent: list[ReminderLogItem]
+
+
+class ReminderSettingsUpdate(BaseModel):
+    include_manual_events: bool
+    reminders: list[ReminderItem] = Field(default_factory=list, max_length=5)

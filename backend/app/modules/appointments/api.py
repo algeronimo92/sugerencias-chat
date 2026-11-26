@@ -5,7 +5,7 @@ import base64
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.modules.appointments.application import calendar_template, commands, notice
+from app.modules.appointments.application import calendar_template, commands, notice, reminders
 from app.modules.appointments.domain.notice import Audience
 from app.modules.appointments.domain.appointment import CUSTOM_ADELANTO_KEY, AppointmentRequest, LeadLink
 from app.modules.appointments.queries import get_appointment, list_appointments
@@ -24,6 +24,8 @@ from app.modules.appointments.schemas import (
     NoticeSenderUpdate,
     NoticeSettings,
     NoticeSettingsUpdate,
+    ReminderSettings,
+    ReminderSettingsUpdate,
 )
 from app.modules.auth.public import Permission, can, require_permission
 from app.modules.media.ports.media_upload import (normalize_media_content_type)
@@ -93,6 +95,20 @@ async def get_notice(audience: Audience, user: User = Depends(require_appointmen
 async def put_notice(audience: Audience, body: NoticeSettingsUpdate, user: User = Depends(require_appointments_configure)):
     return await notice.save_settings(
         audience, enabled=body.enabled, template_id=body.template_id, parameters=body.parameters, user_id=user.id,
+    )
+
+
+@router.get("/reminders", response_model=ReminderSettings)
+async def get_reminders(user: User = Depends(require_appointments_configure)):
+    return await reminders.get_settings(user.id)
+
+
+@router.put("/reminders", response_model=ReminderSettings)
+async def put_reminders(body: ReminderSettingsUpdate, user: User = Depends(require_appointments_configure)):
+    return await reminders.save_settings(
+        include_manual_events=body.include_manual_events,
+        reminders=[item.model_dump() for item in body.reminders],
+        user_id=user.id,
     )
 
 

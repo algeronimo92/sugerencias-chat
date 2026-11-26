@@ -139,3 +139,54 @@ class AppointmentNotice(Base):
             postgresql_where=text("wsp_message_id IS NOT NULL"),
         ),
     )
+
+
+class AppointmentReminder(Base):
+    """Cada recordatorio de cita que tocó mandar, leído de Google Calendar.
+
+    La fila se reserva antes de enviar (``pending``) con la clave única
+    evento + anticipación + inicio: dos workers que ven el mismo evento no lo
+    mandan dos veces, y si la cita se mueve en el calendario, la hora nueva
+    tiene su propio recordatorio. ``appointment_id`` es NULL en los eventos
+    cargados a mano en el calendario."""
+
+    __tablename__ = "appointment_reminders"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    calendar_event_id: Mapped[str] = mapped_column(Text, nullable=False)
+    offset_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    appointment_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("appointments.id", ondelete="SET NULL"),
+    )
+    event_summary: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    recipient_name: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    phone: Mapped[str | None] = mapped_column(Text)
+    template_id: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    provider_message_id: Mapped[str | None] = mapped_column(Text)
+    delivery_status: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'sent', 'failed', 'skipped')", name="ck_appointment_reminders_status",
+        ),
+        CheckConstraint(
+            "delivery_status IS NULL OR delivery_status IN ('sent', 'delivered', 'read', 'failed')",
+            name="ck_appointment_reminders_delivery",
+        ),
+        Index(
+            "uq_appointment_reminders_event_offset", calendar_event_id, offset_minutes, starts_at, unique=True,
+        ),
+        Index(
+            "idx_appointment_reminders_provider", provider_message_id, unique=True,
+            postgresql_where=text("provider_message_id IS NOT NULL"),
+        ),
+        Index("idx_appointment_reminders_created", created_at.desc()),
+    )

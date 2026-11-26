@@ -3758,6 +3758,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reminders */
+        get: operations["get_reminders_api_appointments_reminders_get"];
+        /** Put Reminders */
+        put: operations["put_reminders_api_appointments_reminders_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/{appointment_id}/sync-calendar": {
         parameters: {
             query?: never;
@@ -8203,14 +8221,15 @@ export interface components {
          * NoticeSenderTemplate
          * @description Una plantilla de los avisos y su copia en la cuenta del número de
          *     avisos. ``status``: el de Meta (``APPROVED``, ``PENDING``, ``REJECTED``…)
-         *     o ``MISSING`` si todavía no se copió.
+         *     o ``MISSING`` si todavía no se copió. ``audience`` ``reminder``: la usa
+         *     un recordatorio de cita.
          */
         NoticeSenderTemplate: {
             /**
              * Audience
              * @enum {string}
              */
-            audience: "client" | "staff";
+            audience: "client" | "staff" | "reminder";
             /** Template Id */
             template_id: number;
             /** Name */
@@ -8598,6 +8617,82 @@ export interface components {
         RecoveryCodesOut: {
             /** Recovery Codes */
             recovery_codes: string[];
+        };
+        /**
+         * ReminderItem
+         * @description Un recordatorio de cita: sale ``offset_minutes`` antes del inicio del
+         *     evento en Google Calendar, con su plantilla y el contenido de cada
+         *     variable (como en los avisos).
+         */
+        ReminderItem: {
+            /** Offset Minutes */
+            offset_minutes: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Template Id */
+            template_id?: number | null;
+            /** Parameters */
+            parameters?: string[];
+        };
+        /**
+         * ReminderLogItem
+         * @description Un recordatorio que tocó mandar. ``status``: ``pending`` mientras se
+         *     envía, después ``sent``, ``failed`` o ``skipped`` (con ``reason``).
+         */
+        ReminderLogItem: {
+            /** Id */
+            id: number;
+            /** Offset Minutes */
+            offset_minutes: number;
+            /** Starts At */
+            starts_at: string;
+            /** Appointment Id */
+            appointment_id?: number | null;
+            /** Event Summary */
+            event_summary: string;
+            /** Recipient Name */
+            recipient_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "sent" | "failed" | "skipped";
+            /** Reason */
+            reason?: string | null;
+            /** Delivery Status */
+            delivery_status?: ("sent" | "delivered" | "read" | "failed") | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * ReminderSettings
+         * @description Los recordatorios de cita. Se leen de Google Calendar y salen desde el
+         *     número de avisos: sin alguno de los dos (``calendar_ready``,
+         *     ``sender_ready``) no sale ninguno.
+         */
+        ReminderSettings: {
+            /** Include Manual Events */
+            include_manual_events: boolean;
+            /** Reminders */
+            reminders: components["schemas"]["ReminderItem"][];
+            /** Fields */
+            fields: components["schemas"]["NoticeField"][];
+            /** Templates */
+            templates: components["schemas"]["NoticeTemplate"][];
+            preview?: components["schemas"]["NoticePreview"] | null;
+            /** Calendar Ready */
+            calendar_ready: boolean;
+            /** Sender Ready */
+            sender_ready: boolean;
+            /** Recent */
+            recent: components["schemas"]["ReminderLogItem"][];
+        };
+        /** ReminderSettingsUpdate */
+        ReminderSettingsUpdate: {
+            /** Include Manual Events */
+            include_manual_events: boolean;
+            /** Reminders */
+            reminders?: components["schemas"]["ReminderItem"][];
         };
         /** RoleItem */
         RoleItem: {
@@ -17277,6 +17372,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoticeSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reminders_api_appointments_reminders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettings"];
+                };
+            };
+        };
+    };
+    put_reminders_api_appointments_reminders_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettings"];
                 };
             };
             /** @description Validation Error */

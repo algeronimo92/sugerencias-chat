@@ -5,11 +5,12 @@ import { Checkbox } from '../../../shared/ui/Checkbox'
 import { IntegrationCard, IntegrationDisclosure } from '../../../shared/ui/IntegrationCard'
 import { Select, fieldClass, labelClass } from '../../../shared/ui/Input'
 import { extractErrorMessage } from '../../../shared/utils/errors'
-import { parseLine, serializeLine, type PieceDraft as TemplateDraft } from '../../../shared/pieces'
-import { pieceLabels, previewNotice, renderParameter, templateVariables } from '../domain/notice'
+import { serializeLine, type PieceDraft as TemplateDraft } from '../../../shared/pieces'
+import { pieceLabels, previewNotice, renderParameter } from '../domain/notice'
 import { useNotice, useSaveNotice } from '../queries'
 import type { NoticeAudience, NoticeSettings } from '../types'
-import { VariablesBuilder, type VariableFieldGroup } from '../../../shared/ui/VariablesBuilder'
+import { VariablesBuilder } from '../../../shared/ui/VariablesBuilder'
+import { draftOf, groupsOf, slotsOf, startingParameters } from './noticeBuilder'
 
 const COPY = {
   client: {
@@ -53,36 +54,6 @@ export function NoticeCard({ audience }: { audience: NoticeAudience }) {
   )
 }
 
-const GROUPS = [
-  { id: 'cita', label: 'De la cita' },
-  { id: 'cita_personalizado', label: 'Campos de la cita' },
-  { id: 'lead', label: 'Del lead' },
-  { id: 'lead_personalizado', label: 'Campos del lead' },
-]
-
-function groupsOf(fields: NoticeSettings['fields']): VariableFieldGroup[] {
-  return GROUPS.map(group => ({ ...group, fields: fields.filter(field => field.group === group.id) }))
-}
-
-/** Lo que el aviso guardó para esta plantilla o, si no hay nada, lo que se
- *  armó para sus variables en Plantillas: nunca se empieza de cero. */
-function startingParameters(settings: NoticeSettings, template: NoticeSettings['templates'][number] | null): string[] {
-  if (!template) return []
-  if (template.id === settings.template_id && settings.parameters.some(Boolean)) return settings.parameters
-  return template.suggested_parameters
-}
-
-function slotsOf(template: NoticeSettings['templates'][number] | null): string[] {
-  if (!template) return []
-  const names = templateVariables(template.content)
-  const count = Math.max(template.variable_count, names.length)
-  return Array.from({ length: count }, (_, index) => names[index] ?? String(index + 1))
-}
-
-function draftOf(parameters: string[], count: number, knownKeys: Set<string>): TemplateDraft {
-  return { title: [], lines: Array.from({ length: count }, (_, index) => parseLine(parameters[index] ?? '', knownKeys)) }
-}
-
 function NoticeForm({ audience, settings }: { audience: NoticeAudience; settings: NoticeSettings }) {
   const copy = COPY[audience]
   const save = useSaveNotice(audience)
@@ -91,9 +62,10 @@ function NoticeForm({ audience, settings }: { audience: NoticeAudience; settings
   const [enabled, setEnabled] = useState(settings.enabled)
   const [configurationOpen, setConfigurationOpen] = useState(false)
   const [templateId, setTemplateId] = useState<number | null>(settings.template_id ?? null)
+  const saved = { templateId: settings.template_id ?? null, parameters: settings.parameters }
   const initialTemplate = settings.templates.find(item => item.id === settings.template_id) ?? null
   const [draft, setDraft] = useState<TemplateDraft>(
-    () => draftOf(startingParameters(settings, initialTemplate), slotsOf(initialTemplate).length, knownKeys),
+    () => draftOf(startingParameters(saved, initialTemplate), slotsOf(initialTemplate).length, knownKeys),
   )
 
   const template = settings.templates.find(item => item.id === templateId) ?? null
@@ -115,7 +87,7 @@ function NoticeForm({ audience, settings }: { audience: NoticeAudience; settings
     const id = value ? Number(value) : null
     const next = settings.templates.find(item => item.id === id) ?? null
     setTemplateId(id)
-    setDraft(draftOf(startingParameters(settings, next), slotsOf(next).length, knownKeys))
+    setDraft(draftOf(startingParameters(saved, next), slotsOf(next).length, knownKeys))
   })
 
   if (settings.templates.length === 0) {

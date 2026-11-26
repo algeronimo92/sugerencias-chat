@@ -21,6 +21,7 @@ from app.db.uow import collect, unit_of_work
 from app.modules.appointments.application.ports import appointment_ports
 from app.modules.appointments.domain.events import NoticeTemplatesChanged
 from app.modules.appointments.domain.calendar_event import BUILTIN_FIELDS, CUSTOM_PREFIX
+from app.modules.appointments.domain.reminders import parse_reminders
 from app.modules.appointments.domain.errors import AppointmentNotFound, NoticeAccountUnavailable
 from app.modules.appointments.domain.notice import (
     FORMATTED_FIELDS,
@@ -48,6 +49,10 @@ SENDER_KEY = "appointment_notice_phone_number_id"
 # existente y crea otra en el portfolio del negocio. Ahí los avisos usan
 # copias de las plantillas, con el mismo nombre e idioma.
 SENDER_ACCOUNT_KEY = "appointment_notice_waba_id"
+# Los recordatorios de cita (application/reminders.py): la lista en JSON y si
+# también cuentan los eventos cargados a mano en el calendario.
+REMINDERS_KEY = "appointment_reminders"
+REMINDERS_MANUAL_KEY = "appointment_reminders_manual_events"
 
 
 async def _sender() -> str | None:
@@ -131,10 +136,10 @@ async def _preview() -> dict | None:
     }
 
 
-async def get_settings(audience: Audience, user_id: int) -> dict:
-    config = await _config(audience)
+async def template_choices(audience: Audience, user_id: int) -> list[dict]:
+    """Las plantillas que el armador ofrece para un aviso o recordatorio."""
     sender = await _sender()
-    templates = [
+    return [
         {
             "id": item["id"], "name": item["name"], "content": item["content"],
             "variable_count": _variable_count(item),
@@ -145,12 +150,16 @@ async def get_settings(audience: Audience, user_id: int) -> dict:
         for item in await list_templates(user_id)
         if _sendable(item, audience, sender)
     ]
+
+
+async def get_settings(audience: Audience, user_id: int) -> dict:
+    config = await _config(audience)
     return {
         "enabled": config.enabled,
         "template_id": config.template_id,
         "parameters": [as_template(value) for value in config.parameters],
         "fields": await _fields(),
-        "templates": templates,
+        "templates": await template_choices(audience, user_id),
         "preview": await _preview(),
     }
 
@@ -390,16 +399,28 @@ async def _sender_account() -> str | None:
     return ((await get_effective_many((SENDER_ACCOUNT_KEY,)))[SENDER_ACCOUNT_KEY] or "").strip() or None
 
 
-async def _notice_templates(user_id: int) -> list[tuple[Audience, dict]]:
-    """Las plantillas que usan hoy los avisos, para copiarlas a la WABA del
-    número de avisos."""
+# Los recordatorios no son un destinatario sino un uso más de las plantillas
+# del cliente: en la tarjeta del número de avisos su copia se rotula aparte.
+REMINDER_USE = "reminder"
+
+
+async def _notice_templates(user_id: int) -> list[tuple[str, dict]]:
+    """Las plantillas que usan hoy los avisos y los recordatorios, para
+    copiarlas a la WABA del número de avisos. Sin repetir: una plantilla que
+    sirve para el aviso y para un recordatorio se copia una vez."""
     templates = {item["id"]: item for item in await list_templates(user_id)}
-    chosen: list[tuple[Audience, dict]] = []
-    for audience in Audience:
-        config = await _config(audience)
-        template = templates.get(config.template_id) if config.template_id is not None else None
-        if template is not None and template.get("meta_template_id"):
-            chosen.append((audience, template))
+    wanted: list[tuple[str, int | None]] = [
+        (audience.value, (await _config(audience)).template_id) for audience in Audience
+    ]
+    stored = (await get_effective_many((REMINDERS_KEY,)))[REMINDERS_KEY] or ""
+    wanted += [(REMINDER_USE, item.template_id) for item in parse_reminders(stored) if item.enabled]
+    chosen: list[tuple[str, dict]] = []
+    seen: set[int] = set()
+    for use, template_id in wanted:
+        template = templates.get(template_id) if template_id is not None else None
+        if template is not None and template.get("meta_template_id") and template["id"] not in seen:
+            seen.add(template["id"])
+            chosen.append((use, template))
     return chosen
 
 
@@ -417,12 +438,12 @@ async def _account_templates(account: str, user_id: int) -> list[dict]:
     }
     return [
         {
-            "audience": audience.value,
+            "audience": use,
             "template_id": template["id"],
             "name": template["name"],
             "status": remote.get(_copy_key(template["official_name"], template["official_language"]), "MISSING"),
         }
-        for audience, template in await _notice_templates(user_id)
+        for use, template in await _notice_templates(user_id)
     ]
 
 
@@ -480,7 +501,7 @@ async def copy_templates(user_id: int) -> dict:
     ports = appointment_ports()
     status = {item["template_id"]: item["status"] for item in await _account_templates(account, user_id)}
     copied: set[int] = set()
-    for _audience, template in await _notice_templates(user_id):
+    for _use, template in await _notice_templates(user_id):
         if template["id"] in copied or status.get(template["id"]) != "MISSING":
             continue
         await ports.senders.copy_template(template["meta_template_id"], account)
@@ -521,9 +542,17 @@ async def record_notice_delivery(
     el CRM. Lo que no es un aviso de cita se ignora."""
     if status not in _DELIVERY_STATUSES or (not provider_message_id and wsp_message_id is None):
         return 0
-    return await appointment_ports().notices.record_delivery(
+    ports = appointment_ports()
+    changed = await ports.notices.record_delivery(
         provider_message_id=provider_message_id, wsp_message_id=wsp_message_id, status=status, at=at,
     )
+    if provider_message_id:
+        # Un recordatorio siempre sale del número de avisos: se reconoce
+        # solo por el id de Meta.
+        changed += await ports.reminders.record_delivery(
+            provider_message_id=provider_message_id, status=status, at=at,
+        )
+    return changed
 
 
 async def notice_account_template_changed(waba_id: str) -> bool:

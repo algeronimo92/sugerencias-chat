@@ -16,6 +16,9 @@ export const appointmentKeys = {
   notice: (audience: 'client' | 'staff') => ['appointment-notice', audience] as const,
   // Desde qué número salen los avisos: cambia qué plantillas ofrece cada aviso.
   noticeSender: ['appointment-notice', 'sender'] as const,
+  // Dentro de `notices`: elegir otro número de avisos cambia qué plantillas
+  // ofrecen y si pueden salir.
+  reminders: ['appointment-notice', 'reminders'] as const,
   // Moneda del negocio para el símbolo del adelanto: cambia casi nunca.
   businessCurrency: ['appointment-business-currency'] as const,
 }

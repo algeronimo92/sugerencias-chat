@@ -109,7 +109,7 @@ const STATUS_LABELS: Record<string, string> = {
   MISSING: 'Sin copiar',
 }
 
-const AUDIENCE_LABELS: Record<string, string> = { client: 'Aviso al cliente', staff: 'Aviso al equipo' }
+const AUDIENCE_LABELS: Record<string, string> = { client: 'Aviso al cliente', staff: 'Aviso al equipo', reminder: 'Recordatorio' }
 
 /** El número de avisos en su propia cuenta de WhatsApp Business (en
  *  coexistencia Meta siempre crea una): ahí los avisos usan copias de las
