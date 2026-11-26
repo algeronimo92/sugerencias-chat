@@ -97,8 +97,19 @@ async def login(body: LoginRequest, response: Response, request: Request):
 
     mfa_enabled = user.role == "admin" and (await mfa_status(user.id))["enabled"]
     if mfa_enabled:
-        if not body.mfa_code or not await verify_mfa(user.id, body.mfa_code):
-            raise HTTPException(status_code=403, detail="Ingresa un código de verificación o recuperación válido")
+        # El código se pide en un segundo paso: el formulario no lo muestra
+        # hasta que el backend dice que esta cuenta lo necesita. Con el campo
+        # siempre visible, quien no tenía 2FA no sabía si debía llenarlo.
+        if not body.mfa_code:
+            raise HTTPException(status_code=403, detail={
+                "code": "mfa_required",
+                "message": "Ingresa el código de tu app de autenticación",
+            })
+        if not await verify_mfa(user.id, body.mfa_code):
+            raise HTTPException(status_code=403, detail={
+                "code": "mfa_invalid",
+                "message": "El código no es válido o ya se usó. Prueba con el siguiente",
+            })
     await clear_account_attempts(email)
 
     device_name = describe_device(request.headers.get("user-agent"))

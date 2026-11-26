@@ -127,6 +127,34 @@ describe('sesión', () => {
     }])
   })
 
+  it('el código de 2FA se pide en un segundo paso, solo si la cuenta lo tiene', async () => {
+    api.current.on('get', '/api/auth/me', { status: 401 })
+    api.current.on('post', '/api/auth/login', request => {
+      const body = request.body as { mfa_code: string | null }
+      if (!body.mfa_code) {
+        return { status: 403, data: { detail: { code: 'mfa_required', message: 'Ingresa el código' } } }
+      }
+      return { data: ADMIN }
+    })
+    at('/')
+    render(<App />)
+
+    // El primer paso ya no tiene campo de código: confundía a quien no tenía 2FA.
+    await userEvent.type(await screen.findByLabelText('Correo electrónico'), 'admin@clinica.test')
+    expect(screen.queryByLabelText(/Código de verificación/)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Contraseña'), 'secreta-123')
+    await userEvent.click(screen.getByRole('button', { name: /Ingresar a/ }))
+
+    // La señal del backend abre el paso del código, sin mostrarse como error.
+    await userEvent.type(await screen.findByLabelText('Código de verificación'), '123456')
+    expect(screen.queryByText('Ingresa el código')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Verificar e ingresar' }))
+
+    expect(await screen.findByRole('button', { name: 'Menú de la cuenta' })).toBeInTheDocument()
+    expect(api.current.calls('post', '/api/auth/login').map(request => (request.body as { mfa_code: string | null }).mfa_code))
+      .toEqual([null, '123456'])
+  })
+
   it('un login rechazado muestra el motivo del servidor', async () => {
     api.current.on('get', '/api/auth/me', { status: 401 })
     api.current.on('post', '/api/auth/login', { status: 401, data: { detail: 'Credenciales inválidas' } })
