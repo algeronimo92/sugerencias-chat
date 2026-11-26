@@ -218,3 +218,38 @@ def validate_hours(start: str, end: str) -> ReminderHours:
     if hours is None:
         raise InvalidNotice("El horario de las citas va de una hora a otra más tarde (por ejemplo, de 09:00 a 19:00)")
     return hours
+
+
+# Campos que solo existen en un recordatorio: dependen de cuál sale. Así una
+# sola plantilla sirve para el de un día y el de una hora, y cambiar la
+# anticipación en la tarjeta no obliga a pedirle a Meta otra plantilla.
+REMINDER_FIELDS: dict[str, str] = {
+    "cuando": "Cuándo (hoy, mañana o el martes 6 de octubre)",
+    "tiempo_faltante": "Tiempo que falta (1 día, 3 horas)",
+}
+# Para la vista previa del armador, que no sabe qué recordatorio sale.
+REMINDER_SAMPLES: dict[str, str] = {"cuando": "mañana", "tiempo_faltante": "1 día"}
+
+_WEEKDAYS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+_MONTHS = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def when_text(starts_at: datetime, now: datetime) -> str:
+    """El día de la cita dicho desde hoy, en la zona del negocio: ``hoy``,
+    ``mañana`` o ``el martes 6 de octubre``."""
+    today = now.astimezone(starts_at.tzinfo).date() if starts_at.tzinfo else now.date()
+    day = starts_at.date()
+    if day == today:
+        return "hoy"
+    if day == today + timedelta(days=1):
+        return "mañana"
+    return f"el {_WEEKDAYS[day.weekday()]} {day.day} de {_MONTHS[day.month - 1]}"
+
+
+def reminder_values(reminder: Reminder, starts_at: datetime, now: datetime) -> dict[str, str]:
+    """``tiempo_faltante`` es la anticipación configurada, no el reloj: el
+    recordatorio de una hora dice "1 hora" aunque salga a los 58 minutos."""
+    return {"cuando": when_text(starts_at, now), "tiempo_faltante": describe_offset(reminder.offset_minutes)}

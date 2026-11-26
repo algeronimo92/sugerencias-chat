@@ -222,9 +222,12 @@ def _short_date(appointment: dict) -> str:
         return ""
 
 
-def parameter_values(appointment: dict, templates: tuple[str, ...], lead: dict | None = None) -> list[str]:
-    """El valor de cada variable para esta cita (y su lead)."""
-    values = field_values(appointment, lead)
+def parameter_values(
+    appointment: dict, templates: tuple[str, ...], lead: dict | None = None, extra: dict[str, str] | None = None,
+) -> list[str]:
+    """El valor de cada variable para esta cita (y su lead). ``extra`` suma
+    campos que dependen de quién manda el mensaje (los del recordatorio)."""
+    values = {**field_values(appointment, lead), **(extra or {})}
     return [render_parameter(as_template(template), values) for template in templates]
 
 

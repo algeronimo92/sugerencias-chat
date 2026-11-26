@@ -36,6 +36,8 @@ from app.modules.appointments.application.ports import appointment_ports
 from app.modules.appointments.domain.errors import CalendarUnavailable
 from app.modules.appointments.domain.notice import Audience, InvalidNotice, as_template, parameter_values, validate_parameters
 from app.modules.appointments.domain.reminders import (
+    REMINDER_FIELDS,
+    REMINDER_SAMPLES,
     CalendarEvent,
     Reminder,
     ReminderHours,
@@ -44,6 +46,7 @@ from app.modules.appointments.domain.reminders import (
     extract_phone,
     parse_hours,
     parse_reminders,
+    reminder_values,
     validate_hours,
     validate_offsets,
 )
@@ -76,6 +79,18 @@ async def _calendar_ready() -> bool:
     )
 
 
+async def _reminder_fields() -> list[dict]:
+    """Los campos de los avisos más los que solo tiene un recordatorio."""
+    return [
+        {"key": key, "label": label, "group": "recordatorio"} for key, label in REMINDER_FIELDS.items()
+    ] + await _fields()
+
+
+async def _reminder_preview() -> dict | None:
+    preview = await _preview()
+    return None if preview is None else {**preview, "values": {**preview["values"], **REMINDER_SAMPLES}}
+
+
 async def get_settings(user_id: int) -> dict:
     reminders, manual, hours = await _stored()
     return {
@@ -88,9 +103,9 @@ async def get_settings(user_id: int) -> dict:
             }
             for item in reminders
         ],
-        "fields": await _fields(),
+        "fields": await _reminder_fields(),
         "templates": await template_choices(Audience.CLIENT, user_id),
-        "preview": await _preview(),
+        "preview": await _reminder_preview(),
         "calendar_ready": await _calendar_ready(),
         "sender_ready": await _sender() is not None,
         "recent": await appointment_ports().reminders.recent(RECENT_LIMIT),
@@ -112,7 +127,7 @@ async def save_settings(
     ]
     validate_offsets(items)
     window = validate_hours(hours["start"], hours["end"]) if hours is not None else None
-    known_keys = {item["key"] for item in await _fields()}
+    known_keys = {item["key"] for item in await _reminder_fields()}
     clean: list[Reminder] = []
     for item in sorted(items, key=lambda reminder: -reminder.offset_minutes):
         if item.template_id is None and not item.enabled:
@@ -175,7 +190,8 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
             reminder_id = await ports.reminders.claim(event, reminder.offset_minutes)
             if reminder_id is None:
                 continue
-            result = await _attempt(reminder, target, templates.get(reminder.template_id), sender)
+            extra = reminder_values(reminder, event.starts_at, now)
+            result = await _attempt(reminder, target, templates.get(reminder.template_id), sender, extra)
             await ports.reminders.finish(reminder_id, result)
             outcome[result["status"]] = outcome.get(result["status"], 0) + 1
     if outcome:
@@ -230,7 +246,9 @@ async def _target(event: CalendarEvent) -> dict | None:
     return {"appointment": appointment, "lead_id": match.lead_id, "lead": lead, "phone": match.e164}
 
 
-async def _attempt(reminder: Reminder, target: dict, template: dict | None, sender: str) -> dict:
+async def _attempt(
+    reminder: Reminder, target: dict, template: dict | None, sender: str, extra: dict[str, str],
+) -> dict:
     """Manda un recordatorio y devuelve cómo salió. Nunca levanta."""
     appointment = target["appointment"]
     lead = target.get("lead") or {}
@@ -243,7 +261,7 @@ async def _attempt(reminder: Reminder, target: dict, template: dict | None, send
         return {**result, "status": "skipped", "reason": target["skip"]}
     if template is None:
         return {**result, "status": "failed", "reason": "La plantilla ya no es una plantilla oficial aprobada y global"}
-    parameters = parameter_values(appointment, reminder.parameters, target.get("lead"))
+    parameters = parameter_values(appointment, reminder.parameters, target.get("lead"), extra)
     messenger = appointment_ports().messenger
     try:
         if target.get("lead_id"):

@@ -19,6 +19,7 @@ from app.modules.appointments.domain.reminders import (
     extract_phone,
     parse_hours,
     parse_reminders,
+    when_text,
 )
 from tests.appointment_fakes import in_memory_appointments  # noqa: F401
 
@@ -346,3 +347,49 @@ async def test_the_hours_are_shown_and_can_be_removed(stored, in_memory_appointm
         await reminders.save_settings(
             include_manual_events=False, reminders=[], user_id=1, hours={"start": "19:00", "end": "09:00"},
         )
+
+
+# --- Cuándo y cuánto falta: una plantilla para todos los recordatorios ------
+
+DYNAMIC = ["{nombre_completo}", "{cuando}", "{hora_12h}", "{tiempo_faltante}"]
+DYNAMIC_TEMPLATE = {
+    **REMINDER, "id": 23, "content": "Hola {{1}}, tu cita es {{2}} a las {{3}}. Tu cita es en aproximadamente {{4}}.",
+    "official_parameter_values": ["Ana", "mañana", "05:00 Pm", "1 día"],
+}
+
+
+def test_when_is_said_from_today():
+    assert when_text(_at(10, 17), _at(10, 8)) == "hoy"
+    assert when_text(_at(10, 17), _at(9, 17)) == "mañana"
+    assert when_text(_at(6, 17), _at(4, 9)) == "el domingo 6 de diciembre"
+    # Las 23:00 en Lima ya son el día siguiente en UTC: cuenta el día del negocio.
+    assert when_text(_at(10, 17), _at(9, 23).astimezone(timezone.utc)) == "mañana"
+
+
+async def test_one_template_says_when_and_how_long_for_every_reminder(stored, monkeypatch, in_memory_appointments):
+    world = in_memory_appointments
+    for module in (notice, reminders):
+        monkeypatch.setattr(module, "list_templates", AsyncMock(return_value=[REMINDER, DYNAMIC_TEMPLATE]))
+    await reminders.save_settings(
+        include_manual_events=False, user_id=1,
+        reminders=[
+            {"offset_minutes": offset, "enabled": True, "template_id": 23, "parameters": DYNAMIC}
+            for offset in (1440, 180, 60)
+        ],
+    )
+    world.calendar.events = [_event(appointment_id=await _appointment(world), starts_at=_at(10, 17), ends_at=_at(10, 18))]
+    for now in (_at(9, 17), _at(10, 14), _at(10, 16)):
+        await reminders.send_due_reminders(now)
+    assert [item["parameters"] for item in world.messenger.from_sender] == [
+        ["AYME", "mañana", "05:00 Pm", "1 día"],
+        ["AYME", "hoy", "05:00 Pm", "3 horas"],
+        ["AYME", "hoy", "05:00 Pm", "1 hora"],
+    ]
+
+
+async def test_the_builder_offers_the_reminder_fields_with_a_sample(stored, in_memory_appointments):
+    await _appointment(in_memory_appointments)
+    result = await reminders.get_settings(1)
+    assert [item["key"] for item in result["fields"] if item["group"] == "recordatorio"] == ["cuando", "tiempo_faltante"]
+    assert result["preview"]["values"]["cuando"] == "mañana"
+    assert result["preview"]["values"]["tiempo_faltante"] == "1 día"

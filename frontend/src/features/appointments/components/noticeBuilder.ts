@@ -10,7 +10,10 @@ import type { NoticeSettings } from '../types'
 export type NoticeTemplateOption = NoticeSettings['templates'][number]
 export type NoticeFieldOption = NoticeSettings['fields'][number]
 
+// "Del recordatorio" solo tiene campos en los recordatorios (cuándo y cuánto
+// falta): en los avisos queda vacío y el armador no lo muestra.
 const GROUPS = [
+  { id: 'recordatorio', label: 'Del recordatorio' },
   { id: 'cita', label: 'De la cita' },
   { id: 'cita_personalizado', label: 'Campos de la cita' },
   { id: 'lead', label: 'Del lead' },
