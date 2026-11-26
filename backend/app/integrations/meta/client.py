@@ -18,7 +18,7 @@ from app.tenancy.context import get_current_tenant
 
 logger = logging.getLogger(__name__)
 
-GRAPH_API_VERSION = "v26.0"
+GRAPH_API_VERSION = "v27.0"
 
 # Códigos de error de la Graph API ya vistos en tráfico real de esta app.
 _META_ERROR_CODE_WINDOW_CLOSED = 131047  # ventana de 24h del contacto cerrada
