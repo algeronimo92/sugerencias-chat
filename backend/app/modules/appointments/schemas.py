@@ -173,7 +173,7 @@ class NoticeTemplate(BaseModel):
 class NoticeField(BaseModel):
     key: str
     label: str
-    # cita | cita_personalizado | lead | lead_personalizado
+    # cita | cita_personalizado | lead | lead_personalizado | recordatorio (solo en los recordatorios)
     group: str
 
 

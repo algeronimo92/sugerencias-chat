@@ -97,4 +97,15 @@ describe('ReminderCard', () => {
     await waitFor(() => expect(api.put).toHaveBeenCalled())
     expect(api.put.mock.calls[0][1].hours).toEqual({ start: '09:00', end: '19:00' })
   })
+
+  it('ofrece cuándo y cuánto falta como datos del recordatorio', async () => {
+    renderCard({
+      ...settings,
+      fields: [{ key: 'cuando', label: 'Cuándo (hoy, mañana o el martes 6 de octubre)', group: 'recordatorio' }, ...settings.fields],
+      reminders: [{ offset_minutes: 1440, enabled: true, template_id: 7, parameters: ['{nombre_completo}', '{cuando}'] }],
+      preview: { label: 'AYME', values: { ...settings.preview!.values, cuando: 'mañana' } },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Recordatorios (1)' }))
+    expect(screen.getByText('Hola AYME, te esperamos el mañana.')).toBeInTheDocument()
+  })
 })
