@@ -32,6 +32,10 @@ test('con el número en la app de WhatsApp Business, la admin ve que hay que mud
     // Literales: el simulador solo reemplaza parámetros numéricos de la ruta.
     .on('get', '/api/appointments/notices/client' as NoticeRoute, NOTICIAS)
     .on('get', '/api/appointments/notices/staff' as NoticeRoute, NOTICIAS)
+    .on('get', '/api/appointments/reminders', {
+      include_manual_events: false, reminders: [], fields: [], templates: [], preview: null,
+      calendar_ready: false, sender_ready: false, recent: [],
+    })
     .on('get', '/api/settings/email', {
       configured: false, mode: null, oauth_provider: null, oauth_account_email: null, oauth_available: [], platform_available: false,
       host: '', port: 587, security: 'starttls', username: '', password_configured: false, from_address: '', from_name: '',
