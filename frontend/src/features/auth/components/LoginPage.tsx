@@ -25,7 +25,10 @@ import { BrandLogo } from "../../../shared/ui/BrandLogo";
 import { Button } from "../../../shared/ui/Button";
 import { Checkbox } from "../../../shared/ui/Checkbox";
 import { Input } from "../../../shared/ui/Input";
+import { asApiError } from "../../../shared/http/errors";
 import { extractErrorMessage } from "../../../shared/utils/errors";
+import { authFieldClass, ErrorNotice } from "./authFormParts";
+import { LoginMfaStep } from "./LoginMfaStep";
 import {
 PIN_LENGTH,
 useLogin,
@@ -42,13 +45,9 @@ const loginSchema = z.object({
     .email("Ingresa un email válido."),
   password: z.string().min(1, "Ingresa tu contraseña."),
   remember_device: z.boolean(),
-  mfa_code: z.string().optional(),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
-
-const authFieldClass =
-  "h-12 rounded-xl border-wa-border bg-white pl-11 pr-4 text-[15px] shadow-sm placeholder:text-wa-muted/80 hover:border-gray-300 focus:border-wa-primary focus:bg-white focus:ring-4 focus:ring-wa-primary/10 dark:border-wa-border-dark dark:bg-wa-head-dark dark:hover:border-wa-muted/50 dark:focus:border-wa-primary dark:focus:bg-wa-head-dark";
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
   const brand = useBrand();
@@ -66,23 +65,6 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
           CRM
         </span>
       </span>
-    </div>
-  );
-}
-
-function ErrorNotice({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      aria-live="polite"
-      className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-900/80 dark:bg-red-950/35 dark:text-red-300"
-    >
-      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/60">
-        <span className="text-xs font-bold" aria-hidden="true">
-          !
-        </span>
-      </span>
-      <span>{message}</span>
     </div>
   );
 }
@@ -175,18 +157,42 @@ export function LoginPage() {
   const [usePassword, setUsePassword] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
   const [pin, setPin] = useState("");
+  // El código de 2FA se pide después, y solo si el backend dice que esta
+  // cuenta lo tiene activo: con el campo siempre visible, quien no tenía 2FA
+  // no sabía si debía llenarlo.
+  const [mfaStep, setMfaStep] = useState(false);
   const {
     register,
     handleSubmit,
+    getValues,
     setValue,
     watch,
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "", remember_device: true, mfa_code: "" },
+    defaultValues: { email: "", password: "", remember_device: true },
   });
 
   const showPin = Boolean(pinStatus?.available) && !usePassword;
+  const errorCode = asApiError(error)?.code ?? null;
+  // "Falta el código" no es un error para mostrar: es la señal para pasar
+  // al segundo paso.
+  const loginErrorMessage =
+    error && errorCode !== "mfa_required" ? extractErrorMessage(error) : null;
+
+  function submitPassword(values: LoginValues) {
+    login(values, {
+      onError: (err) => {
+        if (asApiError(err)?.code === "mfa_required") setMfaStep(true);
+      },
+    });
+  }
+
+  function leaveMfaStep() {
+    resetLogin();
+    setMfaStep(false);
+    setValue("password", "");
+  }
 
   function switchToPassword() {
     resetPinLogin();
@@ -348,6 +354,15 @@ export function LoginPage() {
                   </div>
                 ) : forgotMode ? (
                   <ForgotPasswordForm onBack={() => setForgotMode(false)} />
+                ) : mfaStep ? (
+                  <LoginMfaStep
+                    email={getValues("email")}
+                    isPending={isPending}
+                    errorMessage={loginErrorMessage}
+                    onSubmit={(code) => login({ ...getValues(), mfa_code: code })}
+                    onBack={leaveMfaStep}
+                    onEdit={resetLogin}
+                  />
                 ) : showPin ? (
                   <form
                     onSubmit={(event) => {
@@ -455,7 +470,7 @@ export function LoginPage() {
                   </form>
                 ) : (
                   <form
-                    onSubmit={handleSubmit((values) => login(values))}
+                    onSubmit={handleSubmit(submitPassword)}
                     noValidate
                   >
                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-wa-primary/10 text-wa-primary-strong ring-1 ring-wa-primary/10 dark:bg-wa-primary/15 dark:text-wa-primary">
@@ -472,8 +487,8 @@ export function LoginPage() {
                     </p>
 
                     <div className="mt-7 space-y-4">
-                      {error && (
-                        <ErrorNotice message={extractErrorMessage(error)} />
+                      {loginErrorMessage && (
+                        <ErrorNotice message={loginErrorMessage} />
                       )}
                       <div>
                         <label
@@ -574,22 +589,6 @@ export function LoginPage() {
                         </button>
                       </div>
 
-                      <div>
-                        <label htmlFor="login-mfa" className="mb-2 block text-sm font-semibold text-wa-text dark:text-wa-text-dark">
-                          Código de verificación o de recuperación (si activaste 2FA)
-                        </label>
-                        {/* El texto de ayuda largo se cortaba en el celular;
-                            lo del código de recuperación pasó a la etiqueta. */}
-                        <Input
-                          id="login-mfa"
-                          {...register("mfa_code")}
-                          autoComplete="one-time-code"
-                          inputMode="text"
-                          placeholder="Código de 6 dígitos"
-                          className={authFieldClass}
-                        />
-                      </div>
-
                       <label
                         htmlFor="remember-device"
                         className="flex cursor-pointer items-start gap-3 rounded-xl border border-wa-border bg-[#f8faf9] p-3.5 transition-colors hover:border-wa-primary/30 dark:border-wa-border-dark dark:bg-wa-head-dark/55 dark:hover:border-wa-primary/30"
@@ -607,8 +606,9 @@ export function LoginPage() {
                             Recordar este dispositivo
                           </strong>
                           <span className="mt-0.5 block text-[11px] leading-4 text-wa-muted dark:text-wa-muted-dark">
-                            Mantén la sesión activa. El PIN solo está disponible
-                            si no activaste 2FA.
+                            Mantén la sesión activa y entra con un PIN la
+                            próxima vez. Las cuentas con verificación en dos
+                            pasos siempre piden el código.
                           </span>
                         </span>
                       </label>

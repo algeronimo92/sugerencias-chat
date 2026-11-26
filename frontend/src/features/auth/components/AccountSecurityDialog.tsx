@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Laptop, Loader2, LogOut, ShieldCheck, Trash2, X } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { DialogPrimitive as Dialog, dialogContentPositionClass, dialogOverlayClass } from '../../../shared/ui/Dialog'
@@ -156,8 +157,21 @@ export function AccountSecurityDialog({ onClose }: Props) {
                   </div>
                 ) : startMfa.data ? (
                   <div className="space-y-3 rounded-lg bg-wa-hover p-3 dark:bg-wa-head-dark/60">
-                    <p className="text-xs text-wa-muted">Agrega una cuenta manualmente en tu app de autenticación con esta clave (TOTP, SHA-1, 30 segundos):</p>
-                    <code className="block break-all rounded bg-white p-2 text-sm select-all dark:bg-wa-panel-dark">{startMfa.data.secret}</code>
+                    <p className="text-xs text-wa-muted">1. Escanea este código con tu app de autenticación (Google Authenticator, Microsoft Authenticator u otra).</p>
+                    {/* El QR lleva la clave secreta: se dibuja en el navegador y nunca
+                        se pide a un servicio externo. Fondo blanco también en modo
+                        oscuro, porque varias cámaras no leen un QR invertido. */}
+                    <div className="flex justify-center">
+                      <div className="rounded-lg bg-white p-3 shadow-sm">
+                        <QRCodeSVG value={startMfa.data.otpauth_uri} size={176} level="M" role="img" aria-label="Código QR para configurar la verificación en dos pasos" />
+                      </div>
+                    </div>
+                    <details className="text-xs text-wa-muted">
+                      <summary className="cursor-pointer font-semibold text-wa-primary-strong dark:text-wa-primary">¿No puedes escanearlo? Escribe la clave a mano</summary>
+                      <p className="mt-2">Agrega una cuenta en tu app con esta clave (TOTP, SHA-1, 30 segundos):</p>
+                      <code className="mt-1 block break-all rounded bg-white p-2 text-sm text-wa-text select-all dark:bg-wa-panel-dark dark:text-wa-text-dark">{startMfa.data.secret}</code>
+                    </details>
+                    <p className="text-xs text-wa-muted">2. Ingresa el código de 6 dígitos que muestra la app.</p>
                     <Input aria-label="Código para activar 2FA" autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={mfaCode} onChange={event => setMfaCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Código de 6 dígitos" />
                     {confirmMfa.error && <p className="text-xs text-red-500">{extractErrorMessage(confirmMfa.error)}</p>}
                     <Button type="button" disabled={confirmMfa.isPending || mfaCode.length !== 6} onClick={() => confirmMfa.mutate(mfaCode, { onSuccess: data => { setMfaCode(''); setMfaPassword(''); setRecoveryCodes(data.recovery_codes) } })}>Activar 2FA</Button>

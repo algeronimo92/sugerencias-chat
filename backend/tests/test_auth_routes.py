@@ -144,9 +144,32 @@ def test_admin_login_requires_second_factor_before_creating_session(monkeypatch)
     )
 
     assert response.status_code == 403
+    # El frontend usa este code para pasar al paso del código, no para mostrar un error.
+    assert response.json()["detail"]["code"] == "mfa_required"
     assert "access_token" not in response.cookies
     create.assert_not_awaited()
     register.assert_not_awaited()
+    auth.clear_account_attempts.assert_not_awaited()
+
+
+def test_admin_login_with_wrong_code_is_rejected_as_invalid(monkeypatch) -> None:
+    admin = _user()
+    admin.role = "admin"
+    monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=admin))
+    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    auth.mfa_status.return_value = {"enabled": True, "recovery_codes_remaining": 8}
+    monkeypatch.setattr(auth, "verify_mfa", AsyncMock(return_value=False))
+    create = AsyncMock()
+    monkeypatch.setattr(auth, "create_session", create)
+
+    response = _client().post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "secret", "remember_device": False, "mfa_code": "000000"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "mfa_invalid"
+    create.assert_not_awaited()
     auth.clear_account_attempts.assert_not_awaited()
 
 

@@ -33,6 +33,7 @@
     "html2canvas-pro": "^2.3.9",
     "lucide-react": "^1.23.0",
     "motion": "^12.42.2",
+    "qrcode.react": "4.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-easy-crop": "^6.2.3",
