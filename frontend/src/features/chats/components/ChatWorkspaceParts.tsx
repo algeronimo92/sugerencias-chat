@@ -5,6 +5,7 @@ import { IntegrationNotice } from "../../../shared/ui/IntegrationNotice";
 import { Button } from "../../../shared/ui/Button";
 import { PageLoader } from "../../../shared/ui/PageLoader";
 import { Spinner } from "../../../shared/ui/Spinner";
+import { useAiUsage } from "../../ai/public/useAiUsage";
 import type { Chat } from "../../leads/types";
 import type { ChatSuggestions } from "../hooks/useChatWorkspace";
 import { ChatThread } from "./ChatThread";
@@ -63,6 +64,10 @@ export function ConversationEmptyState() {
 }
 
 export function SuggestionsEmptyState() {
+  const { data: usage } = useAiUsage();
+  // Sin IA en el paquete no se invita a elegir un lead: se dice por qué no
+  // hay sugerencias y a qué paquete subir.
+  const unavailable = usage && !usage.enabled ? usage.unavailable_reason : null;
   return (
     <div className="flex h-full flex-col bg-white dark:bg-wa-panel-dark">
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-wa-border px-5 dark:border-wa-border-dark">
@@ -82,10 +87,16 @@ export function SuggestionsEmptyState() {
         <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-100 bg-violet-50/70 text-violet-500 dark:border-violet-900/50 dark:bg-violet-950/25 dark:text-violet-300">
           <Sparkles className="h-6 w-6" strokeWidth={1.8} aria-hidden="true" />
         </span>
-        <p className="mt-2 max-w-62.5 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
-          Selecciona un lead para ver las sugerencias, señales de compra y
-          próximos pasos recomendados.
-        </p>
+        {unavailable ? (
+          <p role="status" className="mt-3 max-w-72 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-xs leading-5 text-amber-800 dark:text-amber-200">
+            {unavailable}
+          </p>
+        ) : (
+          <p className="mt-2 max-w-62.5 text-xs leading-5 text-wa-muted dark:text-wa-muted-dark">
+            Selecciona un lead para ver las sugerencias, señales de compra y
+            próximos pasos recomendados.
+          </p>
+        )}
       </div>
     </div>
   );
