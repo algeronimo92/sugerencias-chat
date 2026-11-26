@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models.automations import AutomationExecution, AutomationFlowVersion, AutomationRule
@@ -40,6 +40,16 @@ class SqlRuleStore:
                 ).values(**values)
             )
         return bool(result.rowcount)
+
+    async def count_active(self, *, exclude_rule_id: int | None = None) -> int:
+        stmt = select(func.count()).select_from(AutomationRule).where(
+            AutomationRule.is_active.is_(True),
+            AutomationRule.deleted_at.is_(None),
+        )
+        if exclude_rule_id is not None:
+            stmt = stmt.where(AutomationRule.id != exclude_rule_id)
+        async with session_scope() as session:
+            return int(await session.scalar(stmt) or 0)
 
     async def lock_active_statuses(self, rule_id: int) -> list[str] | None:
         async with session_scope() as session:
