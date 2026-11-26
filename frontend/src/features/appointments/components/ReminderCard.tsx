@@ -9,8 +9,9 @@ import { pieceLabels } from '../domain/notice'
 import { MAX_REMINDERS, describeOffset, nextOffset, offsetError, reminderState, splitOffset } from '../domain/reminders'
 import type { NoticeTone } from '../domain/noticeStatus'
 import { useReminders, useSaveReminders } from '../queries'
-import type { ReminderSettings } from '../types'
+import type { ReminderHours, ReminderSettings } from '../types'
 import { draftOf, offsetOf, parametersOf, slotsOf, startingParameters, type ReminderDraft } from './noticeBuilder'
+import { ReminderHoursField } from './ReminderHoursField'
 import { ReminderRow } from './ReminderRow'
 
 /** Tarjeta de Integraciones para los recordatorios de cita: se leen de
@@ -69,6 +70,10 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
   // refresco de la tarjeta (otro número de avisos) no deja un valor viejo.
   const [manualChoice, setManualChoice] = useState<boolean | null>(null)
   const manual = manualChoice ?? settings.include_manual_events
+  // Igual que `manualChoice`: undefined es "no lo tocó", null es "sin horario".
+  const [hoursChoice, setHoursChoice] = useState<ReminderHours | null | undefined>(undefined)
+  const hours = hoursChoice === undefined ? (settings.hours ?? null) : hoursChoice
+  const hoursInvalid = hours !== null && hours.start >= hours.end
   const [baseline, setBaseline] = useState(() => serialize(initialRows))
   const [open, setOpen] = useState(false)
 
@@ -79,7 +84,9 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
     const parameters = parametersOf(row)
     return !template || parameters.length !== slotsOf(template).length || !parameters.every(Boolean)
   })
-  const dirty = serialize(rows) !== baseline || manual !== settings.include_manual_events
+  const dirty = serialize(rows) !== baseline
+    || manual !== settings.include_manual_events
+    || JSON.stringify(hours) !== JSON.stringify(settings.hours ?? null)
 
   const change = (apply: () => void) => {
     save.reset()
@@ -98,6 +105,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
   const submit = () => save.mutate(
     {
       include_manual_events: manual,
+      hours,
       reminders: rows.map(row => ({
         offset_minutes: offsetOf(row), enabled: row.enabled, template_id: row.templateId, parameters: parametersOf(row),
       })),
@@ -108,6 +116,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
         setRows(next)
         setBaseline(serialize(next))
         setManualChoice(null)
+        setHoursChoice(undefined)
       },
     },
   )
@@ -150,6 +159,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Agregar recordatorio
               </Button>
             )}
+            <ReminderHoursField value={hours} disabled={save.isPending} onChange={value => change(() => setHoursChoice(value))} />
             <label className="flex items-start gap-2 text-sm text-wa-text dark:text-wa-text-dark">
               <Checkbox checked={manual} onCheckedChange={value => change(() => setManualChoice(value))} disabled={save.isPending} />
               <span>
@@ -173,7 +183,7 @@ function ReminderForm({ settings }: { settings: ReminderSettings }) {
             <Check className="h-3.5 w-3.5" aria-hidden="true" /> Guardado
           </p>
         )}
-        <Button size="sm" disabled={!dirty || save.isPending || incomplete || errors.some(Boolean)} onClick={submit}>
+        <Button size="sm" disabled={!dirty || save.isPending || incomplete || hoursInvalid || errors.some(Boolean)} onClick={submit}>
           {save.isPending ? 'Guardando…' : 'Guardar recordatorios'}
         </Button>
       </div>

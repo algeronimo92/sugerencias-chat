@@ -279,6 +279,7 @@ SETTING_DEFS: list[SettingDef] = [
     # Se editan solo desde su tarjeta (appointments/application/reminders.py).
     SettingDef("appointment_reminders", "Recordatorios de cita", "appointments", "Avisos de cita", secret=False, hidden=True),
     SettingDef("appointment_reminders_manual_events", "Recordar también los eventos cargados a mano", "appointments", "Avisos de cita", secret=False, boolean=True, hidden=True),
+    SettingDef("appointment_reminders_hours", "Horario de las citas que se recuerdan", "appointments", "Avisos de cita", secret=False, hidden=True),
     # SMTP propio del negocio para invitaciones y avisos (pestaña Correo). Se
     # editan solo por app/modules/platform/email_settings.py, que valida el
     # conjunto: un host suelto sin remitente no sirve. Los nombres no

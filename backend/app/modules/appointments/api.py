@@ -111,6 +111,7 @@ async def put_reminders(body: ReminderSettingsUpdate, user: User = Depends(requi
     return await reminders.save_settings(
         include_manual_events=body.include_manual_events,
         reminders=[item.model_dump() for item in body.reminders],
+        hours=body.hours.model_dump() if body.hours is not None else None,
         user_id=user.id,
     )
 

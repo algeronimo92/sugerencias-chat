@@ -17,6 +17,7 @@ from app.modules.appointments.domain.reminders import (
     describe_offset,
     due_reminders,
     extract_phone,
+    parse_hours,
     parse_reminders,
 )
 from tests.appointment_fakes import in_memory_appointments  # noqa: F401
@@ -65,9 +66,10 @@ def _event(**values) -> CalendarEvent:
     return CalendarEvent(**{**base, **values})
 
 
-async def _configure(stored_values, *, manual=False, offsets=(1440, 300, 60)):
+async def _configure(stored_values, *, manual=False, offsets=(1440, 300, 60), hours=None):
     await reminders.save_settings(
         include_manual_events=manual,
+        hours=hours,
         reminders=[
             {"offset_minutes": offset, "enabled": True, "template_id": 21, "parameters": FIELDS} for offset in offsets
         ],
@@ -304,3 +306,43 @@ def test_utc_and_business_time_compare_as_the_same_instant():
     event = _event()
     utc_now = _at(10, 14).astimezone(timezone.utc)
     assert due_reminders((Reminder(60, True, 21),), event, utc_now) == [Reminder(60, True, 21)]
+
+
+# --- Horario de las citas ---------------------------------------------------
+
+
+def test_the_hours_cover_both_ends_and_unreadable_means_all_day():
+    hours = parse_hours("09:00-19:00")
+    assert hours.covers(_at(10, 9)) and hours.covers(_at(10, 19))
+    assert not hours.covers(_at(10, 8, 59)) and not hours.covers(_at(10, 19, 1))
+    assert parse_hours("") is None
+    assert parse_hours("19:00-09:00") is None
+    assert parse_hours("9-19") is None
+
+
+async def test_only_appointments_inside_the_hours_are_reminded(stored, in_memory_appointments):
+    world = in_memory_appointments
+    await _configure(stored, offsets=(60,), hours={"start": "09:00", "end": "19:00"})
+    assert stored["appointment_reminders_hours"] == "09:00-19:00"
+    world.calendar.events = [
+        _event(id="tarde", appointment_id=await _appointment(world)),
+        _event(id="noche", appointment_id=await _appointment(world), starts_at=_at(10, 20), ends_at=_at(10, 21)),
+    ]
+    assert await reminders.send_due_reminders(_at(10, 14)) == {"sent": 1}
+    # La de las 20:00 se omite sin dejar registro.
+    assert await reminders.send_due_reminders(_at(10, 19)) == {}
+    assert [row["key"][0] for row in world.reminders.rows] == ["tarde"]
+
+
+async def test_the_hours_are_shown_and_can_be_removed(stored, in_memory_appointments):
+    result = await reminders.save_settings(
+        include_manual_events=False, reminders=[], user_id=1, hours={"start": "08:30", "end": "20:00"},
+    )
+    assert result["hours"] == {"start": "08:30", "end": "20:00"}
+    result = await reminders.save_settings(include_manual_events=False, reminders=[], user_id=1, hours=None)
+    assert result["hours"] is None
+    assert stored["appointment_reminders_hours"] == ""
+    with pytest.raises(InvalidNotice, match="de una hora a otra más tarde"):
+        await reminders.save_settings(
+            include_manual_events=False, reminders=[], user_id=1, hours={"start": "19:00", "end": "09:00"},
+        )
