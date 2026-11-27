@@ -27,6 +27,11 @@ describe('placeNewNode', () => {
     expect(placeNewNode([trigger, question], [], 'pregunta').from).toBeUndefined()
   })
 
+  it('una plantilla que sigue según el botón ya no tiene «Siguiente» donde encadenar', () => {
+    const template = { ...message, data: { action: { type: 'send_template', template_id: 1 }, reply: { buttons: [{ id: 'btn_1', label: 'Sí' }], timeout_seconds: 60 } } } as AutomationFlowNode
+    expect(placeNewNode([trigger, template], [next('inicio', 'saludo')], 'saludo').from).toBeUndefined()
+  })
+
   it('sin bloque elegido, a la derecha del último', () => {
     expect(placeNewNode([trigger, message], [], null)).toEqual({ position: { x: 760, y: 0 } })
   })

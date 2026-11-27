@@ -48,6 +48,18 @@ async def validate_visual_flow(
         problem = await references.stage_problem(flow.condition_stages, active_only=False)
         if problem:
             raise InvalidAutomation(f"En un paso Condición: {problem}. Elige otra etapa.")
+    if flow.template_replies:
+        current = await references.template_quick_replies({reply.template_id for reply in flow.template_replies})
+        for reply in flow.template_replies:
+            # Las salidas del paso llevan el texto de cada botón: si la
+            # plantilla cambió después de armarlo, lo dibujado ya no es lo
+            # que va a ver el cliente.
+            if tuple(current.get(reply.template_id, ())) != reply.labels:
+                raise InvalidAutomation(
+                    "Los botones de la plantilla cambiaron desde que armaste este paso. "
+                    "Ábrelo, pulsa «Actualizar botones» y revisa a dónde va cada salida.",
+                    node_id=reply.node_id,
+                )
     if flow.invoked_flow_ids:
         check_invoked_flows(
             await rules.flow_targets(), flow.invoked_flow_ids, current_rule_id, {"nodes": flow.nodes},

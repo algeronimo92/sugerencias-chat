@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from app.modules.automations.domain.types import AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
+from app.modules.automations.domain.types import AutomationActionType, AutomationTrigger, FlowConditionType, FlowNodeType, QuestionHandle
 
 from app.modules.automations.domain.flow_graph import normalize_edges, validate_graph_topology
 from app.modules.automations.domain.limits import FLOW_NODE_TYPES, MAX_FLOW_EDGES, MAX_FLOW_NODES, TRIGGER_TYPES
@@ -26,6 +26,7 @@ from app.modules.automations.domain.validation import (
     normalize_flow_condition_node,
     normalize_question,
     normalize_round_robin,
+    normalize_template_reply,
     normalize_trigger,
     normalize_wait_any_conditions,
 )
@@ -76,7 +77,15 @@ def _normalize_condition_node(data: dict, ref: FlowNodeRef, facts: FlowValidatio
 def _normalize_action_node(data: dict, ref: FlowNodeRef, facts: FlowValidationFacts) -> dict:
     action = data.get("action") if isinstance(data.get("action"), dict) else {}
     facts.action_nodes.append((ref.index, action))
-    return {"action": action}
+    reply = normalize_template_reply(data.get("reply"))
+    if reply is None:
+        return {"action": action}
+    if action.get("type") != AutomationActionType.SEND_TEMPLATE:
+        raise InvalidAutomation(
+            "Solo «Enviar plantilla de WhatsApp» puede seguir según el botón que toque el cliente. "
+            "Si importaste un JSON, revísalo."
+        )
+    return {"action": action, "reply": reply}
 
 
 def _normalize_invoke_flow_node(data: dict, ref: FlowNodeRef, facts: FlowValidationFacts) -> dict:
@@ -126,7 +135,8 @@ def _ids_of(items: object, key: str) -> set[str]:
 def dynamic_handles(node_type: str, data: dict) -> set[str]:
     """Salidas de un bloque que no están en el enum fijo ``FlowHandle``: los
     grupos de una Condición, las condiciones de una Pausa, los botones de una
-    Pregunta y las salidas de un Round robin."""
+    Pregunta, las salidas de un Round robin y los botones de una plantilla
+    cuando el paso sigue según el que toque el cliente."""
     if node_type == FlowNodeType.CONDITION:
         return _ids_of(data.get("condition_groups"), "id")
     if node_type == FlowNodeType.WAIT_ANY:
@@ -135,6 +145,8 @@ def dynamic_handles(node_type: str, data: dict) -> set[str]:
         return _ids_of(data.get("buttons"), "id") | {QuestionHandle.OTHER, QuestionHandle.TIMEOUT, QuestionHandle.MEDIA}
     if node_type == FlowNodeType.ROUND_ROBIN:
         return _ids_of(data.get("outputs"), "id")
+    if node_type == FlowNodeType.ACTION and isinstance(data.get("reply"), dict):
+        return _ids_of(data["reply"].get("buttons"), "id") | {QuestionHandle.OTHER, QuestionHandle.TIMEOUT}
     return set()
 
 
@@ -226,6 +238,13 @@ def about_node(node_id: str):
         raise InvalidAutomation(without_position(exc.detail), code=exc.code, node_id=node_id) from exc
 
 
+@dataclass(frozen=True)
+class TemplateReplyRef:
+    node_id: str
+    template_id: int
+    labels: tuple[str, ...]
+
+
 @dataclass
 class NormalizedFlow:
     """Un flujo con cada bloque normalizado y las referencias que falta
@@ -246,6 +265,9 @@ class NormalizedFlow:
     condition_tags: set[int]
     condition_stages: set[str]
     invoked_flow_ids: set[int]
+    # Pasos Enviar plantilla que siguen según el botón: falta comprobar que
+    # la plantilla tenga hoy esos mismos botones de respuesta rápida.
+    template_replies: list[TemplateReplyRef] = field(default_factory=list)
 
 
 @rejects_malformed_input
@@ -328,6 +350,14 @@ def normalize_flow(name: str, definition: dict) -> NormalizedFlow:
         condition_tags=facts.condition_tags,
         condition_stages=facts.condition_stages,
         invoked_flow_ids={flow_rule_id for _, flow_rule_id in facts.invoke_flow_nodes},
+        template_replies=[
+            TemplateReplyRef(
+                node["id"], node["data"]["action"]["template_id"],
+                tuple(button["label"] for button in node["data"]["reply"]["buttons"]),
+            )
+            for node in nodes
+            if node["type"] == FlowNodeType.ACTION and "reply" in node["data"]
+        ],
     )
 
 

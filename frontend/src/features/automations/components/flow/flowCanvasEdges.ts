@@ -15,7 +15,7 @@ const NEUTRAL_EDGE = '#94a3b8'
 /** Salidas de cada grupo de un bloque Condición y de cada salida del Reparto. */
 export const CONDITION_GROUP_COLOR = '#00a884'
 export const ROUND_ROBIN_OUTPUT_COLOR = '#0d9488'
-/** Los botones de una Pregunta, en orden. */
+/** Los botones de una Pregunta o de una plantilla que sigue según el botón, en orden. */
 export const BUTTON_COLORS = ['#00a884', '#0891b2', '#7c3aed']
 
 /** El color de cada salida con nombre fijo. El punto de la salida en el bloque
@@ -49,6 +49,10 @@ export function handleColor(source: AutomationFlowNode | undefined, handle: stri
     const index = source.data.buttons?.findIndex(button => button.id === handle) ?? -1
     if (index >= 0) return BUTTON_COLORS[index % BUTTON_COLORS.length]
   }
+  if (source?.type === FlowNodeType.Action) {
+    const index = source.data.reply?.buttons.findIndex(button => button.id === handle) ?? -1
+    if (index >= 0) return BUTTON_COLORS[index % BUTTON_COLORS.length]
+  }
   return NEUTRAL_EDGE
 }
 
@@ -61,6 +65,23 @@ export const EDGE_LABELS: Record<string, string> = {
   [WaitAnyConditionKind.MediaPlayed]: WAIT_ANY_CONDITION_LABELS[WaitAnyConditionKind.MediaPlayed],
   [QuestionHandle.Other]: 'Otra respuesta',
   [QuestionHandle.Timeout]: 'Sin respuesta',
+}
+
+export const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
+
+export interface OutputRow { handle: string; label: string; color: string }
+
+/** Las salidas de un paso que espera una respuesta con botones: una por
+ *  botón, las propias del paso (`extra`), «Otra respuesta» y «Sin respuesta».
+ *  Las comparten la Pregunta y la plantilla que sigue según el botón, para que
+ *  el mismo botón tenga el mismo color en las dos. */
+export function buttonOutputRows(buttons: ReadonlyArray<{ id: string; label: string }>, extra: readonly OutputRow[] = []): OutputRow[] {
+  return [
+    ...buttons.map((button, index) => ({ handle: button.id, label: button.label, color: BUTTON_COLORS[index % BUTTON_COLORS.length] })),
+    ...extra,
+    { handle: QuestionHandle.Other, label: EDGE_LABELS[QuestionHandle.Other], color: HANDLE_COLORS[QuestionHandle.Other] },
+    { handle: QuestionHandle.Timeout, label: EDGE_LABELS[QuestionHandle.Timeout], color: HANDLE_COLORS[QuestionHandle.Timeout] },
+  ]
 }
 
 /** Clase de las conexiones del recorrido resaltado; las demás se atenúan por

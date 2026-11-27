@@ -31,6 +31,8 @@ import { useMediaLibrary } from '../../media/public/queries'
 import type { MediaAsset } from '../../media/types'
 import type { FlowStarter } from '../domain/flowRecipes'
 import { edgesAfterRemovingOutput } from '../domain/positionalOutputs'
+import { edgesAfterReplyChange, replyAfterActionChange } from '../domain/templateReply'
+import { TemplateReplyField } from './flow/TemplateReplyField'
 import { useUsers } from '../../platform/public/useUsers'
 import { BusinessHoursHint } from '../../platform/public/BusinessHoursHint'
 import type { AppUser } from '../../platform/types'
@@ -46,7 +48,7 @@ useAutomationRuleSummaries,useCreateVisualFlow,useFlowVersions,usePublishVisualF
 useSaveVisualFlow,useSimulateVisualFlow,useUpdateAutomation,
 type AutomationRuleSummary,
 } from '../queries'
-import type { AutomationAction, AutomationActionType, AutomationConditions, AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../types'
+import type { AutomationAction, AutomationActionType, AutomationConditions, AutomationFlowConditionGroup, AutomationFlowConditionItem, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationRule, QuestionButton, RoundRobinOutput, TemplateReply, WaitAnyCondition } from '../types'
 import { areFlowDefinitionsEqual } from '../utils/automationFlow'
 import { AutomationReactionPicker } from './AutomationReactionPicker'
 import { FlowCanvas } from './flow/FlowCanvas'
@@ -259,6 +261,10 @@ function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
   }
   if (node.type === NodeType.Question) {
     const button = node.data.buttons.find(item => item.id === handle)
+    if (button) return button.label || handle
+  }
+  if (node.type === NodeType.Action) {
+    const button = node.data.reply?.buttons.find(item => item.id === handle)
     if (button) return button.label || handle
   }
   // Sin esto el panel mostraba el nombre interno de la salida ("next").
@@ -484,7 +490,18 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
 
   function replaceSelectedAction(nextAction: AutomationAction) {
     if (!selected || selected.type !== NodeType.Action) return
-    replaceNode({ ...selected, data: { action: nextAction } })
+    replaceActionStep(selected, nextAction, replyAfterActionChange(selected.data.reply, selected.data.action, nextAction, automaticTemplates))
+  }
+
+  /** Cambia la acción o su «Seguir según el botón que toque», y quita las
+   *  conexiones de las salidas que el paso deja de tener (mismo saneo que
+   *  replaceWaitAnyConditions). */
+  function replaceActionStep(node: Extract<AutomationFlowNode, { type: typeof NodeType.Action }>, action: AutomationAction, reply: TemplateReply | undefined) {
+    setFlow(current => ({
+      ...current,
+      nodes: current.nodes.map(item => item.id === node.id ? { ...node, data: reply ? { action, reply } : { action } } : item),
+      edges: edgesAfterReplyChange(current.edges, node.id, node.data.reply, reply),
+    }), `node:${node.id}`)
   }
 
   function replaceConditionGroups(
@@ -864,7 +881,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
           />}
           {selected.type === NodeType.InvokeFlow && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Automatización que se inicia<Select value={selected.data.flow_rule_id ?? ''} onChange={event => replaceNode({ ...selected, data: { flow_rule_id: Number(event.target.value) || null } })} className={fieldClass}><option value="">Selecciona una automatización publicada</option>{invokableFlows.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_active ? '' : ' (pausada)'}</option>)}</Select></label>{invokableFlows.length === 0 && <p className="text-[10px] text-amber-600">Para usar este paso, primero publica otra automatización.</p>}</div>}
           {selected.type === NodeType.End && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Nombre de este final<input maxLength={80} value={selected.data.label} onChange={event => replaceNode({ ...selected, data: { ...selected.data, label: event.target.value } })} className={fieldClass} /></label><label className="flex items-start gap-2 rounded-xl border border-wa-border bg-wa-hover p-3 text-[10px] text-gray-700 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-gray-200"><Checkbox checked={selected.data.close_conversation === true} onChange={event => replaceNode({ ...selected, data: { ...selected.data, close_conversation: event.target.checked } })} /><span className="text-xs font-semibold">Cerrar conversación al finalizar</span></label></div>}
-          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.part === 'action' ? highlight.service : undefined} />}
+          {selected.type === NodeType.Action && <ActionEditor action={selected.data.action} updateAction={replaceSelectedAction} reply={selected.data.reply} updateReply={reply => replaceActionStep(selected, selected.data.action, reply)} users={activeUsers} tags={tags} leadServices={leadServices} templates={automaticTemplates} mediaAssets={mediaAssets} highlightService={highlight?.part === 'action' ? highlight.service : undefined} />}
           <FlowNodeConnections incoming={incomingConnections} outgoing={outgoingConnections} onGo={goToNode} onRemove={removeEdge} />
         </>}
       </aside>}
@@ -1202,6 +1219,8 @@ function EntryConditionsEditor({ conditions, updateConditions, users, tags, high
 interface ActionEditorProps {
   action: AutomationAction
   updateAction: (action: AutomationAction) => void
+  reply: TemplateReply | undefined
+  updateReply: (reply: TemplateReply | undefined) => void
   users: Array<{ id: number; name: string }>
   tags: Array<{ id: number; name: string }>
   leadServices: Array<{ id: number; name: string }>
@@ -1219,7 +1238,7 @@ function TemplatePreview({ template }: { template: MessageTemplate }) {
   </div>
 }
 
-function ActionEditor({ action, updateAction, users, tags, leadServices, templates, mediaAssets, highlightService }: ActionEditorProps) {
+function ActionEditor({ action, updateAction, reply, updateReply, users, tags, leadServices, templates, mediaAssets, highlightService }: ActionEditorProps) {
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState(false)
   const stageCatalog = useLeadStageCatalog()
@@ -1249,6 +1268,9 @@ function ActionEditor({ action, updateAction, users, tags, leadServices, templat
       {action.template_id != null && !selectedTemplate
         ? <p role="alert" className="text-[10px] text-red-600">Esta plantilla ya no se puede enviar (desactivada o en revisión de Meta). Elige otra.</p>
         : <p className="text-[10px] text-wa-muted">{templateSendHint(selectedTemplate)}</p>}
+      <TemplateReplyField template={selectedTemplate} reply={reply} onChange={updateReply}>
+        {reply && <WaitDurationEditor seconds={reply.timeout_seconds} onChange={timeout_seconds => updateReply({ ...reply, timeout_seconds })} />}
+      </TemplateReplyField>
       {editingTemplate && selectedTemplate && <EditTemplateDialog
         template={selectedTemplate}
         leadOnlyVariables

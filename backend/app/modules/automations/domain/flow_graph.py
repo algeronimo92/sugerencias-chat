@@ -97,6 +97,16 @@ def validate_graph_topology(nodes: list[dict], edges: list[dict], trigger_id: st
             # tarde o temprano, y una sin conectar dejaría al lead sin camino.
             if len(handles) != len(expected) or set(handles) != expected:
                 raise InvalidAutomation("Conecta todas sus salidas: a cualquiera le puede tocar el próximo lead.", node_id=node["id"])
+        elif node["type"] == FlowNodeType.ACTION and node["data"].get("reply"):
+            # Enviar plantilla que sigue según el botón: no tiene «Siguiente».
+            # Las tres clases de salida son obligatorias, como en la Pregunta:
+            # el cliente puede tocar cualquiera, escribir otra cosa o callar.
+            expected = {button["id"] for button in node["data"]["reply"]["buttons"]} | {
+                QuestionHandle.OTHER, QuestionHandle.TIMEOUT,
+            }
+            handles = [edge["source_handle"] for edge in node_edges]
+            if len(handles) != len(expected) or set(handles) != expected:
+                raise InvalidAutomation("Conecta la salida de cada botón de la plantilla, de «Otra respuesta» y de «Sin respuesta».", node_id=node["id"])
         elif len(node_edges) != 1 or node_edges[0]["source_handle"] != FlowHandle.NEXT:
             raise InvalidAutomation("Falta conectar su salida: únela al paso que sigue o a un Fin.", node_id=node["id"])
         if node["id"] != trigger_id and not incoming[node["id"]]:

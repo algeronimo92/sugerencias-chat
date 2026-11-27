@@ -23,7 +23,7 @@ from app.modules.automations.application.deps import AutomationDeps
 from app.modules.automations.domain.events import AutomationsChanged
 from app.modules.automations.domain.execution import child_flow_payload, require_invocable
 from app.modules.automations.domain.rules import render_variables, wait_seconds
-from app.modules.automations.domain.templates import automatic_template_problem, is_official
+from app.modules.automations.domain.templates import automatic_template_problem, is_official, quick_reply_labels, reply_buttons_now
 from app.modules.automations.domain.errors import StepFailed
 
 
@@ -180,14 +180,45 @@ class ActionNode(FlowNodeHandler):
         return node["data"].get("action", {}).get("type", FlowNodeType.ACTION)
 
     async def execute(self, node: dict, run: FlowRun) -> NodeOutcome:
+        action = node["data"]["action"]
+        # Solo Enviar plantilla lo lleva: sigue según el botón que toque el cliente.
+        reply = node["data"].get("reply")
+        if reply and run.waiting_at(node["id"]):
+            # resume_reason es el id de un botón u "other"; si no está, venció
+            # el tiempo. Una salida sin conexión (un botón que la plantilla
+            # sumó después de publicar) sigue por «Otra respuesta».
+            branch = run.state.get("resume_reason") or QuestionHandle.TIMEOUT
+            if (node["id"], branch) not in run.edges:
+                branch = QuestionHandle.OTHER
+            run.record(node["id"], type=action["type"], status=AutomationExecutionStatus.COMPLETED, branch=branch)
+            return _advance(run.edges[(node["id"], branch)])
+        # Los botones que la plantilla tiene hoy se leen antes de enviarla: si
+        # la lectura fallara después, el reintento la mandaría dos veces.
+        buttons = (
+            reply_buttons_now(reply["buttons"], quick_reply_labels(await run.deps.load_template(action["template_id"])))
+            if reply else None
+        )
         result = await execute_action(
-            node["data"]["action"], run.chat, run.execution, run.rule, run.deps, position=len(run.results) + 1,
+            action, run.chat, run.execution, run.rule, run.deps, position=len(run.results) + 1,
         )
         run.record(node["id"], **result)
-        return _advance(run.edges[(node["id"], FlowHandle.NEXT)])
+        if not reply:
+            return _advance(run.edges[(node["id"], FlowHandle.NEXT)])
+        # La plantilla ya salió: el paso queda esperando acá mismo, con el
+        # mismo estado que deja una Pregunta, así que el barrido de respuestas
+        # del worker lo reanuda sin saber que es una plantilla. El toque de un
+        # botón de plantilla llega como texto (no trae un id nuestro), y se
+        # reconoce por ese texto.
+        return _suspend(node["id"], reply["timeout_seconds"], {
+            "waiting_at_node": node["id"],
+            "waiting_since": datetime.now(timezone.utc).isoformat(),
+            "awaiting": [WaitAnyConditionKind.MESSAGE],
+            "question_buttons": buttons,
+        })
 
     async def simulate(self, node: dict, simulation: FlowSimulation) -> str | None:
         action = node["data"]["action"]
+        reply = node["data"].get("reply")
         result = {"type": action["type"], "status": "would_run"}
         needs_window = action["type"] in SERVICE_WINDOW_ACTIONS
         if action["type"] == AutomationActionType.SEND_TEMPLATE:
@@ -201,8 +232,12 @@ class ActionNode(FlowNodeHandler):
                 needs_window = False
         if needs_window and await _service_window_closed(simulation):
             result.update(status="would_fail", detail=_WINDOW_CLOSED_DETAIL)
-        simulation.record(node["id"], **result)
-        return simulation.edges[(node["id"], FlowHandle.NEXT)]
+        if not reply:
+            simulation.record(node["id"], **result)
+            return simulation.edges[(node["id"], FlowHandle.NEXT)]
+        # No se puede saber qué botón tocaría: sigue por «Sin respuesta», como la Pregunta.
+        simulation.record(node["id"], **result, branch=QuestionHandle.TIMEOUT)
+        return simulation.edges[(node["id"], QuestionHandle.TIMEOUT)]
 
 
 class InvokeFlowNode(FlowNodeHandler):

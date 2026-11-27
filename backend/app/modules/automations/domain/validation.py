@@ -313,6 +313,49 @@ def normalize_question(data: dict, position: int) -> dict:
     return {"text": text, "buttons": buttons, "timeout_seconds": timeout_seconds}
 
 
+# Meta admite hasta 10 respuestas rápidas en una plantilla; el editor de
+# Plantillas de la app deja crear 3, pero las que se importan de Meta pueden
+# traer más.
+MAX_TEMPLATE_REPLY_BUTTONS = 10
+
+
+def normalize_template_reply(raw: object) -> dict | None:
+    """«Seguir según el botón que toque» de un paso Enviar plantilla: los
+    botones de respuesta rápida de la plantilla, con el mismo id posicional
+    `btn_1..btn_n` que la Pregunta, y cuánto se espera la respuesta. Junto con
+    `other` y `timeout` son las salidas del paso, en lugar de «Siguiente».
+
+    Sin el ajuste devuelve None y el paso queda como siempre: es lo que
+    mantiene intactas las automatizaciones publicadas antes de que existiera.
+    """
+    if raw is None or raw is False:
+        return None
+    if not isinstance(raw, dict):
+        raise InvalidAutomation("No se pudo leer qué botones sigue este paso. Vuelve a elegir la plantilla.")
+    raw_buttons = raw.get("buttons")
+    labels = [
+        label for label in (
+            # Sin recortar al límite de un botón interactivo (20): los de una
+            # plantilla de Meta llegan a 25 y se comparan con el texto entero.
+            str((raw_button.get("label") if isinstance(raw_button, dict) else raw_button) or "").strip()[:80]
+            for raw_button in (raw_buttons if isinstance(raw_buttons, list) else [])
+        )
+        if label
+    ]
+    if not 1 <= len(labels) <= MAX_TEMPLATE_REPLY_BUTTONS:
+        raise InvalidAutomation(
+            "Para seguir según el botón, la plantilla necesita botones de respuesta rápida. "
+            "Elige una que los tenga o apaga «Seguir según el botón que toque»."
+        )
+    timeout_seconds = int(raw.get("timeout_seconds") or 0)
+    if not 1 <= timeout_seconds <= 604800:
+        raise InvalidAutomation("El tiempo máximo para responder debe estar entre 1 segundo y 7 días.")
+    return {
+        "buttons": [{"id": f"btn_{index}", "label": label} for index, label in enumerate(labels, start=1)],
+        "timeout_seconds": timeout_seconds,
+    }
+
+
 MAX_ROUND_ROBIN_OUTPUTS = 10
 
 

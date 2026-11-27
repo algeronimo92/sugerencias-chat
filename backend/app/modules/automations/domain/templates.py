@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from app.modules.automations.domain.rules import CRM_VARIABLES, render_variables
+from app.modules.automations.domain.rules import CRM_VARIABLES, normalize_reply_text, render_variables
 from app.modules.catalogs.ports.template_validation import template_parameter_identifiers
 from app.modules.catalogs.ports.types import InteractiveType, TemplateType
 
@@ -65,4 +65,36 @@ def official_parameters(template: Mapping, chat: dict) -> list[str]:
     return [
         render_variables(_VARIABLE.sub(lambda match: f"{{{{{match.group(1)}}}}}", str(value)), chat).strip()
         for value in template.get("official_parameter_values") or []
+    ]
+
+
+def quick_reply_labels(template: Mapping | None) -> list[str]:
+    """El texto de cada botón de respuesta rápida de una plantilla de Meta, en
+    orden. Los de URL o teléfono no cuentan: tocarlos no manda ningún mensaje,
+    así que un flujo no puede seguir según ellos."""
+    if template is None or not is_official(template):
+        return []
+    return [
+        str(button.get("text") or "").strip()
+        for button in template.get("official_buttons") or []
+        if isinstance(button, Mapping) and button.get("type") == "quick_reply" and str(button.get("text") or "").strip()
+    ]
+
+
+def reply_buttons_now(saved: list[dict], current_labels: list[str]) -> list[dict]:
+    """Con qué botones se interpreta la respuesta a una plantilla ya enviada.
+
+    El cliente ve los botones que la plantilla tiene hoy, que pueden no ser
+    los que había cuando se publicó la automatización. Cada botón de hoy sale
+    por la salida del botón guardado con el mismo texto, esté en la posición
+    que esté: si se emparejaran por posición, al quitar «No» de «Sí / No / Tal
+    vez», «Tal vez» saldría por la ruta que se armó para «No». Uno que no
+    estaba al publicar queda sin salida propia y sigue por «Otra respuesta».
+    """
+    if not current_labels:
+        return saved
+    by_text = {normalize_reply_text(button["label"]): button["id"] for button in saved}
+    return [
+        {"id": by_text.get(normalize_reply_text(label), f"unmapped_{index}"), "label": label}
+        for index, label in enumerate(current_labels, start=1)
     ]
