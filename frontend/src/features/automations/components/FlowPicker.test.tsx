@@ -31,7 +31,6 @@ function flow(overrides: Partial<AutomationRule> & { id: number; name: string })
     conditions: {},
     max_executions_per_hour: null,
     is_active: true,
-    visible_to_sellers: true,
     created_by_user_id: 1,
     created_by_name: 'Admin',
     execution_count: 0,

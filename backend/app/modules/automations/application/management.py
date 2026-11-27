@@ -65,11 +65,8 @@ async def duplicate_automation_rule(rule_id: int, user_id: int) -> dict | None:
             "conditions": {},
             "max_executions_per_hour": current["max_executions_per_hour"],
             # Siempre arranca inactiva: evita tener dos flujos idénticos
-            # corriendo a la vez sin que el usuario lo haya decidido. Por la
-            # misma razón, nunca copia visible_to_sellers=True: el admin debe
-            # decidir a propósito que la copia quede visible para vendedores.
+            # corriendo a la vez sin que el usuario lo haya decidido.
             "is_active": False,
-            "visible_to_sellers": False,
             "flow_definition": current["flow_definition"],
             "published_flow_definition": None,
             "flow_version": 0,
@@ -296,7 +293,7 @@ async def cancel_automation_execution(execution_id: int) -> dict | None:
 
 
 async def start_manual_flow_execution(
-    rule_id: int, lead_id: str, started_by_user_id: int, is_admin: bool,
+    rule_id: int, lead_id: str, started_by_user_id: int,
 ) -> dict:
     """Arranca, con un click del vendedor, una ejecución de un flujo visual de
     trigger manual sobre un lead puntual.
@@ -316,8 +313,6 @@ async def start_manual_flow_execution(
         raise InvalidAutomation("Esta automatización no se puede lanzar desde el chat: su inicio no es «La lanza tu equipo desde el chat».")
     if not rule["is_active"]:
         raise InvalidAutomation("Esta automatización está pausada o todavía no se publicó, así que no se puede lanzar.")
-    if not is_admin and not rule["visible_to_sellers"]:
-        raise InvalidAutomation("Esta automatización no está disponible para tu equipo. Un administrador puede activarla con «Visible para tu equipo».")
 
     # Otra automatización en curso con el lead no impide lanzar: lo manual
     # tiene prioridad sobre lo que está esperando (ver claim_due), y si algo

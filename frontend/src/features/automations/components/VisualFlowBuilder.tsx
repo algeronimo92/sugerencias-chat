@@ -2,7 +2,7 @@ import {
 Beaker,Braces,Check,
 Copy,
 History,LayoutGrid,
-EyeOff,ListFilter,Loader2,LocateFixed,Pencil,Play,Plus,Redo2,Save,Undo2,Upload,X,
+ListFilter,Loader2,LocateFixed,Pencil,Play,Plus,Redo2,Save,Undo2,Upload,X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -67,7 +67,6 @@ import { INBOUND_MESSAGE_TYPE_OPTIONS } from '../domain/inboundMessageTypes'
 import { FlowSimulationDialog } from './flow/FlowSimulationDialog'
 import { ImportFlowJsonDialog } from './ImportFlowJsonDialog'
 import { actionTypeOptions } from './actionTypeOptions'
-import { SellerVisibilityField } from './flow/SellerVisibilityField'
 const fieldClass = 'w-full rounded-lg border border-wa-border bg-white px-2.5 py-2 text-xs text-wa-text outline-none focus:border-wa-primary focus:ring-2 focus:ring-wa-primary/20 dark:border-wa-border-dark dark:bg-wa-head-dark dark:text-wa-text-dark'
 
 /** Condiciones que se comparan contra un texto libre que escribe el usuario.
@@ -365,7 +364,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
     setFocus(current => ({ ids: [nodeId], key: (current?.key ?? 0) + 1 }))
   }, [dispatch])
   const {
-    ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour, visibleToSellers,
+    ruleId, savedDefinition, savedName, publishedDefinition, name, maxPerHour,
     selectedId, showEntryConditions, error, errorTarget, notice, jsonViewTab, jsonCopied, publishedVersion,
   } = editor
   const { simulation: simulationOpen, versions: versionsOpen, jsonView: jsonViewOpen, importJson: importJsonOpen, exitConfirmation: exitConfirmationOpen } = editor.openDialogs
@@ -412,17 +411,13 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
   const isActive = automationRules.find(item => item.id === ruleId)?.is_active ?? rule?.is_active ?? false
   const [confirmPausedPublish, setConfirmPausedPublish] = useState(false)
   // Solo lo leen los handlers: un ref, para que guardar no vuelva a renderizar el editor.
-  const liveSaved = useRef({ maxPerHour: rule?.max_executions_per_hour ?? null, visible: rule?.visible_to_sellers ?? false })
+  const liveSaved = useRef({ maxPerHour: rule?.max_executions_per_hour ?? null })
   const hasUnsavedChanges = savedDefinition == null
     || name !== savedName
     || !areFlowDefinitionsEqual(flow, savedDefinition)
   // Con cambios sin guardar la app no se recarga sola para actualizarse
   // (ver app/pwaUpdateGuard.ts); el beforeunload de abajo cubre el F5 manual.
   useActivityHold('flow-editor', hasUnsavedChanges)
-  const triggerNode = flow.nodes.find(
-    (node): node is Extract<AutomationFlowNode, { type: typeof NodeType.Trigger }> => node.type === NodeType.Trigger
-  )
-  const isManualTrigger = triggerNode?.data.trigger_type === TriggerType.Manual
   const entryConditionCount = Object.values(flow.conditions).filter(value => (
     typeof value === 'boolean' ? value : value !== null && value !== undefined && value !== ''
   )).length
@@ -710,23 +705,14 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
     toast.success('Automatización reemplazada desde JSON.')
   }
 
-  // Máximo por hora y "Visible para vendedores" se guardan al instante (no van por
-  // borrador). Se comparan con lo último guardado, no con la regla con la que
-  // se abrió el editor: con esa, volver al valor original no se guardaba.
+  // El máximo por hora se guarda al instante (no va por borrador). Se compara
+  // con lo último guardado, no con la regla con la que se abrió el editor:
+  // con esa, volver al valor original no se guardaba.
   function commitMaxPerHour(value: number | null) {
     dispatch({ type: 'maxPerHourChanged', value })
     if (ruleId == null || value === liveSaved.current.maxPerHour) return
     updateRule.mutate({ id: ruleId, max_executions_per_hour: value }, {
       onSuccess: () => { liveSaved.current.maxPerHour = value },
-      onError: reason => failWith(reason),
-    })
-  }
-
-  function commitVisibleToSellers(value: boolean) {
-    dispatch({ type: 'visibleToSellersChanged', value })
-    if (ruleId == null || value === liveSaved.current.visible) return
-    updateRule.mutate({ id: ruleId, visible_to_sellers: value }, {
-      onSuccess: () => { liveSaved.current.visible = value },
       onError: reason => failWith(reason),
     })
   }
@@ -809,13 +795,6 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
       </div>
       <button type="button" onClick={() => dispatch({ type: 'toggleEntryConditions' })} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${showEntryConditions ? 'border-wa-primary/40 bg-wa-primary/10 text-wa-primary-strong dark:border-emerald-700/50 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-wa-border text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300'}`}><ListFilter className="h-4 w-4" />Condiciones de entrada{entryConditionCount > 0 && <span className="rounded-full bg-wa-primary px-1.5 py-0.5 text-[9px] text-white">{entryConditionCount}</span>}</button>
       <label title={ruleId == null ? 'Guarda el borrador primero' : 'Cuántos leads pueden entrar a la automatización por hora. Los que pasen el límite entran más tarde. Vacío = sin límite.'} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">Máximo por hora<input type="number" min={1} max={1000} disabled={ruleId == null} placeholder="∞" value={maxPerHour ?? ''} onChange={event => dispatch({ type: 'maxPerHourChanged', value: event.target.value ? Number(event.target.value) : null })} onBlur={event => commitMaxPerHour(event.target.value ? Number(event.target.value) : null)} className="w-16 rounded border border-wa-border bg-white px-1.5 py-1 text-xs disabled:opacity-40 dark:border-white/10 dark:bg-white/10 dark:text-white" /></label>
-      {isManualTrigger && !visibleToSellers && ruleId != null && triggerNode && (
-        // El ajuste vive en el disparador; acá solo se avisa, porque oculto
-        // los vendedores no lo encuentran en el chat.
-        <button type="button" onClick={() => goToNode(triggerNode.id)} title="Ver el ajuste en el inicio" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
-          <EyeOff className="h-4 w-4" aria-hidden="true" />Oculta para tu equipo
-        </button>
-      )}
       <button type="button" onClick={autoLayout} title="Acomoda los pasos en columnas según la ruta" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><LayoutGrid className="h-4 w-4" />Ordenar</button>
       <button type="button" disabled={ruleId == null} title={ruleId == null ? 'Guarda el borrador primero' : 'Ver versiones publicadas'} onClick={() => dispatch({ type: 'openDialog', dialog: 'versions' })} className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><History className="h-4 w-4" />Versiones</button>
       <button type="button" onClick={() => dispatch({ type: 'openDialog', dialog: 'simulation' })} title="Mira qué ruta seguiría un lead, sin enviarle nada" className="flex items-center gap-1.5 rounded-lg border border-wa-border px-3 py-2 text-xs font-semibold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"><Beaker className="h-4 w-4" />Probar</button>
@@ -864,7 +843,7 @@ export function VisualFlowBuilder({ rule, highlight, initialBlock, starter, onCl
       {(showEntryConditions || selected) && <aside className="w-80 shrink-0 overflow-y-auto border-l border-wa-border bg-white p-4 dark:border-wa-border-dark dark:bg-wa-panel-dark">
         {showEntryConditions ? <EntryConditionsEditor conditions={flow.conditions} updateConditions={updateEntryConditions} users={activeUsers} tags={tags} highlightService={highlight?.part === 'condition' ? highlight.service : undefined} /> : selected && <><div className="mb-4 flex items-start gap-2">{nodeIcon(selected)}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-wa-text dark:text-white">{nodeTitle(selected, automationRules)}</p><p className="text-[10px] text-wa-muted">Paso #{numbers.get(selected.id)}</p></div>{selectedHelp.length > 0 && <BlockHelpToggle open={helpOpen} onToggle={() => setHelpOpen(current => !current)} controls="flow-block-help" />}<button type="button" onClick={() => goToNode(selected.id)} title="Acercar la vista a este paso" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />Ver</button>{selected.type !== NodeType.Trigger && <button type="button" onClick={() => duplicateNode(selected)} title="Duplicar paso (Cmd+D o Ctrl+D)" aria-label="Duplicar paso" className="flex shrink-0 items-center gap-1 rounded-lg border border-wa-border px-2 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-wa-hover dark:border-wa-border-dark dark:text-gray-300 dark:hover:bg-wa-head-dark"><Copy className="h-3.5 w-3.5" />Duplicar</button>}</div>
           {helpOpen && selectedHelp.length > 0 && <BlockHelpPanel id="flow-block-help" lines={selectedHelp} />}
-          {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}{selected.data.trigger_type === TriggerType.Manual && <SellerVisibilityField visible={visibleToSellers} saved={ruleId != null} onChange={commitVisibleToSellers} />}</div>}
+          {selected.type === NodeType.Trigger && <div className="space-y-3"><label className="grid gap-1 text-[10px] text-wa-muted">Evento<Select value={selected.data.trigger_type} onChange={event => { const value = event.target.value; if (isAutomationTrigger(value)) replaceNode({ ...selected, data: { ...selected.data, trigger_type: value } }) }} className={fieldClass}>{TRIGGERS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>{RESPONSE_OVERDUE_TRIGGERS.has(selected.data.trigger_type) && <label className="grid gap-1 text-[10px] text-wa-muted">Minutos sin respuesta<input type="number" min={1} max={43200} value={selected.data.minutes ?? 30} onChange={event => replaceNode({ ...selected, data: { ...selected.data, minutes: Number(event.target.value) } })} className={fieldClass} /></label>}</div>}
           {selected.type === NodeType.Condition && <ConditionGroupsEditor groups={conditionGroups(selected.data, selected.id)} users={activeUsers} tags={tags} onChange={groups => replaceConditionGroups(selected, groups)} />}
           {selected.type === NodeType.WaitAny && <WaitAnyEditor conditions={selected.data.conditions} onChange={conditions => replaceWaitAnyConditions(selected, conditions)} />}
           {selected.type === NodeType.Question && <QuestionEditor

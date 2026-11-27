@@ -25,9 +25,10 @@ class AutomationRule(Base):
     # el número de WhatsApp por spam. None = sin límite.
     max_executions_per_hour: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    # Solo aplica a flujos visuales con trigger_type=manual: si está en True,
-    # el flujo aparece en el selector "Iniciar flujo" del vendedor dentro del
-    # chat. El admin siempre puede dispararlo aunque esté en False.
+    # Sin uso desde el 2026-11-27: toda automatización manual activa la puede
+    # lanzar el equipo. La columna se queda hasta que ninguna versión en
+    # servicio la lea (el despliegue blue-green tiene a la anterior viva
+    # mientras corre la migración); borrarla va en una revisión aparte.
     visible_to_sellers: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
