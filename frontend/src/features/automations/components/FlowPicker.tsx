@@ -31,8 +31,9 @@ function activeSellerRuleIds(executions: AutomationExecution[]): Set<number> {
 
 /**
  * Botón "Iniciar automatización" del cuadro de escritura: lista los flujos visuales de
- * trigger manual que el admin marcó visibles (o todos, si quien mira es admin)
- * y dispara uno sobre este lead puntual. Mismo patrón que TemplatePicker.
+ * trigger manual que están activos (quien edita automatizaciones ve también los
+ * pausados o sin publicar) y dispara uno sobre este lead puntual. Mismo patrón
+ * que TemplatePicker.
  *
  * Volvió a la fila de composición (2026-11-19, a pedido: la cabecera
  * necesitaba lugar para la etapa y la vendedora). Ya estuvo ahí, pegado a

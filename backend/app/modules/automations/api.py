@@ -126,8 +126,6 @@ async def patch_rule(
         values["name"] = name
     if "max_executions_per_hour" in requested:
         values["max_executions_per_hour"] = requested["max_executions_per_hour"]
-    if "visible_to_sellers" in requested:
-        values["visible_to_sellers"] = bool(requested["visible_to_sellers"])
     if "is_active" in requested:
         if requested["is_active"] and not current["published_flow_definition"]:
             raise HTTPException(400, "Publica la automatización antes de activarla")
@@ -159,7 +157,7 @@ async def get_manual_flows(
     user: User = Depends(require_automations_run),
 ):
     del chat_id
-    # Quien edita automatizaciones ve también las ocultas e inactivas.
+    # Quien edita automatizaciones ve también las que están en pausa o sin publicar.
     return await list_manual_flows(is_admin=can(user, Permission.AUTOMATIONS_MANAGE))
 
 
@@ -170,10 +168,7 @@ async def post_start_manual_flow(
     user: User = Depends(require_automations_run),
 ):
     await ensure_lead_visible(user, body.chat_id)
-    item = await start_manual_flow_execution(
-        rule_id, body.chat_id, user.id, can(user, Permission.AUTOMATIONS_MANAGE),
-    )
-    return item
+    return await start_manual_flow_execution(rule_id, body.chat_id, user.id)
 
 
 async def _history_scope(

@@ -157,7 +157,6 @@ export function flow(id: number, name: string): Flow {
     flow_version: 1,
     max_executions_per_hour: null,
     is_active: true,
-    visible_to_sellers: true,
     created_by_user_id: ADMIN.id,
     created_by_name: ADMIN.name,
     execution_count: 0,

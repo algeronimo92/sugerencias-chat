@@ -234,7 +234,7 @@ class InMemoryRuleStore:
             rule_id = next(self._ids)
         self.rules[rule_id] = {
             "id": rule_id, "flow_definition": {}, "published_flow_definition": None,
-            "flow_version": 0, "max_executions_per_hour": None, "visible_to_sellers": False,
+            "flow_version": 0, "max_executions_per_hour": None,
             "conditions": {}, "trigger_config": {},
             **values, "created_by_user_id": user_id, "created_at": now, "updated_at": now,
         }

@@ -220,9 +220,6 @@ export type ContractAutomationRule = Delivered<ApiSchemas['AutomationRuleItem']>
  * abierto refinado en la frontera (`toAutomationRule`): la configuración, las
  * condiciones, las acciones y el flujo son JSON que valida el dominio del
  * backend.
- *
- * `visible_to_sellers` solo aplica a flujos visuales con trigger manual: si es
- * true aparece en "Iniciar flujo" del chat (el admin siempre puede).
  */
 export type AutomationRule = Omit<
   ContractAutomationRule,
@@ -301,7 +298,6 @@ export interface AutomationRuleInput {
   name: string
   max_executions_per_hour: number | null
   is_active: boolean
-  visible_to_sellers: boolean
 }
 
 export interface AutomationExecutionFilters {

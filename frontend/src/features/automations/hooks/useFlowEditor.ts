@@ -16,7 +16,6 @@ export interface FlowEditorState {
   publishedVersion: number | null
   name: string
   maxPerHour: number | null
-  visibleToSellers: boolean
   selectedId: string | null
   showEntryConditions: boolean
   error: string | null
@@ -41,7 +40,6 @@ export type FlowEditorAction =
   | { type: 'versionRestored'; version: number }
   | { type: 'rename'; name: string }
   | { type: 'maxPerHourChanged'; value: number | null }
-  | { type: 'visibleToSellersChanged'; value: boolean }
   | { type: 'toggleEntryConditions' }
   | { type: 'openDialog'; dialog: FlowEditorDialog }
   | { type: 'closeDialog'; dialog: FlowEditorDialog }
@@ -73,7 +71,6 @@ export function initialFlowEditorState(
     publishedVersion: publishedDefinition && rule?.flow_version ? rule.flow_version : null,
     name: rule?.name ?? starterName ?? 'Nueva automatización',
     maxPerHour: rule?.max_executions_per_hour ?? null,
-    visibleToSellers: rule?.visible_to_sellers ?? false,
     // Con las condiciones de entrada abiertas el panel las muestra a ellas,
     // no al bloque elegido (ver 'select').
     selectedId: firstNodeId,
@@ -155,8 +152,6 @@ export function flowEditorReducer(state: FlowEditorState, action: FlowEditorActi
       return { ...state, name: action.name }
     case 'maxPerHourChanged':
       return { ...state, maxPerHour: action.value }
-    case 'visibleToSellersChanged':
-      return { ...state, visibleToSellers: action.value }
     case 'toggleEntryConditions':
       return { ...state, showEntryConditions: !state.showEntryConditions }
     case 'openDialog':

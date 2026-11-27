@@ -22,7 +22,6 @@ def manual_rule(**overrides):
         "name": "Bienvenida guiada",
         "trigger_type": AutomationTrigger.MANUAL,
         "is_active": True,
-        "visible_to_sellers": True,
     }
     return {**defaults, **overrides}
 
@@ -47,8 +46,8 @@ def world(in_memory_automations):
 
 
 class TestStartManualFlowExecution:
-    async def test_creates_execution_for_a_seller_when_flow_is_published_and_visible(self, world):
-        result = await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
+    async def test_creates_execution_for_a_seller_when_flow_is_published(self, world):
+        result = await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7)
 
         assert result["id"] == 555
         [scheduled] = world.scheduling.scheduled
@@ -56,28 +55,20 @@ class TestStartManualFlowExecution:
         assert scheduled["payload"] == {"started_by_user_id": 7}
         assert world.of(AutomationsScheduled) == [AutomationsScheduled(count=1)]
 
-    async def test_admin_can_start_even_when_not_marked_visible_to_sellers(self, world):
-        world.rules.rules[RULE_ID] = manual_rule(visible_to_sellers=False)
-
-        result = await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=1, is_admin=True)
-
-        assert result["id"] == 555
-
-    @pytest.mark.parametrize(("overrides", "is_admin", "message"), [
-        ({"visible_to_sellers": False}, False, "no está disponible"),
-        ({"trigger_type": AutomationTrigger.LEAD_CREATED}, False, "no se puede lanzar desde el chat"),
-        ({"is_active": False}, True, "pausada o todavía no se publicó"),
+    @pytest.mark.parametrize(("overrides", "message"), [
+        ({"trigger_type": AutomationTrigger.LEAD_CREATED}, "no se puede lanzar desde el chat"),
+        ({"is_active": False}, "pausada o todavía no se publicó"),
     ])
-    async def test_rejects_flows_that_cannot_be_started(self, world, overrides, is_admin, message):
+    async def test_rejects_flows_that_cannot_be_started(self, world, overrides, message):
         world.rules.rules[RULE_ID] = manual_rule(**overrides)
 
         with pytest.raises(ValueError, match=message):
-            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=is_admin)
+            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7)
         assert world.scheduling.scheduled == []
 
     async def test_rejects_a_missing_flow(self, world):
         with pytest.raises(ValueError, match="Esta automatización ya no existe"):
-            await start_manual_flow_execution(999, LEAD_ID, started_by_user_id=7, is_admin=True)
+            await start_manual_flow_execution(999, LEAD_ID, started_by_user_id=7)
 
     async def test_raises_when_the_lead_does_not_exist_so_no_execution_was_created(self, world):
         """El agendado devuelve 0 sin insertar nada cuando el lead no existe;
@@ -86,14 +77,14 @@ class TestStartManualFlowExecution:
         world.scheduling.created_per_call = 0
 
         with pytest.raises(ValueError, match="No se pudo lanzar"):
-            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
+            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7)
 
     async def test_two_consecutive_manual_starts_use_different_event_keys(self, world):
         """Un vendedor debe poder repetir el mismo flujo sobre el mismo lead:
         cada disparo manual necesita una event_key distinta para no chocar
         con el índice único (rule_id, event_key) de automation_executions."""
-        await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
-        await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
+        await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7)
+        await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7)
 
         first_key, second_key = (item["event_key"] for item in world.scheduling.scheduled)
         assert first_key != second_key
@@ -108,5 +99,5 @@ class TestStartManualFlowExecution:
         world.scheduling.conflict = True
 
         with pytest.raises(ValueError, match="ya está en curso"):
-            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7, is_admin=False)
+            await start_manual_flow_execution(RULE_ID, LEAD_ID, started_by_user_id=7)
         assert world.published == []

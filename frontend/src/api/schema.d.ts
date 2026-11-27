@@ -5208,11 +5208,6 @@ export interface components {
             max_executions_per_hour?: number | null;
             /** Is Active */
             is_active: boolean;
-            /**
-             * Visible To Sellers
-             * @default false
-             */
-            visible_to_sellers: boolean;
             /** Created By User Id */
             created_by_user_id: number;
             /** Created By Name */
@@ -5235,8 +5230,6 @@ export interface components {
             max_executions_per_hour?: number | null;
             /** Is Active */
             is_active?: boolean | null;
-            /** Visible To Sellers */
-            visible_to_sellers?: boolean | null;
         };
         /**
          * AutomationTrigger

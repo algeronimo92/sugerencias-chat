@@ -11,14 +11,14 @@ describe('flowEditorReducer', () => {
   it('parte del flujo recibido o de un borrador nuevo', () => {
     const empty = initialFlowEditorState(undefined, null, null, null)
     const existing = initialFlowEditorState(
-      { id: 4, name: 'Bienvenida', max_executions_per_hour: 10, visible_to_sellers: true } as never,
+      { id: 4, name: 'Bienvenida', max_executions_per_hour: 10 } as never,
       DEFINITION,
       DEFINITION,
       'trigger-1',
     )
 
     expect(empty).toMatchObject({ ruleId: null, name: 'Nueva automatización', savedDefinition: null, selectedId: null })
-    expect(existing).toMatchObject({ ruleId: 4, name: 'Bienvenida', maxPerHour: 10, visibleToSellers: true, selectedId: 'trigger-1', publishedDefinition: DEFINITION })
+    expect(existing).toMatchObject({ ruleId: 4, name: 'Bienvenida', maxPerHour: 10, selectedId: 'trigger-1', publishedDefinition: DEFINITION })
   })
 
   it('elegir un bloque cierra las condiciones de entrada y limpia el error', () => {

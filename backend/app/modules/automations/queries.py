@@ -30,7 +30,6 @@ def _rule_dict(row) -> dict:
         "flow_version": row["flow_version"] or 0,
         "max_executions_per_hour": row["max_executions_per_hour"],
         "is_active": row["is_active"],
-        "visible_to_sellers": bool(row["visible_to_sellers"]),
         "created_by_user_id": row["created_by_user_id"],
         "created_by_name": row["created_by_name"],
         "execution_count": int(row["execution_count"] or 0),
@@ -113,7 +112,6 @@ async def _rules(rule_id: int | None = None) -> list[dict]:
         AutomationRule.flow_version,
         AutomationRule.max_executions_per_hour,
         AutomationRule.is_active,
-        AutomationRule.visible_to_sellers,
         AutomationRule.created_by_user_id,
         User.name.label("created_by_name"),
         execution_count.label("execution_count"),
@@ -339,14 +337,16 @@ async def get_automation_execution(execution_id: int) -> dict | None:
 
 
 async def list_manual_flows(is_admin: bool) -> list[dict]:
-    """Flujos visuales con trigger manual que puede disparar un vendedor desde
-    el chat de un lead. El admin además ve los que todavía no marcó visibles
-    (para poder probarlos) o que siguen sin publicar/activar."""
+    """Flujos visuales con trigger manual que el equipo puede lanzar desde el
+    chat de un lead: todos los que están activos, sin ajuste aparte (hasta el
+    2026-11-27 había que marcarlos «Visible para tu equipo» y los que nadie
+    marcaba no aparecían). El admin además ve los que siguen sin publicar o
+    en pausa, para saber por qué no se pueden lanzar."""
     rules = await list_automation_rules()
     return [
         rule for rule in rules
         if rule["trigger_type"] == AutomationTrigger.MANUAL
-        and (is_admin or (rule["visible_to_sellers"] and rule["is_active"]))
+        and (is_admin or rule["is_active"])
     ]
 
 

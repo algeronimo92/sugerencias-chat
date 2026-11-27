@@ -10,7 +10,6 @@ class AutomationRuleUpdate(BaseModel):
     name: str | None = None
     max_executions_per_hour: int | None = Field(default=None, ge=1, le=1000)
     is_active: bool | None = None
-    visible_to_sellers: bool | None = None
 
 
 class AutomationRuleItem(BaseModel):
@@ -24,7 +23,6 @@ class AutomationRuleItem(BaseModel):
     flow_version: int = 0
     max_executions_per_hour: int | None = None
     is_active: bool
-    visible_to_sellers: bool = False
     created_by_user_id: int
     created_by_name: str
     execution_count: int
