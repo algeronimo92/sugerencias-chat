@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.modules.appointments.application import commands, notice, reminders
+from app.modules.appointments.application import calendar_changes, calendar_template, commands, notice, reminders
 from app.modules.appointments.domain.errors import CalendarUnavailable, NoticeNotSent
 from app.modules.appointments.domain.notice import InvalidNotice
 from app.modules.appointments.domain.reminders import (
@@ -50,6 +50,9 @@ def stored(monkeypatch, in_memory_appointments):
     monkeypatch.setattr(notice, "update_settings", AsyncMock(side_effect=update))
     monkeypatch.setattr(reminders, "update_settings", AsyncMock(side_effect=update))
     monkeypatch.setattr(notice, "list_definitions", AsyncMock(return_value=[]))
+    monkeypatch.setattr(calendar_template, "get_effective_many", AsyncMock(side_effect=read))
+    monkeypatch.setattr(calendar_template, "list_definitions", AsyncMock(return_value=[]))
+    monkeypatch.setattr(calendar_changes, "business_timezone", AsyncMock(return_value=LIMA))
     for module in (commands, reminders):
         monkeypatch.setattr(module, "effective_country_code", AsyncMock(return_value="51"))
     return values
@@ -192,7 +195,8 @@ async def test_a_crm_appointment_is_reminded_at_the_time_it_has_in_the_calendar(
     [row] = world.reminders.rows
     assert (row["offset_minutes"], row["status"], row["provider_message_id"]) == (1440, "sent", "wamid.lead.lead-1")
     # El calendario se lee hasta la anticipación más larga.
-    assert world.calendar.reads[-1][1] - world.calendar.reads[-1][0] == timedelta(days=1, minutes=1)
+    # …y dos días más, para avisar a tiempo una cita cambiada en el calendario.
+    assert world.calendar.reads[-1][1] - world.calendar.reads[-1][0] == timedelta(days=3)
 
     # La pasada siguiente no lo repite.
     assert await reminders.send_due_reminders(_at(9, 15, 31)) == {}
