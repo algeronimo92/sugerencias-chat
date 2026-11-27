@@ -25,7 +25,9 @@ async def list_notifications(
         # Activar el ajuste también debe ocultar esos avisos históricos.
         appointment_id = UserNotification.metadata_["appointment_id"].as_integer()
         unlinked_visible = UserNotification.lead_id.is_(None) & (
-            (UserNotification.notification_type != NotificationType.APPOINTMENT)
+            UserNotification.notification_type.not_in(
+                (NotificationType.APPOINTMENT, NotificationType.APPOINTMENT_CHANGE)
+            )
             | appointment_id.is_(None)
             | appointment_id.in_(appointment_ids_visible_to(owner_id))
         )
