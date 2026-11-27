@@ -45,6 +45,14 @@ def _serialize(row) -> dict:
         "dismissed_at": iso_utc(row["dismissed_at"]) if row["dismissed_at"] else None,
         "dismissed_by_name": row["dismissed_by_name"],
         "dismissed_reason": row["dismissed_reason"],
+        # El evento del calendario se editó a mano y el CRM espera que
+        # alguien confirme el cambio (ver Appointment.calendar_change_*).
+        "calendar_change": {
+            "summary": row["calendar_change_summary"] or "",
+            "starts_at": iso_utc(row["calendar_change_starts_at"]) if row["calendar_change_starts_at"] else None,
+            "detected_at": iso_utc(row["calendar_change_detected_at"]),
+        } if row["calendar_change_detected_at"] else None,
+        "calendar_confirmed_summary": row["calendar_confirmed_summary"],
     }
 
 
@@ -80,6 +88,10 @@ def _query():
             Appointment.dismissed_at,
             Dismisser.name.label("dismissed_by_name"),
             Appointment.dismissed_reason,
+            Appointment.calendar_change_summary,
+            Appointment.calendar_change_starts_at,
+            Appointment.calendar_change_detected_at,
+            Appointment.calendar_confirmed_summary,
         )
         .join(Creator, Creator.id == Appointment.created_by_user_id)
         # Ambos por fuera: la cita puede no estar vinculada a un lead, y un lead

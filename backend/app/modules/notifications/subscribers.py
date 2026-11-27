@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from app.core.events import Phase, subscribe
-from app.modules.appointments.public import AppointmentCreated
+from app.modules.appointments.public import AppointmentCalendarChanged, AppointmentCreated
 from app.db.uow import collect
 from app.modules.auth.ports.users import list_active_sellers
 from app.modules.conversations.public import CallEnded, CallRinging, NoteMentionsAdded, NoteMentionsRead
@@ -86,6 +86,33 @@ async def notify_new_appointment(event: AppointmentCreated) -> None:
             )
     except Exception:
         logger.exception("No se pudo avisar de la nueva cita %s", event.appointment_id)
+
+
+@subscribe(AppointmentCalendarChanged, phase=Phase.AFTER_COMMIT)
+async def notify_appointment_change(event: AppointmentCalendarChanged) -> None:
+    """Los mismos que se enteran de la cita nueva confirman su cambio: quien
+    la cargó, el responsable y los admins. La notificación abre la cita."""
+    try:
+        recipient_ids = {
+            event.created_by_user_id,
+            *(await list_active_admin_ids()),
+            *(await _seller_ids(event.seller_name)),
+        }
+        if event.lead_id is not None:
+            recipient_ids = await lead_recipients(event.lead_id, recipient_ids)
+        url = f"/citas/{event.appointment_id}/cambio"
+        for recipient_id in recipient_ids:
+            notification = await create_system_notification(
+                recipient_id, NotificationType.APPOINTMENT_CHANGE, event.title, event.text,
+                source_id=str(event.appointment_id), metadata={"appointment_id": event.appointment_id},
+                lead_id=event.lead_id,
+            )
+            await manager.send_to_user(recipient_id, {"type": "notification_created", "notification": notification})
+            await send_push_to_user(
+                recipient_id, event.title, event.text, url, tag=f"appointment-change-{event.appointment_id}",
+            )
+    except Exception:
+        logger.exception("No se pudo avisar del cambio de la cita %s", event.appointment_id)
 
 
 async def _seller_ids(name: str) -> list[int]:

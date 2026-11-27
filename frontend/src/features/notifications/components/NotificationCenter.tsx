@@ -43,6 +43,10 @@ function notificationTarget(notification: UserNotification): string | null {
     return typeof reportId === 'number' && reportId ? `/reports?report=${reportId}` : '/reports'
   }
   if (notification.notification_type === 'appointment') return '/citas/nueva'
+  if (notification.notification_type === 'appointment_change') {
+    const appointmentId = notification.metadata?.appointment_id
+    return typeof appointmentId === 'number' && appointmentId ? `/citas/${appointmentId}/cambio` : '/citas/nueva'
+  }
   return notification.lead_id ? `/chat/${notification.lead_id}` : null
 }
 

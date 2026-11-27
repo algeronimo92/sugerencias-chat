@@ -5,7 +5,7 @@ escribe al cliente."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Protocol
 
 from app.modules.appointments.domain.appointment import SyncResult
@@ -30,6 +30,22 @@ class AppointmentRepository(Protocol):
     async def set_dismissed(self, appointment_id: int, *, user_id: int | None, reason: str | None) -> dict | None:
         """Desestima la cita a nombre de ``user_id``, o la restaura si es
         None. Devuelve la cita actualizada, o None si no existe."""
+
+    async def get_many(self, appointment_ids: set[int]) -> dict[int, dict]:
+        """Las citas pedidas que existen, por id."""
+
+    async def flag_calendar_change(
+        self, appointment_id: int, *, summary: str, starts_at: datetime, at: datetime,
+    ) -> bool:
+        """Anota el cambio que se vio en el calendario. True si es nuevo."""
+
+    async def clear_calendar_change(self, appointment_id: int) -> None:
+        """Olvida el cambio pendiente (el evento volvió a decir lo del CRM)."""
+
+    async def confirm_calendar_change(
+        self, appointment_id: int, *, tratamiento: str, fecha: date | None, hora: str | None,
+    ) -> dict | None:
+        """Confirma el cambio pendiente; None si no había ninguno."""
 
     async def record_integrations(self, appointment_id: int, **values) -> dict:
         """Guarda el resultado de las integraciones. ``clear_calendar_sync_error``

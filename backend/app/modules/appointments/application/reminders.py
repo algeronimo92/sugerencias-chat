@@ -32,6 +32,7 @@ from app.modules.appointments.application.notice import (
     _variable_count,
     template_choices,
 )
+from app.modules.appointments.application.calendar_changes import PENDING_REASON, review_calendar_changes, scheduled
 from app.modules.appointments.application.ports import appointment_ports
 from app.modules.appointments.domain.errors import CalendarUnavailable
 from app.modules.appointments.domain.notice import Audience, InvalidNotice, as_template, parameter_values, validate_parameters
@@ -57,6 +58,7 @@ from app.modules.platform.public import effective_country_code
 logger = logging.getLogger(__name__)
 
 RECENT_LIMIT = 20
+CHANGE_LOOKAHEAD = timedelta(days=2)
 _CALENDAR_KEYS = ("google_calendar_enabled", "google_calendar_id", "google_calendar_refresh_token")
 # Quien pide la lista de plantillas solo cambia cuáles personales ve; un
 # recordatorio solo usa globales, así que el worker no necesita un usuario.
@@ -160,7 +162,9 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
     if sender is None:
         return {}
     now = now or datetime.now(timezone.utc)
-    horizon = max(item.offset for item in active) + timedelta(minutes=1)
+    # Más allá del primer recordatorio: así un cambio hecho en el calendario
+    # se avisa con tiempo de confirmarlo antes de que le toque salir.
+    horizon = max(item.offset for item in active) + CHANGE_LOOKAHEAD
     ports = appointment_ports()
     try:
         events = await ports.calendar.upcoming_events(now, now + horizon)
@@ -168,6 +172,13 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
         logger.warning("No se leyeron los eventos para los recordatorios de cita: %s", exc)
         return {}
     if not events:
+        return {}
+    try:
+        pending = await review_calendar_changes(events, now)
+    except Exception:
+        # Sin poder comparar no se sabe si la cita sigue igual: esta pasada
+        # no manda nada y la próxima lo vuelve a intentar.
+        logger.exception("No se pudieron revisar los cambios de las citas en el calendario")
         return {}
     templates = {
         item["id"]: item for item in await list_templates(_NO_USER) if _sendable(item, Audience.CLIENT, sender)
@@ -186,6 +197,8 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
         target = await _target(event)
         if target is None:
             continue
+        if event.appointment_id in pending:
+            target = {**target, "skip": PENDING_REASON}
         for reminder in due:
             reminder_id = await ports.reminders.claim(event, reminder.offset_minutes)
             if reminder_id is None:
@@ -197,17 +210,6 @@ async def send_due_reminders(now: datetime | None = None) -> dict[str, int]:
     if outcome:
         logger.info("Recordatorios de cita: %s", outcome)
     return outcome
-
-
-def _scheduled(appointment: dict, event: CalendarEvent) -> dict:
-    """La cita con la fecha, hora y duración que tiene hoy en el calendario:
-    si se movió allá, el recordatorio dice la hora nueva."""
-    return {
-        **appointment,
-        "fecha": event.starts_at.date().isoformat(),
-        "hora": event.starts_at.strftime("%H:%M"),
-        "duration_minutes": event.duration_minutes or appointment.get("duration_minutes") or 0,
-    }
 
 
 async def _target(event: CalendarEvent) -> dict | None:
@@ -225,9 +227,9 @@ async def _target(event: CalendarEvent) -> dict | None:
             try:
                 phone = normalize_phone(appointment.get("telefono") or "", await effective_country_code())
             except PhoneValidationError:
-                return {"appointment": _scheduled(appointment, event), "skip": "La cita no tiene un teléfono válido"}
+                return {"appointment": scheduled(appointment, event), "skip": "La cita no tiene un teléfono válido"}
         lead = await ports.leads.snapshot(lead_id) if lead_id else None
-        return {"appointment": _scheduled(appointment, event), "lead_id": lead_id, "lead": lead, "phone": phone}
+        return {"appointment": scheduled(appointment, event), "lead_id": lead_id, "lead": lead, "phone": phone}
     # Un evento cargado a mano (o cuya cita ya no existe en el CRM): solo con
     # el teléfono escrito en el evento.
     raw = extract_phone(event.description, event.location, event.summary)
@@ -236,13 +238,13 @@ async def _target(event: CalendarEvent) -> dict | None:
         "dni": "", "vendedor": "", "adelanto": 0, "custom_fields": {},
     }
     if raw is None:
-        return {"appointment": _scheduled(base, event), "skip": "El evento no trae un teléfono"}
+        return {"appointment": scheduled(base, event), "skip": "El evento no trae un teléfono"}
     match = await match_phone(raw)
     if match.e164 is None:
-        return {"appointment": _scheduled(base, event), "skip": f"El teléfono {raw} no es válido"}
+        return {"appointment": scheduled(base, event), "skip": f"El teléfono {raw} no es válido"}
     lead = await ports.leads.snapshot(match.lead_id) if match.lead_id else None
     name = str((lead or {}).get("nombre") or "").strip()
-    appointment = _scheduled({**base, "telefono": match.e164, "nombre_completo": name}, event)
+    appointment = scheduled({**base, "telefono": match.e164, "nombre_completo": name}, event)
     return {"appointment": appointment, "lead_id": match.lead_id, "lead": lead, "phone": match.e164}
 
 

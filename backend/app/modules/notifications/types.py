@@ -8,6 +8,9 @@ class NotificationType(StrEnum):
     AUTOMATION = "automation"
     ISSUE_REPORT = "issue_report"
     APPOINTMENT = "appointment"
+    # La cita se editó a mano en Google Calendar y el cambio espera que
+    # alguien lo confirme en el CRM (sus recordatorios quedan retenidos).
+    APPOINTMENT_CHANGE = "appointment_change"
     # Fallo puntual por ventana de 24 h cerrada — antes viajaba como AUTOMATION
     # genérico con metadata.error_code, ahora es su propio evento para poder
     # distinguirlo (ícono, filtros, etc.) sin depender de leer la metadata.

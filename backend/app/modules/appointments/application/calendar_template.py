@@ -3,6 +3,8 @@ cómo se aplica a cada cita."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from app.modules.appointments.domain.calendar_event import (
     ALL_CUSTOM_FIELDS,
     BUILTIN_FIELDS,
@@ -39,6 +41,20 @@ async def event_content(appointment: dict) -> EventContent:
         title_template=stored[TITLE_KEY],
         description_template=stored[DESCRIPTION_KEY],
     )
+
+
+async def title_renderer() -> tuple[str, Callable[[dict], str]]:
+    """La plantilla del título y cómo queda el de una cita. Lee la plantilla
+    una vez: el worker lo usa con todos los eventos de una pasada."""
+    definitions = await _custom_definitions()
+    stored = await _stored()
+    labels = {item["key"]: item["label"] for item in definitions}
+    template = stored[TITLE_KEY] or DEFAULT_TITLE_TEMPLATE
+
+    def render(appointment: dict) -> str:
+        return render_event(appointment, labels, title_template=template).title
+
+    return template, render
 
 
 async def get_template() -> dict:

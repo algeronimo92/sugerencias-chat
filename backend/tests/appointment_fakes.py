@@ -4,6 +4,7 @@ sin Google y sin n8n."""
 from __future__ import annotations
 
 import itertools
+from datetime import timezone
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
@@ -39,6 +40,30 @@ class FakeAppointments:
     async def get(self, appointment_id: int) -> dict | None:
         row = self.rows.get(appointment_id)
         return dict(row) if row else None
+
+    async def get_many(self, appointment_ids: set[int]) -> dict[int, dict]:
+        return {key: dict(row) for key, row in self.rows.items() if key in appointment_ids}
+
+    async def flag_calendar_change(self, appointment_id: int, *, summary: str, starts_at, at) -> bool:
+        row = self.rows[appointment_id]
+        change = row.get("calendar_change")
+        row["calendar_change"] = {
+            "summary": summary, "starts_at": starts_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "detected_at": at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        return change is None or change["summary"] != summary
+
+    async def clear_calendar_change(self, appointment_id: int) -> None:
+        self.rows[appointment_id]["calendar_change"] = None
+
+    async def confirm_calendar_change(self, appointment_id: int, *, tratamiento: str, fecha, hora) -> dict | None:
+        row = self.rows.get(appointment_id)
+        if row is None or not row.get("calendar_change"):
+            return None
+        row.update(tratamiento=tratamiento, calendar_confirmed_summary=row["calendar_change"]["summary"], calendar_change=None)
+        if fecha is not None and hora is not None:
+            row.update(fecha=fecha.isoformat(), hora=hora)
+        return dict(row)
 
     async def by_client_request(self, client_request_id: str) -> dict | None:
         found = [row for row in self.rows.values() if row.get("client_request_id") == client_request_id]

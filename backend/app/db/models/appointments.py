@@ -63,6 +63,17 @@ class Appointment(Base):
     # noviembre de 2026 (las citas 425 y 426, entre otras). NULL en las citas
     # anteriores y en los clientes que no lo mandan.
     client_request_id: Mapped[str | None] = mapped_column(PG_UUID(as_uuid=False))
+    # Lo que el worker vio en el evento de Google Calendar cuando su título ya
+    # no era el que arma el CRM: el equipo reprograma o cambia el tratamiento
+    # editando el evento, y la cita se quedaba con los datos viejos (2026-11-27, una
+    # paciente: tres recordatorios de "HIFU 12D" por una cita de Botox).
+    # Mientras ``calendar_change_detected_at`` tenga valor, el cambio espera
+    # confirmación y los recordatorios de la cita no salen.
+    calendar_change_summary: Mapped[str | None] = mapped_column(Text)
+    calendar_change_starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    calendar_change_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # El título del evento que el equipo ya confirmó: no vuelve a pedirlo.
+    calendar_confirmed_summary: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(

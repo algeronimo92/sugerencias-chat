@@ -1,6 +1,6 @@
 import client from "../../shared/http/client";
 import type { ApiResponse } from '../../shared/http/contract'
-import type { AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeRetryResult, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate, ReminderSettings, ReminderUpdate } from './types';
+import type { AppointmentDetail, AppointmentListItem, AppointmentResult, CalendarEventTemplate, CreateAppointmentInput, NoticeAudience, NoticeRetryResult, NoticeSender, NoticeSenderSignup, NoticeSettings, NoticeUpdate, ReminderSettings, ReminderUpdate } from './types';
 
 export async function fetchAppointments(): Promise<AppointmentListItem[]> {
   return (await client.get<ApiResponse<'/api/appointments', 'get'>>('/api/appointments')).data
@@ -29,6 +29,20 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
       lead_updates: input.leadUpdates ?? null,
       client_request_id: input.clientRequestId ?? null,
     })).data
+}
+
+export async function fetchAppointment(appointmentId: number): Promise<AppointmentDetail> {
+  return (
+    await client.get<ApiResponse<'/api/appointments/{appointment_id}', 'get'>>(`/api/appointments/${appointmentId}`)
+  ).data
+}
+
+export async function confirmAppointmentCalendarChange(appointmentId: number, tratamiento: string): Promise<AppointmentDetail> {
+  return (
+    await client.post<ApiResponse<'/api/appointments/{appointment_id}/calendar-change/confirm', 'post'>>(
+      `/api/appointments/${appointmentId}/calendar-change/confirm`, { tratamiento },
+    )
+  ).data
 }
 
 export async function syncAppointmentCalendar(appointmentId: number): Promise<AppointmentListItem> {

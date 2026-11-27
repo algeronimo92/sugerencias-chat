@@ -53,6 +53,10 @@ export type ReminderUpdate = ApiSchemas['ReminderSettingsUpdate']
 export type ReminderLogItem = Delivered<ApiSchemas['ReminderLogItem']>
 export type ReminderHours = ApiSchemas['ReminderHoursItem']
 
+/** Una cita con el cambio del calendario por confirmar, si lo hay. */
+export type AppointmentDetail = Delivered<ApiSchemas['AppointmentItem']>
+export type AppointmentCalendarChange = NonNullable<AppointmentDetail['calendar_change']>
+
 export interface AppointmentListItem {
   id: number
   created_by_user_id: number

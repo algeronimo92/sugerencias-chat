@@ -5,13 +5,14 @@ import base64
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.modules.appointments.application import calendar_template, commands, notice, reminders
+from app.modules.appointments.application import calendar_changes, calendar_template, commands, notice, reminders
 from app.modules.appointments.domain.notice import Audience
 from app.modules.appointments.domain.appointment import CUSTOM_ADELANTO_KEY, AppointmentRequest, LeadLink
 from app.modules.appointments.queries import get_appointment, list_appointments
 from app.modules.catalogs.ports.custom_fields import (CustomFieldError, normalize_values)
 from app.modules.auth.public import User
 from app.modules.appointments.schemas import (
+    AppointmentChangeConfirm,
     AppointmentCreate,
     AppointmentCreated,
     AppointmentDismiss,
@@ -123,6 +124,26 @@ async def sync_appointment_calendar(
 ):
     await _ensure_appointment_visible(user, appointment_id)
     return await commands.sync_calendar(appointment_id)
+
+
+@router.get("/{appointment_id}", response_model=AppointmentItem)
+async def get_one_appointment(appointment_id: int, user: User = Depends(require_appointments_view)):
+    """La cita, con el cambio del calendario por confirmar si lo hay (la
+    notificación de ese cambio abre esta cita)."""
+    await _ensure_appointment_visible(user, appointment_id)
+    return await calendar_changes.get_with_change(appointment_id)
+
+
+@router.post("/{appointment_id}/calendar-change/confirm", response_model=AppointmentItem)
+async def confirm_appointment_calendar_change(
+    appointment_id: int,
+    body: AppointmentChangeConfirm,
+    user: User = Depends(require_appointments_edit),
+):
+    """Deja la cita como quedó en el calendario: el servicio que confirma el
+    equipo y la fecha y hora del evento. Desde ahí vuelven sus recordatorios."""
+    await _ensure_appointment_visible(user, appointment_id)
+    return await calendar_changes.confirm_calendar_change(appointment_id, tratamiento=body.tratamiento)
 
 
 @router.post("/{appointment_id}/notices/retry", response_model=NoticeRetryResult)

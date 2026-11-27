@@ -73,3 +73,9 @@ class CalendarUnavailable(DomainError):
 
     status_code = 409
     code = "appointment_calendar_unavailable"
+
+
+class NoCalendarChangePending(Conflict):
+    """Esta cita no tiene un cambio del calendario por confirmar"""
+
+    code = "appointment_no_calendar_change"

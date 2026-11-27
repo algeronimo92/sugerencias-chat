@@ -2,6 +2,7 @@ import {
   AtSign,
   Bug,
   CalendarClock,
+  CalendarSync,
   MessageSquareLock,
   PhoneMissed,
   PhoneOff,
@@ -51,6 +52,8 @@ export function notificationImportance(notification: UserNotification): Notifica
     case NotificationType.InternalNoteMention:
     case NotificationType.MissedCall:
     case NotificationType.IssueReport:
+    // Sus recordatorios no salen hasta que alguien confirme el cambio.
+    case NotificationType.AppointmentChange:
       return 'attention'
     case NotificationType.Appointment:
       return 'info'
@@ -65,6 +68,8 @@ export function notificationIcon(notification: UserNotification): LucideIcon {
       return AtSign
     case NotificationType.Appointment:
       return CalendarClock
+    case NotificationType.AppointmentChange:
+      return CalendarSync
     case NotificationType.MissedCall:
       return PhoneMissed
     case NotificationType.CallsPaused:
