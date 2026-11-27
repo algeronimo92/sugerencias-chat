@@ -80,7 +80,7 @@ function pendingLabel(execution: AutomationExecution, now: number, active: Autom
 
 function stepDetail(step: AutomationActionResult) {
   if (step.seconds) return `espera ${formatDuration(step.seconds * 1000)}`
-  if (step.branch) return followedBranchText(step.branch)
+  if (step.branch) return followedBranchText(step.branch, step.branch_label)
   if (step.error) return step.error
   if (step.conditions?.length) return 'espera un mensaje, el temporizador o el horario'
   return ''

@@ -183,6 +183,12 @@ class TestQuickReplies:
         # también como identificador: no es ninguno de nuestros ids.
         assert match_question_button(SI_NO, "No, gracias", "No, gracias") == "btn_2"
 
+    def test_a_bare_number_is_not_a_button_of_a_template(self):
+        # Una plantilla no numera sus opciones: «2» puede ser una cantidad.
+        assert match_question_button(SI_NO, None, "2", by_number=False) == "other"
+        # En una Pregunta sigue valiendo, porque puede llegar numerada.
+        assert match_question_button(SI_NO, None, "2") == "btn_2"
+
 
 class TestEngine:
     @staticmethod
@@ -215,6 +221,7 @@ class TestEngine:
         assert state["waiting_at_node"] == "a"
         assert state["awaiting"] == ["message"]
         assert state["question_buttons"] == SI_NO
+        assert state["reply_by_number"] is False
         [result] = persisted["action_results"]
         assert (result["type"], result["status"], result["template_id"]) == ("send_template", "completed", 5)
 
@@ -241,8 +248,9 @@ class TestEngine:
         final = saved(executions)[-1]
         assert final["status"] == "completed"
         assert final["flow_state"]["path"] == ["t", "a", "a", "end_btn_2"]
-        assert [(step["type"], step.get("branch")) for step in final["action_results"]] == [
-            ("send_template", "btn_2"), ("end", None),
+        assert [(step["type"], step.get("branch"), step.get("branch_label")) for step in final["action_results"]] == [
+            # El historial dice qué botón tocó, no «btn_2».
+            ("send_template", "btn_2", "No, gracias"), ("end", None, None),
         ]
 
     @pytest.mark.parametrize("resume_reason,end", [
@@ -301,3 +309,27 @@ async def test_the_simulation_follows_no_answer(in_memory_automations, deps, mon
         ("a", "send_template", "would_run", "timeout"),
         ("end_timeout", "end", "completed", None),
     ]
+
+
+async def test_the_worker_does_not_take_a_bare_number_as_a_template_button(monkeypatch):
+    """El barrido de respuestas respeta lo que dejó el paso: con una plantilla
+    esperando, un «2» suelto sale por «Otra respuesta» y no por el segundo botón."""
+    from tests.test_wait_any import _DiscoverSession, _Rows, _use_session
+    from app.modules.automations.infrastructure import worker
+
+    session = _DiscoverSession([
+        _Rows([(100, "4316bc30-f78c-57a2-8f98-bff9087678d6", {
+            "waiting_since": "2026-11-27T00:00:00+00:00", "awaiting": ["message"],
+            "question_buttons": SI_NO, "reply_by_number": False,
+        })]),
+        _Rows([{
+            "id": 1, "wa_message_id": "TXT-1", "message_type": "text", "content": "2",
+            "message_subtype": None, "provider_payload": None, "analysis": None,
+        }]),
+        None,
+    ])
+    _use_session(monkeypatch, session)
+
+    await worker._discover_wait_any_replies()
+
+    assert session.executed[-1].compile().params["flow_state"]["resume_reason"] == "other"

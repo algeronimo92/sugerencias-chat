@@ -30,6 +30,12 @@ describe('followedBranchText', () => {
     expect(followedBranchText('timeout')).toBe('siguió por «Sin respuesta»')
   })
 
+  it('quotes the button the customer tapped when the step kept its text', () => {
+    expect(followedBranchText('btn_2', 'Solo información')).toBe('siguió por «Solo información»')
+    // Una salida con nombre fijo no se pisa con la etiqueta.
+    expect(followedBranchText('other', 'Lo que sea')).toBe('siguió por «Otra respuesta»')
+  })
+
   it('does not show a code when the exit has no fixed name', () => {
     expect(followedBranchText('btn_2')).toBe('siguió por una de sus salidas')
   })

@@ -259,6 +259,8 @@ export interface AutomationActionResult {
   seconds?: number
   /** Salida por la que resolvió un bloque Pausa/Pregunta. */
   branch?: string
+  /** El texto del botón por el que siguió un Enviar plantilla. */
+  branch_label?: string
   conditions?: WaitAnyCondition[]
   message_ids?: number[]
   /** Lo que hizo un paso que no manda mensajes: a qué etapa movió, a quién

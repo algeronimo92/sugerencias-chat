@@ -59,10 +59,12 @@ export function replyAfterActionChange(
  * Las conexiones del flujo después de cambiar el ajuste de un paso: se quitan
  * las de las salidas que el paso ya no tiene.
  *
- * Un botón conserva su conexión solo si sigue en la misma posición con el
- * mismo texto. Al cambiar «Sí / No» por «Confirmar / Reprogramar», la salida
- * `btn_1` existe en las dos, pero dejar «Confirmar» conectado a donde iba «Sí»
- * publicaría una ruta que nadie eligió.
+ * Cada botón conserva su conexión si la plantilla nueva tiene uno con el mismo
+ * texto, esté en la posición que esté: la conexión pasa a su número nuevo. Si
+ * a «Sí / No / Tal vez» le quitan «No», «Tal vez» sigue yendo a donde iba
+ * aunque ahora sea `btn_2`. Un botón con otro texto no hereda nada: al cambiar
+ * «Sí / No» por «Confirmar / Reprogramar», dejar «Confirmar» conectado a donde
+ * iba «Sí» publicaría una ruta que nadie eligió.
  */
 export function edgesAfterReplyChange(
   edges: AutomationFlowEdge[],
@@ -71,14 +73,21 @@ export function edgesAfterReplyChange(
   next: TemplateReply | undefined,
 ): AutomationFlowEdge[] {
   if (!previous && !next) return edges
-  const kept = new Set<string>(next ? [QuestionHandle.Other, QuestionHandle.Timeout] : [FlowHandle.Next])
-  if (previous && next) {
-    next.buttons.forEach((button, index) => {
-      if (previous.buttons[index]?.label === button.label) kept.add(button.id)
-    })
-  } else if (!previous) {
-    // Recién encendido: «Otra respuesta» y «Sin respuesta» tampoco existían.
-    kept.clear()
+  // Encender quita «Siguiente»; apagar quita todas las salidas de respuesta.
+  if (!previous || !next) {
+    const kept: string = next ? '' : FlowHandle.Next
+    return edges.filter(edge => edge.source !== nodeId || edge.source_handle === kept)
   }
-  return edges.filter(edge => edge.source !== nodeId || kept.has(edge.source_handle))
+  const idNow = new Map(next.buttons.map(button => [button.label, button.id]))
+  const moved = new Map<string, string | undefined>(previous.buttons.map(button => [button.id, idNow.get(button.label)]))
+  const result: AutomationFlowEdge[] = []
+  for (const edge of edges) {
+    if (edge.source !== nodeId || edge.source_handle === QuestionHandle.Other || edge.source_handle === QuestionHandle.Timeout) {
+      result.push(edge)
+      continue
+    }
+    const handle = moved.get(edge.source_handle)
+    if (handle) result.push(handle === edge.source_handle ? edge : { ...edge, source_handle: handle })
+  }
+  return result
 }

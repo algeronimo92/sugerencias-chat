@@ -190,7 +190,15 @@ class ActionNode(FlowNodeHandler):
             branch = run.state.get("resume_reason") or QuestionHandle.TIMEOUT
             if (node["id"], branch) not in run.edges:
                 branch = QuestionHandle.OTHER
-            run.record(node["id"], type=action["type"], status=AutomationExecutionStatus.COMPLETED, branch=branch)
+            # El texto del botón queda en el paso: «btn_2» no le dice nada a
+            # quien lee el historial, y sin el flujo a mano no se puede traducir.
+            label = next(
+                (button["label"] for button in run.state.get("question_buttons") or [] if button["id"] == branch), None,
+            )
+            run.record(
+                node["id"], type=action["type"], status=AutomationExecutionStatus.COMPLETED, branch=branch,
+                **({"branch_label": label} if label else {}),
+            )
             return _advance(run.edges[(node["id"], branch)])
         # Los botones que la plantilla tiene hoy se leen antes de enviarla: si
         # la lectura fallara después, el reintento la mandaría dos veces.
@@ -214,6 +222,7 @@ class ActionNode(FlowNodeHandler):
             "waiting_since": datetime.now(timezone.utc).isoformat(),
             "awaiting": [WaitAnyConditionKind.MESSAGE],
             "question_buttons": buttons,
+            "reply_by_number": False,
         })
 
     async def simulate(self, node: dict, simulation: FlowSimulation) -> str | None:

@@ -219,6 +219,8 @@ async def _discover_wait_any_replies() -> None:
                             reply["content"],
                             kind,
                             WaitAnyConditionKind.MEDIA_RECEIVED in awaiting,
+                            # Solo lo apaga el paso Enviar plantilla.
+                            by_number=flow_state.get("reply_by_number") is not False,
                         )
                     else:
                         branch = resume_branch(kind, awaiting)

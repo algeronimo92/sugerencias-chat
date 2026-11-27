@@ -83,11 +83,22 @@ describe('edgesAfterReplyChange', () => {
     expect(handles(edgesAfterReplyChange(edges, 'plantilla', newTemplateReply(['Sí']), undefined))).toEqual(['otro:next'])
   })
 
-  it('al cambiar de plantilla conserva solo los botones que siguen en su lugar con el mismo texto', () => {
+  it('al cambiar de plantilla un botón con otro texto no hereda la ruta del que ocupaba su lugar', () => {
     const edges = [edge('btn_1'), edge('btn_2'), edge('btn_3'), edge('other'), edge('timeout'), other]
     const next = edgesAfterReplyChange(edges, 'plantilla', newTemplateReply(['Sí', 'No', 'Tal vez']), newTemplateReply(['Sí', 'Reprogramar']))
-    // «Reprogramar» ocupa btn_2, pero no hereda la ruta que se armó para «No».
     expect(handles(next)).toEqual(['plantilla:btn_1', 'plantilla:other', 'plantilla:timeout', 'otro:next'])
+  })
+
+  it('un botón que cambió de lugar conserva su ruta, con su número nuevo', () => {
+    // Quitaron «No»: «Tal vez» pasa de btn_3 a btn_2 y sigue yendo a su destino.
+    const edges = [edge('btn_1'), edge('btn_2'), edge('btn_3'), edge('timeout')]
+    const next = edgesAfterReplyChange(edges, 'plantilla', newTemplateReply(['Sí', 'No', 'Tal vez']), newTemplateReply(['Sí', 'Tal vez']))
+    expect(next.map(item => `${item.source_handle}→${item.target}`)).toEqual(['btn_1→fin-btn_1', 'btn_2→fin-btn_3', 'timeout→fin-timeout'])
+  })
+
+  it('si dos botones intercambian su lugar, cada conexión sigue a su texto', () => {
+    const next = edgesAfterReplyChange([edge('btn_1'), edge('btn_2')], 'plantilla', newTemplateReply(['Sí', 'No']), newTemplateReply(['No', 'Sí']))
+    expect(next.map(item => `${item.source_handle}→${item.target}`)).toEqual(['btn_2→fin-btn_1', 'btn_1→fin-btn_2'])
   })
 
   it('cambiar solo el tiempo de espera no quita ninguna conexión', () => {
