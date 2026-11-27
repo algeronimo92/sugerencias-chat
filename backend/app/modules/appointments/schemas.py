@@ -90,7 +90,28 @@ class AppointmentItem(BaseModel):
     dismissed_at: str | None = None
     dismissed_by_name: str | None = None
     dismissed_reason: str | None = None
+    # El evento se editó a mano en Google Calendar y el cambio espera que
+    # alguien lo confirme: mientras tanto la cita no manda recordatorios.
+    calendar_change: "AppointmentCalendarChange | None" = None
     notices: list["AppointmentNoticeItem"] = Field(default_factory=list)
+
+
+class AppointmentCalendarChange(BaseModel):
+    """Lo que dice hoy el evento del calendario (``starts_at`` en UTC) y
+    ``suggested_treatment``, el servicio que se lee de su título para
+    proponerlo al confirmar."""
+
+    summary: str
+    starts_at: str | None = None
+    detected_at: str
+    suggested_treatment: str = ""
+
+
+class AppointmentChangeConfirm(BaseModel):
+    """El servicio que la cita tiene de verdad después del cambio. La fecha
+    y la hora se toman del calendario."""
+
+    tratamiento: str = Field(min_length=1, max_length=200)
 
 
 class AppointmentNoticeItem(BaseModel):

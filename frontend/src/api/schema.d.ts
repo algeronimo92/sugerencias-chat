@@ -3834,6 +3834,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/appointments/{appointment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get One Appointment
+         * @description La cita, con el cambio del calendario por confirmar si lo hay (la
+         *     notificación de ese cambio abre esta cita).
+         */
+        get: operations["get_one_appointment_api_appointments__appointment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/appointments/{appointment_id}/calendar-change/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Appointment Calendar Change
+         * @description Deja la cita como quedó en el calendario: el servicio que confirma el
+         *     equipo y la fecha y hora del evento. Desde ahí vuelven sus recordatorios.
+         */
+        post: operations["confirm_appointment_calendar_change_api_appointments__appointment_id__calendar_change_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/appointments/{appointment_id}/notices/retry": {
         parameters: {
             query?: never;
@@ -4827,6 +4869,34 @@ export interface components {
             /** Filename */
             filename: string;
         };
+        /**
+         * AppointmentCalendarChange
+         * @description Lo que dice hoy el evento del calendario (``starts_at`` en UTC) y
+         *     ``suggested_treatment``, el servicio que se lee de su título para
+         *     proponerlo al confirmar.
+         */
+        AppointmentCalendarChange: {
+            /** Summary */
+            summary: string;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Detected At */
+            detected_at: string;
+            /**
+             * Suggested Treatment
+             * @default
+             */
+            suggested_treatment: string;
+        };
+        /**
+         * AppointmentChangeConfirm
+         * @description El servicio que la cita tiene de verdad después del cambio. La fecha
+         *     y la hora se toman del calendario.
+         */
+        AppointmentChangeConfirm: {
+            /** Tratamiento */
+            tratamiento: string;
+        };
         /** AppointmentCreate */
         AppointmentCreate: {
             /** Nombre Completo */
@@ -4979,6 +5049,7 @@ export interface components {
             dismissed_by_name?: string | null;
             /** Dismissed Reason */
             dismissed_reason?: string | null;
+            calendar_change?: components["schemas"]["AppointmentCalendarChange"] | null;
             /** Notices */
             notices?: components["schemas"]["AppointmentNoticeItem"][];
         };
@@ -8368,7 +8439,7 @@ export interface components {
          * NotificationType
          * @enum {string}
          */
-        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "service_window_closed" | "missed_call" | "calls_paused";
+        NotificationType: "internal_note_mention" | "automation" | "issue_report" | "appointment" | "appointment_change" | "service_window_closed" | "missed_call" | "calls_paused";
         /** OnboardingStatus */
         OnboardingStatus: {
             /** Steps */
@@ -17635,6 +17706,72 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_appointment_api_appointments__appointment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_appointment_calendar_change_api_appointments__appointment_id__calendar_change_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppointmentChangeConfirm"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
