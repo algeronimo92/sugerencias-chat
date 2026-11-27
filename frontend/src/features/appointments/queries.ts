@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { queryClient } from '../../shared/queryClient'
-import { copyNoticeTemplates, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, retryAppointmentNotices, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, fetchReminders, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, saveReminders, syncAppointmentCalendar } from './api'
+import { confirmAppointmentCalendarChange, copyNoticeTemplates, fetchAppointment, dismissAppointment, fetchAppointments, createAppointment, restoreAppointment, retryAppointmentNotices, fetchCalendarEventTemplate, fetchNotice, fetchNoticeSender, fetchReminders, linkNoticeSender, saveCalendarEventTemplate, saveNotice, saveNoticeSender, saveReminders, syncAppointmentCalendar } from './api'
 import { appointmentKeys } from './keys'
 import type { NoticeAudience, NoticeUpdate, ReminderUpdate } from './types'
 import { leadKeys } from '../leads/public/keys'
@@ -12,6 +12,8 @@ export type { CreateAppointmentInput } from './types'
 export type { AppointmentResult } from './types'
 
 export type { AppointmentListItem } from './types'
+
+export type { AppointmentDetail } from './types'
 
 export function useAppointments() {
   return useQuery({
@@ -36,6 +38,21 @@ export function useCreateAppointment() {
       void queryClient.invalidateQueries({ queryKey: leadKeys.customFieldValues(input.leadId) })
       void queryClient.invalidateQueries({ queryKey: leadKeys.lists })
     },
+  })
+}
+
+export function useAppointment(appointmentId: number) {
+  return useQuery({
+    queryKey: appointmentKeys.detail(appointmentId),
+    queryFn: () => fetchAppointment(appointmentId),
+    enabled: Number.isFinite(appointmentId) && appointmentId > 0,
+  })
+}
+
+export function useConfirmAppointmentCalendarChange() {
+  return useMutation({
+    mutationFn: ({ id, tratamiento }: { id: number; tratamiento: string }) => confirmAppointmentCalendarChange(id, tratamiento),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: appointmentKeys.all }),
   })
 }
 

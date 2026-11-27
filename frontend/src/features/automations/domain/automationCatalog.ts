@@ -263,6 +263,7 @@ export const NotificationType = {
   Automation: 'automation',
   IssueReport: 'issue_report',
   Appointment: 'appointment',
+  AppointmentChange: 'appointment_change',
   ServiceWindowClosed: 'service_window_closed',
   MissedCall: 'missed_call',
   CallsPaused: 'calls_paused',

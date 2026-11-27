@@ -102,6 +102,12 @@ const NewAppointmentPage = lazy(() =>
     default: module.NewAppointmentPage,
   })),
 );
+// Confirmar una cita cambiada en el calendario: llega desde su notificación.
+const AppointmentChangePage = lazy(() =>
+  import("../features/appointments/page").then((module) => ({
+    default: module.AppointmentChangePage,
+  })),
+);
 // El panel de "Separar cita" de la agenda: se baja recién al abrirlo.
 const LeadAppointmentLauncher = lazy(() =>
   import("../features/appointments/public/LeadAppointmentLauncher").then((module) => ({
@@ -252,6 +258,7 @@ const crmRoutes = createRoutesFromElements(
       </Route>
       <Route element={<RequirePermission anyOf={["appointments.edit"]} />}>
         <Route path="citas/nueva" element={<NewAppointmentPage />} />
+        <Route path="citas/:appointmentId/cambio" element={<AppointmentChangePage />} />
       </Route>
       <Route element={<RequirePermission anyOf={["templates.manage"]} />}>
         <Route path="templates" element={<TemplatesPage />} />
