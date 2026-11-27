@@ -360,7 +360,7 @@ const ActionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
     <ActionPreview data={data} />
     {data.reply
-      ? <OutputRows rows={buttonOutputRows(data.reply.buttons)} borderClass="border-violet-200" />
+      ? <OutputRows rows={buttonOutputRows(data.reply.buttons, data.reply.timeout_seconds)} borderClass="border-violet-200" />
       : <Handle type="source" position={Position.Right} id={FlowHandle.Next} style={HANDLE_STYLE} />}
   </NodeShell>
 ))
@@ -452,7 +452,7 @@ const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
   // "Mandó una foto" va antes que "Otra respuesta" porque es justamente lo
   // que le ganaba: sin esta salida, una foto sin caption no matchea ningún
   // botón y termina en la rama del que no mandó nada.
-  const rows = buttonOutputRows(data.buttons ?? [], [
+  const rows = buttonOutputRows(data.buttons ?? [], data.timeout_seconds, [
     { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: HANDLE_COLORS[QuestionHandle.Media] },
   ])
   return (

@@ -38,6 +38,9 @@ describe('TemplateReplyField', () => {
 
     expect(screen.getByText('Tiempo máximo para responder')).toBeInTheDocument()
     expect(screen.getByText('campo de tiempo')).toBeInTheDocument()
+    // El plazo queda ligado a la salida que dispara.
+    expect(screen.getByText('Si el cliente no responde en este tiempo, el paso sigue por «Sin respuesta».')).toBeInTheDocument()
+    expect(screen.getByText(/«Otra respuesta» es cuando escribe en vez de tocar un botón/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('checkbox', { name: /Seguir según el botón que toque/ }))

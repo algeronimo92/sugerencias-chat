@@ -3,6 +3,7 @@ import { MarkerType, type Connection, type Edge } from '@xyflow/react'
 import {
 FlowHandle,
 FlowNodeType,
+noReplyDelay,
 QuestionHandle,
 WAIT_ANY_CONDITION_LABELS,
 WaitAnyConditionKind,
@@ -69,18 +70,19 @@ export const EDGE_LABELS: Record<string, string> = {
 
 export const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
 
-export interface OutputRow { handle: string; label: string; color: string }
+export interface OutputRow { handle: string; label: string; color: string; /** Dato de la salida que no se corta: el plazo de «Sin respuesta». */ detail?: string }
 
 /** Las salidas de un paso que espera una respuesta con botones: una por
  *  botón, las propias del paso (`extra`), «Otra respuesta» y «Sin respuesta».
  *  Las comparten la Pregunta y la plantilla que sigue según el botón, para que
- *  el mismo botón tenga el mismo color en las dos. */
-export function buttonOutputRows(buttons: ReadonlyArray<{ id: string; label: string }>, extra: readonly OutputRow[] = []): OutputRow[] {
+ *  el mismo botón tenga el mismo color en las dos. La de «Sin respuesta» dice
+ *  su plazo; la etiqueta de la conexión no, porque sale pegada a esta fila. */
+export function buttonOutputRows(buttons: ReadonlyArray<{ id: string; label: string }>, timeoutSeconds?: number, extra: readonly OutputRow[] = []): OutputRow[] {
   return [
     ...buttons.map((button, index) => ({ handle: button.id, label: button.label, color: BUTTON_COLORS[index % BUTTON_COLORS.length] })),
     ...extra,
     { handle: QuestionHandle.Other, label: EDGE_LABELS[QuestionHandle.Other], color: HANDLE_COLORS[QuestionHandle.Other] },
-    { handle: QuestionHandle.Timeout, label: EDGE_LABELS[QuestionHandle.Timeout], color: HANDLE_COLORS[QuestionHandle.Timeout] },
+    { handle: QuestionHandle.Timeout, label: EDGE_LABELS[QuestionHandle.Timeout], color: HANDLE_COLORS[QuestionHandle.Timeout], detail: noReplyDelay(timeoutSeconds) || undefined },
   ]
 }
 

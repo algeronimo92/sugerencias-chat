@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AutomationFlowEdge, AutomationFlowNode } from '../../types'
 import { FlowHandle, FlowNodeType, QuestionHandle } from '../../domain/automationCatalog'
-import { BUTTON_COLORS, CONDITION_GROUP_COLOR, HANDLE_COLORS, handleColor, ROUND_ROBIN_OUTPUT_COLOR, toCanvasEdges } from './flowCanvasEdges'
+import { BUTTON_COLORS, buttonOutputRows, CONDITION_GROUP_COLOR, EDGE_LABELS, HANDLE_COLORS, handleColor, ROUND_ROBIN_OUTPUT_COLOR, toCanvasEdges } from './flowCanvasEdges'
 
 const FLOW_EDGES: AutomationFlowEdge[] = [
   { id: 'edge-a-b', source: 'a', target: 'b', source_handle: FlowHandle.Next },
@@ -82,5 +82,23 @@ describe('handleColor', () => {
     const [built] = toCanvasEdges([edge], undefined, null, null, item => handleColor(question, item.source_handle))
     expect(built.style).toMatchObject({ stroke: BUTTON_COLORS[0] })
     expect(built.labelBgStyle).toMatchObject({ fill: 'var(--flow-edge-label-bg)' })
+  })
+})
+
+describe('buttonOutputRows', () => {
+  const buttons = [{ id: 'btn_1', label: 'Sí' }]
+
+  it('«Sin respuesta» dice su plazo, que antes solo se veía en el panel del paso', () => {
+    const rows = buttonOutputRows(buttons, 86400)
+    expect(rows.map(row => [row.handle, row.label, row.detail])).toEqual([
+      ['btn_1', 'Sí', undefined],
+      ['other', 'Otra respuesta', undefined],
+      ['timeout', 'Sin respuesta', 'tras 24h'],
+    ])
+  })
+
+  it('el nombre de la salida no cambia: es el que usan el Historial y la conexión', () => {
+    expect(buttonOutputRows(buttons, 1800).at(-1)).toMatchObject({ label: EDGE_LABELS[QuestionHandle.Timeout], detail: 'tras 30min' })
+    expect(buttonOutputRows(buttons).at(-1)?.detail).toBeUndefined()
   })
 })

@@ -287,6 +287,29 @@ export function formatWaitDuration(totalSeconds: number): string {
   return parts.join(' ')
 }
 
+/**
+ * El nombre de la salida «Sin respuesta» con su plazo: «Sin respuesta tras 24h».
+ *
+ * El 2026-11-27 Alan, mirando el paso en el lienzo, preguntó cuánto tiempo era
+ * «sin respuesta» y si se podía cambiar: el plazo solo se veía en el panel del
+ * paso. «tras» y no «en»: «Sin respuesta en 24h» se lee también como «lleva
+ * 24 h sin responder». El Historial sigue diciendo «Sin respuesta» a secas: el
+ * plazo de hoy puede no ser el de aquella ejecución.
+ */
+export function noReplyLabel(timeoutSeconds: number | null | undefined): string {
+  const delay = noReplyDelay(timeoutSeconds)
+  return delay ? `${QUESTION_HANDLE_LABELS[QuestionHandle.Timeout]} ${delay}` : QUESTION_HANDLE_LABELS[QuestionHandle.Timeout]
+}
+
+/** Solo el plazo («tras 24h»), para dibujarlo aparte del nombre: en la fila
+ *  del lienzo el nombre se puede cortar, el plazo no. */
+export function noReplyDelay(timeoutSeconds: number | null | undefined): string {
+  return timeoutSeconds && timeoutSeconds > 0 ? `tras ${formatWaitDuration(timeoutSeconds)}` : ''
+}
+
+/** Bajo el campo del plazo, para ligarlo con la salida que dispara. */
+export const NO_REPLY_HELP = 'Si el cliente no responde en este tiempo, el paso sigue por «Sin respuesta».'
+
 export function isAutomationTrigger(value: string): value is AutomationTriggerValue {
   return Object.values(AutomationTrigger).some(item => item === value)
 }
