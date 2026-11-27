@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { Checkbox } from '../../../../shared/ui/Checkbox'
 import type { MessageTemplate } from '../../../templates/types'
+import { NO_REPLY_HELP } from '../../domain/automationCatalog'
 import { newTemplateReply, replyIsOutdated, templateQuickReplies } from '../../domain/templateReply'
 import type { TemplateReply } from '../../types'
 
@@ -33,7 +34,7 @@ export function TemplateReplyField({ template, reply, onChange, children }: {
           <strong className="block text-xs">Seguir según el botón que toque</strong>
           <span className="mt-0.5 block text-wa-muted dark:text-wa-muted-dark">
             {reply
-              ? 'El paso espera la respuesta. Conecta cada botón, «Otra respuesta» y «Sin respuesta».'
+              ? 'El paso espera la respuesta del cliente. Conecta cada botón, «Otra respuesta» y «Sin respuesta». «Otra respuesta» es cuando escribe en vez de tocar un botón.'
               : `Una ruta distinta para ${labels.map(label => `«${label}»`).join(', ')}. Apagado, sigue por «Siguiente» sin esperar.`}
           </span>
         </span>
@@ -56,6 +57,7 @@ export function TemplateReplyField({ template, reply, onChange, children }: {
         <div>
           <p className="mb-1 text-[10px] font-semibold text-wa-muted">Tiempo máximo para responder</p>
           {children}
+          <p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{NO_REPLY_HELP}</p>
         </div>
       )}
     </div>

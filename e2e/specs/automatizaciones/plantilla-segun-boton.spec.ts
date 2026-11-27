@@ -103,6 +103,7 @@ test('una plantilla con botones de respuesta rápida puede seguir una ruta por b
   await expect(page.getByText('Tiempo máximo para responder')).toBeVisible()
   await expect(page.getByRole('spinbutton', { name: 'Horas' })).toHaveValue('24')
   await expect(exits).toContainText('Sin conexiones.')
+  await expect(page.getByText('Si el cliente no responde en este tiempo, el paso sigue por «Sin respuesta».')).toBeVisible()
   const step = page.locator('.react-flow__node').filter({ hasText: 'welcome_instagram' })
   for (const output of ['Quiero agendar', 'Solo información', 'Otra respuesta', 'Sin respuesta']) {
     await expect(step.getByText(output, { exact: true })).toBeAttached()
@@ -121,6 +122,9 @@ test('el paso muestra una salida por botón, cada una hacia su ruta', async ({ p
     await expect(exits).toContainText(output)
   }
   await expect(exits).not.toContainText('Siguiente')
+  // «Sin respuesta» dice cuánto espera, en el lienzo y en la lista de salidas.
+  await expect(exits).toContainText('Sin respuesta tras 24h')
+  await expect(page.locator('.react-flow__node').filter({ hasText: 'welcome_instagram' })).toContainText('tras 24h')
   // La plantilla no cambió desde que se armó el paso: no hay nada que actualizar.
   await expect(page.getByRole('button', { name: 'Actualizar botones' })).toHaveCount(0)
   await page.screenshot({ path: `test-results/plantilla-segun-boton-salidas-${info.project.name}.png` })

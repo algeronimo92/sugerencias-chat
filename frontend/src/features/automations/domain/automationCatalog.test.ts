@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AUTOMATION_ACTION_GROUPS, AutomationActionType, automationStepLabel } from './automationCatalog'
+import { AUTOMATION_ACTION_GROUPS, AutomationActionType, automationStepLabel, noReplyDelay, noReplyLabel } from './automationCatalog'
 
 describe('automationStepLabel', () => {
   it('names the steps that are neither an action nor a block', () => {
@@ -31,5 +31,19 @@ describe('AUTOMATION_ACTION_GROUPS', () => {
   it('"Cambiar servicio" va con lo que ordena el lead, no con los mensajes', () => {
     const group = AUTOMATION_ACTION_GROUPS.find(item => item.types.includes(AutomationActionType.ChangeService))
     expect(group?.types).toContain(AutomationActionType.AddTag)
+  })
+})
+
+describe('noReplyLabel', () => {
+  it('dice cuánto espera con el mismo formato que la Espera', () => {
+    expect(noReplyLabel(86400)).toBe('Sin respuesta tras 24h')
+    expect(noReplyLabel(1800)).toBe('Sin respuesta tras 30min')
+    expect(noReplyDelay(5400)).toBe('tras 1h 30min')
+  })
+
+  it('sin plazo conocido queda el nombre a secas', () => {
+    expect(noReplyLabel(undefined)).toBe('Sin respuesta')
+    expect(noReplyLabel(0)).toBe('Sin respuesta')
+    expect(noReplyDelay(null)).toBe('')
   })
 })

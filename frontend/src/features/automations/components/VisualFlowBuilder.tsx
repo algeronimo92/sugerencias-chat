@@ -36,7 +36,7 @@ import { TemplateReplyField } from './flow/TemplateReplyField'
 import { useUsers } from '../../platform/public/useUsers'
 import { BusinessHoursHint } from '../../platform/public/BusinessHoursHint'
 import type { AppUser } from '../../platform/types'
-import { AutomationActionType as ActionType, assertNever, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, FlowNodeType as NodeType, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
+import { AutomationActionType as ActionType, assertNever, AutomationRecipient, FLOW_CONDITION_LABELS as CONDITION_LABELS, FlowConditionType as ConditionType, FlowHandle, isAutomationActionType, isAutomationTrigger, isFlowConditionType, MAX_ROUND_ROBIN_OUTPUTS, NO_REPLY_HELP, noReplyLabel, FlowNodeType as NodeType, QuestionHandle, RESPONSE_OVERDUE_TRIGGERS, AUTOMATION_TRIGGERS as TRIGGERS, AutomationTrigger as TriggerType, WAIT_ANY_CONDITION_LABELS, WaitAnyConditionKind } from '../domain/automationCatalog'
 import { isTaskPriority, isTaskType, TASK_PRIORITY_OPTIONS, TASK_TYPE_OPTIONS as TASK_TYPES, TaskPriorityValue, TaskTypeValue } from '../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../domain/flowNodeView'
 import { useFlowEditor } from '../hooks/useFlowEditor'
@@ -261,10 +261,12 @@ function outputHandleLabel(node: AutomationFlowNode, handle: string): string {
   if (node.type === NodeType.Question) {
     const button = node.data.buttons.find(item => item.id === handle)
     if (button) return button.label || handle
+    if (handle === QuestionHandle.Timeout) return noReplyLabel(node.data.timeout_seconds)
   }
   if (node.type === NodeType.Action) {
     const button = node.data.reply?.buttons.find(item => item.id === handle)
     if (button) return button.label || handle
+    if (handle === QuestionHandle.Timeout) return noReplyLabel(node.data.reply?.timeout_seconds)
   }
   // Sin esto el panel mostraba el nombre interno de la salida ("next").
   if (node.type !== NodeType.Condition) return EDGE_LABELS[handle] ?? (handle === FlowHandle.Next ? 'Siguiente' : handle)
@@ -1097,6 +1099,7 @@ function QuestionEditor({ text, buttons, timeoutSeconds, updateText, updateTimeo
     <div>
       <p className="mb-1 text-[10px] font-semibold text-wa-muted">Tiempo máximo para responder (obligatorio)</p>
       <WaitDurationEditor seconds={timeoutSeconds} onChange={updateTimeout} />
+      <p className="mt-1 text-[10px] text-wa-muted dark:text-wa-muted-dark">{NO_REPLY_HELP}</p>
     </div>
   </div>
 }
