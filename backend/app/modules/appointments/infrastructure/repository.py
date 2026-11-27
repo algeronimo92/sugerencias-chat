@@ -84,6 +84,81 @@ class SqlAppointmentRepository:
             row = (await session.execute(_query().where(Appointment.id == appointment_id))).mappings().one()
         return _serialize(row)
 
+    async def get_many(self, appointment_ids: set[int]) -> dict[int, dict]:
+        if not appointment_ids:
+            return {}
+        async with session_scope() as session:
+            rows = (
+                await session.execute(_query().where(Appointment.id.in_(appointment_ids)))
+            ).mappings().all()
+        return {row["id"]: _serialize(row) for row in rows}
+
+    async def flag_calendar_change(
+        self, appointment_id: int, *, summary: str, starts_at: datetime, at: datetime,
+    ) -> bool:
+        """Anota lo que dice el evento. True si es un cambio nuevo (no estaba
+        pendiente o el título es otro): solo entonces se avisa al equipo."""
+        stmt = (
+            update(Appointment)
+            .where(
+                Appointment.id == appointment_id,
+                or_(
+                    Appointment.calendar_change_detected_at.is_(None),
+                    Appointment.calendar_change_summary.is_distinct_from(summary),
+                ),
+            )
+            .values(
+                calendar_change_summary=summary, calendar_change_starts_at=starts_at,
+                calendar_change_detected_at=at,
+            )
+        )
+        async with session_scope() as session:
+            result = await session.execute(stmt)
+            if result.rowcount:
+                return True
+            # El mismo título: solo se actualiza la hora por si se movió.
+            await session.execute(
+                update(Appointment).where(Appointment.id == appointment_id)
+                .values(calendar_change_starts_at=starts_at)
+            )
+        return False
+
+    async def clear_calendar_change(self, appointment_id: int) -> None:
+        async with session_scope() as session:
+            await session.execute(
+                update(Appointment).where(
+                    Appointment.id == appointment_id, Appointment.calendar_change_detected_at.is_not(None),
+                ).values(
+                    calendar_change_summary=None, calendar_change_starts_at=None, calendar_change_detected_at=None,
+                )
+            )
+
+    async def confirm_calendar_change(
+        self, appointment_id: int, *, tratamiento: str, fecha: date | None, hora: str | None,
+    ) -> dict | None:
+        """La cita con el servicio confirmado y la fecha del calendario; el
+        título del evento queda como confirmado. None si no había cambio
+        pendiente (otro ya lo confirmó)."""
+        values: dict = {
+            "tratamiento": tratamiento,
+            "calendar_confirmed_summary": Appointment.calendar_change_summary,
+            "calendar_change_summary": None,
+            "calendar_change_starts_at": None,
+            "calendar_change_detected_at": None,
+        }
+        if fecha is not None and hora is not None:
+            values.update(fecha=fecha, hora=hora)
+        async with session_scope() as session:
+            result = await session.execute(
+                update(Appointment).where(
+                    Appointment.id == appointment_id, Appointment.calendar_change_detected_at.is_not(None),
+                ).values(**values)
+            )
+            if not result.rowcount:
+                return None
+            row = (await session.execute(_query().where(Appointment.id == appointment_id))).mappings().one()
+        return _serialize(row)
+
     async def record_integrations(self, appointment_id: int, *, clear_calendar_sync_error: bool = False, **values) -> dict:
         changes = {key: value for key, value in values.items() if key in _INTEGRATION_FIELDS and value is not None}
         if clear_calendar_sync_error:
