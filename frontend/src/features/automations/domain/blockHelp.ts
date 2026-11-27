@@ -48,6 +48,7 @@ const ACTION_HELP: Partial<Record<string, string[]>> = {
     'Las plantillas internas pueden llevar archivos. ' + WINDOW_LINE,
     'Las de Meta aprobadas se envían aunque el cliente no haya escrito, y Meta cobra cada envío.',
     'Si un dato del lead que usa la plantilla está vacío, el paso falla.',
+    'Si la plantilla de Meta tiene botones de respuesta rápida, «Seguir según el botón que toque» da una salida por botón, más «Otra respuesta» y «Sin respuesta».',
   ],
   [AutomationActionType.SendMessage]: [WINDOW_LINE],
   [AutomationActionType.SendAudio]: [WINDOW_LINE],

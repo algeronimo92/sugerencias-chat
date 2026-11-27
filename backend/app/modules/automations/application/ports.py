@@ -191,6 +191,10 @@ class ReferenceChecker(Protocol):
     async def unusable_templates(self, ids: set[int]) -> set[int]:
         """Las que no son plantillas internas activas sin botones ni listas."""
 
+    async def template_quick_replies(self, ids: set[int]) -> dict[int, list[str]]:
+        """El texto de los botones de respuesta rápida de cada plantilla de
+        Meta, en orden. Las que no existen o no tienen ninguno no aparecen."""
+
     async def missing_media_assets(self, ids: set[int]) -> set[int]: ...
 
     async def stage_problem(self, keys: set[str], *, active_only: bool) -> str | None:

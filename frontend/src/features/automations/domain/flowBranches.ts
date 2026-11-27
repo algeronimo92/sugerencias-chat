@@ -21,7 +21,8 @@ export function flowBranchName(branch: string | null | undefined): string | null
 
 
 /** «siguió por «Sin respuesta»» en el detalle de un paso ya ejecutado. */
-export function followedBranchText(branch: string): string {
-  const name = flowBranchName(branch)
+export function followedBranchText(branch: string, label?: string | null): string {
+  // `label` es el texto del botón que tocó el cliente, cuando el paso lo guardó.
+  const name = flowBranchName(branch) ?? (label || null)
   return name ? `siguió por «${name}»` : 'siguió por una de sus salidas'
 }

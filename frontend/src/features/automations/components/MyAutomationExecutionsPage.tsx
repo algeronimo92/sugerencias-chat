@@ -163,7 +163,7 @@ function rowSummary(execution: AutomationExecution) {
 }
 
 function stepDetail(step: AutomationActionResult) {
-  if (step.branch) return followedBranchText(step.branch)
+  if (step.branch) return followedBranchText(step.branch, step.branch_label)
   if (step.error) return step.error
   if (step.seconds) return 'espera programada'
   if (step.conditions?.length) return 'espera un mensaje o el temporizador'

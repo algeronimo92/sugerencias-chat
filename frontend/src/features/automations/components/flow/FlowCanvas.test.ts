@@ -67,6 +67,16 @@ describe('handleColor', () => {
     expect(handleColor(undefined, FlowHandle.No)).toBe(HANDLE_COLORS[FlowHandle.No])
   })
 
+  it('los botones de una plantilla que sigue según el botón usan los colores de la Pregunta', () => {
+    const template: AutomationFlowNode = {
+      id: 'p', type: FlowNodeType.Action, position: { x: 0, y: 0 },
+      data: { action: { type: 'send_template', template_id: 1 }, reply: { buttons: [{ id: 'btn_1', label: 'Sí' }, { id: 'btn_2', label: 'No' }], timeout_seconds: 86400 } },
+    }
+    expect(handleColor(template, 'btn_2')).toBe(BUTTON_COLORS[1])
+    expect(handleColor(template, QuestionHandle.Timeout)).toBe(HANDLE_COLORS[QuestionHandle.Timeout])
+    expect(handleColor({ ...template, data: { action: template.data.action } }, FlowHandle.Next)).toBe(HANDLE_COLORS[FlowHandle.Next])
+  })
+
   it('el color de la salida llega a la conexión y la etiqueta sigue el tema', () => {
     const edge: AutomationFlowEdge = { id: 'e', source: 'q', target: 'x', source_handle: 'btn_1' }
     const [built] = toCanvasEdges([edge], undefined, null, null, item => handleColor(question, item.source_handle))

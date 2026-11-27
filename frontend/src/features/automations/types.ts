@@ -155,6 +155,14 @@ export interface QuestionButton {
   label: string
 }
 
+/** «Seguir según el botón que toque» de un paso Enviar plantilla: los botones
+ *  de respuesta rápida de la plantilla (`btn_1..btn_n`, las salidas del paso
+ *  junto con «Otra respuesta» y «Sin respuesta») y cuánto se espera. */
+export interface TemplateReply {
+  buttons: QuestionButton[]
+  timeout_seconds: number
+}
+
 /** Salida de un bloque Round robin. El id es posicional (`out_1..out_n`) y es
  *  el handle con el que el lienzo dibuja su conexión. */
 export interface RoundRobinOutput {
@@ -188,7 +196,7 @@ export type AutomationFlowNode =
       condition_type?: AutomationFlowConditionType
       value?: string | number | boolean | null
     }>
-  | BaseAutomationFlowNode<typeof FlowNodeType.Action, { action: AutomationAction }>
+  | BaseAutomationFlowNode<typeof FlowNodeType.Action, { action: AutomationAction; reply?: TemplateReply }>
   | BaseAutomationFlowNode<typeof FlowNodeType.InvokeFlow, { flow_rule_id: number | null }>
   | BaseAutomationFlowNode<typeof FlowNodeType.Wait, { seconds: number }>
   | BaseAutomationFlowNode<typeof FlowNodeType.WaitAny, { conditions: WaitAnyCondition[] }>
@@ -251,6 +259,8 @@ export interface AutomationActionResult {
   seconds?: number
   /** Salida por la que resolvió un bloque Pausa/Pregunta. */
   branch?: string
+  /** El texto del botón por el que siguió un Enviar plantilla. */
+  branch_label?: string
   conditions?: WaitAnyCondition[]
   message_ids?: number[]
   /** Lo que hizo un paso que no manda mensajes: a qué etapa movió, a quién

@@ -40,11 +40,17 @@ def match_question_button(
     content: str | None,
     kind: str | None = None,
     has_media_handle: bool = False,
+    by_number: bool = True,
 ) -> str:
     """Resuelve a qué botón corresponde la respuesta del cliente: por el id
     que Meta devuelve en ``interactive.button_reply.id`` si tocó un botón; si
     escribió en vez de tocar, por número de posición o por el texto del botón;
     si no matchea nada, "otra respuesta".
+
+    `by_number=False` es para los botones de una plantilla: una Pregunta
+    puede llegar con las opciones numeradas y ahí "2" es el segundo botón,
+    pero una plantilla nunca las numera, y un "2" suelto (una cantidad, una
+    hora) no es elegir el segundo botón.
 
     Una foto se resuelve antes de mirar texto y sale por su propia salida:
     9 de cada 10 llegan sin caption, así que por texto no matchea nada y
@@ -57,7 +63,7 @@ def match_question_button(
     if reply_id and any(button["id"] == reply_id for button in buttons):
         return reply_id
     normalized = normalize_reply_text(content or "")
-    if normalized.isdigit():
+    if by_number and normalized.isdigit():
         index = int(normalized) - 1
         if 0 <= index < len(buttons):
             return buttons[index]["id"]

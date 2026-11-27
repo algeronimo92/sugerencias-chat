@@ -346,6 +346,7 @@ class FakeReferences:
     inactive_tag_ids: set[int] = field(default_factory=set)
     unusable_template_ids: set[int] = field(default_factory=set)
     missing_media_ids: set[int] = field(default_factory=set)
+    quick_replies: dict[int, list[str]] = field(default_factory=dict)
     stage_problems: dict[bool, str] = field(default_factory=dict)
     checked_stages: list[tuple[frozenset, bool]] = field(default_factory=list)
 
@@ -357,6 +358,9 @@ class FakeReferences:
 
     async def unusable_templates(self, ids):
         return set(ids) & self.unusable_template_ids
+
+    async def template_quick_replies(self, ids):
+        return {template_id: labels for template_id, labels in self.quick_replies.items() if template_id in ids}
 
     async def missing_media_assets(self, ids):
         return set(ids) & self.missing_media_ids

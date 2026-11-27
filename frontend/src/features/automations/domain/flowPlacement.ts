@@ -37,7 +37,9 @@ export function placeNewNode(nodes: readonly AutomationFlowNode[], edges: readon
   if (!anchor) return { position: { x: 0, y: 0 } }
   const position = freeSpot(nodes, { x: anchor.position.x + COLUMN, y: anchor.position.y })
   const outputFree = !edges.some(edge => edge.source === anchor.id && edge.source_handle === FlowHandle.Next)
-  return selected && SINGLE_OUTPUT.has(selected.type) && outputFree
+  // Una plantilla que sigue según el botón ya no tiene «Siguiente».
+  const followsByButton = selected?.type === FlowNodeType.Action && selected.data.reply != null
+  return selected && SINGLE_OUTPUT.has(selected.type) && !followsByButton && outputFree
     ? { position, from: { source: selected.id, handle: FlowHandle.Next } }
     : { position }
 }

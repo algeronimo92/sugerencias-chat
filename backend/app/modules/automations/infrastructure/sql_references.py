@@ -9,7 +9,7 @@ from app.db.models.auth import User
 from app.db.models.catalogs import LeadTag, MessageTemplate
 from app.db.models.media import MediaAsset
 from app.db.uow import session_scope
-from app.modules.automations.domain.templates import automatic_template_problem
+from app.modules.automations.domain.templates import automatic_template_problem, quick_reply_labels
 from app.modules.leads.ports.stages import stage_problem
 
 
@@ -39,6 +39,19 @@ class SqlReferenceChecker:
             )).mappings().all()
         valid = {template["id"] for template in templates if automatic_template_problem(template) is None}
         return set(ids) - valid
+
+    async def template_quick_replies(self, ids: set[int]) -> dict[int, list[str]]:
+        async with session_scope() as session:
+            templates = (await session.execute(
+                select(
+                    MessageTemplate.id, MessageTemplate.template_type, MessageTemplate.official_buttons,
+                ).where(MessageTemplate.id.in_(ids))
+            )).mappings().all()
+        return {
+            template["id"]: labels
+            for template in templates
+            if (labels := quick_reply_labels(template))
+        }
 
     async def missing_media_assets(self, ids: set[int]) -> set[int]:
         async with session_scope() as session:

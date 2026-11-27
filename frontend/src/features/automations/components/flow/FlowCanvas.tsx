@@ -35,8 +35,9 @@ import { TASK_PRIORITY_LABELS } from '../../../tasks/public/taskCatalog'
 import { FLOW_NODE_VIEW, flowNodeSummary } from '../../domain/flowNodeView'
 import { FLOW_TONES, flowTone, isMessageAction, MESSAGE_ICON, minimapFill } from '../../domain/flowTones'
 import { ZoomScale } from './ZoomScale'
-import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, WaitAnyCondition } from '../../types'
-import { BUTTON_COLORS, CONDITION_GROUP_COLOR, fromCanvasEdge, HANDLE_COLORS, handleColor, ROUND_ROBIN_OUTPUT_COLOR, toCanvasEdges } from './flowCanvasEdges'
+import type { AutomationAction, AutomationFlowConditionGroup, AutomationFlowConditionType, AutomationFlowDefinition, AutomationFlowEdge, AutomationFlowNode, AutomationFlowNodeType, AutomationTrigger, QuestionButton, RoundRobinOutput, TemplateReply, WaitAnyCondition } from '../../types'
+import { buttonOutputRows, CONDITION_GROUP_COLOR, fromCanvasEdge, HANDLE_COLORS, HANDLE_STYLE, handleColor, ROUND_ROBIN_OUTPUT_COLOR, toCanvasEdges } from './flowCanvasEdges'
+import { OutputRows } from './OutputRows'
 import { useReconciled } from './useReconciled'
 import { NodeTypeMenu } from './NodeTypeMenu'
 import { useConnectDrop } from './useConnectDrop'
@@ -46,7 +47,7 @@ import { useFocusNodes } from './useFocusNodes'
  *  necesita para dibujarlo (borrar, resaltar el seleccionado). */
 type CanvasNodeDataValue =
   | string | number | boolean | null | undefined
-  | AutomationAction | AutomationFlowConditionGroup[] | WaitAnyCondition[] | QuestionButton[] | RoundRobinOutput[]
+  | AutomationAction | TemplateReply | AutomationFlowConditionGroup[] | WaitAnyCondition[] | QuestionButton[] | RoundRobinOutput[]
   | MessageTemplate | MediaAsset
   | ((id: string) => void)
 
@@ -57,6 +58,7 @@ interface CanvasNodeData {
   value?: string | number | boolean | null
   condition_groups?: AutomationFlowConditionGroup[]
   action?: AutomationAction
+  reply?: TemplateReply
   flow_rule_id?: number | null
   invokedFlowName?: string
   seconds?: number
@@ -82,7 +84,6 @@ interface CanvasNodeData {
 type CanvasNode = Node<CanvasNodeData>
 const MINIMAP_SIZE = { width: 160, height: 110 }
 
-const HANDLE_STYLE = { width: 10, height: 10, background: '#64748b', border: '2px solid #fff' }
 const CONNECTION_HIGHLIGHT_STORAGE_KEY = 'automation-flow:highlight-connections'
 const EMPTY_TEMPLATES: MessageTemplate[] = []
 const EMPTY_MEDIA_ASSETS: MediaAsset[] = []
@@ -352,11 +353,15 @@ const TriggerNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   </NodeShell>
 ))
 
+/** Con «Seguir según el botón que toque», la plantilla deja de tener
+ *  «Siguiente» y muestra las mismas salidas que una Pregunta. */
 const ActionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => (
   <NodeShell id={id} type={FlowNodeType.Action} data={data} selected={selected}>
     <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
     <ActionPreview data={data} />
-    <Handle type="source" position={Position.Right} id={FlowHandle.Next} style={HANDLE_STYLE} />
+    {data.reply
+      ? <OutputRows rows={buttonOutputRows(data.reply.buttons)} borderClass="border-violet-200" />
+      : <Handle type="source" position={Position.Right} id={FlowHandle.Next} style={HANDLE_STYLE} />}
   </NodeShell>
 ))
 
@@ -444,28 +449,17 @@ const LegacyPauseNode = memo((props: NodeProps<CanvasNode>) => <PauseNodeView {.
 /** Una fila por botón + "Otra respuesta" + "Sin respuesta" (timeout), cada
  *  una con su propia salida — mismo patrón visual que WaitAnyNode. */
 const QuestionNode = memo(({ id, data, selected }: NodeProps<CanvasNode>) => {
-  const buttons = data.buttons ?? []
-  const rows: Array<{ handle: string; label: string; color: string }> = [
-    ...buttons.map((button, index) => ({ handle: button.id, label: button.label, color: BUTTON_COLORS[index % BUTTON_COLORS.length] })),
-    // "Mandó una foto" va antes que "Otra respuesta" porque es justamente lo
-    // que le ganaba: sin esta salida, una foto sin caption no matchea ningún
-    // botón y termina en la rama del que no mandó nada.
+  // "Mandó una foto" va antes que "Otra respuesta" porque es justamente lo
+  // que le ganaba: sin esta salida, una foto sin caption no matchea ningún
+  // botón y termina en la rama del que no mandó nada.
+  const rows = buttonOutputRows(data.buttons ?? [], [
     { handle: QuestionHandle.Media, label: QUESTION_HANDLE_LABELS[QuestionHandle.Media], color: HANDLE_COLORS[QuestionHandle.Media] },
-    { handle: QuestionHandle.Other, label: 'Otra respuesta', color: HANDLE_COLORS[QuestionHandle.Other] },
-    { handle: QuestionHandle.Timeout, label: 'Sin respuesta', color: HANDLE_COLORS[QuestionHandle.Timeout] },
-  ]
+  ])
   return (
     <NodeShell id={id} type={FlowNodeType.Question} data={data} selected={selected}>
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <MessageCard text={String(data.text ?? '')} empty="Escribe la pregunta en las propiedades" />
-      <div className="mt-2 space-y-1">
-        {rows.map(row => (
-          <div key={row.handle} className="relative flex items-center gap-1.5 rounded-md border border-pink-200 bg-white/70 px-2 py-1.5 text-[9px] font-semibold text-gray-600 dark:border-flow-border-dark dark:bg-flow-row-dark dark:text-gray-200">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="truncate">{row.label || 'Botón sin texto'}</span>
-            <Handle type="source" position={Position.Right} id={row.handle} style={{ ...HANDLE_STYLE, background: row.color, right: -18, top: '50%' }} />
-          </div>
-        ))}
-      </div>
+      <OutputRows rows={rows} borderClass="border-pink-200" />
     </NodeShell>
   )
 })
